@@ -30,6 +30,8 @@ public partial class App : Application
         Services = BuildServices();
         _logger = Services.GetRequiredService<ILogger<App>>();
 
+        ConfigureGlobalExceptionHandlers();
+
         var guard = Services.GetRequiredService<SingleInstanceGuard>();
         if (!guard.IsPrimary)
         {
@@ -56,6 +58,10 @@ public partial class App : Application
 
         // B-103：全局热键（config.json 可改，B-801 提供设置 UI）
         var config = Services.GetRequiredService<Storage.AppConfigFile>().Load();
+
+        // B-104：开机自启对齐（config.LaunchOnStartup 为准）
+        Services.GetRequiredService<StartupService>().SyncWith(config.LaunchOnStartup);
+
         var hotkey = Services.GetRequiredService<HotkeyService>();
         hotkey.Triggered += () => quickPanel.Toggle();
         if (!hotkey.Register(string.IsNullOrWhiteSpace(config.Hotkey) ? "Ctrl+Alt+B" : config.Hotkey))
@@ -66,6 +72,23 @@ public partial class App : Application
         _logger.LogInformation("Beacon started (tray resident, no main window).");
     }
 
+    /// <summary>崩溃兜底（B-105）：UI 异常标记 Handled 保持常驻，非 UI 线程异常落日志。</summary>
+    private void ConfigureGlobalExceptionHandlers()
+    {
+        UnhandledException += (_, e) =>
+        {
+            _logger?.LogError(e.Exception, "XAML unhandled exception: {Message}", e.Message);
+            e.Handled = true; // 常驻应用不闪退（RFC §10 崩溃兜底）
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            _logger?.LogCritical(e.ExceptionObject as Exception, "Fatal (terminating={IsTerminating})", e.IsTerminating);
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            _logger?.LogError(e.Exception, "Unobserved task exception");
+            e.SetObserved();
+        };
+    }
+
     private static IServiceProvider BuildServices()
     {
         var services = new ServiceCollection();
@@ -73,6 +96,7 @@ public partial class App : Application
         services.AddSingleton<Win32MessageWindow>();
         services.AddSingleton<TrayIconService>();
         services.AddSingleton<HotkeyService>();
+        services.AddSingleton<StartupService>();
         services.AddSingleton<Storage.AppConfigFile>();
         services.AddSingleton<IUiDispatcher>(new UiDispatcher(Instance!.Dispatcher));
         services.AddLogging(builder => builder
@@ -81,7 +105,8 @@ public partial class App : Application
             {
                 options.SingleLine = true;
                 options.TimestampFormat = "HH:mm:ss ";
-            }));
+            })
+            .AddProvider(new FileLoggerProvider()));
         return services.BuildServiceProvider();
     }
 }
