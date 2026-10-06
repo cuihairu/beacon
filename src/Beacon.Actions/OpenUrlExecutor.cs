@@ -33,7 +33,7 @@ public sealed class OpenUrlExecutor : IActionExecutor
         string target;
         try
         {
-            target = TemplateRenderer.Render(template, MergeVars(context));
+            target = TemplateRenderer.Render(template, ActionVars.Merge(context));
         }
         catch (ArgumentException exception)
         {
@@ -49,23 +49,6 @@ public sealed class OpenUrlExecutor : IActionExecutor
             using var process = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
         }
         return new ActionResult(action.Id, Success: true, Message: target, OutputPath: null, CompletedAt: DateTimeOffset.UtcNow);
-    }
-
-    internal static Dictionary<string, string> MergeVars(ActionExecutionContext context)
-    {
-        var vars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (key, value) in context.Vars)
-        {
-            vars[key] = value;
-        }
-        if (context.SourceState is { } state)
-        {
-            foreach (var (key, value) in state.Payload)
-            {
-                vars[key] = value;
-            }
-        }
-        return vars;
     }
 
     private static ActionResult Fail(string actionId, string message)
