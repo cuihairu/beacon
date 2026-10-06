@@ -49,6 +49,10 @@ public partial class App : Application
         tray.ExitRequested += () => Exit();
         tray.Initialize();
 
+        // B-102：L1 胶囊常驻（占位聚合，B-504 接入真实状态）
+        var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>());
+        capsule.Activate();
+
         _logger.LogInformation("Beacon started (tray resident, no main window).");
     }
 
