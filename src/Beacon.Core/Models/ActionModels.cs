@@ -1,3 +1,5 @@
+using Beacon.Core.Abstractions;
+
 namespace Beacon.Core.Models;
 
 /// <summary>Action 配置（来自 Widget 绑定或 Workflow，MVP 仅简单 Action）。</summary>
@@ -17,6 +19,10 @@ public sealed class ActionExecutionContext
     /// <summary>模板变量；执行时由 ActionRunner 合并 SourceState 派生变量。</summary>
     public IReadOnlyDictionary<string, string> Vars { get; init; } = new Dictionary<string, string>();
     public WidgetState? SourceState { get; init; }
+    /// <summary>SourceState 对应的连接（ActionRunner 注入），远程 Action 执行器消费。</summary>
+    public ConnectionConfig? Connection { get; init; }
+    /// <summary>连接执行上下文（密钥等，ActionRunner 注入）。</summary>
+    public ConnectionContext? ConnectionContext { get; init; }
 }
 
 public sealed record ActionResult(

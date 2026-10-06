@@ -82,6 +82,49 @@ public sealed class GitHubApiClient
         }
     }
 
+    /// <summary>POST 封装（B-403：dispatch/rerun/cancel）。2xx 返回 true，错误语义与 GET 一致。</summary>
+    public async Task<bool> PostAsync(string path, string? jsonBody = null, CancellationToken cancellationToken = default)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path);
+        if (jsonBody is not null)
+        {
+            request.Content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
+        }
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new ConnectionException($"GitHub unreachable: {exception.Message}", ConnectionHealthState.Offline, exception);
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ConnectionException("GitHub request timed out.", ConnectionHealthState.Offline, exception);
+        }
+
+        using (response)
+        {
+            ReadRateLimit(response);
+            var status = (int)response.StatusCode;
+            return status switch
+            {
+                >= 200 and < 300 => true,
+                401 => throw new ConnectionException("GitHub 认证失败 (401)：PAT 无效或过期。", ConnectionHealthState.Unauthorized),
+                403 => throw (RateLimitRemaining == 0
+                    ? new ConnectionException("GitHub rate limit 耗尽 (403)。", ConnectionHealthState.Offline)
+                    : new ConnectionException("GitHub 拒绝访问 (403)：检查 PAT workflow 授权。", ConnectionHealthState.Unauthorized)),
+                404 => throw new ConnectionException("GitHub 资源不存在 (404)：检查仓库/workflow/run 配置。", ConnectionHealthState.Offline),
+                409 => throw new ConnectionException("GitHub 冲突 (409)：运行可能已结束。", ConnectionHealthState.Degraded),
+                422 => throw new ConnectionException("GitHub 校验失败 (422)：参数不合法。", ConnectionHealthState.Degraded),
+                >= 500 => throw new ConnectionException($"GitHub 服务端错误 ({status})。", ConnectionHealthState.Offline),
+                _ => throw new ConnectionException($"GitHub 意外响应 ({status})。", ConnectionHealthState.Degraded),
+            };
+        }
+    }
+
     private void ReadRateLimit(HttpResponseMessage response)
     {
         if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)

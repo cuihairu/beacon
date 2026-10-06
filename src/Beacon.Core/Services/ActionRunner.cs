@@ -15,6 +15,8 @@ public sealed class ActionRunner
     private readonly IReadOnlyDictionary<string, IActionExecutor> _executors;
     private readonly IEventBus _bus;
     private readonly IClock _clock;
+    private readonly IConfigurationStore? _config;
+    private readonly ISecretStore? _secrets;
     private readonly ILogger? _logger;
 
     /// <summary>单个 Action 的默认超时（executor 可用更短的自身超时）。</summary>
@@ -27,11 +29,15 @@ public sealed class ActionRunner
         IEnumerable<IActionExecutor> executors,
         IEventBus bus,
         IClock clock,
+        IConfigurationStore? config = null,
+        ISecretStore? secrets = null,
         ILogger? logger = null)
     {
         _executors = executors.ToDictionary(executor => executor.ActionType, StringComparer.OrdinalIgnoreCase);
         _bus = bus;
         _clock = clock;
+        _config = config;
+        _secrets = secrets;
         _logger = logger;
     }
 
@@ -50,6 +56,7 @@ public sealed class ActionRunner
         ActionExecutionContext context,
         CancellationToken cancellationToken)
     {
+        context = EnrichContext(context);
         if (action.RequireConfirmation)
         {
             if (ConfirmationHandler is null)
@@ -87,6 +94,27 @@ public sealed class ActionRunner
             _logger?.LogError(exception, "Action {ActionId} 执行失败。", action.Id);
             return Fail(action.Id, exception.Message);
         }
+    }
+
+    /// <summary>远程 Action 需要 Connection/密钥：按 SourceState.ConnectionId 从配置解析注入。</summary>
+    private ActionExecutionContext EnrichContext(ActionExecutionContext context)
+    {
+        if (context.Connection is not null || context.SourceState is null)
+        {
+            return context;
+        }
+        var connection = _config?.FindConnection(context.SourceState.ConnectionId);
+        if (connection is null)
+        {
+            return context;
+        }
+        return new ActionExecutionContext
+        {
+            Vars = context.Vars,
+            SourceState = context.SourceState,
+            Connection = connection,
+            ConnectionContext = _secrets is null ? null : new ConnectionContext { Secrets = _secrets },
+        };
     }
 
     private ActionResult Cancelled(string actionId, string message)
