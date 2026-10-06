@@ -1,5 +1,6 @@
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
+using Beacon.Core.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;

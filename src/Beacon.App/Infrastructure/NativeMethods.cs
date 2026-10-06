@@ -230,10 +230,11 @@ internal static class NativeMethods
     public static extern bool DestroyMenu(IntPtr hMenu);
 
     [DllImport("user32.dll")]
-    public static extern bool TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect);
+    public static extern int TrackPopupMenu(IntPtr hMenu, uint uFlags, int x, int y, int nReserved, IntPtr hWnd, IntPtr prcRect); // TPM_RETURNCMD：返回菜单命令 id
 
     // —— 多显示器 ——
-    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lpRect, IntPtr lpData);
+    // LPRECT 以指针语义传递；此处无需矩形内容，用 IntPtr 免去 ref 对 lambda/discard 的限制
+    public delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, IntPtr lpRect, IntPtr lpData);
 
     public const uint MONITOR_DEFAULTTONEAREST = 2;
 

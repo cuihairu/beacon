@@ -30,7 +30,7 @@ public sealed partial class CapsuleWindow : Window
     {
         InitializeComponent();
         _shellState = shellState;
-        Loaded += OnLoaded;
+        ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
