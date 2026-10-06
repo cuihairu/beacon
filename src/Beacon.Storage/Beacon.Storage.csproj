@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Description>Beacon storage: JSON configuration, cache and DPAPI secret store.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Beacon.Core\Beacon.Core.csproj" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Description>Beacon built-in action executors (open URL, HTTP, local command, webhook).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Beacon.Core\Beacon.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+</Project>
