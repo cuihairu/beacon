@@ -7,4 +7,7 @@
     <ProjectReference Include="..\Beacon.Core\Beacon.Core.csproj" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Beacon.Connections.Tests" />
+  </ItemGroup>
 </Project>

@@ -112,6 +112,12 @@ public sealed class WidgetHost : IAsyncDisposable
             var state = await provider
                 .GetStateAsync(widget, connection, new ConnectionContext { Secrets = _secrets }, cancellationToken)
                 .ConfigureAwait(false);
+            if (state is null)
+            {
+                // 条件请求未变化（ETag 304）：连接健康，但内容无新值，不重发不重写缓存
+                PublishHealth(connection.Id, ConnectionHealthState.Healthy);
+                return true;
+            }
             _cache.SaveState(connection.Id, state);
             PublishHealth(connection.Id, ConnectionHealthState.Healthy);
             _bus.Publish(new WidgetStateChanged(state));

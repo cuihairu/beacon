@@ -121,6 +121,23 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task NullState_ConditionalNotModified_SkipsPublishAndCache()
+    {
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        fixture.Cache.SaveState("conn-1", TestData.State(summary: "previous"));
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(null); // ETag 304
+
+        var ok = await host.RefreshWidgetAsync("w-1");
+
+        Assert.True(ok);
+        Assert.Empty(fixture.States); // 未重发
+        Assert.Equal("previous", fixture.Cache.LoadStates("conn-1")["w-1"].Summary); // 缓存未重写
+        Assert.Equal(ConnectionHealthState.Healthy, Assert.Single(fixture.Healths).State);
+    }
+
+    [Fact]
     public async Task MissingWidgetOrProvider_SkipsSilently()
     {
         var fixture = new HostFixture();

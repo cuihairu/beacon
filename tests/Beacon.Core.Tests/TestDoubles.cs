@@ -224,11 +224,11 @@ internal sealed class FakeWidgetProvider : IWidgetProvider
 
     public WidgetTypeDescriptor Descriptor => DescriptorValue;
 
-    public Func<WidgetConfig, ConnectionConfig, ISecretStore, CancellationToken, Task<WidgetState>>? Handler { get; set; }
+    public Func<WidgetConfig, ConnectionConfig, ISecretStore, CancellationToken, Task<WidgetState?>>? Handler { get; set; }
 
     public int CallCount;
 
-    public Task<WidgetState> GetStateAsync(
+    public Task<WidgetState?> GetStateAsync(
         WidgetConfig widget,
         ConnectionConfig connection,
         ConnectionContext context,

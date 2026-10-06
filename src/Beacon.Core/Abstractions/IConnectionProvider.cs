@@ -16,12 +16,13 @@ public interface IConnectionProvider
     Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken);
 }
 
-/// <summary>Widget Provider：把外部数据映射为统一 WidgetState（Severity/Lifecycle 唯一口径）。</summary>
+/// <summary>Widget Provider：把外部数据映射为统一 WidgetState（Severity/Lifecycle 唯一口径）。
+/// 返回 null = 条件请求命中（如 ETag 304），内容未变化，宿主跳过发布/缓存。</summary>
 public interface IWidgetProvider
 {
     WidgetTypeDescriptor Descriptor { get; }
 
-    Task<WidgetState> GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken);
+    Task<WidgetState?> GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken);
 }
 
 /// <summary>按 widget type 解析 Provider——Core 不感知具体 Provider（Provider First，RFC §5）。</summary>
