@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Beacon.App.Services;
 
 /// <summary>全局热键（RFC §38）：RegisterHotKey 挂在消息窗口上，设置可改，冲突时注册失败。</summary>
-public sealed class HotkeyService : IDisposable
+internal sealed class HotkeyService : IDisposable
 {
     private const int HotkeyId = 1;
 

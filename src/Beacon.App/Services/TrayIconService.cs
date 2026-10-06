@@ -8,7 +8,7 @@ namespace Beacon.App.Services;
 /// 系统托盘（RFC §10 Tray）：Win32 Shell_NotifyIcon 自实现，不引第三方托盘库。
 /// 左键/双击 → 打开面板；右键 → 菜单；Exit 是唯一退出路径。
 /// </summary>
-public sealed class TrayIconService : IDisposable
+internal sealed class TrayIconService : IDisposable
 {
     private const uint IconId = 1;
 
