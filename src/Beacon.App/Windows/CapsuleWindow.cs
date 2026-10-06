@@ -22,7 +22,7 @@ public sealed partial class CapsuleWindow : Window
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
     private bool _dragging;
-    private Windows.Foundation.Point _dragStart;
+    private global::Windows.Foundation.Point _dragStart;
     private int _x;
     private int _y;
 
