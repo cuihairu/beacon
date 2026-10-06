@@ -44,7 +44,8 @@ public partial class App : Application
             Services.GetRequiredService<TrayIconService>().ShowBalloon("Beacon", "Beacon 已在运行。")));
 
         var tray = Services.GetRequiredService<TrayIconService>();
-        tray.OpenPanelRequested += () => { /* P6 接入 QuickPanel */ };
+        var quickPanel = new Windows.QuickPanelWindow();
+        tray.OpenPanelRequested += () => quickPanel.Toggle();
         tray.SettingsRequested += () => { /* P8 接入 SettingsWindow */ };
         tray.ExitRequested += () => Exit();
         tray.Initialize();
@@ -52,6 +53,15 @@ public partial class App : Application
         // B-102：L1 胶囊常驻（占位聚合，B-504 接入真实状态）
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>());
         capsule.Activate();
+
+        // B-103：全局热键（config.json 可改，B-801 提供设置 UI）
+        var config = Services.GetRequiredService<Storage.AppConfigFile>().Load();
+        var hotkey = Services.GetRequiredService<HotkeyService>();
+        hotkey.Triggered += () => quickPanel.Toggle();
+        if (!hotkey.Register(string.IsNullOrWhiteSpace(config.Hotkey) ? "Ctrl+Alt+B" : config.Hotkey))
+        {
+            tray.ShowBalloon("Beacon", $"热键 {config.Hotkey} 注册失败（可能被占用），可在设置中更换。", Infrastructure.NativeMethods.NIIF_WARNING);
+        }
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
     }
@@ -62,6 +72,8 @@ public partial class App : Application
         services.AddSingleton<SingleInstanceGuard>();
         services.AddSingleton<Win32MessageWindow>();
         services.AddSingleton<TrayIconService>();
+        services.AddSingleton<HotkeyService>();
+        services.AddSingleton<Storage.AppConfigFile>();
         services.AddSingleton<IUiDispatcher>(new UiDispatcher(Instance!.Dispatcher));
         services.AddLogging(builder => builder
             .SetMinimumLevel(LogLevel.Information)

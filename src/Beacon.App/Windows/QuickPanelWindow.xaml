@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Beacon.App.Windows.QuickPanelWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Beacon Quick Panel">
+    <Border
+        CornerRadius="12"
+        Background="#F0111820"
+        BorderBrush="#33FFFFFF"
+        BorderThickness="1"
+        Padding="16">
+        <StackPanel Spacing="8" MinWidth="220">
+            <TextBlock Text="Beacon" Foreground="#F1F5F9" FontSize="16" FontWeight="Bold" />
+            <TextBlock Text="Quick Panel —— P6 (B-601..603) 实现 Overview / Recent / Actions" Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+    </Border>
+</Window>
