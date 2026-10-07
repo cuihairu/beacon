@@ -13,6 +13,7 @@ internal sealed class Win32MessageWindow : IDisposable
 
     private readonly ILogger? _logger;
     private readonly NativeMethods.WndProcDelegate _wndProc; // 持有引用防 GC 回收
+    private IntPtr _classNamePtr; // RegisterClassW 的原生类名串
     private readonly IntPtr _hwnd;
 
     /// <summary>(msg, wParam, lParam)</summary>
@@ -23,19 +24,22 @@ internal sealed class Win32MessageWindow : IDisposable
     public Win32MessageWindow(ILogger<Win32MessageWindow>? logger = null)
     {
         _logger = logger;
-        _wndProc = WndProc;
+        _wndProc = WndProc; // 委托实例由字段持有，原生函数指针才不会悬空
 
         var hInstance = NativeMethods.GetModuleHandleW(null);
+        _classNamePtr = Marshal.StringToHGlobalUni(ClassName); // 类名串随类存续，Dispose 时释放
         var windowClass = new NativeMethods.WNDCLASSEX
         {
             cbSize = (uint)Marshal.SizeOf<NativeMethods.WNDCLASSEX>(),
-            lpfnWndProc = _wndProc,
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
             hInstance = hInstance,
-            lpszClassName = ClassName,
+            lpszClassName = _classNamePtr,
         };
         var atom = NativeMethods.RegisterClassW(ref windowClass);
         if (atom == 0)
         {
+            Marshal.FreeHGlobal(_classNamePtr);
+            _classNamePtr = IntPtr.Zero;
             throw new InvalidOperationException($"RegisterClassW failed: {Marshal.GetLastWin32Error()}");
         }
 
@@ -68,6 +72,11 @@ internal sealed class Win32MessageWindow : IDisposable
         if (_hwnd != IntPtr.Zero)
         {
             NativeMethods.DestroyWindow(_hwnd);
+        }
+        if (_classNamePtr != IntPtr.Zero)
+        {
+            Marshal.FreeHGlobal(_classNamePtr);
+            _classNamePtr = IntPtr.Zero;
         }
     }
 }

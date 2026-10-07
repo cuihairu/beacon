@@ -62,20 +62,25 @@ internal static class NativeMethods
     public const uint SWP_NOACTIVATE = 0x10;
     public const IntPtr HWND_TOPMOST = -1;
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    /// <summary>
+    /// 全 blittable 版 WNDCLASSEX：委托/字符串一律显式转原生指针。
+    /// 旧写法把 delegate 与 string 字段直接放进 struct 交给反射式编组器，
+    /// x64 下 lpfnWndProc 落成无效指针 → RegisterClassW 报 87（真机冒烟实锤）。
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
     public struct WNDCLASSEX
     {
         public uint cbSize;
         public uint style;
-        public WndProcDelegate lpfnWndProc;
+        public IntPtr lpfnWndProc;   // Marshal.GetFunctionPointerForDelegate，委托须由调用方持有防 GC
         public int cbClsExtra;
         public int cbWndExtra;
         public IntPtr hInstance;
         public IntPtr hIcon;
         public IntPtr hCursor;
         public IntPtr hbrBackground;
-        public string? lpszMenuName;
-        public string lpszClassName;
+        public IntPtr lpszMenuName;  // 不用菜单，恒 NULL
+        public IntPtr lpszClassName; // Marshal.StringToHGlobalUni，类注销前保持有效
         public IntPtr hIconSm;
     }
 
