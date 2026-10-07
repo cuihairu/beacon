@@ -139,3 +139,73 @@ Codex    71% used   weekly 8h 后重置
 - **先收口 M5**：B-803 真机走查、B-804 干净 Win11 VM，不打断验收；
 - 收口后把 §5 P0 作为增补分组并入 `mvp-issues.md`，按 P0 重排后续阶段优先级；
 - 现有 43 条 issue 内容不变，只做优先级调整与增补。
+
+## 8. 已落地（P0 进度）
+
+- **Generic HTTP Provider（P0 #3）**：组件类型 `http.status`——点路径提取 `$.a.b[0].c`，状态词→级别映射可配；
+- **智谱 GLM 套餐额度（P0 #5 提前）**：组件类型 `bigmodel.usage`——`GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`，
+  裸 Key 认证（Authorization 头不带 Bearer），`data.limits[]` 归一化为 5 小时/周/月三窗口，阈值告警；
+  Z.AI 国际站把连接 Endpoint 换成 `https://api.z.ai/api/monitor/usage/quota/limit` 即用；
+- **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
+  启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
+
+### 配置示例（config 目录 %APPDATA%/Beacon/）
+
+连接 `connections.json`（凭据只存 `credentialRef`，Key 本体在 DPAPI，设置页录入）：
+
+```json
+[
+  {
+    "id": "ci-local",
+    "type": "http",
+    "endpoint": "http://192.168.1.10:8080/api/status",
+    "credentialRef": "conn:ci-local",
+    "enabled": true,
+    "settings": { "auth_header": "X-Token", "auth_prefix": "" }
+  },
+  {
+    "id": "zhipu",
+    "type": "bigmodel",
+    "endpoint": null,
+    "credentialRef": "conn:zhipu",
+    "enabled": true
+  }
+]
+```
+
+`http` 连接 settings：`auth_header`（默认 `Authorization`）、`auth_prefix`（默认 `"Bearer "`，可置空）；
+`bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）。
+
+组件 `widgets.json`：
+
+```json
+[
+  {
+    "id": "http.status:pack-a",
+    "type": "http.status",
+    "connectionId": "ci-local",
+    "refreshTier": "ci",
+    "pinned": true,
+    "config": {
+      "label": "打包机A",
+      "status_path": "$.status",
+      "summary_path": "$.message",
+      "url_path": "$.html_url",
+      "success_values": "success,ok,done,passed,healthy,finished",
+      "warning_values": "running,building,pending,queued,in_progress,deploying,starting",
+      "error_values": "failed,failure,error,critical,broken"
+    }
+  },
+  {
+    "id": "bigmodel.usage:GLM",
+    "type": "bigmodel.usage",
+    "connectionId": "zhipu",
+    "refreshTier": "ci",
+    "config": { "label": "GLM", "warn_percent": "60", "error_percent": "90" }
+  }
+]
+```
+
+`http.status` 状态词表可整体省略（用上例默认值）；未知状态词按 Warning 兜底（宁报勿漏）。
+`bigmodel.usage` 摘要形如 `GLM Coding Pro · 5h 42.5% · 周 8% · 月 3%`，级别取各窗口最差者过阈值。
+
