@@ -34,6 +34,7 @@ internal sealed class PinTile
         Width = 8,
         Height = 8,
         Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)),
+        StrokeThickness = 2,
         VerticalAlignment = VerticalAlignment.Center,
     };
     private readonly TextBlock _label = new()
@@ -76,12 +77,26 @@ internal sealed class PinTile
         _root.Child = grid;
     }
 
-    /// <summary>状态变化只更新本 tile（B-701：两 tile 独立更新）。</summary>
+    /// <summary>
+    /// 状态变化只更新本 tile（B-701）；离线/错误降级（B-704，RFC §6.2.6）：
+    /// ConnectionHealthy=false → 灰空心灯 + Last update HH:mm，绝不弹异常；恢复后健康事件自动复位。
+    /// </summary>
     public void Update(WidgetState state)
     {
-        _light.Fill = new SolidColorBrush(SeverityPalette.Color(state.Severity));
-        _value.Text = ValueOf(state);
-        ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
+        if (state.ConnectionHealthy)
+        {
+            _light.Fill = new SolidColorBrush(SeverityPalette.Color(state.Severity));
+            _light.Stroke = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            _value.Text = ValueOf(state);
+            ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
+        }
+        else
+        {
+            _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            _light.Stroke = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)); // Offline 灰
+            _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
+            ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
+        }
     }
 
     private static string LabelOf(WidgetConfig widget)
