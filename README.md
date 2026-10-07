@@ -28,6 +28,14 @@
 
 由 [daily-build 工作流](.github/workflows/daily-build.yml)每天北京时间凌晨自动发布，也可[手动触发](https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml)。
 
+### 安装说明（Windows 10 1809+ / Windows 11）
+
+1. 下载 zip 并校验：`Get-FileHash beacon-nightly-windows-x86_64.zip -Algorithm SHA256`，对照 Release 内 `SHA256SUMS`；
+2. 解压到任意目录运行 `Beacon.exe`——自包含包，无需安装 .NET 运行时；
+3. 首启自动常驻托盘并显示状态胶囊：GitHub PAT 在托盘菜单 → 设置 → 连接里录入（token 只写 DPAPI 密钥库，配置 JSON 仅存 credentialRef，绝不落明文）；
+4. 全局热键默认 `Ctrl+Alt+B` 唤出面板，设置里可改；开机自启默认开启（HKCU Run 键，设置里可关）；
+5. 权限：仅常规用户态——读写 `%AppData%\Beacon\`、DPAPI 加密、`Shell_NotifyIcon`、`RegisterHotKey`，无需管理员。
+
 ## 文档
 
 | 文档 | 内容 |
