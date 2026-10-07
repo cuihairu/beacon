@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
+using Windows.Storage.Pickers;
 
 namespace Beacon.App.Windows;
 
@@ -328,7 +329,7 @@ internal sealed class SettingsWindow : Window
 
     private async Task ExportAsync()
     {
-        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        var picker = new FileSavePicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         picker.SuggestedFileName = $"beacon-config-{DateTimeOffset.Now:yyyyMMdd-HHmm}";
         picker.FileTypeChoices.Add("JSON", new List<string> { ".json" });
@@ -350,7 +351,7 @@ internal sealed class SettingsWindow : Window
 
     private async Task ImportAsync()
     {
-        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        var picker = new FileOpenPicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
         picker.FileTypeFilter.Add(".json");
         var file = await picker.PickSingleFileAsync();
