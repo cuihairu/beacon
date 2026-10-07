@@ -23,9 +23,10 @@ public sealed partial class CapsuleWindow : Window
 
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
+    private (int Width, int Height) _sizePx; // 最近一次按内容实测的物理尺寸（定位与落盘共用，避免读旧值）
+    private bool _positioned; // RestorePosition 已跑过（此后 ApplySize 变尺寸需重新贴锚点）
     private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
     private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
-    private bool _offline; // 连接离线横幅状态（决定窗口高度；OnLoaded 时 UpdateStatus 可能已先跑）
     private bool _dragging;
     private global::Windows.Foundation.Point _dragStart;
     private double _dragDistance;
@@ -39,6 +40,8 @@ public sealed partial class CapsuleWindow : Window
     public CapsuleWindow(ShellStateStore shellState, Beacon.Storage.JsonConfigurationStore config)
     {
         InitializeComponent();
+        // RFC §6.2.2：亚克力/半透明背景（桌面悬浮物贴壁纸，Mica 会失去悬浮感，故用系统亚克力）
+        SystemBackdrop = new Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicBackdrop();
         _shellState = shellState;
         _palette = new UiPalette(config); // B-706：聚合灯随 appearance.SeverityColors
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
@@ -62,7 +65,7 @@ public sealed partial class CapsuleWindow : Window
         // 常驻悬浮物：不进任务栏/Alt-Tab、点击不抢焦点（RFC §6.2.7）
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
-        ApplySize(); // 按 DPI 定尺寸（设计值是 DIP，AppWindow.Resize 收物理像素——不乘会把内容上下裁掉）
+        ApplySize(); // 按内容实测定尺寸（DIP×DPI 转物理像素，宽随内容=§6.2.2）
         RestorePosition();
         if (!_startVisible)
         {
@@ -128,13 +131,17 @@ public sealed partial class CapsuleWindow : Window
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
 
     /// <summary>
-    /// 窗口物理尺寸 = 设计尺寸(DIP) × DPI。AppWindow.Resize/Size 一律物理像素，XAML 内容按 DIP 布局：
-    /// 150% 缩放下 46 物理像素只装得下 30 DIP 高，胶囊（~33 DIP）会被上下裁成一条。
+    /// 宽随内容实测（RFC §6.2.2：常态 48–120 DIP，离线横幅放宽到 132），高最小 32 DIP；
+    /// AppWindow.Resize/Size 一律物理像素，XAML 布局是 DIP——统一 ×DPI，不乘会在高缩放下被裁成一条。
     /// </summary>
-    private (int WidthPx, int HeightPx) ExpectedSizePx()
+    private (int Width, int Height) MeasureSizePx()
     {
+        Root.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var desired = Root.DesiredSize;
         var dpi = GetDpi();
-        return ((int)Math.Round(180 * dpi), (int)Math.Round((_offline ? 70 : 46) * dpi));
+        var widthDips = Math.Clamp(Math.Ceiling(desired.Width), 48, 132);
+        var heightDips = Math.Max(32, Math.Ceiling(desired.Height));
+        return ((int)Math.Round(widthDips * dpi), (int)Math.Round(heightDips * dpi));
     }
 
     private void ApplySize()
@@ -143,8 +150,16 @@ public sealed partial class CapsuleWindow : Window
         {
             return;
         }
-        var (widthPx, heightPx) = ExpectedSizePx();
-        _appWindow.Resize(new SizeInt32(widthPx, heightPx));
+        _sizePx = MeasureSizePx();
+        if (_sizePx.Width == _appWindow.Size.Width && _sizePx.Height == _appWindow.Size.Height)
+        {
+            return;
+        }
+        _appWindow.Resize(new SizeInt32(_sizePx.Width, _sizePx.Height));
+        if (_positioned)
+        {
+            RestorePosition(); // 宽随内容变化后按锚点角重新贴位
+        }
     }
 
     private void RestorePosition()
@@ -153,8 +168,8 @@ public sealed partial class CapsuleWindow : Window
         var monitor = (layout is null ? null : MonitorService.FindByName(layout.Monitor)) ?? MonitorService.Primary();
         var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
         var dpi = GetDpi();
-        // 用期望尺寸而非 _appWindow.Size：Resize 刚发出时 Size 可能还是旧值，会把定位算偏
-        var (widthPx, heightPx) = ExpectedSizePx();
+        // 用实测尺寸而非 _appWindow.Size：Resize 刚发出时 Size 可能还是旧值，会把定位算偏
+        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : MeasureSizePx();
 
         if (layout is null)
         {
@@ -179,12 +194,13 @@ public sealed partial class CapsuleWindow : Window
         _y = Math.Clamp(_y, work.Top, Math.Max(work.Top, work.Bottom - heightPx));
 
         _appWindow.Move(new PointInt32(_x, _y));
+        _positioned = true;
     }
 
     private void SavePosition()
     {
         var dpi = GetDpi();
-        var (widthPx, heightPx) = ExpectedSizePx();
+        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : MeasureSizePx();
         var monitor = MonitorService.FromPixel(_x + widthPx / 2, _y + heightPx / 2)
                       ?? MonitorService.Primary();
         if (monitor is null)
@@ -242,13 +258,26 @@ public sealed partial class CapsuleWindow : Window
     public void ApplyOpacity(double opacity)
         => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
 
-    /// <summary>接入真实聚合（B-504）：分级计数 + Offline 横幅。</summary>
+    /// <summary>接入真实聚合（B-504）：极简计数（零值组不显示，§6.2.2）+ 离线横幅（§6.2.6）。</summary>
     public void UpdateStatus(AggregateStatusChanged status)
     {
         var ok = status.Counts.GetValueOrDefault(Severity.Success) + status.Counts.GetValueOrDefault(Severity.Info);
         var warn = status.Counts.GetValueOrDefault(Severity.Warning);
         var error = status.Counts.GetValueOrDefault(Severity.Error) + status.Counts.GetValueOrDefault(Severity.Critical);
-        CountText.Text = $"{ok} · {warn} · {error}";
+        var parts = new List<string>();
+        if (ok > 0)
+        {
+            parts.Add($"{ok} ok");
+        }
+        if (warn > 0)
+        {
+            parts.Add($"{warn} warn");
+        }
+        if (error > 0)
+        {
+            parts.Add($"{error} err");
+        }
+        CountText.Text = parts.Count == 0 ? "Beacon" : string.Join(" · ", parts);
 
         OverallLight.Fill = new SolidColorBrush(_palette.SeverityColor(status.Overall));
 
@@ -257,10 +286,9 @@ public sealed partial class CapsuleWindow : Window
         if (offline)
         {
             var since = _lastFetchedAt == default ? status.Timestamp : _lastFetchedAt;
-            OfflineText.Text = $"Offline · Last update {since:HH:mm:ss}";
+            OfflineText.Text = $"Last update {since:HH:mm}";
         }
-        // 横幅显隐改变内容高度：记状态并重定尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
-        _offline = offline;
+        // 横幅/文案变化会改变内容尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
         ApplySize();
     }
 }

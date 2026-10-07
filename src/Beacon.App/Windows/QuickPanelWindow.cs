@@ -47,6 +47,8 @@ public sealed partial class QuickPanelWindow : Window
     public QuickPanelWindow(BeaconRuntime runtime, IUiDispatcher dispatcher)
     {
         InitializeComponent();
+        // RFC §6.4：Flyout 语义——WinUI 栈规范「Acrylic 用于 flyout/瞬态面」，系统亚克力背板
+        SystemBackdrop = new Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicBackdrop();
         _runtime = runtime;
         _palette = new UiPalette(runtime.Config); // B-706：渲染时实时读 appearance.SeverityColors
         _dispatcher = dispatcher;
@@ -133,6 +135,9 @@ public sealed partial class QuickPanelWindow : Window
 
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
 
+    /// <summary>运行时主题——动态构建的行/胶囊配色随之切换（静态部分走 XAML ThemeResource）。</summary>
+    private bool IsDarkTheme => ((FrameworkElement)Content).ActualTheme == ElementTheme.Dark;
+
     private void PositionNearPrimaryCapsule()
     {
         var work = MonitorService.Primary()?.WorkPx ?? _fallbackWorkArea;
@@ -200,7 +205,7 @@ public sealed partial class QuickPanelWindow : Window
         var text = new TextBlock
         {
             Text = $"{label} {count}",
-            Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 241, 245, 249) : SeverityPalette.Rgb(255, 30, 41, 59)),
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -209,7 +214,7 @@ public sealed partial class QuickPanelWindow : Window
         row.Children.Add(text);
         return new Border
         {
-            Background = new SolidColorBrush(SeverityPalette.Rgb(40, 148, 163, 184)),
+            Background = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(28, 255, 255, 255) : SeverityPalette.Rgb(20, 15, 23, 42)),
             CornerRadius = new CornerRadius(9),
             Padding = new Thickness(8, 3, 8, 3),
             Child = row,
@@ -238,14 +243,14 @@ public sealed partial class QuickPanelWindow : Window
         var time = new TextBlock
         {
             Text = evt.At.ToString("HH:mm:ss"),
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var label = new TextBlock
         {
             Text = evt.State.Summary,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
+            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 210,

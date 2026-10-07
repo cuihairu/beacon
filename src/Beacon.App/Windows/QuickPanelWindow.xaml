@@ -4,10 +4,10 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Beacon Quick Panel">
+    <!-- RFC §6.4：Flyout——亚克力瞬态面 + Fluent 主题资源（WinUI 栈规范：颜色走 ThemeResource，不硬编码 hex） -->
     <Border
         CornerRadius="12"
-        Background="#F0111820"
-        BorderBrush="#33FFFFFF"
+        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
         BorderThickness="1"
         Padding="14">
         <Grid>
@@ -20,19 +20,19 @@
             <!-- 头部：总体状态灯 + 告警计数 -->
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
                 <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
-                <TextBlock Text="Beacon" Foreground="#F1F5F9" FontSize="15" FontWeight="Bold" />
-                <TextBlock x:Name="OverallSummary" Text="all clear" Foreground="#94A3B8" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Text="Beacon" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="15" FontWeight="SemiBold" />
+                <TextBlock x:Name="OverallSummary" Text="all clear" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
             </StackPanel>
 
             <!-- B-602：按来源计数区（GitHub / CI / …） -->
             <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="6">
-                <TextBlock Text="OVERVIEW" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="OVERVIEW" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <StackPanel x:Name="SourceCounts" Orientation="Horizontal" Spacing="6" />
             </StackPanel>
 
             <!-- B-602：Recent Events（状态变化流，与通知同源）；单击进 L3，右键 Pin -->
             <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
-                <TextBlock Text="RECENT EVENTS" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <ListView
                     x:Name="RecentList"
                     SelectionMode="Single"

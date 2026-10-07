@@ -4,35 +4,42 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Beacon Status">
+    <!-- RFC §6.2.2 形态规范：高 32 DIP、宽随内容、圆角胶囊、亚克力/半透明、随主题；
+         构成 = 状态灯 + 极简计数（无正文文字）；离线降级见 §6.2.6（灰空心灯 + Last update） -->
     <Grid x:Name="Root" Background="Transparent" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased">
         <StackPanel Spacing="4">
             <Border
                 x:Name="RootBorder"
-                CornerRadius="14"
-                Background="#E6111820"
-                BorderBrush="#26FFFFFF"
+                CornerRadius="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                Padding="12,7">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
+                Padding="12,6">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                    <Ellipse x:Name="OverallLight" Width="9" Height="9" Fill="#4ADE80" VerticalAlignment="Center" />
                     <TextBlock
                         x:Name="CountText"
                         Text="Beacon"
-                        Foreground="#F1F5F9"
-                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                        FontSize="12.5"
                         FontWeight="SemiBold"
                         VerticalAlignment="Center" />
                 </StackPanel>
             </Border>
-            <!-- B-504：连接离线横幅（Last update 时间） -->
+            <!-- 离线横幅：灰空心灯 + Last update（§4.1 Offline 灰空心），主题化半透明底 -->
             <Border
                 x:Name="OfflineBanner"
                 CornerRadius="8"
-                Background="#B37F1D1D"
-                Padding="8,3"
-                Visibility="Collapsed"
-                HorizontalAlignment="Center">
-                <TextBlock x:Name="OfflineText" Foreground="#FECACA" FontSize="11" />
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Padding="9,4"
+                HorizontalAlignment="Center"
+                Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Ellipse Width="8" Height="8" Fill="Transparent" Stroke="{ThemeResource TextFillColorTertiaryBrush}" StrokeThickness="1.5" VerticalAlignment="Center" />
+                    <TextBlock x:Name="OfflineText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+                </StackPanel>
             </Border>
         </StackPanel>
     </Grid>
