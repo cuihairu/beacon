@@ -52,7 +52,7 @@ internal sealed class ToastNotificationService : INotificationSink
             {
                 builder.AddArgument(ArgDetailUrl, notification.DetailUrl);
             }
-            builder.Audio(new ToastAudio { Silent = !delivery.Sound });
+            builder.AddAudio(new ToastAudio { Silent = !delivery.Sound });
             builder.Show(); // 首次调用自动创建开始菜单快捷方式（AUMID 自愈）
         }
         catch (Exception exception)

@@ -85,7 +85,7 @@ internal sealed class DetailWindow : Window
                     FontSize = 12,
                     FontFamily = new FontFamily("Consolas"),
                     Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
-                    TextTrimming = TextTrimming.CharacterTrim,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
                 });
             }
             root.Children.Add(table);

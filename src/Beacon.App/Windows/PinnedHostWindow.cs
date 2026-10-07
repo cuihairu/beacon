@@ -45,14 +45,14 @@ internal sealed class PinTile
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
         FontSize = 12,
         FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        TextTrimming = TextTrimming.CharacterTrim,
+        TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center,
     };
     private readonly TextBlock _value = new()
     {
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
         FontSize = 11,
-        TextTrimming = TextTrimming.CharacterTrim,
+        TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Right,
     };
@@ -367,7 +367,7 @@ internal sealed class PinnedHostWindow
 
     private void OnTilePointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_drag is null || _drag.Element != sender || GetAppWindow() is not { } appWindow)
+        if (_drag is null || !ReferenceEquals(_drag.Element, sender) || GetAppWindow() is not { } appWindow)
         {
             return;
         }
@@ -410,7 +410,7 @@ internal sealed class PinnedHostWindow
 
     private void OnTilePointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (_drag is null || _drag.Element != sender)
+        if (_drag is null || !ReferenceEquals(_drag.Element, sender))
         {
             return;
         }

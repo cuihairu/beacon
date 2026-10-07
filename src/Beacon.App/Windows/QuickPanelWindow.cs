@@ -242,7 +242,7 @@ public sealed partial class QuickPanelWindow : Window
             Text = evt.State.Summary,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
             FontSize = 12,
-            TextTrimming = TextTrimming.CharacterTrim,
+            TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 210,
             VerticalAlignment = VerticalAlignment.Center,
         };
