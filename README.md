@@ -8,7 +8,7 @@
   <a href="https://github.com/cuihairu/beacon/actions/workflows/ci.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/cuihairu/beacon"><img src="https://codecov.io/gh/cuihairu/beacon/branch/main/graph/badge.svg" alt="Code coverage"></a>
   <a href="https://cuihairu.github.io/beacon/"><img src="https://img.shields.io/badge/docs-online-8A2BE2" alt="在线文档"></a>
-  <img src="https://img.shields.io/badge/.NET-8.0-5C2D91?logo=dotnet&logoColor=white" alt=".NET 8">
+  <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 10">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows11&logoColor=white" alt="Windows 10/11">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3DA639" alt="License: Apache-2.0"></a>
   <a href="https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml/badge.svg" alt="Daily Build"></a>
@@ -24,7 +24,7 @@
 
 ## 下载
 
-**[每日构建（nightly）](https://github.com/cuihairu/beacon/releases/tag/nightly)** — main 分支滚动构建，tag 固定 `nightly` 清旧传新，本页永远对应当前主干。Windows x86_64 自包含包（含 .NET 8 + Windows App SDK 运行时），附 `SHA256SUMS` 校验单。直链：[安装包 setup.exe](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64-setup.exe) · [便携 zip](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64.zip)。
+**[每日构建（nightly）](https://github.com/cuihairu/beacon/releases/tag/nightly)** — main 分支滚动构建，tag 固定 `nightly` 清旧传新，本页永远对应当前主干。Windows x86_64 自包含包（含 .NET 10 + Windows App SDK 运行时），附 `SHA256SUMS` 校验单。直链：[安装包 setup.exe](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64-setup.exe) · [便携 zip](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64.zip)。
 
 由 [daily-build 工作流](.github/workflows/daily-build.yml)每天北京时间凌晨自动发布，也可[手动触发](https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml)。
 
@@ -56,4 +56,4 @@
 5. ✅ M4 通知与面板（Action 执行器 / Toast / 通知中心 / 托盘着色）
 6. 🔨 M5 L0 悬浮组件 + Quick Panel = MVP（代码级完成；余 [B-803 真机走查](docs/验收-B803-MVP端到端走查.md) + B-804 干净 VM 验收，待 Windows 机器执行）
 
-> 构建要求：Windows + .NET 8 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。
+> 构建要求：Windows + .NET 10 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。

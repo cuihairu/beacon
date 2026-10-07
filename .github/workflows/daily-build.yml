@@ -34,7 +34,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       - name: Publish (self-contained win-x64)
         run: dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish
@@ -75,7 +75,7 @@ jobs:
             echo
             echo "| 资产 | 大小 | 说明 |"
             echo "| --- | --- | --- |"
-            echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含便携包（含 .NET 8 + Windows App SDK 运行时） |"
+            echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含便携包（含 .NET 10 + Windows App SDK 运行时） |"
             echo "| \`${SETUP}\` | ${szs} | Windows 安装包（Inno Setup；装到 %LOCALAPPDATA%\\Beacon，无需管理员） |"
             echo "| \`SHA256SUMS\` | - | 全部资产 sha256 清单 |"
             echo

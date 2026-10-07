@@ -28,4 +28,4 @@
 
 ## 构建要求
 
-Windows + .NET 8 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。
+Windows + .NET 10 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。

@@ -1,6 +1,6 @@
 # Beacon Solution / 项目目录
 
-> 配套 [RFC-001](rfc/RFC-001-技术方案.md)。本文档足够精确，任何 Code Agent 在 **Windows + .NET 8 SDK + Windows App SDK** 机器上可直接落地。
+> 配套 [RFC-001](rfc/RFC-001-技术方案.md)。本文档足够精确，任何 Code Agent 在 **Windows + .NET 10 SDK + Windows App SDK** 机器上可直接落地。
 > 当前仓库工作环境为 Linux——**本阶段只产出文档，不建工程**；Beacon 代码只能在 Windows 上构建运行（WinUI 3）。
 
 ## 1. Solution 总览
@@ -170,10 +170,10 @@ xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRun
 
 ```powershell
 dotnet new sln -n Beacon
-dotnet new classlib -o src/Beacon.Core -f net8.0-windows
-dotnet new classlib -o src/Beacon.Connections -f net8.0-windows
-dotnet new classlib -o src/Beacon.Actions -f net8.0-windows
-dotnet new classlib -o src/Beacon.Storage -f net8.0-windows
+dotnet new classlib -o src/Beacon.Core -f net10.0
+dotnet new classlib -o src/Beacon.Connections -f net10.0
+dotnet new classlib -o src/Beacon.Actions -f net10.0
+dotnet new classlib -o src/Beacon.Storage -f net10.0
 dotnet new winui -o src/Beacon.App        # 模板可用缺失时：手建 csproj（WindowsAppSDK, WindowsAppSDKSelfTop=true, 打包=None）
 dotnet new xunit -o tests/Beacon.Core.Tests
 dotnet new xunit -o tests/Beacon.Connections.Tests
@@ -182,7 +182,7 @@ dotnet new xunit -o tests/Beacon.Actions.Tests
 dotnet sln add (git ls-files "**/*.csproj")
 ```
 
-注意：四个类库目标框架 `net8.0-windows`（DPAPI/Interop 需要）；仅 `Beacon.Core` 可考虑纯净 `net8.0` 以便未来跨平台复用——若如此，ISecretStore 等平台接口留接口、实现放对应项目。
+注意（.NET 10 LTS，RFC §16 决策 8）：四个类库目标框架 `net10.0`（DPAPI 走 `System.Security.Cryptography.ProtectedData` 包，无 Windows 专属 TFM）；`Beacon.App` 目标 `net10.0-windows10.0.19041.0`（WinUI 3 / Windows App SDK）。SDK 版本由根 `global.json` 钉 `10.0.100`（rollForward latestFeature）。
 
 ## 6. 编码约定
 
