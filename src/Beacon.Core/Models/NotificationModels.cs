@@ -8,11 +8,53 @@ public sealed class NotificationRule
     public string? WidgetType { get; init; }
     public string? WidgetId { get; init; }
     public Severity SeverityAtLeast { get; init; } = Severity.Warning;
+    /// <summary>null = 无上限（与 SeverityAtLeast 构成 [AtLeast, AtMost] 频带，如「仅 Warning」）。</summary>
+    public Severity? SeverityAtMost { get; init; }
     public bool Toast { get; init; } = true;
     public bool Sound { get; init; }
     /// <summary>null = 同一阈值期间只提醒一次（跨过阈值时）；设置后冷却期外允许重复提醒。</summary>
     public TimeSpan? Cooldown { get; init; }
     public bool Enabled { get; init; } = true;
+}
+
+/// <summary>内置默认规则（用户规则列表为空时生效，RFC §8）：CI Failed→Toast、运行>15min→Warning、PR 待 review、连接降级兜底。</summary>
+public static class DefaultNotificationRules
+{
+    public static IReadOnlyList<NotificationRule> All { get; } =
+    [
+        new NotificationRule
+        {
+            Id = "builtin.ci-failed",
+            WidgetType = "github.actions.runs",
+            SeverityAtLeast = Severity.Error,
+            Toast = true,
+        },
+        new NotificationRule
+        {
+            Id = "builtin.ci-stuck",
+            WidgetType = "github.actions.runs",
+            SeverityAtLeast = Severity.Warning,
+            SeverityAtMost = Severity.Warning, // 仅 Warning 频带：卡住的运行，不与 Failed 重叠
+            Toast = true,
+            Cooldown = TimeSpan.FromMinutes(30),
+        },
+        new NotificationRule
+        {
+            Id = "builtin.pr-review",
+            WidgetType = "github.pull_requests",
+            SeverityAtLeast = Severity.Warning,
+            Toast = true,
+            Cooldown = TimeSpan.FromMinutes(30),
+        },
+        new NotificationRule
+        {
+            Id = "builtin.connection-degraded",
+            WidgetType = null, // 任意 Widget 陈旧（Unable to refresh）
+            SeverityAtLeast = Severity.Warning,
+            Toast = true,
+            Cooldown = TimeSpan.FromMinutes(15),
+        },
+    ];
 }
 
 /// <summary>一次提醒的投递方式（Toast/声音/托盘着色由实现组合）。</summary>

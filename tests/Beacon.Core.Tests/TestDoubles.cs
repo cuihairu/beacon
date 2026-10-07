@@ -235,9 +235,10 @@ internal sealed class FakeWidgetProvider : IWidgetProvider
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref CallCount);
-        return Handler is not null
+        Task<WidgetState?> result = Handler is not null
             ? Handler(widget, connection, context.Secrets, cancellationToken)
-            : Task.FromResult(TestData.State(widget.Id, widget.Type, connection.Id));
+            : Task.FromResult<WidgetState?>(TestData.State(widget.Id, widget.Type, connection.Id));
+        return result;
     }
 }
 
