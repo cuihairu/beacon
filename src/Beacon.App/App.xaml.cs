@@ -20,6 +20,7 @@ public partial class App : Application
 
     private ILogger<App> _logger = null!;
     private Windows.QuickPanelWindow? _quickPanel;
+    private Windows.CapsuleWindow? _capsule;
     private Windows.PinnedHostWindow? _pinnedHost;
     private TopmostGuard? _topmostGuard;
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
@@ -118,13 +119,14 @@ public partial class App : Application
         quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => _pinnedHost?.ReloadTiles()); // B-702：Pin 入口联动 L0
         // B-503：Notifications 入口（P6 B-602 换成通知中心视图）；Refresh All 在 B-504 接运行时
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
-        tray.ExitRequested += () => Exit();
+        tray.ExitRequested += () => Dispatcher.TryEnqueue(ShutdownApp);
         tray.Initialize();
         // 托盘常驻无主窗口：启动即给可见反馈，避免被当成「点了没反应」
         tray.ShowBalloon("Beacon", "已启动并常驻托盘——状态胶囊在屏幕右下角，点胶囊或托盘图标打开面板。");
 
         // B-504：胶囊/托盘接真实聚合
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
+        _capsule = capsule; // 退出清理用
         capsule.OpenPanelRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.TryEnqueue(() => capsule.NoteFetch(evt.State.FetchedAt)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.TryEnqueue(() =>
@@ -218,6 +220,28 @@ public partial class App : Application
         });
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
+    }
+
+    /// <summary>
+    /// 确定式退出：Application.Exit 在自驻留 Win32 消息窗（托盘/热键）下不保证进程终结，
+    /// 表现为「Exit 要点两次」。显式清理（托盘图标/热键/哨兵/窗口）后 Environment.Exit 收尾。
+    /// </summary>
+    private void ShutdownApp()
+    {
+        try
+        {
+            _topmostGuard?.Dispose();
+            Services.GetRequiredService<HotkeyService>().Unregister();
+            Services.GetRequiredService<TrayIconService>().Dispose(); // 先摘托盘图标
+            _quickPanel?.Hide();
+            _capsule?.Close();
+            _pinnedHost?.Close();
+        }
+        catch
+        {
+            // 退出清理不抛——任何一步失败都要保证进程终结
+        }
+        Environment.Exit(0);
     }
 
     /// <summary>L3 详情窗（B-603）：每 Widget 一窗，重复请求前置激活。</summary>

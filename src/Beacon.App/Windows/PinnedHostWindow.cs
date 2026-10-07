@@ -228,6 +228,7 @@ internal sealed class PinnedHostWindow
 
     private Window _window = null!;
     private StackPanel _tilePanel = null!;
+    private AppWindow _appWindow = null!;
     private IntPtr _hwnd;
 
     /// <summary>TopmostGuard 用：宿主窗口句柄（Loaded 前为 Zero，哨兵会跳过）。</summary>
@@ -306,6 +307,7 @@ internal sealed class PinnedHostWindow
                 tile.PlaySlideIn();
             }
         }
+        SyncHostVisibility(); // Pin/Unpin 到 0 或从 0 恢复时同步显隐
     }
 
     private bool IsPinSupported(string widgetType)
@@ -603,9 +605,9 @@ internal sealed class PinnedHostWindow
     {
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_window);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd);
-        var appWindow = AppWindow.GetFromWindowId(windowId);
+        _appWindow = AppWindow.GetFromWindowId(windowId);
 
-        if (appWindow.Presenter is OverlappedPresenter presenter)
+        if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.IsAlwaysOnTop = true;
             presenter.IsResizable = false;
@@ -613,12 +615,30 @@ internal sealed class PinnedHostWindow
             presenter.IsMaximizable = false;
             presenter.SetBorderAndTitleBar(false, false);
         }
-        appWindow.IsShownInSwitchers = false;
+        _appWindow.IsShownInSwitchers = false;
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
         _layout = RestoreLayout();
         ApplyLayout();
         SubclassForHitTest();
+        SyncHostVisibility(); // 零钉选启动：Loaded 内立即隐藏，白板不进首帧
+    }
+
+    /// <summary>空宿主不占桌面：零钉选时隐藏（否则是一块白板悬浮物），首个 pin 出现时再显示。</summary>
+    private void SyncHostVisibility()
+    {
+        if (_appWindow is null)
+        {
+            return;
+        }
+        if (_tiles.Count == 0)
+        {
+            _appWindow.Hide();
+        }
+        else
+        {
+            _appWindow.Show();
+        }
     }
 
     private void SubclassForHitTest()
