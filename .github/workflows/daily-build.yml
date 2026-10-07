@@ -39,6 +39,40 @@ jobs:
       - name: Publish (self-contained win-x64)
         run: dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish
 
+      # 真机冒烟（B-803 的 CI 化）：发布产物在本机真启动 30s——进程存活 + 日志出现
+      # 「Beacon started」才算过。启动即崩在这里红，事件查看器的 .NET Runtime 条目直接给堆栈。
+      - name: Smoke test (boot the unpackaged app on this runner)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "publish/Beacon.App.exe" -PassThru
+          Start-Sleep -Seconds 30
+          $alive = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+          $log = Get-ChildItem "$env:APPDATA\Beacon\logs" -Filter "beacon-*.log" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($log) {
+            Write-Host "--- 启动日志：$($log.Name)"
+            Get-Content $log.FullName | Select-Object -Last 40 | Write-Host
+          }
+          $crashDump = {
+            Get-WinEvent -LogName Application -MaxEvents 120 -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error' } |
+              Select-Object -First 8 | ForEach-Object { Write-Host "=== $($_.TimeCreated) [$($_.ProviderName)]"; Write-Host $_.Message }
+          }
+          if (!$alive) {
+            Write-Host "::error::冒烟测试失败：Beacon.App 启动即退出"
+            & $crashDump
+            exit 1
+          }
+          $started = $log -and (Select-String -Path $log.FullName -Pattern 'Beacon started' -Quiet)
+          if (!$started) {
+            Write-Host "::error::冒烟测试失败：进程存活但 30s 内未见启动完成标记（Beacon started）"
+            & $crashDump
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            exit 1
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          Write-Host "冒烟测试通过：进程存活且日志含启动完成标记"
+
       - name: Pack (zip)
         shell: pwsh
         run: Compress-Archive -Path "publish/*" -DestinationPath "beacon-nightly-windows-x86_64.zip"
@@ -46,8 +80,9 @@ jobs:
       - name: Build installer (Inno Setup)
         shell: pwsh
         run: |
+          # 向导中文语言包与 DPI 修复需要 Inno 6.5+，强制升到最新稳定（choco 无则装、旧则升）
+          choco upgrade innosetup -y --no-progress | Out-Null
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (!(Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
           $version = "0.0." + (Get-Date -Format "yyyyMMdd")
           & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

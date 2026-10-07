@@ -26,26 +26,66 @@ public partial class App : Application
     public App()
     {
         Instance = this;
+        // B-105 崩溃兜底必须在一切之前挂上：托盘常驻无主窗，异常被吞=用户眼里「点了没反应」。
+        // 这三个处理器原先在 OnLaunched 中段才注册，此前（构造器读配置等）的异常零痕迹静默死亡。
+        UnhandledException += (_, e) =>
+        {
+            _logger?.LogError(e.Exception, "XAML unhandled exception: {Message}", e.Message);
+            CrashLog.Write("XAML 未处理异常：" + e.Message, e.Exception);
+            e.Handled = true; // 常驻应用不闪退（RFC §10 崩溃兜底）
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            _logger?.LogCritical(e.ExceptionObject as Exception, "Fatal (terminating={IsTerminating})", e.IsTerminating);
+            CrashLog.Write($"进程级未处理异常（terminating={e.IsTerminating}）", e.ExceptionObject as Exception);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            _logger?.LogError(e.Exception, "Unobserved task exception");
+            CrashLog.Write("未观察 Task 异常（已观察，不影响进程）", e.Exception);
+            e.SetObserved();
+        };
         InitializeComponent();
-        // B-801 外观主题：RequestedTheme 只能在 App 构造器设置——重启生效口径（浅色/深色，缺省跟随系统）
-        var theme = new Storage.AppConfigFile().Load().Theme?.Trim().ToLowerInvariant();
-        if (theme == "light")
+        try
         {
-            RequestedTheme = ApplicationTheme.Light;
+            // B-801 外观主题：RequestedTheme 只能在 App 构造器设置——重启生效口径（浅色/深色，缺省跟随系统）
+            var theme = new Storage.AppConfigFile().Load().Theme?.Trim().ToLowerInvariant();
+            if (theme == "light")
+            {
+                RequestedTheme = ApplicationTheme.Light;
+            }
+            else if (theme == "dark")
+            {
+                RequestedTheme = ApplicationTheme.Dark;
+            }
         }
-        else if (theme == "dark")
+        catch
         {
-            RequestedTheme = ApplicationTheme.Dark;
+            // 主题读不出来（配置损坏等）就跟随系统，不因外观配置阻断启动
         }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        try
+        {
+            Startup();
+        }
+        catch (Exception exception)
+        {
+            // 启动失败必须可见：弹窗给出异常与日志路径（XAML 兜底 Handled=true 只保进程，
+            // 用户侧仍是「没反应」——所以 OnLaunched 单独兜，亮明错误再退）。
+            _logger?.LogCritical(exception, "Beacon 启动失败");
+            CrashLog.Alert("Beacon 启动失败", exception);
+            Exit();
+        }
+    }
+
+    private void Startup()
+    {
         Dispatcher = DispatcherQueue.GetForCurrentThread();
         Services = BuildServices();
         _logger = Services.GetRequiredService<ILogger<App>>();
-
-        ConfigureGlobalExceptionHandlers();
 
         // B-501：Toast 基础设施——激活路由要在任何窗口创建前注册（支持 Toast 冷启动回放）
         var toast = Services.GetRequiredService<ToastNotificationService>();
@@ -209,23 +249,6 @@ public partial class App : Application
             _logger.LogError(exception, "打开 Toast 深链失败：{Url}", activation.DetailUrl);
         }
         _quickPanel?.Toggle();
-    }
-
-    /// <summary>崩溃兜底（B-105）：UI 异常标记 Handled 保持常驻，非 UI 线程异常落日志。</summary>
-    private void ConfigureGlobalExceptionHandlers()
-    {
-        UnhandledException += (_, e) =>
-        {
-            _logger?.LogError(e.Exception, "XAML unhandled exception: {Message}", e.Message);
-            e.Handled = true; // 常驻应用不闪退（RFC §10 崩溃兜底）
-        };
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            _logger?.LogCritical(e.ExceptionObject as Exception, "Fatal (terminating={IsTerminating})", e.IsTerminating);
-        TaskScheduler.UnobservedTaskException += (_, e) =>
-        {
-            _logger?.LogError(e.Exception, "Unobserved task exception");
-            e.SetObserved();
-        };
     }
 
     private static IServiceProvider BuildServices()
