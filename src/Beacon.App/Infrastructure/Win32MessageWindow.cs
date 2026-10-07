@@ -13,7 +13,7 @@ internal sealed class Win32MessageWindow : IDisposable
 
     private readonly ILogger? _logger;
     private readonly NativeMethods.WndProcDelegate _wndProc; // 持有引用防 GC 回收
-    private IntPtr _classNamePtr; // RegisterClassW 的原生类名串
+    private IntPtr _classNamePtr; // RegisterClassExW 的原生类名串
     private readonly IntPtr _hwnd;
 
     /// <summary>(msg, wParam, lParam)</summary>

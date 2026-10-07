@@ -262,6 +262,7 @@ public partial class App : Application
         services.AddSingleton<HotkeyService>();
         services.AddSingleton<StartupService>();
         services.AddSingleton<Storage.AppConfigFile>();
+        services.AddSingleton<ShellStateStore>();
         services.AddSingleton<IUiDispatcher>(new UiDispatcher(Instance!.Dispatcher));
         services.AddLogging(builder => builder
             .SetMinimumLevel(LogLevel.Information)
