@@ -22,9 +22,14 @@ namespace Beacon.App.Windows;
 internal sealed class PinTile
 {
     private const int TileHeight = 32;
+    private const int LightSizeDips = 8;
 
     private readonly WidgetConfig _widget;
     private readonly UiPalette _palette;
+    private readonly MotionEngine _motion;
+    private WidgetState? _lastState;
+    private Severity? _lastSeverity;
+    private bool _suspended; // 收起态暂停动画循环（B-707 验收：隐藏/收起无动画循环）
 
     private readonly Border _root = new()
     {
@@ -62,11 +67,12 @@ internal sealed class PinTile
 
     public string WidgetId { get; }
 
-    public PinTile(WidgetConfig widget, UiPalette palette)
+    public PinTile(WidgetConfig widget, UiPalette palette, MotionEngine motion)
     {
         WidgetId = widget.Id;
         _widget = widget;
         _palette = palette;
+        _motion = motion;
         _label.Text = LabelOf(widget);
 
         var grid = new Grid { ColumnSpacing = 6 };
@@ -87,24 +93,96 @@ internal sealed class PinTile
     /// ConnectionHealthy=false → 灰空心灯 + Last update HH:mm，绝不弹异常；恢复后健康事件自动复位。
     /// 着色走 UiPalette（B-706：健康灯应用 Widget 的 colorOverride；offline 是连接健康派生态，
     /// 恒走 appearance.SeverityColors["offline"]，不吃 Widget 覆盖——灰要始终可辨）。
+    /// 动效走 MotionEngine（B-707）：变色过渡/Critical 脉冲（reduced 默认）、
+    /// full 档呼吸 + 变化闪烁；收起态 SuspendMotion 暂停循环。
     /// </summary>
     public void Update(WidgetState state)
     {
+        _lastState = state;
         if (state.ConnectionHealthy)
         {
-            _light.Fill = new SolidColorBrush(_palette.SeverityColor(state.Severity, widgetOverride: _widget.ColorOverride));
+            var changed = _lastSeverity is { } previous && previous != state.Severity;
+            _lastSeverity = state.Severity;
+
+            if (!_suspended)
+            {
+                ApplyLoops(state.Severity);
+            }
+
+            var color = _palette.SeverityColor(state.Severity, widgetOverride: _widget.ColorOverride);
+            var breathingOwnsOpacity = !_suspended
+                && _motion.Mode == MotionMode.Full && state.Severity != Severity.Critical;
+            if (_suspended || breathingOwnsOpacity)
+            {
+                _light.Fill = new SolidColorBrush(color); // 呼吸循环正占 Opacity，直接换色不打断
+            }
+            else
+            {
+                _motion.TransitionFill(_light, color); // ① 变色过渡（off 档内部退化为瞬时）
+            }
+
             _light.Stroke = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _value.Text = ValueOf(state);
             ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
+
+            if (changed && !_suspended)
+            {
+                _motion.Flash(_root); // ② 提醒闪烁（full 档内部自闸）
+            }
         }
         else
         {
+            _lastSeverity = null; // 降级后恢复视为新状态（闪烁重新可触发）
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
             ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
+            _motion.StopLoops(_light);
+            _motion.StopLoops(_root);
         }
     }
+
+    /// <summary>③/④ 循环落位：Critical 脉冲（reduced 起）优先，full 档非 Critical 走呼吸灯。</summary>
+    private void ApplyLoops(Severity severity)
+    {
+        _motion.StopLoops(_light);
+        if (severity == Severity.Critical)
+        {
+            _motion.StartPulse(_light, LightSizeDips);
+        }
+        else if (_motion.Mode == MotionMode.Full)
+        {
+            _motion.StartBreathing(_light);
+        }
+    }
+
+    /// <summary>收起为细条（宿主 ApplyLayout 判定）：暂停全部动画循环省电；展开复位。</summary>
+    public void SuspendMotion()
+    {
+        if (_suspended)
+        {
+            return;
+        }
+        _suspended = true;
+        _motion.StopLoops(_light);
+        _motion.StopLoops(_root);
+    }
+
+    public void ResumeMotion()
+    {
+        if (!_suspended)
+        {
+            return;
+        }
+        _suspended = false;
+        if (_lastState is { ConnectionHealthy: true } state)
+        {
+            ApplyLoops(state.Severity);
+        }
+    }
+
+    /// <summary>⑤ 滑入：tile 出现在未收起的展开态时调用（full 档）。</summary>
+    public void PlaySlideIn() => _motion.SlideIn(_root);
 
     private static string LabelOf(WidgetConfig widget)
         => widget.Config.TryGetValue("repo", out var repo) ? repo : widget.Type.Split('.')[^1];
@@ -142,6 +220,7 @@ internal sealed class PinnedHostWindow
 
     private readonly BeaconRuntime _runtime;
     private readonly UiPalette _palette;
+    private readonly MotionEngine _motion;
     private readonly MonitorInfo _fallbackMonitor;
     private readonly Dictionary<string, PinTile> _tiles = [];
     private readonly Dictionary<string, WidgetState> _latest = [];
@@ -165,6 +244,7 @@ internal sealed class PinnedHostWindow
     {
         _runtime = runtime;
         _palette = new UiPalette(runtime.Config); // B-706：每次渲染实时读 appearance，改色即刻生效
+        _motion = new MotionEngine(runtime.Config); // B-707：动效档位/强度实时读 appearance.Motion
         _fallbackMonitor = fallbackMonitor;
     }
 
@@ -198,7 +278,7 @@ internal sealed class PinnedHostWindow
             {
                 continue;
             }
-            var tile = new PinTile(widget, _palette);
+            var tile = new PinTile(widget, _palette, _motion);
             AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;
             _tilePanel.Children.Add(tile.Root);
@@ -214,6 +294,14 @@ internal sealed class PinnedHostWindow
         if (_layout is not null)
         {
             ApplyLayout(); // 收起态/重建后尺寸随 tile 数变化
+        }
+        // ⑤ 滑入（B-707）：展开态首次出现的 tile 自上落位（收起态不播）
+        if (_layout is null || !_layout.Collapsed || _hoverExpanded)
+        {
+            foreach (var tile in _tiles.Values)
+            {
+                tile.PlaySlideIn();
+            }
         }
     }
 
@@ -307,7 +395,21 @@ internal sealed class PinnedHostWindow
         var work = ToPinRect(ResolveMonitor(_layout.Monitor).WorkPx);
         var height = Math.Max(1, _tiles.Count) * (int)(TileHeightDips * dpi);
 
-        if (_layout.Collapsed && !_hoverExpanded)
+        // 收起态暂停动画循环（B-707 验收：隐藏/收起时无动画循环）；展开/悬停恢复
+        var strip = _layout.Collapsed && !_hoverExpanded;
+        foreach (var tile in _tiles.Values)
+        {
+            if (strip)
+            {
+                tile.SuspendMotion();
+            }
+            else
+            {
+                tile.ResumeMotion();
+            }
+        }
+
+        if (strip)
         {
             // 吸边细条：贴锚点侧竖边，纵向按偏移（B-703：拖至屏边收起为细条/圆点）
             var stripWidth = Math.Max(1, (int)(CollapseStripDips * dpi));

@@ -114,8 +114,10 @@ Beacon.Storage/
 ```text
 Beacon.App/
 ├── App.xaml / App.xaml.cs           # Host/DI、单实例 Mutex、全局异常兜底
-├── Shell/
-│   ├── TrayIconService.cs           # H.NotifyIcon：菜单、着色、气泡兜底
+├── Services/
+│   ├── TrayIconService.cs           # Win32 Shell_NotifyIcon 自实现：菜单、按配置色着色、气泡
+│   ├── UiPalette.cs                 # B-706：级别/Widget 覆盖色实时解析（改色即刻生效）
+│   ├── MotionEngine.cs              # B-707：Composition 动效五族，full/reduced/off + intensity
 │   ├── HotkeyService.cs             # RegisterHotKey，可配置
 │   ├── StartupService.cs            # HKCU Run 键开关
 │   └── SingleInstanceGuard.cs
