@@ -19,6 +19,7 @@ public partial class App : Application
 
     private ILogger<App> _logger = null!;
     private Windows.QuickPanelWindow? _quickPanel;
+    private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
     public App()
     {
@@ -52,18 +53,21 @@ public partial class App : Application
         guard.OnActivate(() => Dispatcher.TryEnqueue(() =>
             Services.GetRequiredService<TrayIconService>().ShowBalloon("Beacon", "Beacon 已在运行。")));
 
+        // B-504/B-602：运行时先行装配，L2 Quick Panel 直接消费事件流（缓存优先，打开零等待）
+        var runtime = BeaconRuntime.Start(toast, _logger);
+        var dispatcher = Services.GetRequiredService<IUiDispatcher>();
         var tray = Services.GetRequiredService<TrayIconService>();
-        _quickPanel = new Windows.QuickPanelWindow();
+        _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher);
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => quickPanel.Toggle();
+        quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
         tray.SettingsRequested += () => { /* P8 接入 SettingsWindow */ };
         // B-503：Notifications 入口（P6 B-602 换成通知中心视图）；Refresh All 在 B-504 接运行时
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         tray.ExitRequested += () => Exit();
         tray.Initialize();
 
-        // B-504：运行时装配（配置/密钥/Providers/调度/宿主/聚合/通知/动作）+ 胶囊/托盘接真实聚合
-        var runtime = BeaconRuntime.Start(toast, _logger);
+        // B-504：胶囊/托盘接真实聚合
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>());
         capsule.OpenPanelRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.TryEnqueue(() => capsule.NoteFetch(evt.State.FetchedAt)));
@@ -97,6 +101,19 @@ public partial class App : Application
         }
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
+    }
+
+    /// <summary>L3 详情窗（B-603）：每 Widget 一窗，重复请求前置激活。</summary>
+    private void OpenDetail(BeaconRuntime runtime, Beacon.Core.Models.WidgetState state)
+    {
+        if (_detailWindows.TryGetValue(state.WidgetId, out var existing))
+        {
+            existing.Activate();
+            return;
+        }
+        var window = new Windows.DetailWindow(state, runtime, () => _detailWindows.Remove(state.WidgetId));
+        _detailWindows[state.WidgetId] = window;
+        window.Activate();
     }
 
     /// <summary>托盘提示文本（B-503）：分级计数 + 离线连接数。</summary>

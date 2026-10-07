@@ -23,6 +23,7 @@ internal sealed class BeaconRuntime : IAsyncDisposable
 {
     public IEventBus Bus { get; }
     public JsonConfigurationStore Config { get; }
+    public JsonCacheStore Cache { get; }
     public WidgetHost Host { get; }
     public StatusAggregator Aggregator { get; }
     public NotificationEngine Notifications { get; }
@@ -33,6 +34,7 @@ internal sealed class BeaconRuntime : IAsyncDisposable
     private BeaconRuntime(
         IEventBus bus,
         JsonConfigurationStore config,
+        JsonCacheStore cache,
         RefreshScheduler scheduler,
         WidgetHost host,
         StatusAggregator aggregator,
@@ -41,6 +43,7 @@ internal sealed class BeaconRuntime : IAsyncDisposable
     {
         Bus = bus;
         Config = config;
+        Cache = cache;
         _scheduler = scheduler;
         Host = host;
         Aggregator = aggregator;
@@ -77,7 +80,7 @@ internal sealed class BeaconRuntime : IAsyncDisposable
             ],
             bus, clock, config, secrets, logger);
 
-        return new BeaconRuntime(bus, config, scheduler, host, aggregator, notifications, actions);
+        return new BeaconRuntime(bus, config, cache, scheduler, host, aggregator, notifications, actions);
     }
 
     /// <summary>手动全量刷新（托盘 Refresh All）：逐 Widget 立即拉取，随后组循环恢复常规节奏。</summary>

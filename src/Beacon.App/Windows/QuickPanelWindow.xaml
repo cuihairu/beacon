@@ -9,10 +9,36 @@
         Background="#F0111820"
         BorderBrush="#33FFFFFF"
         BorderThickness="1"
-        Padding="16">
-        <StackPanel Spacing="8" MinWidth="220">
-            <TextBlock Text="Beacon" Foreground="#F1F5F9" FontSize="16" FontWeight="Bold" />
-            <TextBlock Text="Quick Panel —— P6 (B-601..603) 实现 Overview / Recent / Actions" Foreground="#94A3B8" FontSize="12" TextWrapping="Wrap" />
-        </StackPanel>
+        Padding="14">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 头部：总体状态灯 + 告警计数 -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
+                <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
+                <TextBlock Text="Beacon" Foreground="#F1F5F9" FontSize="15" FontWeight="Bold" />
+                <TextBlock x:Name="OverallSummary" Text="all clear" Foreground="#94A3B8" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <!-- B-602：按来源计数区（GitHub / CI / …） -->
+            <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="6">
+                <TextBlock Text="OVERVIEW" Foreground="#64748B" FontSize="11" />
+                <StackPanel x:Name="SourceCounts" Orientation="Horizontal" Spacing="6" />
+            </StackPanel>
+
+            <!-- B-602：Recent Events（状态变化流，与通知同源）；单击进 L3，右键 Pin -->
+            <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
+                <TextBlock Text="RECENT EVENTS" Foreground="#64748B" FontSize="11" />
+                <ListView
+                    x:Name="RecentList"
+                    SelectionMode="Single"
+                    IsItemClickEnabled="True"
+                    ItemClick="OnRecentItemClick" />
+            </StackPanel>
+        </Grid>
     </Border>
 </Window>
