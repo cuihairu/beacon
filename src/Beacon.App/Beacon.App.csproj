@@ -18,6 +18,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Beacon.Core\Beacon.Core.csproj" />
     <ProjectReference Include="..\Beacon.Storage\Beacon.Storage.csproj" />
+    <ProjectReference Include="..\Beacon.Connections\Beacon.Connections.csproj" />
+    <ProjectReference Include="..\Beacon.Actions\Beacon.Actions.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />

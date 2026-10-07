@@ -71,7 +71,7 @@ public sealed class WidgetHostTests
         await using var scheduler = new RefreshScheduler();
         await using var host = fixture.CreateHost(scheduler);
         var expected = TestData.State(severity: Severity.Warning, summary: "3 PRs");
-        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult(expected);
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(expected);
 
         var ok = await host.RefreshWidgetAsync("w-1");
 

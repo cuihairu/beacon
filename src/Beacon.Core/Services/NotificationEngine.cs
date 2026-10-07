@@ -38,6 +38,7 @@ public sealed class NotificationEngine : IDisposable
         _bus = bus;
         _sink = sink;
         _clock = clock;
+        _logger = logger;
         _rulesProvider = rulesProvider ?? (() => DefaultNotificationRules.All);
         _subscription = bus.Subscribe<WidgetStateChanged>(OnWidgetStateChanged);
     }
