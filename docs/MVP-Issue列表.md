@@ -281,13 +281,29 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   - [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出
   - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录
 
+### B-706 状态色用户配置（级别/Widget 两级覆盖）
+- **依赖**：B-701、B-201..207（config/widgets 存储）
+- **内容**（RFC §4.1/§6.2.8）：五级 + Offline 默认色表；`config.json appearance.severityColors` 按级别全局覆盖、`widgets.json colorOverride` 按 Widget 覆盖（Widget > 级别 > 默认，非法值回退默认）；`SeverityPalette` 改为读配置，L0 tile/L1 胶囊/L2-L3 状态点/托盘图标同源换色；改色即时生效（事件通知重绘，无需重启）。
+- **验收**：
+  - [ ] 设置改级别色 → L0 tile、胶囊、托盘图标同步变色
+  - [ ] 某 Widget 设 colorOverride → 仅该 tile 变色，优先级正确
+  - [ ] 非法颜色值回退默认色不崩溃；重启后保持
+
+### B-707 动效系统（状态过渡/呼吸灯/脉冲/滑入）
+- **依赖**：B-701、B-706
+- **内容**（RFC §6.2.8）：Composition 属性动画五族——状态变色交叉过渡（~200ms×intensity）、提醒闪烁（状态变化后短促 2 次）、呼吸灯（full 档常驻）、Critical 脉冲（reduced 档默认，≤1Hz×intensity）、tile 滑入；`motion.mode=full/reduced/off` 三档 + `intensity` 0.5–2.0；窗口不可见/收起态暂停动画循环；动画只作用于对应 tile 视觉层不重建整窗。
+- **验收**：
+  - [ ] Success→Error 状态变化有平滑变色过渡（reduced 档）
+  - [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调
+  - [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）
+
 ---
 
 ## P8 Settings / 发布 / 验收（M5）
 
 ### B-801 Settings UI
 - **依赖**：B-201..207、B-301..304
-- **内容**：Connections CRUD（测试连接按钮）、Widgets CRUD（含钉桌面开关）、热键、自启、外观（Light/Dark/System、透明度）、通知规则默认值；GitHub token 录入走 ISecretStore。
+- **内容**：Connections CRUD（测试连接按钮）、Widgets CRUD（含钉桌面开关）、热键、自启、外观（Light/Dark/System、透明度）、通知规则默认值；GitHub token 录入走 ISecretStore。调色与动效设置入口见 B-805。
 - **验收**：
   - [ ] 全部设置项持久化且重启生效；token 不出现在任何 JSON
 
@@ -308,6 +324,13 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：self-contained 单 exe 发布（win-x64）；版本号；GitHub Release 产物 + 安装说明（自启/托盘/热键/权限）。
 - **验收**：
   - [ ] 干净 Windows 11 虚拟机：下载→运行→完成 B-803 脚本
+
+### B-805 外观/动效设置页（调色板 + 动效档位）
+- **依赖**：B-801、B-706、B-707
+- **内容**（RFC §4.1/§6.2.8/§9.1）：级别色编辑器（六色 + 重置默认）；Widget 级 colorOverride 入口（随 Widgets CRUD）；动效三档 full/reduced/off + intensity 滑杆 + 逐族预览（过渡/闪烁/呼吸灯/脉冲/滑入）；改动即时预览、落 config.json appearance。
+- **验收**：
+  - [ ] 调色/动效改动即时预览并持久化，重启生效
+  - [ ] 重置默认一键还原；off 档预览即全静止
 
 ---
 
