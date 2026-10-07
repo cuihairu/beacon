@@ -5,23 +5,35 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Beacon Status">
     <Grid x:Name="Root" Background="Transparent" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased">
-        <Border
-            x:Name="RootBorder"
-            CornerRadius="14"
-            Background="#E6111820"
-            BorderBrush="#26FFFFFF"
-            BorderThickness="1"
-            Padding="12,7">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
-                <TextBlock
-                    x:Name="CountText"
-                    Text="Beacon"
-                    Foreground="#F1F5F9"
-                    FontSize="13"
-                    FontWeight="SemiBold"
-                    VerticalAlignment="Center" />
-            </StackPanel>
-        </Border>
+        <StackPanel Spacing="4">
+            <Border
+                x:Name="RootBorder"
+                CornerRadius="14"
+                Background="#E6111820"
+                BorderBrush="#26FFFFFF"
+                BorderThickness="1"
+                Padding="12,7">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
+                    <TextBlock
+                        x:Name="CountText"
+                        Text="Beacon"
+                        Foreground="#F1F5F9"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+            <!-- B-504：连接离线横幅（Last update 时间） -->
+            <Border
+                x:Name="OfflineBanner"
+                CornerRadius="8"
+                Background="#B37F1D1D"
+                Padding="8,3"
+                Visibility="Collapsed"
+                HorizontalAlignment="Center">
+                <TextBlock x:Name="OfflineText" Foreground="#FECACA" FontSize="11" />
+            </Border>
+        </StackPanel>
     </Grid>
 </Window>

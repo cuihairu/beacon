@@ -1,5 +1,6 @@
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
+using Beacon.Core.Events;
 using Beacon.Core.Models;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -23,8 +24,13 @@ public sealed partial class CapsuleWindow : Window
     private AppWindow _appWindow = null!;
     private bool _dragging;
     private global::Windows.Foundation.Point _dragStart;
+    private double _dragDistance;
     private int _x;
     private int _y;
+    private DateTimeOffset _lastFetchedAt;
+
+    /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
+    public event Action? OpenPanelRequested;
 
     public CapsuleWindow(ShellStateStore shellState)
     {
@@ -62,6 +68,7 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         _dragging = true;
+        _dragDistance = 0;
         _dragStart = e.GetCurrentPoint(Root).Position;
         Root.CapturePointer(e.Pointer);
     }
@@ -73,6 +80,7 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         var position = e.GetCurrentPoint(Root).Position;
+        _dragDistance += Math.Abs(position.X - _dragStart.X) + Math.Abs(position.Y - _dragStart.Y);
         var dpi = GetDpi();
         _x += (int)Math.Round((position.X - _dragStart.X) * dpi);
         _y += (int)Math.Round((position.Y - _dragStart.Y) * dpi);
@@ -88,7 +96,11 @@ public sealed partial class CapsuleWindow : Window
         }
         _dragging = false;
         Root.ReleasePointerCapture(e.Pointer);
-        // TODO(P6): 无拖动的单击 → 打开 QuickPanel
+        // 位移 < 6 dip 视为单击（不是拖动）→ 打开 L2（B-504）
+        if (_dragDistance < 6)
+        {
+            OpenPanelRequested?.Invoke();
+        }
         SavePosition();
     }
 
@@ -155,11 +167,24 @@ public sealed partial class CapsuleWindow : Window
         });
     }
 
-    /// <summary>接入真实聚合（B-504）；当前为占位渲染。</summary>
-    public void UpdateStatus(Severity overall, int successCount, int warningCount, int errorCount)
+    /// <summary>记录最近一次数据拉取时间（Offline 横幅的 Last update 来源，B-504）。</summary>
+    public void NoteFetch(DateTimeOffset fetchedAt)
     {
-        CountText.Text = $"{successCount}  ·  {warningCount}  ·  {errorCount}";
-        OverallLight.Fill = overall switch
+        if (fetchedAt > _lastFetchedAt)
+        {
+            _lastFetchedAt = fetchedAt;
+        }
+    }
+
+    /// <summary>接入真实聚合（B-504）：分级计数 + Offline 横幅。</summary>
+    public void UpdateStatus(AggregateStatusChanged status)
+    {
+        var ok = status.Counts.GetValueOrDefault(Severity.Success) + status.Counts.GetValueOrDefault(Severity.Info);
+        var warn = status.Counts.GetValueOrDefault(Severity.Warning);
+        var error = status.Counts.GetValueOrDefault(Severity.Error) + status.Counts.GetValueOrDefault(Severity.Critical);
+        CountText.Text = $"{ok} · {warn} · {error}";
+
+        OverallLight.Fill = status.Overall switch
         {
             Severity.Success => new SolidColorBrush(Microsoft.UI.Colors.LimeGreen),
             Severity.Info => new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue),
@@ -168,5 +193,18 @@ public sealed partial class CapsuleWindow : Window
             Severity.Critical => new SolidColorBrush(Microsoft.UI.Colors.Red),
             _ => new SolidColorBrush(Microsoft.UI.Colors.Gray),
         };
+
+        var offline = status.OfflineConnections > 0;
+        OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
+        if (offline)
+        {
+            var since = _lastFetchedAt == default ? status.Timestamp : _lastFetchedAt;
+            OfflineText.Text = $"Offline · Last update {since:HH:mm:ss}";
+        }
+        // 横幅显隐改变内容高度（初始渲染时 _appWindow 尚未就绪则跳过）
+        if (_appWindow is not null)
+        {
+            _appWindow.Resize(new SizeInt32(180, offline ? 70 : 46));
+        }
     }
 }
