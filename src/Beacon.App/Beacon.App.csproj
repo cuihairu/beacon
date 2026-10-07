@@ -6,6 +6,10 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <RootNamespace>Beacon.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- B-804：程序集/文件版本（Explorer 属性页与卸载项展示用）；nightly 滚动构建不升版本号 -->
+    <Version>0.1.0</Version>
+    <FileVersion>0.1.0.0</FileVersion>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <!-- exe 图标（Explorer/快捷方式/标题栏）；托盘图标另由 TrayIconService 按状态运行时绘制 -->
     <ApplicationIcon>Assets\beacon.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
