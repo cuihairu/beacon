@@ -41,7 +41,7 @@ public sealed partial class CapsuleWindow : Window
     {
         InitializeComponent();
         // RFC §6.2.2：亚克力/半透明背景（桌面悬浮物贴壁纸，Mica 会失去悬浮感，故用系统亚克力）
-        SystemBackdrop = new Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicBackdrop();
+        SystemBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
         _shellState = shellState;
         _palette = new UiPalette(config); // B-706：聚合灯随 appearance.SeverityColors
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件

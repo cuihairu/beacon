@@ -48,7 +48,7 @@ public sealed partial class QuickPanelWindow : Window
     {
         InitializeComponent();
         // RFC §6.4：Flyout 语义——WinUI 栈规范「Acrylic 用于 flyout/瞬态面」，系统亚克力背板
-        SystemBackdrop = new Microsoft.UI.Composition.SystemBackdrops.DesktopAcrylicBackdrop();
+        SystemBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
         _runtime = runtime;
         _palette = new UiPalette(runtime.Config); // B-706：渲染时实时读 appearance.SeverityColors
         _dispatcher = dispatcher;
