@@ -63,9 +63,9 @@ internal static class NativeMethods
     public const IntPtr HWND_TOPMOST = -1;
 
     /// <summary>
-    /// 全 blittable 版 WNDCLASSEX：委托/字符串一律显式转原生指针。
-    /// 旧写法把 delegate 与 string 字段直接放进 struct 交给反射式编组器，
-    /// x64 下 lpfnWndProc 落成无效指针 → RegisterClassW 报 87（真机冒烟实锤）。
+    /// 全 blittable 版 WNDCLASSEX：委托/字符串一律显式转原生指针（编组零魔法）。
+    /// 注：87 的真正根因是曾把本结构配 RegisterClassW（WNDCLASS API）——错位读取后
+    /// lpfnWndProc/类名皆 NULL；blittable 化是顺手加固，真凶是 API 配对错误。
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct WNDCLASSEX
@@ -145,8 +145,10 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     public static extern IntPtr GetModuleHandleW(string? lpModuleName);
 
+    // RegisterClassExW 才配 WNDCLASSEX：RegisterClassW 吃的是旧 WNDCLASS（64 字节），
+    // 错配会把 style 槽当 lpfnWndProc（NULL）→ 恒报 87（真机冒烟抓到的启动即崩根因）
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern ushort RegisterClassW(ref WNDCLASSEX lpwcx);
+    public static extern ushort RegisterClassExW(ref WNDCLASSEX lpwcx);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr CreateWindowExW(

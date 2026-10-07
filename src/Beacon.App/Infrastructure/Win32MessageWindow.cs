@@ -35,12 +35,12 @@ internal sealed class Win32MessageWindow : IDisposable
             hInstance = hInstance,
             lpszClassName = _classNamePtr,
         };
-        var atom = NativeMethods.RegisterClassW(ref windowClass);
+        var atom = NativeMethods.RegisterClassExW(ref windowClass);
         if (atom == 0)
         {
             Marshal.FreeHGlobal(_classNamePtr);
             _classNamePtr = IntPtr.Zero;
-            throw new InvalidOperationException($"RegisterClassW failed: {Marshal.GetLastWin32Error()}");
+            throw new InvalidOperationException($"RegisterClassExW failed: {Marshal.GetLastWin32Error()}");
         }
 
         // HWND_MESSAGE = (IntPtr)(-3)：消息专用窗口，不可见、不进任务栏
