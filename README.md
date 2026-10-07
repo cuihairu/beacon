@@ -24,17 +24,19 @@
 
 ## 下载
 
-**[每日构建（nightly）](https://github.com/cuihairu/beacon/releases/tag/nightly)** — main 分支滚动构建，tag 固定 `nightly` 清旧传新，本页永远对应当前主干。Windows x86_64 自包含包（含 .NET 8 + Windows App SDK 运行时，解压即用），附 `SHA256SUMS` 校验单。直链：[beacon-nightly-windows-x86_64.zip](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64.zip)。
+**[每日构建（nightly）](https://github.com/cuihairu/beacon/releases/tag/nightly)** — main 分支滚动构建，tag 固定 `nightly` 清旧传新，本页永远对应当前主干。Windows x86_64 自包含包（含 .NET 8 + Windows App SDK 运行时），附 `SHA256SUMS` 校验单。直链：[安装包 setup.exe](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64-setup.exe) · [便携 zip](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64.zip)。
 
 由 [daily-build 工作流](.github/workflows/daily-build.yml)每天北京时间凌晨自动发布，也可[手动触发](https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml)。
 
 ### 安装说明（Windows 10 1809+ / Windows 11）
 
-1. 下载 zip 并校验：`Get-FileHash beacon-nightly-windows-x86_64.zip -Algorithm SHA256`，对照 Release 内 `SHA256SUMS`；
-2. 解压到任意目录运行 `Beacon.exe`——自包含包，无需安装 .NET 运行时；
-3. 首启自动常驻托盘并显示状态胶囊：GitHub PAT 在托盘菜单 → 设置 → 连接里录入（token 只写 DPAPI 密钥库，配置 JSON 仅存 credentialRef，绝不落明文）；
-4. 全局热键默认 `Ctrl+Alt+B` 唤出面板，设置里可改；开机自启默认开启（HKCU Run 键，设置里可关）；
-5. 权限：仅常规用户态——读写 `%AppData%\Beacon\`、DPAPI 加密、`Shell_NotifyIcon`、`RegisterHotKey`，无需管理员。
+**方式 A · 安装包**：下载 `beacon-nightly-windows-x86_64-setup.exe` 双击安装——装到 `%LOCALAPPDATA%\Beacon`（无需管理员），开始菜单启动，可选桌面快捷方式与开机自启，卸载走系统「添加或删除程序」。
+
+**方式 B · 便携 zip**：下载 zip 并校验（`Get-FileHash beacon-nightly-windows-x86_64.zip -Algorithm SHA256` 对照 Release 内 `SHA256SUMS`），解压到任意目录运行 `Beacon.App.exe`——自包含包，无需安装 .NET 运行时。
+
+首启自动常驻托盘并显示状态胶囊（屏幕右下角）与启动通知气泡。GitHub PAT 在托盘菜单 → 设置 → 连接里录入（token 只写 DPAPI 密钥库，配置 JSON 仅存 credentialRef，绝不落明文）。全局热键默认 `Ctrl+Alt+B` 唤出面板；开机自启默认开启（HKCU Run，设置里可关）。权限仅常规用户态——读写 `%AppData%\Beacon\`、DPAPI 加密、`Shell_NotifyIcon`、`RegisterHotKey`，无需管理员。
+
+**双击没反应？** 按序排查：① 未签名 exe 被 SmartScreen 拦截——点「更多信息」→「仍要运行」；② 托盘常驻应用没有主窗口——看右下角状态胶囊与启动通知，或任务管理器查 `Beacon.App` 进程；③ 查日志 `%AppData%\Beacon\logs\beacon-*.log`；④ 若提示缺 `VCRUNTIME140.dll`——先装 VC++ 2015-2022 (x64) 运行库再启动。
 
 ## 文档
 

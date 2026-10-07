@@ -43,6 +43,15 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "publish/*" -DestinationPath "beacon-nightly-windows-x86_64.zip"
 
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          $version = "0.0." + (Get-Date -Format "yyyyMMdd")
+          & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Publish rolling nightly release
         shell: bash
         env:
@@ -50,9 +59,11 @@ jobs:
         run: |
           set -euo pipefail
           ZIP=beacon-nightly-windows-x86_64.zip
-          sha256sum "$ZIP" > SHA256SUMS
+          SETUP=beacon-nightly-windows-x86_64-setup.exe
+          sha256sum "$ZIP" "$SETUP" > SHA256SUMS
           stamp="$(date -u '+%Y-%m-%d %H:%M UTC')"
           sz="$(du -h "$ZIP" | cut -f1)"
+          szs="$(du -h "$SETUP" | cut -f1)"
           {
             echo "滚动每日构建（rolling nightly）。tag 固定 \`nightly\`，资产随最新 main 清旧传新——本页永远对应当前主干。"
             echo
@@ -64,7 +75,8 @@ jobs:
             echo
             echo "| 资产 | 大小 | 说明 |"
             echo "| --- | --- | --- |"
-            echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含包（含 .NET 8 + Windows App SDK 运行时） |"
+            echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含便携包（含 .NET 8 + Windows App SDK 运行时） |"
+            echo "| \`${SETUP}\` | ${szs} | Windows 安装包（Inno Setup；装到 %LOCALAPPDATA%\\Beacon，无需管理员） |"
             echo "| \`SHA256SUMS\` | - | 全部资产 sha256 清单 |"
             echo
             echo "## 校验"
@@ -77,6 +89,7 @@ jobs:
             echo "## 说明"
             echo
             echo "- 自包含（self-contained）：无需安装 .NET 运行时，解压后直接运行 \`Beacon.App.exe\`。"
+            echo "- 安装包与便携 zip 内容相同：开始菜单启动，可选桌面快捷方式与开机自启；卸载走系统「添加或删除程序」。"
             echo "- 产物未签名：首次运行 SmartScreen 可能提示，选「仍要运行」。"
             echo "- 每日构建只证明可构建 + 打包成功；完整质量门禁以仓库 CI（ci.yml）为准。"
           } > notes.md
@@ -91,7 +104,7 @@ jobs:
               gh release delete-asset "$TAG" "$a" --yes
             fi
           done
-          gh release upload "$TAG" "$ZIP" SHA256SUMS
+          gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS
           gh release edit "$TAG" --title "Nightly · 每日构建 ${stamp}" \
             --notes-file notes.md --prerelease --latest=false
           echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"

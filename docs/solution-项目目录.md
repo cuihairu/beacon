@@ -12,6 +12,7 @@ Beacon/
 ├── Directory.Packages.props         # Central Package Management（统一版本）
 ├── .editorconfig
 ├── docs/                            # 任务书 / RFC / Issue 列表（已存在）
+├── packaging/                       # beacon.iss：Inno Setup 安装包定义（daily-build 产出 setup.exe）
 ├── src/
 │   ├── Beacon.App/                  # WinUI 3 壳（唯一 exe）
 │   ├── Beacon.Core/                 # 领域模型 + 抽象 + 服务（无 UI 依赖）
