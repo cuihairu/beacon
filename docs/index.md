@@ -1,7 +1,7 @@
 # Beacon
 
 <p align="center">
-  <img src="img/logo.svg" width="160" alt="Beacon logo">
+  <img src="img/logo.svg" width="64" alt="Beacon logo">
 </p>
 
 > **Windows Developer Status & Action Center** — See what needs your attention.
