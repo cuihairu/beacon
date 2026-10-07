@@ -18,6 +18,7 @@ namespace Beacon.App.Windows;
 public sealed partial class CapsuleWindow : Window
 {
     private readonly ShellStateStore _shellState;
+    private readonly UiPalette _palette;
     private readonly NativeMethods.RECT _defaultWorkAreaFallback = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
 
     private IntPtr _hwnd;
@@ -32,10 +33,11 @@ public sealed partial class CapsuleWindow : Window
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
 
-    public CapsuleWindow(ShellStateStore shellState)
+    public CapsuleWindow(ShellStateStore shellState, Beacon.Storage.JsonConfigurationStore config)
     {
         InitializeComponent();
         _shellState = shellState;
+        _palette = new UiPalette(config); // B-706：聚合灯随 appearance.SeverityColors
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
     }
 
@@ -184,15 +186,7 @@ public sealed partial class CapsuleWindow : Window
         var error = status.Counts.GetValueOrDefault(Severity.Error) + status.Counts.GetValueOrDefault(Severity.Critical);
         CountText.Text = $"{ok} · {warn} · {error}";
 
-        OverallLight.Fill = status.Overall switch
-        {
-            Severity.Success => new SolidColorBrush(Microsoft.UI.Colors.LimeGreen),
-            Severity.Info => new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue),
-            Severity.Warning => new SolidColorBrush(Microsoft.UI.Colors.Gold),
-            Severity.Error => new SolidColorBrush(Microsoft.UI.Colors.OrangeRed),
-            Severity.Critical => new SolidColorBrush(Microsoft.UI.Colors.Red),
-            _ => new SolidColorBrush(Microsoft.UI.Colors.Gray),
-        };
+        OverallLight.Fill = new SolidColorBrush(_palette.SeverityColor(status.Overall));
 
         var offline = status.OfflineConnections > 0;
         OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;

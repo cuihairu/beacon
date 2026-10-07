@@ -153,6 +153,7 @@ xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRun
 | `CommunityToolkit.WinUI.*` | 控件/动画 |
 | 托盘 | 不引第三方库，Win32 `Shell_NotifyIcon` 自实现（TrayIconService） |
 | `Microsoft.Toolkit.Uwp.Notifications` | Toast（unpackaged AUMID 自愈与激活路由） |
+| `System.Drawing.Common` | 托盘图标按配置色运行时绘制（GDI+ 位图 → HICON，B-706） |
 | GitHub API | 手写 REST 客户端（ETag/限额可控，B-301 决策，不引 Octokit） |
 | `System.Security.Cryptography.ProtectedData` | DPAPI 密钥存储 |
 | `Microsoft.Extensions.Hosting` / `.DependencyInjection` / `.Logging` | DI/日志 |

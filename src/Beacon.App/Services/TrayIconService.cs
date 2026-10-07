@@ -22,6 +22,7 @@ internal sealed class TrayIconService : IDisposable
     private readonly Win32MessageWindow _messageWindow;
     private readonly ILogger<TrayIconService> _logger;
     private readonly Dictionary<Severity, IntPtr> _severityIcons = [];
+    private readonly Dictionary<(byte A, byte R, byte G, byte B), IntPtr> _runtimeIcons = [];
     private NativeMethods.NOTIFYICONDATA _nid;
     private IntPtr _icon;
     private bool _added;
@@ -40,6 +41,12 @@ internal sealed class TrayIconService : IDisposable
     }
 
     private static string IconPath => Path.Combine(AppContext.BaseDirectory, "Assets", "beacon.ico");
+
+    /// <summary>
+    /// B-706：非空时 SetSeverity 按配置色运行时绘制托盘圆点（appearance.SeverityColors 即刻生效）；
+    /// 空（未注入）退回 Assets/*.ico 固定资产。
+    /// </summary>
+    public UiPalette? Palette { get; set; }
 
     public void Initialize()
     {
@@ -84,7 +91,7 @@ internal sealed class TrayIconService : IDisposable
         _nid.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
     }
 
-    /// <summary>随总体 Severity 着色（B-503，绿/黄/红/灰）：聚合变化 ≤1 刷新周期内调用。</summary>
+    /// <summary>随总体 Severity 着色（B-503 绿/黄/红/灰；B-706 起按配置色运行时绘制）：聚合变化 ≤1 刷新周期内调用。</summary>
     public void SetSeverity(Severity severity)
     {
         if (!_added)
@@ -104,6 +111,11 @@ internal sealed class TrayIconService : IDisposable
 
     private IntPtr GetSeverityIcon(Severity severity)
     {
+        if (Palette is { } palette)
+        {
+            var color = palette.SeverityColor(severity);
+            return DrawSeverityIcon(color);
+        }
         if (_severityIcons.TryGetValue(severity, out var cached))
         {
             return cached;
@@ -123,6 +135,27 @@ internal sealed class TrayIconService : IDisposable
             return IntPtr.Zero;
         }
         _severityIcons[severity] = icon;
+        return icon;
+    }
+
+    /// <summary>32×32 抗锯齿实心圆（托盘 16×16 缩显仍为圆点）；按颜色缓存 HICON，退出时统一销毁。</summary>
+    private IntPtr DrawSeverityIcon(global::Windows.UI.Color color)
+    {
+        var key = (color.A, color.R, color.G, color.B);
+        if (_runtimeIcons.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+        using var bitmap = new System.Drawing.Bitmap(32, 32);
+        using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+        {
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var brush = new System.Drawing.SolidBrush(
+                System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B));
+            graphics.FillEllipse(brush, 2, 2, 28, 28);
+        }
+        var icon = bitmap.GetHicon();
+        _runtimeIcons[key] = icon;
         return icon;
     }
 
@@ -221,5 +254,10 @@ internal sealed class TrayIconService : IDisposable
             NativeMethods.DestroyIcon(_icon);
             _icon = IntPtr.Zero;
         }
+        foreach (var icon in _runtimeIcons.Values)
+        {
+            NativeMethods.DestroyIcon(icon);
+        }
+        _runtimeIcons.Clear();
     }
 }

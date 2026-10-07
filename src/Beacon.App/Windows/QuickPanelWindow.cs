@@ -29,6 +29,7 @@ public sealed partial class QuickPanelWindow : Window
     private readonly NativeMethods.RECT _fallbackWorkArea = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
 
     private readonly BeaconRuntime _runtime;
+    private readonly UiPalette _palette;
     private readonly IUiDispatcher _dispatcher;
     private readonly Dictionary<string, WidgetState> _states = [];
     private readonly List<RecentEvent> _events = [];
@@ -47,6 +48,7 @@ public sealed partial class QuickPanelWindow : Window
     {
         InitializeComponent();
         _runtime = runtime;
+        _palette = new UiPalette(runtime.Config); // B-706：渲染时实时读 appearance.SeverityColors
         _dispatcher = dispatcher;
 
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => dispatcher.Post(() => OnStateChanged(evt.State, record: true)));
@@ -161,7 +163,7 @@ public sealed partial class QuickPanelWindow : Window
         var overall = _states.Values.Count == 0
             ? Severity.Success
             : _states.Values.Max(s => s.Severity);
-        OverallLight.Fill = new SolidColorBrush(SeverityPalette.Color(overall));
+        OverallLight.Fill = new SolidColorBrush(_palette.SeverityColor(overall));
     }
 
     private void UpdateOverview()
@@ -189,7 +191,7 @@ public sealed partial class QuickPanelWindow : Window
 
     private Border MakeChip(string label, int count, Severity worst)
     {
-        var dot = new Ellipse { Width = 7, Height = 7, Fill = new SolidColorBrush(SeverityPalette.Color(worst)) };
+        var dot = new Ellipse { Width = 7, Height = 7, Fill = new SolidColorBrush(_palette.SeverityColor(worst)) };
         var text = new TextBlock
         {
             Text = $"{label} {count}",
@@ -225,7 +227,8 @@ public sealed partial class QuickPanelWindow : Window
             Width = 8,
             Height = 8,
             VerticalAlignment = VerticalAlignment.Center,
-            Fill = new SolidColorBrush(SeverityPalette.Color(evt.State.Severity)),
+            Fill = new SolidColorBrush(_palette.SeverityColor(evt.State.Severity,
+                widgetOverride: _runtime.Config.FindWidget(evt.State.WidgetId)?.ColorOverride)),
         };
         var time = new TextBlock
         {
@@ -278,18 +281,8 @@ public sealed partial class QuickPanelWindow : Window
     }
 }
 
-/// <summary>Severity → 颜色（L1/L2/L3 共用一套口径）。Windows.UI.Color 结构体直接赋值，不依赖 ColorHelper。</summary>
+/// <summary>中性灰阶色（L1/L2/L3 文本与底色共用）；级别色已由 UiPalette 承载（B-706）。</summary>
 internal static class SeverityPalette
 {
     public static global::Windows.UI.Color Rgb(byte a, byte r, byte g, byte b) => new() { A = a, R = r, G = g, B = b };
-
-    public static global::Windows.UI.Color Color(Severity severity) => severity switch
-    {
-        Severity.Success => Rgb(255, 63, 185, 80),
-        Severity.Info => Rgb(255, 88, 166, 255),
-        Severity.Warning => Rgb(255, 210, 153, 34),
-        Severity.Error => Rgb(255, 248, 81, 73),
-        Severity.Critical => Rgb(255, 255, 59, 48),
-        _ => Rgb(255, 139, 148, 158),
-    };
 }

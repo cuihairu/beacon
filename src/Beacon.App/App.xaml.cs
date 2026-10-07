@@ -58,6 +58,7 @@ public partial class App : Application
         var runtime = BeaconRuntime.Start(toast, _logger);
         var dispatcher = Services.GetRequiredService<IUiDispatcher>();
         var tray = Services.GetRequiredService<TrayIconService>();
+        tray.Palette = new UiPalette(runtime.Config); // B-706：托盘圆点按 appearance.SeverityColors 运行时绘制
         _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher);
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => quickPanel.Toggle();
@@ -70,7 +71,7 @@ public partial class App : Application
         tray.Initialize();
 
         // B-504：胶囊/托盘接真实聚合
-        var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>());
+        var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
         capsule.OpenPanelRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.TryEnqueue(() => capsule.NoteFetch(evt.State.FetchedAt)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.TryEnqueue(() =>

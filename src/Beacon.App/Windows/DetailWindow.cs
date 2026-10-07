@@ -17,6 +17,7 @@ internal sealed class DetailWindow : Window
 {
     private readonly WidgetState _state;
     private readonly BeaconRuntime _runtime;
+    private readonly UiPalette _palette;
     private readonly TextBlock _resultText = new()
     {
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
@@ -28,6 +29,7 @@ internal sealed class DetailWindow : Window
     {
         _state = state;
         _runtime = runtime;
+        _palette = new UiPalette(runtime.Config); // B-706
 
         Title = $"Beacon · {state.Summary}";
         Content = BuildContent();
@@ -45,7 +47,8 @@ internal sealed class DetailWindow : Window
             Width = 10,
             Height = 10,
             VerticalAlignment = VerticalAlignment.Center,
-            Fill = new SolidColorBrush(SeverityPalette.Color(_state.Severity)),
+            Fill = new SolidColorBrush(_palette.SeverityColor(_state.Severity,
+                widgetOverride: _runtime.Config.FindWidget(_state.WidgetId)?.ColorOverride)),
         });
         header.Children.Add(new TextBlock
         {

@@ -26,6 +26,8 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
+    <!-- B-706：托盘图标按配置色运行时绘制（GDI+ 位图 → HICON） -->
+    <PackageReference Include="System.Drawing.Common" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />

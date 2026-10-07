@@ -23,6 +23,9 @@ internal sealed class PinTile
 {
     private const int TileHeight = 32;
 
+    private readonly WidgetConfig _widget;
+    private readonly UiPalette _palette;
+
     private readonly Border _root = new()
     {
         Height = TileHeight,
@@ -59,9 +62,11 @@ internal sealed class PinTile
 
     public string WidgetId { get; }
 
-    public PinTile(WidgetConfig widget)
+    public PinTile(WidgetConfig widget, UiPalette palette)
     {
         WidgetId = widget.Id;
+        _widget = widget;
+        _palette = palette;
         _label.Text = LabelOf(widget);
 
         var grid = new Grid { ColumnSpacing = 6 };
@@ -80,12 +85,14 @@ internal sealed class PinTile
     /// <summary>
     /// 状态变化只更新本 tile（B-701）；离线/错误降级（B-704，RFC §6.2.6）：
     /// ConnectionHealthy=false → 灰空心灯 + Last update HH:mm，绝不弹异常；恢复后健康事件自动复位。
+    /// 着色走 UiPalette（B-706：健康灯应用 Widget 的 colorOverride；offline 是连接健康派生态，
+    /// 恒走 appearance.SeverityColors["offline"]，不吃 Widget 覆盖——灰要始终可辨）。
     /// </summary>
     public void Update(WidgetState state)
     {
         if (state.ConnectionHealthy)
         {
-            _light.Fill = new SolidColorBrush(SeverityPalette.Color(state.Severity));
+            _light.Fill = new SolidColorBrush(_palette.SeverityColor(state.Severity, widgetOverride: _widget.ColorOverride));
             _light.Stroke = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _value.Text = ValueOf(state);
             ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
@@ -93,7 +100,7 @@ internal sealed class PinTile
         else
         {
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-            _light.Stroke = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)); // Offline 灰
+            _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
             ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
         }
@@ -134,6 +141,7 @@ internal sealed class PinnedHostWindow
     private const int SnapDips = 16;          // 拖动吸边判定距离（DIP）
 
     private readonly BeaconRuntime _runtime;
+    private readonly UiPalette _palette;
     private readonly MonitorInfo _fallbackMonitor;
     private readonly Dictionary<string, PinTile> _tiles = [];
     private readonly Dictionary<string, WidgetState> _latest = [];
@@ -156,6 +164,7 @@ internal sealed class PinnedHostWindow
     public PinnedHostWindow(BeaconRuntime runtime, MonitorInfo fallbackMonitor)
     {
         _runtime = runtime;
+        _palette = new UiPalette(runtime.Config); // B-706：每次渲染实时读 appearance，改色即刻生效
         _fallbackMonitor = fallbackMonitor;
     }
 
@@ -189,7 +198,7 @@ internal sealed class PinnedHostWindow
             {
                 continue;
             }
-            var tile = new PinTile(widget);
+            var tile = new PinTile(widget, _palette);
             AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;
             _tilePanel.Children.Add(tile.Root);
