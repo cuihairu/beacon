@@ -25,6 +25,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
     public IEventBus Bus { get; }
     public JsonConfigurationStore Config { get; }
     public JsonCacheStore Cache { get; }
+    public IWidgetProviderResolver Resolver { get; }
     public WidgetHost Host { get; }
     public StatusAggregator Aggregator { get; }
     public NotificationEngine Notifications { get; }
@@ -36,6 +37,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
         IEventBus bus,
         JsonConfigurationStore config,
         JsonCacheStore cache,
+        IWidgetProviderResolver resolver,
         RefreshScheduler scheduler,
         WidgetHost host,
         StatusAggregator aggregator,
@@ -45,6 +47,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
         Bus = bus;
         Config = config;
         Cache = cache;
+        Resolver = resolver;
         _scheduler = scheduler;
         Host = host;
         Aggregator = aggregator;
@@ -81,7 +84,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ],
             bus, clock, config, secrets, logger);
 
-        return new BeaconRuntime(bus, config, cache, scheduler, host, aggregator, notifications, actions);
+        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions);
     }
 
     /// <summary>手动全量刷新（托盘 Refresh All）：逐 Widget 立即拉取，随后组循环恢复常规节奏。</summary>

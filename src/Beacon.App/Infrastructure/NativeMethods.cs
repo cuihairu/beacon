@@ -246,4 +246,16 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
+    // —— 窗口子类化（L0 宿主 NCHITTEST 空白穿透，B-701）——
+    public const int GWLP_WNDPROC = -4;
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr CallWindowProcW(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }
