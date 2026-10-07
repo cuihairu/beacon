@@ -40,6 +40,9 @@ public sealed partial class QuickPanelWindow : Window
     /// <summary>请求打开某 Widget 的 L3 详情窗（B-603 接线）。</summary>
     public event Action<WidgetState>? DetailRequested;
 
+    /// <summary>Pin/Unpin 落库后通知（B-702：L0 宿主重建 tile 集）。</summary>
+    public event Action? PinsChanged;
+
     public QuickPanelWindow(BeaconRuntime runtime, IUiDispatcher dispatcher)
     {
         InitializeComponent();
@@ -246,7 +249,8 @@ public sealed partial class QuickPanelWindow : Window
         row.Children.Add(label);
 
         var item = new ListViewItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = evt };
-        var pin = new MenuFlyoutItem { Text = "Pin to desktop" };
+        var pinned = _runtime.Config.FindWidget(evt.State.WidgetId)?.Pinned == true;
+        var pin = new MenuFlyoutItem { Text = pinned ? "Unpin from desktop" : "Pin to desktop" };
         pin.Click += (_, _) => PinWidget(evt.State.WidgetId);
         item.ContextFlyout = new MenuFlyout { Items = { pin } };
         return item;
@@ -260,16 +264,17 @@ public sealed partial class QuickPanelWindow : Window
         }
     }
 
-    /// <summary>右键 Pin to desktop：写 widgets.json（B-602 验收，L0 渲染 P7 消费）。</summary>
+    /// <summary>右键 Pin/Unpin：仅 PinSupported 类型可钉（B-702 两入口一致性），落 widgets.json。</summary>
     private void PinWidget(string widgetId)
     {
         var widget = _runtime.Config.FindWidget(widgetId);
-        if (widget is null)
+        if (widget is null || _runtime.Resolver.Resolve(widget.Type)?.Descriptor.PinSupported != true)
         {
-            return;
+            return; // 非准入类型不可钉
         }
-        widget.Pinned = true;
+        widget.Pinned = !widget.Pinned;
         _runtime.Config.UpsertWidget(widget);
+        PinsChanged?.Invoke();
     }
 }
 

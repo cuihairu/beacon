@@ -19,6 +19,7 @@ public partial class App : Application
 
     private ILogger<App> _logger = null!;
     private Windows.QuickPanelWindow? _quickPanel;
+    private Windows.PinnedHostWindow? _pinnedHost;
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
     public App()
@@ -61,6 +62,7 @@ public partial class App : Application
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => quickPanel.Toggle();
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
+        quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => _pinnedHost?.ReloadTiles()); // B-702：Pin 入口联动 L0
         tray.SettingsRequested += () => { /* P8 接入 SettingsWindow */ };
         // B-503：Notifications 入口（P6 B-602 换成通知中心视图）；Refresh All 在 B-504 接运行时
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
@@ -86,6 +88,13 @@ public partial class App : Application
         tray.SetTip(BuildTrayTip(snapshot));
         capsule.Activate();
         runtime.Host.Start();
+
+        // B-701：L0 悬浮组件宿主（主屏单实例；多显示器分配随 B-703 位置持久化）
+        if (Infrastructure.MonitorService.Primary() is { } primaryMonitor)
+        {
+            _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
+            _pinnedHost.Initialize();
+        }
 
         // B-103：全局热键（config.json 可改，B-801 提供设置 UI）
         var config = Services.GetRequiredService<Storage.AppConfigFile>().Load();
