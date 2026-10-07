@@ -271,6 +271,12 @@ internal sealed class PinnedHostWindow
         ReloadTiles();
     }
 
+    /// <summary>关闭宿主窗口（退出清理用）：包装类没有原生 Close，转给内部 Window。</summary>
+    public void Close()
+    {
+        _window?.Close();
+    }
+
     /// <summary>按 widgets.json 的 Pinned + PinSupported 重建 tile 集（B-702 入口一致性：右键/设置开关后调用）。</summary>
     public void ReloadTiles()
     {
