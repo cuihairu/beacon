@@ -44,6 +44,11 @@ internal sealed class SettingsWindow : Window
     private TextBlock _connFeedback = null!;
     private string? _editingConnectionId;
 
+    // PowerToys 形态：每类连接的整体开关
+    private ToggleSwitch _githubEnabled = null!;
+    private ToggleSwitch _httpEnabled = null!;
+    private ToggleSwitch _bigmodelEnabled = null!;
+
     private StackPanel _widgetList = null!;
     private ComboBox _widgetTypeBox = null!;
     private ComboBox _widgetConnectionBox = null!;
@@ -71,9 +76,15 @@ internal sealed class SettingsWindow : Window
         _runtime = runtime;
         _motion = new MotionEngine(runtime.Config); // 预览与运行时同引擎：设置改档即刻反映到预览
         Title = "Beacon 设置";
-        Width = 880; // 两栏目录形态需要比旧单列更宽
-        Height = 640;
         Content = BuildRoot();
+        // 两栏目录形态需要比默认更宽：WinUI Window 没有 Width/Height，走 AppWindow（物理像素 × DPI）
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dpi = Infrastructure.NativeMethods.GetDpiForWindow(hwnd) / 96.0;
+        AppWindow.Resize(new global::Windows.Graphics.SizeInt32
+        {
+            Width = (int)Math.Round(880 * dpi),
+            Height = (int)Math.Round(640 * dpi),
+        });
     }
 
     private UIElement BuildRoot()
