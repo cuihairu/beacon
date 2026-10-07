@@ -193,6 +193,8 @@ public sealed partial class QuickPanelWindow : Window
         "github.pull_requests" => "GitHub",
         "github.actions.runs" => "CI",
         var type when type.StartsWith("github.", StringComparison.Ordinal) => "GitHub",
+        var type when type.StartsWith("http.", StringComparison.Ordinal) => "HTTP",
+        var type when type.StartsWith("bigmodel.", StringComparison.Ordinal) => "GLM",
         var type => Capitalize(type.Split('.')[0]),
     };
 

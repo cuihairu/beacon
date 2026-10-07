@@ -75,6 +75,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
         {
             [GitHubWidgetDescriptors.PullRequestsType] = new GitHubPullRequestsProvider(),
             [GitHubWidgetDescriptors.ActionsRunsType] = new GitHubActionsProvider(),
+            [HttpWidgetDescriptors.StatusType] = new HttpStatusProvider(), // positioning P0 #3：Generic HTTP
+            [BigModelWidgetDescriptors.UsageType] = new BigModelUsageProvider(), // positioning P0 #5：GLM 套餐额度
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -95,6 +97,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
         var connectionProviders = new Dictionary<string, IConnectionProvider>(StringComparer.OrdinalIgnoreCase)
         {
             ["github"] = new GitHubConnectionProvider(),
+            ["http"] = new HttpConnectionProvider(),
+            ["bigmodel"] = new BigModelConnectionProvider(),
         };
 
         return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders);
