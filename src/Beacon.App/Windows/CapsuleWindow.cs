@@ -25,6 +25,7 @@ public sealed partial class CapsuleWindow : Window
     private AppWindow _appWindow = null!;
     private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
     private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
+    private bool _offline; // 连接离线横幅状态（决定窗口高度；OnLoaded 时 UpdateStatus 可能已先跑）
     private bool _dragging;
     private global::Windows.Foundation.Point _dragStart;
     private double _dragDistance;
@@ -61,7 +62,7 @@ public sealed partial class CapsuleWindow : Window
         // 常驻悬浮物：不进任务栏/Alt-Tab、点击不抢焦点（RFC §6.2.7）
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
-        _appWindow.Resize(new SizeInt32(180, 46));
+        ApplySize(); // 按 DPI 定尺寸（设计值是 DIP，AppWindow.Resize 收物理像素——不乘会把内容上下裁掉）
         RestorePosition();
         if (!_startVisible)
         {
@@ -126,14 +127,34 @@ public sealed partial class CapsuleWindow : Window
 
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
 
+    /// <summary>
+    /// 窗口物理尺寸 = 设计尺寸(DIP) × DPI。AppWindow.Resize/Size 一律物理像素，XAML 内容按 DIP 布局：
+    /// 150% 缩放下 46 物理像素只装得下 30 DIP 高，胶囊（~33 DIP）会被上下裁成一条。
+    /// </summary>
+    private (int WidthPx, int HeightPx) ExpectedSizePx()
+    {
+        var dpi = GetDpi();
+        return ((int)Math.Round(180 * dpi), (int)Math.Round((_offline ? 70 : 46) * dpi));
+    }
+
+    private void ApplySize()
+    {
+        if (_appWindow is null)
+        {
+            return;
+        }
+        var (widthPx, heightPx) = ExpectedSizePx();
+        _appWindow.Resize(new SizeInt32(widthPx, heightPx));
+    }
+
     private void RestorePosition()
     {
         var layout = _shellState.LoadCapsuleLayout();
         var monitor = (layout is null ? null : MonitorService.FindByName(layout.Monitor)) ?? MonitorService.Primary();
         var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
         var dpi = GetDpi();
-        var widthPx = Math.Max(1, _appWindow.Size.Width);
-        var heightPx = Math.Max(1, _appWindow.Size.Height);
+        // 用期望尺寸而非 _appWindow.Size：Resize 刚发出时 Size 可能还是旧值，会把定位算偏
+        var (widthPx, heightPx) = ExpectedSizePx();
 
         if (layout is null)
         {
@@ -153,21 +174,24 @@ public sealed partial class CapsuleWindow : Window
                 : work.Bottom - heightPx - offsetY;
         }
 
+        // 夹回工作区：锚点+偏移在换屏/改缩放后可能把窗口推出屏幕（与 PinnedHost 的 ClampInto 同理）
+        _x = Math.Clamp(_x, work.Left, Math.Max(work.Left, work.Right - widthPx));
+        _y = Math.Clamp(_y, work.Top, Math.Max(work.Top, work.Bottom - heightPx));
+
         _appWindow.Move(new PointInt32(_x, _y));
     }
 
     private void SavePosition()
     {
         var dpi = GetDpi();
-        var monitor = MonitorService.FromPixel(_x + _appWindow.Size.Width / 2, _y + _appWindow.Size.Height / 2)
+        var (widthPx, heightPx) = ExpectedSizePx();
+        var monitor = MonitorService.FromPixel(_x + widthPx / 2, _y + heightPx / 2)
                       ?? MonitorService.Primary();
         if (monitor is null)
         {
             return;
         }
         var work = monitor.WorkPx;
-        var widthPx = Math.Max(1, _appWindow.Size.Width);
-        var heightPx = Math.Max(1, _appWindow.Size.Height);
 
         var anchorLeft = _x + widthPx / 2 < (work.Left + work.Right) / 2;
         var anchorTop = _y + heightPx / 2 < (work.Top + work.Bottom) / 2;
@@ -235,10 +259,8 @@ public sealed partial class CapsuleWindow : Window
             var since = _lastFetchedAt == default ? status.Timestamp : _lastFetchedAt;
             OfflineText.Text = $"Offline · Last update {since:HH:mm:ss}";
         }
-        // 横幅显隐改变内容高度（初始渲染时 _appWindow 尚未就绪则跳过）
-        if (_appWindow is not null)
-        {
-            _appWindow.Resize(new SizeInt32(180, offline ? 70 : 46));
-        }
+        // 横幅显隐改变内容高度：记状态并重定尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
+        _offline = offline;
+        ApplySize();
     }
 }
