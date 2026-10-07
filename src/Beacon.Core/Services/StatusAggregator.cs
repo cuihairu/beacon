@@ -17,12 +17,14 @@ public sealed class StatusAggregator : IDisposable
     private AggregateStatusChanged? _lastPublished;
     private readonly IDisposable _stateSubscription;
     private readonly IDisposable _healthSubscription;
+    private readonly IDisposable _invalidationSubscription;
 
     public StatusAggregator(IEventBus bus)
     {
         _bus = bus;
         _stateSubscription = bus.Subscribe<WidgetStateChanged>(OnWidgetStateChanged);
         _healthSubscription = bus.Subscribe<ConnectionHealthChanged>(OnConnectionHealthChanged);
+        _invalidationSubscription = bus.Subscribe<WidgetsInvalidated>(OnWidgetsInvalidated);
     }
 
     /// <summary>当前聚合快照（胶囊启动时取初值用）。</summary>
@@ -49,6 +51,22 @@ public sealed class StatusAggregator : IDisposable
                 ? _unhealthyConnections.Remove(evt.ConnectionId)
                 : _unhealthyConnections.Add(evt.ConnectionId);
             if (changed)
+            {
+                PublishIfChanged();
+            }
+        }
+    }
+
+    private void OnWidgetsInvalidated(WidgetsInvalidated evt)
+    {
+        lock (_gate)
+        {
+            var removed = false;
+            foreach (var widgetId in evt.WidgetIds)
+            {
+                removed |= _states.Remove(widgetId);
+            }
+            if (removed)
             {
                 PublishIfChanged();
             }
@@ -99,5 +117,6 @@ public sealed class StatusAggregator : IDisposable
     {
         _stateSubscription.Dispose();
         _healthSubscription.Dispose();
+        _invalidationSubscription.Dispose();
     }
 }

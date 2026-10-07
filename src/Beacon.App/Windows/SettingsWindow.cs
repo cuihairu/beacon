@@ -15,14 +15,17 @@ using Windows.Storage.Pickers;
 namespace Beacon.App.Windows;
 
 /// <summary>
-/// Settings 窗口（B-801，RFC §38/§42）：常规（热键/自启/主题/透明度/胶囊开关）、
-/// 连接 CRUD（测试连接；GitHub token 录入只进 DPAPI，严禁明文 JSON）、
-/// 组件 CRUD（按 WidgetTypeDescriptor 动态字段，钉桌面开关）、通知规则展示。
-/// 常规项改动即存 config.json 并触发 SettingsApplied（App 侧重注册热键/自启/胶囊显隐）。
-/// 调色与动效页属 B-805。persist 即生效于下一刷新周期（WidgetHost 每轮读 config）。
+/// Settings 窗口（B-801，RFC §38/§42，PowerToys 形态配置中心）：左侧模块目录（每模块独立 icon、
+/// Provider 模块带启用开关——开启才见配置页），右侧对应页面：常规（热键/自启/主题/透明度/胶囊）、
+/// 外观（级别色+动效）、GitHub/智谱 GLM/自定义 HTTP（连接 CRUD + 组件向导，类型锁定模块）、
+/// 高级（导入导出+通知规则）。启停经 ConnectionConfig.Enabled 落库，宿主跳过刷新、状态即时失效。
+/// 凭据只进 DPAPI（严禁明文 JSON）；改动即存 config.json。
 /// </summary>
 internal sealed class SettingsWindow : Window
 {
+    /// <summary>配置中心模块行（PowerToys 形态）：Provider 模块 ConnectionType 非空 → 带启用开关。</summary>
+    private sealed record ModuleDef(string Key, string DisplayName, string Subtitle, string Glyph, string? ConnectionType);
+
     private readonly BeaconRuntime _runtime;
     private readonly MotionEngine _motion;
 
@@ -68,19 +71,214 @@ internal sealed class SettingsWindow : Window
         _runtime = runtime;
         _motion = new MotionEngine(runtime.Config); // 预览与运行时同引擎：设置改档即刻反映到预览
         Title = "Beacon 设置";
+        Width = 880; // 两栏目录形态需要比旧单列更宽
+        Height = 640;
         Content = BuildRoot();
     }
 
     private UIElement BuildRoot()
     {
-        var root = new StackPanel { Spacing = 14, Padding = new Thickness(20, 16, 20, 16) };
+        _modules =
+        [
+            new ModuleDef("general", "常规", "热键 · 自启 · 主题 · 胶囊", "\ue713", null),
+            new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
+            new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
+            new ModuleDef("bigmodel", "智谱 GLM", "Coding Plan 额度", "\ue945", "bigmodel"),
+            new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
+            new ModuleDef("advanced", "高级", "导入导出 · 通知规则", "\ue90f", null),
+        ];
 
-        root.Children.Add(SectionTitle("常规"));
+        _leftPanel = new StackPanel { Spacing = 2, MinWidth = 232, Margin = new Thickness(0, 0, 14, 0) };
+        _rightHost = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(_rightHost, 1);
+        grid.Children.Add(_leftPanel);
+        grid.Children.Add(_rightHost);
+
+        RebuildModuleRows();
+        SelectModule(_modules[0]);
+
+        return new Grid
+        {
+            Padding = new Thickness(16, 14, 16, 14),
+            Children = { grid },
+        };
+    }
+
+    // —— PowerToys 形态：模块目录（左）与页面路由（右） ——
+
+    private List<ModuleDef> _modules = [];
+    private readonly Dictionary<string, Button> _moduleRows = [];
+    private readonly Dictionary<string, ToggleSwitch> _moduleToggles = [];
+    private StackPanel _leftPanel = null!;
+    private ScrollViewer _rightHost = null!;
+    private string _selectedKey = "";
+    private bool _syncingToggles;
+
+    /// <summary>当前页作用域：Provider 页锁定连接类型与组件描述符；常规/外观/高级页为 null（全量）。</summary>
+    private string? _scopeType;
+    private IReadOnlyList<WidgetTypeDescriptor>? _scopeDescriptors;
+
+    private void RebuildModuleRows()
+    {
+        _leftPanel.Children.Clear();
+        _moduleRows.Clear();
+        _moduleToggles.Clear();
+        _leftPanel.Children.Add(new TextBlock
+        {
+            Text = "配置中心",
+            FontSize = 12,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Margin = new Thickness(10, 2, 0, 8),
+        });
+        foreach (var module in _modules)
+        {
+            var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            content.Children.Add(MakeModuleIcon(module));
+            var nameStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = 13 });
+            nameStack.Children.Add(new TextBlock
+            {
+                Text = module.Subtitle,
+                FontSize = 10.5,
+                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            content.Children.Add(nameStack);
+
+            if (module.ConnectionType is { } type)
+            {
+                var toggle = new ToggleSwitch
+                {
+                    OnContent = "",
+                    OffContent = "",
+                    IsOn = TypeEnabled(type),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                toggle.Toggled += (_, _) =>
+                {
+                    if (_syncingToggles)
+                    {
+                        return;
+                    }
+                    _runtime.SetConnectionTypeEnabled(type, toggle.IsOn);
+                    if (_selectedKey == module.Key)
+                    {
+                        RebuildConnections();
+                        RebuildWidgets();
+                    }
+                };
+                _moduleToggles[type] = toggle;
+                content.Children.Add(toggle);
+            }
+
+            var row = new Button
+            {
+                Content = content,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Padding = new Thickness(10, 7, 8, 7),
+                CornerRadius = new CornerRadius(6),
+            };
+            var captured = module;
+            row.Click += (_, _) => SelectModule(captured);
+            _moduleRows[module.Key] = row;
+            _leftPanel.Children.Add(row);
+        }
+    }
+
+    /// <summary>模块图标（PowerToys 形态：每模块独立 icon，色块 + Segoe Fluent 字形）。</summary>
+    private static Border MakeModuleIcon(ModuleDef module)
+    {
+        var tint = module.ConnectionType switch
+        {
+            "github" => SeverityPalette.Rgb(255, 110, 118, 129),
+            "bigmodel" => SeverityPalette.Rgb(255, 56, 89, 255),
+            "http" => SeverityPalette.Rgb(255, 63, 185, 80),
+            _ => SeverityPalette.Rgb(255, 148, 163, 184),
+        };
+        return new Border
+        {
+            Width = 30,
+            Height = 30,
+            CornerRadius = new CornerRadius(7),
+            Background = new SolidColorBrush(tint),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new FontIcon
+            {
+                Glyph = module.Glyph,
+                FontSize = 15,
+                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
+            },
+        };
+    }
+
+    /// <summary>模块启用语义：该类型存在连接且全部 Enabled（无连接 = 未启用，开关引导去配置页）。</summary>
+    private bool TypeEnabled(string connectionType)
+    {
+        var connections = _runtime.Config.Connections.Where(c => c.Type == connectionType).ToList();
+        return connections.Count > 0 && connections.All(c => c.Enabled);
+    }
+
+    private void SelectModule(ModuleDef module)
+    {
+        _selectedKey = module.Key;
+        _scopeType = module.ConnectionType;
+        _scopeDescriptors = module.ConnectionType is { } type ? ModuleDescriptors(type) : null;
+        foreach (var (key, row) in _moduleRows)
+        {
+            row.Background = new SolidColorBrush(key == module.Key
+                ? SeverityPalette.Rgb(60, 127, 127, 127)
+                : Microsoft.UI.Colors.Transparent);
+        }
+        _rightHost.Content = module.Key switch
+        {
+            "general" => BuildGeneralPage(),
+            "appearance" => BuildAppearancePage(),
+            "advanced" => BuildAdvancedPage(),
+            _ => BuildProviderPage(module),
+        };
+    }
+
+    /// <summary>模块下的组件描述符：按「组件类型前缀 = 连接类型」约定（github.* / http.* / bigmodel.*）。</summary>
+    private static IReadOnlyList<WidgetTypeDescriptor> ModuleDescriptors(string connectionType)
+        => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
+
+    private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
+        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All];
+
+    private static TextBlock Hint(string text) => new()
+    {
+        Text = text,
+        FontSize = 12,
+        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+        TextWrapping = TextWrapping.Wrap,
+    };
+
+    private static StackPanel PageShell() => new() { Spacing = 14, Padding = new Thickness(4, 2, 4, 16) };
+
+    // —— 页面：常规 ——
+
+    private UIElement BuildGeneralPage()
+    {
+        var page = PageShell();
+        page.Children.Add(SectionTitle("常规"));
         _hotkeyBox = new TextBox { Header = "全局热键（如 Ctrl+Alt+B）", Text = _runtime.Config.App.Hotkey, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
         _hotkeyBox.LostFocus += (_, _) => SaveGeneral();
         _startupToggle = new ToggleSwitch { Header = "开机自启", IsOn = _runtime.Config.App.LaunchOnStartup };
         _startupToggle.Toggled += (_, _) => SaveGeneral();
-        _themeBox = new ComboBox { Header = "主题", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
+        _themeBox = new ComboBox { Header = "主题（重启生效）", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var item in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
         {
             _themeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
@@ -99,47 +297,129 @@ internal sealed class SettingsWindow : Window
         _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
         _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
-        root.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle } });
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle } });
+        return page;
+    }
 
-        root.Children.Add(SectionTitle("外观"));
-        root.Children.Add(BuildAppearanceSection());
+    // —— 页面：外观 ——
 
-        root.Children.Add(SectionTitle("连接"));
-        _connectionList = new StackPanel { Spacing = 6 };
-        root.Children.Add(_connectionList);
-        root.Children.Add(BuildConnectionEditor());
-        root.Children.Add(_connFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+    private UIElement BuildAppearancePage()
+    {
+        var page = PageShell();
+        page.Children.Add(SectionTitle("外观"));
+        page.Children.Add(BuildAppearanceSection());
+        return page;
+    }
 
-        root.Children.Add(SectionTitle("组件"));
-        _widgetList = new StackPanel { Spacing = 6 };
-        root.Children.Add(_widgetList);
-        root.Children.Add(BuildWidgetEditor());
-        root.Children.Add(_widgetFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+    // —— 页面：高级（导入导出 + 通知规则） ——
 
-        root.Children.Add(SectionTitle("导入导出"));
-        root.Children.Add(BuildImportExportSection());
-
-        root.Children.Add(SectionTitle("通知规则"));
-        root.Children.Add(new TextBlock
+    private UIElement BuildAdvancedPage()
+    {
+        var page = PageShell();
+        page.Children.Add(SectionTitle("导入导出"));
+        page.Children.Add(BuildImportExportSection());
+        page.Children.Add(SectionTitle("通知规则"));
+        page.Children.Add(new TextBlock
         {
             FontSize = 12,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
             Text = DescribeRules(),
             TextWrapping = TextWrapping.Wrap,
         });
-        root.Children.Add(new TextBlock
+        page.Children.Add(new TextBlock
         {
             FontSize = 11,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             Text = "规则经 config.json 的 notificationRules 自定义；留空使用内置默认。",
             TextWrapping = TextWrapping.Wrap,
         });
-
-        RebuildConnections();
-        RebuildWidgets();
-
-        return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        return page;
     }
+
+    // —— 页面：Provider 模块（GitHub / 智谱 GLM / 自定义 HTTP） ——
+
+    private UIElement BuildProviderPage(ModuleDef module)
+    {
+        var type = module.ConnectionType!;
+        var connections = _runtime.Config.Connections.Where(c => c.Type == type).ToList();
+        var widgets = _runtime.Config.Widgets
+            .Where(w => _scopeDescriptors!.Any(d => d.Type == w.Type))
+            .ToList();
+
+        var page = PageShell();
+        page.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            Children =
+            {
+                MakeModuleIcon(module),
+                new StackPanel
+                {
+                    Spacing = 2,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Children =
+                    {
+                        new TextBlock { Text = module.DisplayName, FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+                        new TextBlock
+                        {
+                            Text = ProviderStatus(module, connections, widgets.Count),
+                            FontSize = 11.5,
+                            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                    },
+                },
+            },
+        });
+
+        page.Children.Add(SectionTitle("连接"));
+        _connectionList = new StackPanel { Spacing = 6 };
+        foreach (var connection in connections)
+        {
+            _connectionList.Children.Add(MakeConnectionRow(connection));
+        }
+        if (connections.Count == 0)
+        {
+            _connectionList.Children.Add(Hint(ProviderEmptyHint(type)));
+        }
+        page.Children.Add(_connectionList);
+        page.Children.Add(BuildConnectionEditor(type));
+        page.Children.Add(_connFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+
+        page.Children.Add(SectionTitle("组件"));
+        _widgetList = new StackPanel { Spacing = 6 };
+        foreach (var widget in widgets)
+        {
+            _widgetList.Children.Add(MakeWidgetRow(widget));
+        }
+        if (widgets.Count == 0)
+        {
+            _widgetList.Children.Add(Hint("尚无组件——用下方向导添加，字段由组件类型决定。"));
+        }
+        page.Children.Add(_widgetList);
+        page.Children.Add(BuildWidgetEditor());
+        page.Children.Add(_widgetFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        return page;
+    }
+
+    private static string ProviderStatus(ModuleDef module, List<ConnectionConfig> connections, int widgetCount)
+    {
+        if (connections.Count == 0)
+        {
+            return "未配置——填下方连接后即启用。";
+        }
+        var enabled = connections.Count(c => c.Enabled);
+        var state = enabled == 0 ? "已停用" : enabled == connections.Count ? "运行中" : $"部分启用（{enabled}/{connections.Count}）";
+        return $"{state} · {connections.Count} 连接 · {widgetCount} 组件";
+    }
+
+    private static string ProviderEmptyHint(string type) => type switch
+    {
+        "github" => "尚无连接——填一个 GitHub PAT（需要 repo / workflow 读权限）。",
+        "bigmodel" => "尚无连接——填智谱 API Key（open.bigmodel.cn 控制台获取，监控接口自动带默认端点；Z.AI 填国际站 Endpoint）。",
+        _ => "尚无连接——填局域网/内部接口地址（可空凭据），状态词表在组件向导里配。",
+    };
 
     private void SaveGeneral()
     {
@@ -402,10 +682,12 @@ internal sealed class SettingsWindow : Window
 
     // —— 连接：列表 + 表单 + 测试（B-801；token 只进 DPAPI） ——
 
-    private UIElement BuildConnectionEditor()
+    /// <summary>连接表单。lockType 非空 = Provider 模块页（类型锁定，凭证/端点提示按类型定制）。</summary>
+    private UIElement BuildConnectionEditor(string? lockType)
     {
-        _connTypeBox = new ComboBox { Header = "类型", Width = 160 };
-        foreach (var type in _runtime.ConnectionProviders.Keys)
+        _connTypeBox = new ComboBox { Header = "类型", Width = 160, IsEnabled = lockType is null };
+        IEnumerable<string> types = lockType is { } locked ? [locked] : _runtime.ConnectionProviders.Keys;
+        foreach (var type in types)
         {
             _connTypeBox.Items.Add(type);
         }
@@ -413,9 +695,9 @@ internal sealed class SettingsWindow : Window
         {
             _connTypeBox.SelectedIndex = 0;
         }
-        _connIdBox = new TextBox { Header = "名称（唯一 Id）", Width = 200, PlaceholderText = "github-main" };
-        _connEndpointBox = new TextBox { Header = "Endpoint（可空 = 官方 API）", Width = 280, PlaceholderText = "https://api.github.com" };
-        _connTokenBox = new PasswordBox { Header = "Token（只写 DPAPI，JSON 仅存引用）", Width = 280 };
+        _connIdBox = new TextBox { Header = "名称（唯一 Id）", Width = 200, PlaceholderText = ConnectionIdHint(lockType) };
+        _connEndpointBox = new TextBox { Header = ConnectionEndpointHeader(lockType), Width = 280, PlaceholderText = ConnectionEndpointHint(lockType) };
+        _connTokenBox = new PasswordBox { Header = ConnectionTokenHeader(lockType), Width = 280 };
 
         _connSaveButton = new Button { Content = "保存连接" };
         _connSaveButton.Click += async (_, _) => await SaveConnectionAsync();
@@ -473,6 +755,8 @@ internal sealed class SettingsWindow : Window
             Type = SelectedString(_connTypeBox) ?? "github",
             Endpoint = string.IsNullOrWhiteSpace(_connEndpointBox.Text) ? null : _connEndpointBox.Text.Trim(),
             CredentialRef = credentialRef,
+            Enabled = existing?.Enabled ?? true, // 编辑保留启停状态
+            Settings = existing?.Settings ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), // 保留 auth_header 等高级项
         };
         _runtime.Config.UpsertConnection(connection);
         ResetConnectionEditor();
@@ -480,6 +764,36 @@ internal sealed class SettingsWindow : Window
         Feedback(_connFeedback, $"✓ 连接 {id} 已保存。", error: false);
         SettingsApplied?.Invoke();
     }
+
+    private static string ConnectionIdHint(string? lockType) => lockType switch
+    {
+        "github" => "github-main",
+        "bigmodel" => "zhipu",
+        "http" => "ci-local",
+        _ => "github-main",
+    };
+
+    private static string ConnectionEndpointHeader(string? lockType) => lockType switch
+    {
+        "bigmodel" => "Endpoint（可空 = 官方监控接口；Z.AI 填国际站地址）",
+        "http" => "Endpoint（必填，如局域网打包工具地址）",
+        _ => "Endpoint（可空 = 官方 API）",
+    };
+
+    private static string ConnectionEndpointHint(string? lockType) => lockType switch
+    {
+        "bigmodel" => "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+        "http" => "http://192.168.1.10:8080/api/status",
+        _ => "https://api.github.com",
+    };
+
+    private static string ConnectionTokenHeader(string? lockType) => lockType switch
+    {
+        "github" => "PAT（只写 DPAPI，JSON 仅存引用）",
+        "bigmodel" => "API Key（只写 DPAPI；监控接口裸 Key 直传）",
+        "http" => "API Key（可选，只写 DPAPI；默认 Bearer 头，可在 config.json 改）",
+        _ => "Token（只写 DPAPI，JSON 仅存引用）",
+    };
 
     private void ResetConnectionEditor()
     {
@@ -494,19 +808,40 @@ internal sealed class SettingsWindow : Window
 
     private void RebuildConnections()
     {
+        if (_connectionList is null)
+        {
+            return; // 常规/外观/高级页无连接区
+        }
         _connectionList.Children.Clear();
-        foreach (var connection in _runtime.Config.Connections)
+        foreach (var connection in _runtime.Config.Connections.Where(c => _scopeType is null || c.Type == _scopeType))
         {
             _connectionList.Children.Add(MakeConnectionRow(connection));
         }
-        if (_runtime.Config.Connections.Count == 0)
+        if (!_runtime.Config.Connections.Any(c => _scopeType is null || c.Type == _scopeType))
         {
-            _connectionList.Children.Add(new TextBlock
+            _connectionList.Children.Add(Hint(_scopeType is { } type ? ProviderEmptyHint(type) : "尚无连接。"));
+        }
+        SyncModuleToggles();
+    }
+
+    /// <summary>左目录的模块开关与连接实际启停对齐（行内开关改动后回写）。</summary>
+    private void SyncModuleToggles()
+    {
+        if (_moduleToggles.Count == 0)
+        {
+            return;
+        }
+        _syncingToggles = true;
+        try
+        {
+            foreach (var (type, toggle) in _moduleToggles)
             {
-                Text = "尚无连接——先添加一个 GitHub 连接（PAT），组件才能拉取状态。",
-                FontSize = 12,
-                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
-            });
+                toggle.IsOn = TypeEnabled(type);
+            }
+        }
+        finally
+        {
+            _syncingToggles = false;
         }
     }
 
@@ -514,10 +849,41 @@ internal sealed class SettingsWindow : Window
     {
         var label = new TextBlock
         {
-            Text = $"{connection.Id} · {connection.Type}{(connection.CredentialRef is null ? " · 无凭据" : " · 凭据已存")}",
+            Text = $"{connection.Id}{(connection.CredentialRef is null ? " · 无凭据" : " · 凭据已存")}{(connection.Enabled ? "" : " · 已停用")}",
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
         };
+
+        // 单连接启停（Enabled 是 init-only：with 表达式替换后落库）
+        var enabledToggle = new ToggleSwitch
+        {
+            IsOn = connection.Enabled,
+            OnContent = "",
+            OffContent = "",
+            Margin = new Thickness(0, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        enabledToggle.Toggled += (_, _) =>
+        {
+            // Enabled init-only（class 非 record）：重建替换落库
+            _runtime.Config.UpsertConnection(new ConnectionConfig
+            {
+                Id = connection.Id,
+                Type = connection.Type,
+                Endpoint = connection.Endpoint,
+                CredentialRef = connection.CredentialRef,
+                Enabled = enabledToggle.IsOn,
+                Settings = connection.Settings,
+            });
+            if (!enabledToggle.IsOn)
+            {
+                // 停用即失活关联组件（不留旧灯），再重建列表
+                _runtime.InvalidateWidgets(_runtime.Config.Widgets.Where(w => w.ConnectionId == connection.Id).Select(w => w.Id));
+            }
+            RebuildConnections();
+            RebuildWidgets();
+        };
+
         var test = new Button { Content = "测试" };
         test.Click += async (_, _) => await TestConnectionAsync(connection);
         var edit = new Button { Content = "编辑" };
@@ -534,16 +900,18 @@ internal sealed class SettingsWindow : Window
         var delete = new Button { Content = "删除" };
         delete.Click += (_, _) =>
         {
+            _runtime.InvalidateWidgets(_runtime.Config.Widgets.Where(w => w.ConnectionId == connection.Id).Select(w => w.Id));
             _runtime.Config.RemoveConnection(connection.Id);
             RebuildConnections();
             RebuildWidgets(); // ConnectionId 失联的组件如实展示
             PinsChanged?.Invoke();
         };
+
         return new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { label, test, edit, delete },
+            Children = { label, enabledToggle, test, edit, delete },
         };
     }
 
@@ -577,7 +945,7 @@ internal sealed class SettingsWindow : Window
     private UIElement BuildWidgetEditor()
     {
         _widgetTypeBox = new ComboBox { Header = "类型", Width = 220 };
-        foreach (var descriptor in GitHubWidgetDescriptors.All)
+        foreach (var descriptor in _scopeDescriptors ?? AllWidgetDescriptors())
         {
             _widgetTypeBox.Items.Add(new ComboBoxItem { Content = descriptor.DisplayName, Tag = descriptor.Type });
         }
@@ -644,7 +1012,7 @@ internal sealed class SettingsWindow : Window
     {
         var previous = TagOf(_widgetConnectionBox);
         _widgetConnectionBox.Items.Clear();
-        foreach (var connection in _runtime.Config.Connections)
+        foreach (var connection in _runtime.Config.Connections.Where(c => _scopeType is null || c.Type == _scopeType))
         {
             _widgetConnectionBox.Items.Add(new ComboBoxItem { Content = connection.Id, Tag = connection.Id });
         }
@@ -698,11 +1066,12 @@ internal sealed class SettingsWindow : Window
             colorOverride = normalized;
         }
 
-        var repo = config.GetValueOrDefault("repo", "widget");
-        var id = $"{descriptor.Type}:{repo}";
+        // 组件 Id 种子按类型取自然键：GitHub 用 repo，HTTP/额度用 label，缺省退类型尾段
+        var seed = config.GetValueOrDefault("repo") ?? config.GetValueOrDefault("label") ?? descriptor.Type.Split('.')[^1];
+        var id = $"{descriptor.Type}:{seed}";
         for (var suffix = 2; _runtime.Config.FindWidget(id) is not null; suffix++)
         {
-            id = $"{descriptor.Type}:{repo}-{suffix}";
+            id = $"{descriptor.Type}:{seed}-{suffix}";
         }
 
         var widget = new WidgetConfig
@@ -725,30 +1094,29 @@ internal sealed class SettingsWindow : Window
 
     private WidgetTypeDescriptor? SelectedWidgetDescriptor()
         => TagOf(_widgetTypeBox) is { } type
-            ? GitHubWidgetDescriptors.All.FirstOrDefault(d => d.Type == type)
+            ? AllWidgetDescriptors().FirstOrDefault(d => d.Type == type)
             : null;
 
     private void RebuildWidgets()
     {
+        if (_widgetList is null)
+        {
+            return; // 常规/外观/高级页无组件区
+        }
         _widgetList.Children.Clear();
-        foreach (var widget in _runtime.Config.Widgets)
+        foreach (var widget in _runtime.Config.Widgets.Where(w => _scopeDescriptors is null || _scopeDescriptors.Any(d => d.Type == w.Type)))
         {
             _widgetList.Children.Add(MakeWidgetRow(widget));
         }
-        if (_runtime.Config.Widgets.Count == 0)
+        if (!_runtime.Config.Widgets.Any(w => _scopeDescriptors is null || _scopeDescriptors.Any(d => d.Type == w.Type)))
         {
-            _widgetList.Children.Add(new TextBlock
-            {
-                Text = "尚无组件——用下方向导添加（仓库/工作流等字段由类型决定）。",
-                FontSize = 12,
-                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
-            });
+            _widgetList.Children.Add(Hint("尚无组件——用下方向导添加，字段由组件类型决定。"));
         }
     }
 
     private UIElement MakeWidgetRow(WidgetConfig widget)
     {
-        var descriptor = GitHubWidgetDescriptors.All.FirstOrDefault(d => d.Type == widget.Type);
+        var descriptor = AllWidgetDescriptors().FirstOrDefault(d => d.Type == widget.Type);
         var missingConnection = _runtime.Config.Connections.All(c => c.Id != widget.ConnectionId);
         var label = new TextBlock
         {
@@ -776,6 +1144,7 @@ internal sealed class SettingsWindow : Window
         var delete = new Button { Content = "删除" };
         delete.Click += (_, _) =>
         {
+            _runtime.InvalidateWidgets([widget.Id]); // 面板/聚合器丢弃残留状态
             _runtime.Config.RemoveWidget(widget.Id);
             RebuildWidgets();
             PinsChanged?.Invoke();

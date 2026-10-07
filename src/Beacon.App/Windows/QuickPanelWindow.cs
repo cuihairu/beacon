@@ -54,6 +54,7 @@ public sealed partial class QuickPanelWindow : Window
         _dispatcher = dispatcher;
 
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => dispatcher.Post(() => OnStateChanged(evt.State, record: true)));
+        runtime.Bus.Subscribe<WidgetsInvalidated>(evt => dispatcher.Post(() => OnWidgetsInvalidated(evt.WidgetIds)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(_ => dispatcher.Post(UpdateHeader));
 
         // 缓存优先（B-601 验收：打开无网络等待白屏）——启动即用上次落盘状态填充首屏
@@ -157,6 +158,25 @@ public sealed partial class QuickPanelWindow : Window
             {
                 _events.RemoveAt(_events.Count - 1);
             }
+        }
+        UpdateHeader();
+        UpdateOverview();
+        RebuildRecent();
+    }
+
+    /// <summary>组件失效（模块停用/删除）：丢弃残留状态与事件，不留旧灯。</summary>
+    private void OnWidgetsInvalidated(IReadOnlyList<string> widgetIds)
+    {
+        var removed = false;
+        foreach (var widgetId in widgetIds)
+        {
+            removed |= _states.Remove(widgetId);
+        }
+        var ids = widgetIds.ToHashSet(StringComparer.Ordinal);
+        removed |= _events.RemoveAll(e => ids.Contains(e.State.WidgetId)) > 0;
+        if (!removed)
+        {
+            return;
         }
         UpdateHeader();
         UpdateOverview();

@@ -106,6 +106,10 @@ public sealed class WidgetHost : IAsyncDisposable
             _logger?.LogWarning("No provider for widget type {WidgetType}; skipped.", widget.Type);
             return true;
         }
+        if (!connection.Enabled)
+        {
+            return true; // 模块停用：静默跳过（不算失败，不触发退避）
+        }
 
         try
         {

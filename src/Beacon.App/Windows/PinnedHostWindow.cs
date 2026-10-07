@@ -288,6 +288,12 @@ internal sealed class PinnedHostWindow
             {
                 continue;
             }
+            // 模块停用（连接 Enabled=false）的组件不占桌面
+            if (_runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId) is { Enabled: false })
+            {
+                _latest.Remove(widget.Id);
+                continue;
+            }
             var tile = new PinTile(widget, _palette, _motion);
             AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;

@@ -113,6 +113,46 @@ public sealed class BeaconRuntime : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 模块启停（PowerToys 形态配置中心）：按连接类型整体开关。停用即失活——宿主按 Enabled 跳过刷新，
+    /// 已有状态经 WidgetsInvalidated 从聚合器/面板丢弃（不留旧灯）。
+    /// </summary>
+    public void SetConnectionTypeEnabled(string connectionType, bool enabled)
+    {
+        var affected = new List<string>();
+        foreach (var connection in Config.Connections.Where(c => c.Type == connectionType && c.Enabled != enabled))
+        {
+            // ConnectionConfig 是 class 且 Enabled init-only：重建替换（连接是不可变值语义）
+            Config.UpsertConnection(new ConnectionConfig
+            {
+                Id = connection.Id,
+                Type = connection.Type,
+                Endpoint = connection.Endpoint,
+                CredentialRef = connection.CredentialRef,
+                Enabled = enabled,
+                Settings = connection.Settings,
+            });
+            if (!enabled)
+            {
+                affected.AddRange(Config.Widgets.Where(w => w.ConnectionId == connection.Id).Select(w => w.Id));
+            }
+        }
+        if (affected.Count > 0)
+        {
+            Bus.Publish(new WidgetsInvalidated(affected));
+        }
+    }
+
+    /// <summary>组件删除后的状态清理：聚合器与面板丢弃残留（不刷新周期也能即时生效）。</summary>
+    public void InvalidateWidgets(IEnumerable<string> widgetIds)
+    {
+        var ids = widgetIds.ToList();
+        if (ids.Count > 0)
+        {
+            Bus.Publish(new WidgetsInvalidated(ids));
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await Host.DisposeAsync().ConfigureAwait(false);
