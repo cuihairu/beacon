@@ -142,6 +142,12 @@ public partial class App : Application
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
             capsule.SetVisible(appConfig.ShowCapsule);
             capsule.ApplyOpacity(appConfig.UiOpacity);
+            // B-805：调色即时生效——托盘/胶囊/L0 用最新快照按新色表重渲染（UiPalette 实时读 config）
+            var snapshot = runtime.Aggregator.Snapshot();
+            capsule.UpdateStatus(snapshot);
+            tray.SetSeverity(snapshot.Overall);
+            tray.SetTip(BuildTrayTip(snapshot));
+            _pinnedHost?.ReloadTiles();
         }
 
         Windows.SettingsWindow? settingsWindow = null;

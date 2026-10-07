@@ -51,6 +51,22 @@ public sealed class JsonConfigurationStore : IConfigurationStore
 
     public void SavePins() => SaveFile("pins.json", _pins);
 
+    /// <summary>B-802 导入：四份配置整体替换并落盘（secrets 不随包走，credentialRef 原样保留待重录）。</summary>
+    public void ReplaceAll(AppConfig app, List<ConnectionConfig> connections, List<WidgetConfig> widgets, PinsConfig pins)
+    {
+        lock (_gate)
+        {
+            _app = app;
+            _connections = connections;
+            _widgets = widgets;
+            _pins = pins;
+        }
+        SaveApp();
+        SaveConnections();
+        SaveWidgets();
+        SavePins();
+    }
+
     public void UpsertConnection(ConnectionConfig connection)
     {
         lock (_gate)

@@ -3,10 +3,13 @@ using Beacon.App.Services;
 using Beacon.Connections;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
+using Beacon.Storage;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 
 namespace Beacon.App.Windows;
 
@@ -20,6 +23,7 @@ namespace Beacon.App.Windows;
 internal sealed class SettingsWindow : Window
 {
     private readonly BeaconRuntime _runtime;
+    private readonly MotionEngine _motion;
 
     private TextBox _hotkeyBox = null!;
     private ToggleSwitch _startupToggle = null!;
@@ -41,7 +45,16 @@ internal sealed class SettingsWindow : Window
     private ComboBox _widgetConnectionBox = null!;
     private ComboBox _widgetTierBox = null!;
     private StackPanel _widgetFields = null!;
+    private TextBox _widgetColorBox = null!;
     private TextBlock _widgetFeedback = null!;
+
+    private readonly Dictionary<string, TextBox> _colorBoxes = [];
+    private TextBlock _appearanceFeedback = null!;
+    private ComboBox _motionModeBox = null!;
+    private Slider _motionIntensitySlider = null!;
+    private Border _previewHost = null!;
+    private Ellipse _previewLight = null!;
+    private TextBlock _importFeedback = null!;
 
     /// <summary>常规设置落库后触发（App 侧重注册热键/自启/胶囊显隐/透明度）。</summary>
     public event Action? SettingsApplied;
@@ -52,6 +65,7 @@ internal sealed class SettingsWindow : Window
     public SettingsWindow(BeaconRuntime runtime)
     {
         _runtime = runtime;
+        _motion = new MotionEngine(runtime.Config); // 预览与运行时同引擎：设置改档即刻反映到预览
         Title = "Beacon 设置";
         Content = BuildRoot();
     }
@@ -86,6 +100,9 @@ internal sealed class SettingsWindow : Window
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
         root.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle } });
 
+        root.Children.Add(SectionTitle("外观"));
+        root.Children.Add(BuildAppearanceSection());
+
         root.Children.Add(SectionTitle("连接"));
         _connectionList = new StackPanel { Spacing = 6 };
         root.Children.Add(_connectionList);
@@ -97,6 +114,9 @@ internal sealed class SettingsWindow : Window
         root.Children.Add(_widgetList);
         root.Children.Add(BuildWidgetEditor());
         root.Children.Add(_widgetFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+
+        root.Children.Add(SectionTitle("导入导出"));
+        root.Children.Add(BuildImportExportSection());
 
         root.Children.Add(SectionTitle("通知规则"));
         root.Children.Add(new TextBlock
@@ -130,6 +150,253 @@ internal sealed class SettingsWindow : Window
         app.ShowCapsule = _capsuleToggle.IsOn;
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke();
+    }
+
+    // —— 外观：级别色编辑 + 动效档位与逐族预览（B-805，RFC §4.1/§6.2.8） ——
+
+    private UIElement BuildAppearanceSection()
+    {
+        var palette = new StackPanel { Spacing = 6 };
+        foreach (var key in new[] { "info", "success", "warning", "error", "critical", "offline" })
+        {
+            var box = new TextBox
+            {
+                Header = $"{ColorLabel(key)}（留空 = 默认 {DefaultHex(key)}）",
+                Text = _runtime.Config.App.Appearance.SeverityColors.GetValueOrDefault(key, ""),
+                PlaceholderText = DefaultHex(key),
+                Width = 300,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            };
+            var captured = key;
+            box.LostFocus += (_, _) => SaveSeverityColor(captured, box.Text.Trim());
+            _colorBoxes[key] = box;
+            palette.Children.Add(box);
+        }
+        var reset = new Button { Content = "重置默认" };
+        reset.Click += (_, _) => ResetSeverityColors();
+
+        _motionModeBox = new ComboBox { Header = "动效档位", Width = 170 };
+        foreach (var (value, label) in new[] { ("full", "完全"), ("reduced", "适度（默认）"), ("off", "关闭") })
+        {
+            _motionModeBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        _motionModeBox.SelectedIndex = Math.Max(0, IndexOfTag(_motionModeBox, _runtime.Config.App.Appearance.Motion.Mode));
+        _motionModeBox.SelectionChanged += (_, _) => SaveMotion();
+
+        _motionIntensitySlider = new Slider
+        {
+            Header = "动效强度",
+            Minimum = 0.5,
+            Maximum = 2.0,
+            StepFrequency = 0.1,
+            Value = Math.Clamp(_runtime.Config.App.Appearance.Motion.Intensity, 0.5, 2.0),
+            Width = 240,
+        };
+        _motionIntensitySlider.ValueChanged += (_, _) => SaveMotion();
+
+        _previewLight = new Ellipse { Width = 24, Height = 24, Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 63, 185, 80)) };
+        _previewHost = new Border
+        {
+            Padding = new Thickness(12),
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
+            Child = _previewLight,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        Button PreviewButton(string label, string family)
+        {
+            var button = new Button { Content = label };
+            button.Click += (_, _) => PreviewMotion(family);
+            return button;
+        }
+
+        var form = new StackPanel { Spacing = 8 };
+        form.Children.Add(palette);
+        form.Children.Add(reset);
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _motionModeBox, _motionIntensitySlider } });
+        form.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            Children =
+            {
+                PreviewButton("过渡", "transition"), PreviewButton("闪烁", "flash"), PreviewButton("呼吸", "breath"),
+                PreviewButton("脉冲", "pulse"), PreviewButton("滑入", "slide"), PreviewButton("静止", "stop"), _previewHost,
+            },
+        });
+        form.Children.Add(_appearanceFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        form.Children.Add(new TextBlock
+        {
+            FontSize = 11,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Text = "改动即时预览并写入 config.json appearance；off 档预览即全静止，静止按钮复位循环动画。",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        return new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)), Child = form };
+    }
+
+    private void SaveSeverityColor(string key, string text)
+    {
+        var colors = _runtime.Config.App.Appearance.SeverityColors;
+        if (text.Length == 0)
+        {
+            colors.Remove(key); // 留空 = 回落默认色表
+        }
+        else
+        {
+            var normalized = text.StartsWith('#') ? text : "#" + text;
+            if (!PaletteResolver.TryParseHex(normalized, out _))
+            {
+                Feedback(_appearanceFeedback, $"✗ {ColorLabel(key)}格式无效（#RRGGBB 或 #AARRGGBB）。", error: true);
+                return;
+            }
+            colors[key] = normalized;
+        }
+        _runtime.Config.SaveApp();
+        Feedback(_appearanceFeedback, $"✓ {ColorLabel(key)}已保存。", error: false);
+        SettingsApplied?.Invoke(); // App 侧重渲染托盘/胶囊/L0——改色即刻生效
+    }
+
+    private void ResetSeverityColors()
+    {
+        _runtime.Config.App.Appearance.SeverityColors.Clear();
+        _runtime.Config.SaveApp();
+        foreach (var (_, box) in _colorBoxes)
+        {
+            box.Text = "";
+        }
+        Feedback(_appearanceFeedback, "✓ 已重置为默认色表。", error: false);
+        SettingsApplied?.Invoke();
+    }
+
+    private void SaveMotion()
+    {
+        var motion = _runtime.Config.App.Appearance.Motion;
+        motion.Mode = TagOf(_motionModeBox) ?? "reduced";
+        motion.Intensity = _motionIntensitySlider.Value;
+        _runtime.Config.SaveApp(); // MotionEngine 每次调用实时读配置——无需重渲染
+    }
+
+    /// <summary>逐族预览（B-805）：与 L0 同一引擎，off 档内部即静止。</summary>
+    private void PreviewMotion(string family)
+    {
+        switch (family)
+        {
+            case "transition":
+                _motion.TransitionFill(_previewLight, SeverityPalette.Rgb(255, 248, 81, 73));
+                break;
+            case "flash":
+                _motion.Flash(_previewHost);
+                break;
+            case "breath":
+                _motion.StartBreathing(_previewLight);
+                break;
+            case "pulse":
+                _motion.StartPulse(_previewLight, 24);
+                break;
+            case "slide":
+                _motion.SlideIn(_previewHost);
+                break;
+            case "stop":
+                _motion.StopLoops(_previewLight);
+                _motion.StopLoops(_previewHost);
+                break;
+        }
+    }
+
+    // —— 导入导出（B-802）：四份配置单文件；secrets 绝不入包，导入后按 credentialRef 提示重录 ——
+
+    private UIElement BuildImportExportSection()
+    {
+        var export = new Button { Content = "导出配置…" };
+        export.Click += async (_, _) => await ExportAsync();
+        var import = new Button { Content = "导入配置…" };
+        import.Click += async (_, _) => await ImportAsync();
+        var panel = new StackPanel { Spacing = 8 };
+        panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { export, import } });
+        panel.Children.Add(new TextBlock
+        {
+            FontSize = 11,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Text = "导出包含 config/connections/widgets/pins 四份配置；密钥绝不入包（JSON 只存 credentialRef），导入后按提示在连接里重录。",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(_importFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        return panel;
+    }
+
+    private async Task ExportAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        picker.SuggestedFileName = $"beacon-config-{DateTimeOffset.Now:yyyyMMdd-HHmm}";
+        picker.FileTypeChoices.Add("JSON", new List<string> { ".json" });
+        var file = await picker.PickSaveFileAsync();
+        if (file is null)
+        {
+            return;
+        }
+        try
+        {
+            new ImportExport(_runtime.Config).Export(file.Path);
+            Feedback(_importFeedback, $"✓ 已导出到 {file.Path}（不含密钥；导入方需重录）。", error: false);
+        }
+        catch (Exception exception)
+        {
+            Feedback(_importFeedback, $"✗ 导出失败：{exception.Message}", error: true);
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        picker.FileTypeFilter.Add(".json");
+        var file = await picker.PickSingleFileAsync();
+        if (file is null)
+        {
+            return;
+        }
+        try
+        {
+            var result = new ImportExport(_runtime.Config).Import(file.Path);
+            RebuildConnections();
+            RebuildWidgets();
+            RefreshWidgetConnectionOptions();
+            var reentry = result.CredentialRefs.Count > 0
+                ? $"；请在「连接」里重录密钥：{string.Join("、", result.CredentialRefs)}"
+                : "";
+            Feedback(_importFeedback, $"✓ 已导入 {result.Connections} 连接 / {result.Widgets} 组件 / {result.Pins} 钉选{reentry}。", error: false);
+            PinsChanged?.Invoke(); // 组件集变化 → L0 重建
+            SettingsApplied?.Invoke(); // 通用设置也随包变了 → 热键/自启/胶囊对齐
+        }
+        catch (Exception exception)
+        {
+            Feedback(_importFeedback, $"✗ 导入失败：{exception.Message}", error: true);
+        }
+    }
+
+    private static string ColorLabel(string key) => key switch
+    {
+        "info" => "信息",
+        "success" => "成功",
+        "warning" => "警告",
+        "error" => "错误",
+        "critical" => "严重",
+        "offline" => "离线",
+        _ => key,
+    };
+
+    private static string DefaultHex(string key)
+    {
+        if (key == PaletteResolver.OfflineKey)
+        {
+            return PaletteResolver.DefaultOfflineHex;
+        }
+        return Enum.TryParse<Severity>(key, ignoreCase: true, out var severity)
+            ? PaletteResolver.Defaults[severity]
+            : PaletteResolver.DefaultOfflineHex;
     }
 
     // —— 连接：列表 + 表单 + 测试（B-801；token 只进 DPAPI） ——
@@ -326,6 +593,7 @@ internal sealed class SettingsWindow : Window
         }
 
         _widgetFields = new StackPanel { Spacing = 8 };
+        _widgetColorBox = new TextBox { Header = "颜色覆盖（可选 #RRGGBB，作用于状态灯）", PlaceholderText = "#3fb950", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
 
         var save = new Button { Content = "添加组件" };
         save.Click += (_, _) => SaveWidget();
@@ -333,6 +601,7 @@ internal sealed class SettingsWindow : Window
         var form = new StackPanel { Spacing = 8, Padding = new Thickness(0, 4, 0, 0) };
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _widgetTypeBox, _widgetConnectionBox, _widgetTierBox } });
         form.Children.Add(_widgetFields);
+        form.Children.Add(_widgetColorBox);
         form.Children.Add(save);
         var root = new Border
         {
@@ -365,6 +634,7 @@ internal sealed class SettingsWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Left,
             });
         }
+        _widgetColorBox.Text = "";
         var tier = descriptor.SuggestedTier;
         _widgetTierBox.SelectedIndex = _widgetTierBox.Items.IndexOf(tier) is var index && index >= 0 ? index : _widgetTierBox.Items.Count - 1;
     }
@@ -414,6 +684,18 @@ internal sealed class SettingsWindow : Window
                 return;
             }
         }
+        string? colorOverride = null;
+        var colorText = _widgetColorBox.Text.Trim();
+        if (colorText.Length > 0)
+        {
+            var normalized = colorText.StartsWith('#') ? colorText : "#" + colorText;
+            if (!PaletteResolver.TryParseHex(normalized, out _))
+            {
+                Feedback(_widgetFeedback, "✗ 颜色覆盖格式无效（#RRGGBB 或 #AARRGGBB）。", error: true);
+                return;
+            }
+            colorOverride = normalized;
+        }
 
         var repo = config.GetValueOrDefault("repo", "widget");
         var id = $"{descriptor.Type}:{repo}";
@@ -430,9 +712,10 @@ internal sealed class SettingsWindow : Window
             Config = config,
             RefreshTier = SelectedString(_widgetTierBox) ?? descriptor.SuggestedTier,
             Pinned = false,
+            ColorOverride = colorOverride,
         };
         _runtime.Config.UpsertWidget(widget);
-        RebuildWidgetFields(); // 清空已提交的字段输入
+        RebuildWidgetFields(); // 清空已提交的字段输入（含颜色覆盖）
         RebuildWidgets();
         RefreshWidgetConnectionOptions();
         Feedback(_widgetFeedback, $"✓ 组件 {id} 已添加。", error: false);
@@ -470,6 +753,7 @@ internal sealed class SettingsWindow : Window
         {
             Text = $"{widget.Id} · {widget.RefreshTier}"
                    + (widget.Pinned ? " · 已钉" : "")
+                   + (widget.ColorOverride is { } color ? $" · 覆盖 {color}" : "")
                    + (missingConnection ? " · 连接缺失" : ""),
             FontSize = 13,
             VerticalAlignment = VerticalAlignment.Center,
