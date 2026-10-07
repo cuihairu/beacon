@@ -36,7 +36,7 @@
 
 首启自动常驻托盘并显示状态胶囊（屏幕右下角）与启动通知气泡。GitHub PAT 在托盘菜单 → 设置 → 连接里录入（token 只写 DPAPI 密钥库，配置 JSON 仅存 credentialRef，绝不落明文）。全局热键默认 `Ctrl+Alt+B` 唤出面板；开机自启默认开启（HKCU Run，设置里可关）。权限仅常规用户态——读写 `%AppData%\Beacon\`、DPAPI 加密、`Shell_NotifyIcon`、`RegisterHotKey`，无需管理员。
 
-**双击没反应？** 按序排查：① 未签名 exe 被 SmartScreen 拦截——点「更多信息」→「仍要运行」；② 托盘常驻应用没有主窗口——看右下角状态胶囊与启动通知，或任务管理器查 `Beacon.App` 进程；③ 查日志 `%AppData%\Beacon\logs\beacon-*.log`；④ 启动失败会弹错误框（堆栈+日志路径），日志在 `%AppData%\Beacon\logs\crash-*.log`——把弹窗截图或日志内容提 Issue 即可定位。
+**双击没反应？** → [故障排查手册](docs/故障排查.md)（SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志，一页说清）。
 
 ## 文档
 
