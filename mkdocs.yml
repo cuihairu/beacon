@@ -32,6 +32,7 @@ theme:
 nav:
   - 首页: index.md
   - 任务书: mission.md
+  - 定位与首批场景: positioning.md
   - RFC-001 技术方案: rfc/RFC-001-technical-design.md
   - Solution 与项目目录: solution-structure.md
   - MVP Issue 列表: mvp-issues.md

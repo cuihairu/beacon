@@ -1,6 +1,7 @@
 # Beacon MVP Issue 列表
 
 > 配套 [RFC-001](rfc/RFC-001-technical-design.md) 与 [Solution 目录](solution-structure.md)。
+> P0 方向（公司打包工具 / AI 额度 / Generic HTTP）与增补计划见 [定位与首批场景](positioning.md)。
 > 每个 Issue 自包含（可直接粘贴进 GitHub），验收标准即 Done 定义。
 > **范围纪律**：不在此列表中的需求一律进二期（RFC §2.2 非目标清单为评审基线）。
 
