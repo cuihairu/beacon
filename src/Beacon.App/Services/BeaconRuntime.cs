@@ -18,8 +18,9 @@ internal sealed class DictionaryWidgetResolver(IReadOnlyDictionary<string, IWidg
 /// <summary>
 /// 运行时装配（B-504）：配置/密钥/缓存 + GitHub Providers + 调度/宿主/聚合/通知/动作
 /// 组装成一条数据流（Provider → WidgetState → Event Bus → 聚合/通知/UI，RFC §3）。
+/// public：作为 public 窗口类（QuickPanelWindow）构造器参数，可及性须一致（CS0051）。
 /// </summary>
-internal sealed class BeaconRuntime : IAsyncDisposable
+public sealed class BeaconRuntime : IAsyncDisposable
 {
     public IEventBus Bus { get; }
     public JsonConfigurationStore Config { get; }
