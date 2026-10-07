@@ -1,0 +1,46 @@
+site_name: Beacon 文档
+site_description: Windows 开发者状态与操作中心 — Signal + Action，不是 Dashboard
+site_url: https://cuihairu.github.io/beacon/
+repo_url: https://github.com/cuihairu/beacon
+repo_name: cuihairu/beacon
+
+theme:
+  name: material
+  language: zh
+  logo: img/logo.svg
+  favicon: img/logo.svg
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.top
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色
+
+nav:
+  - 首页: index.md
+  - 任务书: 任务书.md
+  - RFC-001 技术方案: rfc/RFC-001-技术方案.md
+  - Solution 与项目目录: solution-项目目录.md
+  - MVP Issue 列表: MVP-Issue列表.md
+  - 附录·任务书原始摘录: 任务书-原始摘录.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
