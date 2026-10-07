@@ -1,0 +1,97 @@
+name: Daily Build
+
+# Beacon 每日构建交付面：windows-latest 上 dotnet publish 出 WinUI 3 自包含包
+# （unpackaged，RFC §10），发布固定 tag `nightly` 的滚动 Release——资产清旧传新、
+# 附 SHA256SUMS 全量校验单。Release 资产是硬交付面，Actions artifacts 只是
+# run 页临时下载（14 天过期），本工作流不依赖它。
+#
+# 发布机制（cage/chirp 同款）：tag 固定 `nightly` 不动，每次发布删旧资产再传
+# 新；--prerelease --latest=false 保证滚动构建永不冒充正式版。仓库红线是
+# 「禁版本 tag」；`nightly` 是固定滚动 tag，不是版本号，不受限。
+#
+# 调度：GitHub schedule 只在默认分支（main）生效；北京时间凌晨执行。
+
+on:
+  schedule:
+    # UTC 19:07 = 北京时间 03:07（凌晨），避开整点调度高峰
+    - cron: '7 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-build
+  cancel-in-progress: false
+
+jobs:
+  build-publish:
+    name: Build & publish nightly (windows-x86_64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish (self-contained win-x64)
+        run: dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish
+
+      - name: Pack (zip)
+        shell: pwsh
+        run: Compress-Archive -Path "publish/*" -DestinationPath "beacon-nightly-windows-x86_64.zip"
+
+      - name: Publish rolling nightly release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ZIP=beacon-nightly-windows-x86_64.zip
+          sha256sum "$ZIP" > SHA256SUMS
+          stamp="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          sz="$(du -h "$ZIP" | cut -f1)"
+          {
+            echo "滚动每日构建（rolling nightly）。tag 固定 \`nightly\`，资产随最新 main 清旧传新——本页永远对应当前主干。"
+            echo
+            echo "- 构建时间：${stamp}"
+            echo "- Commit：\`${GITHUB_SHA}\`"
+            echo "- 工作流：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "## 资产"
+            echo
+            echo "| 资产 | 大小 | 说明 |"
+            echo "| --- | --- | --- |"
+            echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含包（含 .NET 8 + Windows App SDK 运行时） |"
+            echo "| \`SHA256SUMS\` | - | 全部资产 sha256 清单 |"
+            echo
+            echo "## 校验"
+            echo
+            echo "资产与 \`SHA256SUMS\` 放同一目录后（PowerShell）："
+            echo
+            echo "    Get-FileHash ${ZIP} -Algorithm SHA256   # 与 SHA256SUMS 逐行比对"
+            echo "    # 装了 Git Bash 也可：sha256sum -c SHA256SUMS"
+            echo
+            echo "## 说明"
+            echo
+            echo "- 自包含（self-contained）：无需安装 .NET 运行时，解压后直接运行 \`Beacon.App.exe\`。"
+            echo "- 产物未签名：首次运行 SmartScreen 可能提示，选「仍要运行」。"
+            echo "- 每日构建只证明可构建 + 打包成功；完整质量门禁以仓库 CI（ci.yml）为准。"
+          } > notes.md
+          TAG=nightly
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" \
+              --title "Nightly · 每日构建" --notes "初始化" \
+              --prerelease --latest=false
+          fi
+          gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r a; do
+            if [ -n "$a" ]; then
+              gh release delete-asset "$TAG" "$a" --yes
+            fi
+          done
+          gh release upload "$TAG" "$ZIP" SHA256SUMS
+          gh release edit "$TAG" --title "Nightly · 每日构建 ${stamp}" \
+            --notes-file notes.md --prerelease --latest=false
+          echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
