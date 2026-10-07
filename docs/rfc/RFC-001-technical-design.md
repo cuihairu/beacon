@@ -4,8 +4,8 @@
 |---|---|
 | 状态 | Draft（待评审） |
 | 日期 | 2026-10-07 |
-| 上游 | [任务书](../任务书.md)（定位 / 分期 / 验收标准） |
-| 下游 | [Solution 项目目录](../solution-项目目录.md) · [MVP Issue 列表](../MVP-Issue列表.md) |
+| 上游 | [任务书](../mission.md)（定位 / 分期 / 验收标准） |
+| 下游 | [Solution 项目目录](../solution-structure.md) · [MVP Issue 列表](../mvp-issues.md) |
 | 平台 | Windows 10 1903+ / Windows 11，仅 Windows |
 
 ---
@@ -465,5 +465,5 @@ config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/
 | M4 会提醒 | Toast + 通知引擎 + Quick Panel/Detail | P5–P6 |
 | M5 = MVP | L0 悬浮组件 + Settings + 导入导出 + 验收发布 | P7–P8 |
 
-- 项目/程序集划分与脚手架命令：[solution-项目目录](../solution-项目目录.md)
-- 可执行任务拆解（43 个 Issue，含验收标准）：[MVP-Issue列表](../MVP-Issue列表.md)
+- 项目/程序集划分与脚手架命令：[solution-项目目录](../solution-structure.md)
+- 可执行任务拆解（43 个 Issue，含验收标准）：[MVP-Issue列表](../mvp-issues.md)

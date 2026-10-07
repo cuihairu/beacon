@@ -31,12 +31,12 @@ theme:
 
 nav:
   - 首页: index.md
-  - 任务书: 任务书.md
-  - RFC-001 技术方案: rfc/RFC-001-技术方案.md
-  - Solution 与项目目录: solution-项目目录.md
-  - MVP Issue 列表: MVP-Issue列表.md
+  - 任务书: mission.md
+  - RFC-001 技术方案: rfc/RFC-001-technical-design.md
+  - Solution 与项目目录: solution-structure.md
+  - MVP Issue 列表: mvp-issues.md
   - 故障排查: troubleshooting.md
-  - 附录·任务书原始摘录: 任务书-原始摘录.md
+  - 附录·任务书原始摘录: mission-excerpt.md
 
 markdown_extensions:
   - admonition

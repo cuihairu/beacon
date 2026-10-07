@@ -1,6 +1,6 @@
 # 故障排查（FAQ）
 
-> 安装与启动问题的排查手册。配合 [README 下载节](../README.md) 与 [B-803 端到端走查](验收-B803-MVP端到端走查.md) 使用。
+> 安装与启动问题的排查手册。配合 [README 下载节](../README.md) 与 [B-803 端到端走查](acceptance-B803-e2e-walkthrough.md) 使用。
 
 ## 双击没反应？
 

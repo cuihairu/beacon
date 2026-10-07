@@ -1,4 +1,4 @@
-# Beacon 任务书（提炼自原始方案，原文见 任务书-原始摘录.md）
+# Beacon 任务书（提炼自原始方案，原文见 mission-excerpt.md）
 
 ## 定位
 

@@ -1,6 +1,6 @@
 # Beacon Solution / 项目目录
 
-> 配套 [RFC-001](rfc/RFC-001-技术方案.md)。本文档足够精确，任何 Code Agent 在 **Windows + .NET 10 SDK + Windows App SDK** 机器上可直接落地。
+> 配套 [RFC-001](rfc/RFC-001-technical-design.md)。本文档足够精确，任何 Code Agent 在 **Windows + .NET 10 SDK + Windows App SDK** 机器上可直接落地。
 > 当前仓库工作环境为 Linux——**本阶段只产出文档，不建工程**；Beacon 代码只能在 Windows 上构建运行（WinUI 3）。
 
 ## 1. Solution 总览

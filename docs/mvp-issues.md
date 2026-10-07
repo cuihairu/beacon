@@ -1,6 +1,6 @@
 # Beacon MVP Issue 列表
 
-> 配套 [RFC-001](rfc/RFC-001-技术方案.md) 与 [Solution 目录](solution-项目目录.md)。
+> 配套 [RFC-001](rfc/RFC-001-technical-design.md) 与 [Solution 目录](solution-structure.md)。
 > 每个 Issue 自包含（可直接粘贴进 GitHub），验收标准即 Done 定义。
 > **范围纪律**：不在此列表中的需求一律进二期（RFC §2.2 非目标清单为评审基线）。
 
@@ -31,7 +31,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ### B-001 建立 Solution 与项目骨架
 - **依赖**：无
-- **内容**：按 [Solution 目录](solution-项目目录.md) 创建 sln、5 个 src 项目、3 个 test 项目；Directory.Build.props（nullable、C# 12）+ Directory.Packages.props；.editorconfig。
+- **内容**：按 [Solution 目录](solution-structure.md) 创建 sln、5 个 src 项目、3 个 test 项目；Directory.Build.props（nullable、C# 12）+ Directory.Packages.props；.editorconfig。
 - **验收**：
   - [ ] Windows 上 `dotnet build` 全绿；依赖规则符合（Core 零项目引用）
   - [ ] 目录结构与文档一致
