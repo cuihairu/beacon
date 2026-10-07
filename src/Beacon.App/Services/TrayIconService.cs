@@ -138,7 +138,10 @@ internal sealed class TrayIconService : IDisposable
         return icon;
     }
 
-    /// <summary>32×32 抗锯齿实心圆（托盘 16×16 缩显仍为圆点）；按颜色缓存 HICON，退出时统一销毁。</summary>
+    /// <summary>
+    /// 32×32 logo 剪影按级别色染色（用户确认的口径：级别色 = logo 换色；B-706 配置色即刻生效）；
+    /// 白色剪影 × 对角色阵 = 目标色，alpha 原样保留；按颜色缓存 HICON，退出时统一销毁。
+    /// </summary>
     private IntPtr DrawSeverityIcon(global::Windows.UI.Color color)
     {
         var key = (color.A, color.R, color.G, color.B);
@@ -146,17 +149,34 @@ internal sealed class TrayIconService : IDisposable
         {
             return cached;
         }
+        using var mask = LoadTrayLogoMask();
         using var bitmap = new System.Drawing.Bitmap(32, 32);
         using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
         {
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var brush = new System.Drawing.SolidBrush(
-                System.Drawing.Color.FromArgb(color.A, color.R, color.G, color.B));
-            graphics.FillEllipse(brush, 2, 2, 28, 28);
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            using var attributes = new System.Drawing.Imaging.ImageAttributes();
+            attributes.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix
+            {
+                Matrix00 = color.R / 255f,
+                Matrix11 = color.G / 255f,
+                Matrix22 = color.B / 255f,
+            });
+            var destination = new System.Drawing.Rectangle(0, 0, 32, 32);
+            graphics.DrawImage(
+                mask, destination, 0, 0, mask.Width, mask.Height,
+                System.Drawing.GraphicsUnit.Pixel, attributes);
         }
         var icon = bitmap.GetHicon();
         _runtimeIcons[key] = icon;
         return icon;
+    }
+
+    /// <summary>嵌入的 logo 白色剪影（Assets/tray-logo-mask.png，随程序集分发，不依赖发布目录散文件）。</summary>
+    private static System.Drawing.Bitmap LoadTrayLogoMask()
+    {
+        using var stream = typeof(TrayIconService).Assembly.GetManifestResourceStream("Beacon.App.Assets.tray-logo-mask.png")
+            ?? throw new InvalidOperationException("嵌入资源缺失：Beacon.App.Assets.tray-logo-mask.png");
+        return new System.Drawing.Bitmap(stream);
     }
 
     /// <summary>更新托盘提示文本（B-503 接聚合状态）。</summary>

@@ -37,5 +37,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 托盘染色用的 logo 白色剪影：内嵌进程序集，发布形态不依赖散文件 -->
+    <EmbeddedResource Include="Assets\tray-logo-mask.png" />
   </ItemGroup>
 </Project>
