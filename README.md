@@ -36,7 +36,7 @@
 
 首启自动常驻托盘并显示状态胶囊（屏幕右下角）与启动通知气泡。GitHub PAT 在托盘菜单 → 设置 → 连接里录入（token 只写 DPAPI 密钥库，配置 JSON 仅存 credentialRef，绝不落明文）。全局热键默认 `Ctrl+Alt+B` 唤出面板；开机自启默认开启（HKCU Run，设置里可关）。权限仅常规用户态——读写 `%AppData%\Beacon\`、DPAPI 加密、`Shell_NotifyIcon`、`RegisterHotKey`，无需管理员。
 
-**双击没反应？** → [故障排查手册](docs/故障排查.md)（SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志，一页说清）。
+**双击没反应？** → [故障排查手册](docs/troubleshooting.md)（SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志，一页说清）。
 
 ## 文档
 
