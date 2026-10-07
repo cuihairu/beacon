@@ -3,9 +3,11 @@ using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
@@ -14,12 +16,19 @@ namespace Beacon.App.Windows;
 
 /// <summary>
 /// L0 悬浮 tile（B-702，RFC §6.2.1）：StatusLight + 标签 + 数字/摘要，32 DIP 高。
-/// 只渲染不交互（点击落宿主的 HTCLIENT），状态变化只更新自身视觉（B-701 独立更新）。
+/// 组合而非派生（WinUI 3 的 Border 是 sealed，CS0509）；输入事件由宿主挂到 Root；
+/// 状态变化只更新自身视觉。
 /// </summary>
-internal sealed class PinTile : Border
+internal sealed class PinTile
 {
     private const int TileHeight = 32;
 
+    private readonly Border _root = new()
+    {
+        Height = TileHeight,
+        Padding = new Thickness(10, 0, 10, 0),
+        Background = new SolidColorBrush(SeverityPalette.Rgb(31, 17, 24, 32)),
+    };
     private readonly Ellipse _light = new()
     {
         Width = 8,
@@ -44,14 +53,14 @@ internal sealed class PinTile : Border
         HorizontalAlignment = HorizontalAlignment.Right,
     };
 
+    /// <summary>宿主面板挂载与输入挂接的根元素。</summary>
+    public Border Root => _root;
+
     public string WidgetId { get; }
 
     public PinTile(WidgetConfig widget)
     {
         WidgetId = widget.Id;
-        Height = TileHeight;
-        Padding = new Thickness(10, 0, 10, 0);
-        Background = new SolidColorBrush(SeverityPalette.Rgb(31, 17, 24, 32));
         _label.Text = LabelOf(widget);
 
         var grid = new Grid { ColumnSpacing = 6 };
@@ -64,7 +73,7 @@ internal sealed class PinTile : Border
         grid.Children.Add(_light);
         grid.Children.Add(_label);
         grid.Children.Add(_value);
-        Child = grid;
+        _root.Child = grid;
     }
 
     /// <summary>状态变化只更新本 tile（B-701：两 tile 独立更新）。</summary>
@@ -72,7 +81,7 @@ internal sealed class PinTile : Border
     {
         _light.Fill = new SolidColorBrush(SeverityPalette.Color(state.Severity));
         _value.Text = ValueOf(state);
-        ToolTipService.SetToolTip(this, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
+        ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
     }
 
     private static string LabelOf(WidgetConfig widget)
@@ -92,18 +101,25 @@ internal sealed class PinTile : Border
     }
 }
 
+/// <summary>一次拖动会话（左键按住 tile 起手）。</summary>
+internal sealed record DragSession(UIElement Element, global::Windows.Foundation.Point StartDip, int StartX, int StartY);
+
 /// <summary>
-/// L0 单窗口多 tile 宿主（B-701，RFC §6.2.4）：每显示器一个紧凑面板（多显示器分配随 B-703 位置持久化）。
-/// 置顶 + WS_EX_NOACTIVATE（点击不打断当前焦点）+ WS_EX_TOOLWINDOW（不进任务栏/Alt-Tab）；
-/// 窗口子类化 WM_NCHITTEST：tile 行内 HTCLIENT，其余（边角缝隙）HTTRANSPARENT——空白点击落到桌面。
-/// 状态变化经事件路由到对应 PinTile，只更新该 tile 视觉。
+/// L0 单窗口多 tile 宿主（B-701/703，RFC §6.2.3/6.2.4）：
+/// 置顶 + WS_EX_NOACTIVATE + WS_EX_TOOLWINDOW；窗口子类化——
+/// WM_NCHITTEST tile 行 HTCLIENT / 空白 HTTRANSPARENT，WM_DPICHANGED 重排，WM_DISPLAYCHANGE 越界回收。
+/// 位置按「显示器标识 + 锚点角 + DIP 偏移 + 收起态」持久化到 pins.json（PinLayoutMath 互算）；
+/// 拖动吸附四边，拖至屏边收起为细条（悬停展开、点击进 L2）。
 /// </summary>
 internal sealed class PinnedHostWindow
 {
     private const int PanelWidthDips = 168;
+    private const int TileHeightDips = 32;
+    private const int CollapseStripDips = 12; // 收起细条宽（DIP）
+    private const int SnapDips = 16;          // 拖动吸边判定距离（DIP）
 
     private readonly BeaconRuntime _runtime;
-    private readonly MonitorInfo _monitor;
+    private readonly MonitorInfo _fallbackMonitor;
     private readonly Dictionary<string, PinTile> _tiles = [];
     private readonly Dictionary<string, WidgetState> _latest = [];
     private readonly List<IDisposable> _subscriptions = [];
@@ -114,16 +130,26 @@ internal sealed class PinnedHostWindow
     private NativeMethods.WndProcDelegate? _wndProc; // 字段持有防 GC 回收子类化回调
     private IntPtr _prevWndProc;
 
-    public PinnedHostWindow(BeaconRuntime runtime, MonitorInfo monitor)
+    private PinLayout _layout = null!;
+    private DragSession? _drag;
+    private bool _dragMoved;      // 拖动已位移（抑制随后的合成 Tapped）
+    private bool _hoverExpanded;  // 收起态悬停临时展开
+
+    /// <summary>tile 点击（收起态点击含）：下钻 L2（RFC §6.2.7）。</summary>
+    public event Action? TileActivated;
+
+    public PinnedHostWindow(BeaconRuntime runtime, MonitorInfo fallbackMonitor)
     {
         _runtime = runtime;
-        _monitor = monitor;
+        _fallbackMonitor = fallbackMonitor;
     }
 
     public void Initialize()
     {
         _window = new Window { Title = "Beacon Pinned" };
         _tilePanel = new StackPanel { Orientation = Orientation.Vertical };
+        _tilePanel.PointerEntered += OnPanelPointerEntered;
+        _tilePanel.PointerExited += OnPanelPointerExited;
         _window.Content = _tilePanel;
         ((FrameworkElement)_window.Content).Loaded += OnLoaded;
         _window.Activate();
@@ -149,8 +175,9 @@ internal sealed class PinnedHostWindow
                 continue;
             }
             var tile = new PinTile(widget);
+            AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;
-            _tilePanel.Children.Add(tile);
+            _tilePanel.Children.Add(tile.Root);
         }
         // 重放最近状态，tile 不空等下一轮刷新
         foreach (var tile in _tiles.Values)
@@ -160,7 +187,10 @@ internal sealed class PinnedHostWindow
                 tile.Update(state);
             }
         }
-        ResizeToContent();
+        if (_layout is not null)
+        {
+            ApplyLayout(); // 收起态/重建后尺寸随 tile 数变化
+        }
     }
 
     private bool IsPinSupported(string widgetType)
@@ -173,6 +203,272 @@ internal sealed class PinnedHostWindow
             tile.Update(state);
         }
     }
+
+    // —— B-703：位置记忆（monitor + anchor + offsetDips + collapsed，pins.json 权威承载） ——
+
+    private static string Identity(MonitorInfo monitor)
+    {
+        var width = monitor.MonitorPx.Right - monitor.MonitorPx.Left;
+        var height = monitor.MonitorPx.Bottom - monitor.MonitorPx.Top;
+        return $"{monitor.DeviceName}-{width}x{height}";
+    }
+
+    private MonitorInfo ResolveMonitor(string? identity)
+        => MonitorService.GetAll().FirstOrDefault(m => string.Equals(Identity(m), identity, StringComparison.OrdinalIgnoreCase))
+           ?? MonitorService.Primary()
+           ?? _fallbackMonitor;
+
+    private PinLayout RestoreLayout()
+    {
+        var stored = _runtime.Config.Widgets.Where(w => w.Pinned)
+            .Select(w => w.PinLayout).FirstOrDefault(l => l is not null)
+            ?? _runtime.Config.Pins.Tiles.Select(t => t.Layout).FirstOrDefault(l => l is not null);
+        if (stored is not null)
+        {
+            return new PinLayout
+            {
+                Monitor = stored.Monitor,
+                Anchor = stored.Anchor,
+                OffsetDips = stored.OffsetDips,
+                Collapsed = stored.Collapsed,
+            };
+        }
+        return new PinLayout
+        {
+            Monitor = Identity(_fallbackMonitor),
+            Anchor = PinAnchor.TopRight,
+            OffsetDips = PinLayoutMath.DefaultOffset,
+            Collapsed = false,
+        };
+    }
+
+    /// <summary>宿主布局落到每个 pinned tile 的记录（widgets.json 便利引用 + pins.json 权威），单宿主共享同一位置。</summary>
+    private void PersistLayout()
+    {
+        var pinned = _runtime.Config.Widgets.Where(w => w.Pinned).ToList();
+        foreach (var widget in pinned)
+        {
+            widget.PinLayout = new PinLayout
+            {
+                Monitor = _layout.Monitor,
+                Anchor = _layout.Anchor,
+                OffsetDips = _layout.OffsetDips,
+                Collapsed = _layout.Collapsed,
+            };
+            _runtime.Config.UpsertWidget(widget);
+        }
+        var pins = _runtime.Config.Pins;
+        pins.Tiles = [.. pinned.Select(w => new Beacon.Core.Models.PinTile
+        {
+            WidgetId = w.Id,
+            Layout = new PinLayout
+            {
+                Monitor = _layout.Monitor,
+                Anchor = _layout.Anchor,
+                OffsetDips = _layout.OffsetDips,
+                Collapsed = _layout.Collapsed,
+            },
+        })];
+        _runtime.Config.SavePins();
+    }
+
+    private void ApplyLayout()
+    {
+        var appWindow = GetAppWindow();
+        if (appWindow is null || _layout is null)
+        {
+            return;
+        }
+        var dpi = GetDpi();
+        var work = ToPinRect(ResolveMonitor(_layout.Monitor).WorkPx);
+        var height = Math.Max(1, _tiles.Count) * (int)(TileHeightDips * dpi);
+
+        if (_layout.Collapsed && !_hoverExpanded)
+        {
+            // 吸边细条：贴锚点侧竖边，纵向按偏移（B-703：拖至屏边收起为细条/圆点）
+            var stripWidth = Math.Max(1, (int)(CollapseStripDips * dpi));
+            var anchorLeft = _layout.Anchor is PinAnchor.TopLeft or PinAnchor.BottomLeft;
+            var x = anchorLeft ? work.X : work.Right - stripWidth;
+            var y = Math.Clamp(work.Y + (int)(_layout.OffsetDips.Y * dpi), work.Y + 8, Math.Max(work.Y + 8, work.Bottom - height - 8));
+            appWindow.Resize(new SizeInt32(stripWidth, height));
+            appWindow.Move(new PointInt32(x, y));
+            return;
+        }
+
+        var rect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, (int)(PanelWidthDips * dpi), height);
+        appWindow.Resize(new SizeInt32(rect.Width, rect.Height));
+        appWindow.Move(new PointInt32(rect.X, rect.Y));
+    }
+
+    /// <summary>显示拓扑变化：按显示器标识恢复；标识消失落主屏；Place 内部完成越界回收（B-703 验收）。</summary>
+    private void Reconcile()
+    {
+        if (_layout is null || GetAppWindow() is null)
+        {
+            return;
+        }
+        var resolved = ResolveMonitor(_layout.Monitor);
+        _layout.Monitor = Identity(resolved);
+        _hoverExpanded = false;
+        ApplyLayout();
+        PersistLayout();
+    }
+
+    private static PinRect ToPinRect(NativeMethods.RECT rect)
+        => new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+
+    // —— B-703：拖动 + 吸附 + 吸边收起 ——
+
+    private void AttachTileInput(UIElement element)
+    {
+        element.PointerPressed += OnTilePointerPressed;
+        element.PointerMoved += OnTilePointerMoved;
+        element.PointerReleased += OnTilePointerReleased;
+        element.PointerCanceled += OnTilePointerReleased;
+        element.Tapped += OnTileTapped;
+    }
+
+    private void OnTilePointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var tile = (UIElement)sender;
+        if (!e.GetCurrentPoint(tile).Properties.IsLeftButtonPressed || GetAppWindow() is not { } appWindow)
+        {
+            return;
+        }
+        _dragMoved = false;
+        _drag = new DragSession(tile, e.GetCurrentPoint(null).Position, appWindow.Position.X, appWindow.Position.Y);
+        tile.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void OnTilePointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_drag is null || _drag.Element != sender || GetAppWindow() is not { } appWindow)
+        {
+            return;
+        }
+        var dpi = GetDpi();
+        var position = e.GetCurrentPoint(null).Position;
+        var dx = (int)Math.Round((position.X - _drag.StartDip.X) * dpi);
+        var dy = (int)Math.Round((position.Y - _drag.StartDip.Y) * dpi);
+        if (!_dragMoved && Math.Abs(dx) < 3 && Math.Abs(dy) < 3)
+        {
+            return; // 死区，区分点击与拖动
+        }
+        _dragMoved = true;
+
+        var work = CurrentWork();
+        var width = appWindow.Size.Width;
+        var height = appWindow.Size.Height;
+        var snap = (int)(SnapDips * dpi);
+        var x = _drag.StartX + dx;
+        var y = _drag.StartY + dy;
+        // 吸附四边（RFC §6.2.3：拖动中吸附到四边）
+        if (Math.Abs(x - work.X) < snap)
+        {
+            x = work.X;
+        }
+        if (Math.Abs(x + width - work.Right) < snap)
+        {
+            x = work.Right - width;
+        }
+        if (Math.Abs(y - work.Y) < snap)
+        {
+            y = work.Y;
+        }
+        if (Math.Abs(y + height - work.Bottom) < snap)
+        {
+            y = work.Bottom - height;
+        }
+        appWindow.Move(new PointInt32(x, y));
+        e.Handled = true;
+    }
+
+    private void OnTilePointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_drag is null || _drag.Element != sender)
+        {
+            return;
+        }
+        var element = _drag.Element;
+        _drag = null;
+        element.ReleasePointerCapture(e.Pointer);
+        if (_dragMoved)
+        {
+            FinalizeDrag();
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>拖动落点：跨显示器迁移记录、最近锚点角 + DIP 偏移持久化、贴边（snap 吸上后 0 距）判收起。</summary>
+    private void FinalizeDrag()
+    {
+        if (GetAppWindow() is not { } appWindow || _layout is null)
+        {
+            return;
+        }
+        var position = appWindow.Position;
+        var size = appWindow.Size;
+        var dpi = GetDpi();
+        var monitor = MonitorService.FromPixel(position.X + size.Width / 2, position.Y + size.Height / 2)
+            ?? MonitorService.Primary()
+            ?? _fallbackMonitor;
+        var work = ToPinRect(monitor.WorkPx);
+        var rect = PinLayoutMath.ClampInto(work, new PinRect(position.X, position.Y, size.Width, size.Height), margin: 0);
+        (_layout.Anchor, _layout.OffsetDips) = PinLayoutMath.Locate(work, rect, dpi);
+        _layout.Monitor = Identity(monitor); // 跨显示器拖动 = 迁移 pinLayout 记录
+        var edge = Math.Min(Math.Min(rect.X - work.X, work.Right - rect.Right), Math.Min(rect.Y - work.Y, work.Bottom - rect.Bottom));
+        _layout.Collapsed = edge <= (int)(CollapseStripDips * dpi); // 拖至屏边 → 收起细条
+        _hoverExpanded = false;
+        ApplyLayout();
+        PersistLayout();
+    }
+
+    private void OnTileTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (_dragMoved)
+        {
+            _dragMoved = false; // 拖动结束的合成点击忽略
+            return;
+        }
+        TileActivated?.Invoke(); // 点击下钻 L2（RFC §6.2.7；收起态点击即「点击进 L2」）
+        e.Handled = true;
+    }
+
+    private void OnPanelPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (_layout is { Collapsed: true } && _drag is null && !_hoverExpanded)
+        {
+            _hoverExpanded = true; // 悬停展开（临时，不落库）
+            ApplyLayout();
+        }
+    }
+
+    private void OnPanelPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (_hoverExpanded && _drag is null)
+        {
+            _hoverExpanded = false; // 离开面板回到细条
+            ApplyLayout();
+        }
+    }
+
+    private PinRect CurrentWork() => ToPinRect(ResolveMonitor(CurrentMonitorIdentity()).WorkPx);
+
+    private string? CurrentMonitorIdentity()
+    {
+        if (GetAppWindow() is not { } appWindow)
+        {
+            return null;
+        }
+        var position = appWindow.Position;
+        var size = appWindow.Size;
+        return MonitorService.FromPixel(position.X + size.Width / 2, position.Y + size.Height / 2) is { } monitor
+            ? Identity(monitor)
+            : null;
+    }
+
+    // —— 窗口生命周期与 Win32 ——
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -191,12 +487,8 @@ internal sealed class PinnedHostWindow
         appWindow.IsShownInSwitchers = false;
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
-        // 宿主只占 tile 面板大小，钉在显示器工作区右上角（拖动/吸边在 B-703）
-        ResizeToContent();
-        var x = _monitor.WorkPx.Right - appWindow.Size.Width - (int)(24 * GetDpi());
-        var y = _monitor.WorkPx.Top + (int)(96 * GetDpi());
-        appWindow.Move(new PointInt32(x, y));
-
+        _layout = RestoreLayout();
+        ApplyLayout();
         SubclassForHitTest();
     }
 
@@ -209,35 +501,43 @@ internal sealed class PinnedHostWindow
 
     private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
-        if (msg == NativeMethods.WM_NCHITTEST)
+        switch (msg)
         {
-            // tile 行内可交互；面板其余空白穿透到桌面（B-701 验收）
-            var point = new NativeMethods.POINT { X = unchecked((short)(long)lParam), Y = unchecked((short)((long)lParam >> 16)) };
-            if (NativeMethods.ScreenToClient(hWnd, ref point))
-            {
-                var dpi = GetDpi();
-                var insideTile = point.Y >= 0 && point.Y < _tiles.Count * (int)(32 * dpi)
-                    && point.X >= 0 && point.X < (int)(PanelWidthDips * dpi);
-                return insideTile ? new IntPtr(NativeMethods.HTCLIENT) : new IntPtr(NativeMethods.HTTRANSPARENT);
-            }
+            case NativeMethods.WM_NCHITTEST:
+                // tile 行内可交互；面板其余空白穿透到桌面（B-701 验收）；收起态按细条宽判定
+                var point = new NativeMethods.POINT { X = unchecked((short)(long)lParam), Y = unchecked((short)((long)lParam >> 16)) };
+                if (NativeMethods.ScreenToClient(hWnd, ref point))
+                {
+                    var dpi = GetDpi();
+                    var insideTile = point.Y >= 0 && point.Y < Math.Max(1, _tiles.Count) * (int)(TileHeightDips * dpi)
+                        && point.X >= 0 && point.X < (int)(HitWidthDips() * dpi);
+                    return insideTile ? new IntPtr(NativeMethods.HTCLIENT) : new IntPtr(NativeMethods.HTTRANSPARENT);
+                }
+                break;
+            case NativeMethods.WM_DPICHANGED:
+                // 跨 DPI：XAML 内容按新 DPI 自动缩放，窗口尺寸/位置按新 DPI 重排（B-703 验收）
+                if (_layout is not null)
+                {
+                    _layout.Monitor = CurrentMonitorIdentity() ?? _layout.Monitor;
+                    ApplyLayout();
+                }
+                break;
+            case NativeMethods.WM_DISPLAYCHANGE:
+                // 显示拓扑变化：按锚点恢复/越界回收（B-703 验收：拔显示器再接回 tile 不丢）
+                if (_layout is not null)
+                {
+                    Reconcile();
+                }
+                break;
         }
         return _prevWndProc == IntPtr.Zero
             ? NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam)
             : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
     }
 
-    private void ResizeToContent()
-    {
-        var appWindow = GetAppWindow();
-        if (appWindow is null)
-        {
-            return;
-        }
-        var dpi = GetDpi();
-        var width = (int)(PanelWidthDips * dpi);
-        var height = Math.Max(1, _tiles.Count) * (int)(32 * dpi);
-        appWindow.Resize(new SizeInt32(width, height));
-    }
+    /// <summary>当前 hit-test 宽（DIP）：收起细条窄、展开态全宽。</summary>
+    private double HitWidthDips()
+        => _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips;
 
     private AppWindow? GetAppWindow()
     {

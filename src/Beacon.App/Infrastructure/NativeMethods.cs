@@ -250,6 +250,10 @@ internal static class NativeMethods
     // —— 窗口子类化（L0 宿主 NCHITTEST 空白穿透，B-701）——
     public const int GWLP_WNDPROC = -4;
 
+    // —— L0 布局自适应（B-703）——
+    public const int WM_DPICHANGED = 0x02E0;
+    public const int WM_DISPLAYCHANGE = 0x007E;
+
     [DllImport("user32.dll")]
     public static extern IntPtr CallWindowProcW(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 

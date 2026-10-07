@@ -93,6 +93,7 @@ public partial class App : Application
         if (Infrastructure.MonitorService.Primary() is { } primaryMonitor)
         {
             _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
+            _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
             _pinnedHost.Initialize();
         }
 
