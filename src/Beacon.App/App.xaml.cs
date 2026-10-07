@@ -79,6 +79,8 @@ public partial class App : Application
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         tray.ExitRequested += () => Exit();
         tray.Initialize();
+        // 托盘常驻无主窗口：启动即给可见反馈，避免被当成「点了没反应」
+        tray.ShowBalloon("Beacon", "已启动并常驻托盘——状态胶囊在屏幕右下角，点胶囊或托盘图标打开面板。");
 
         // B-504：胶囊/托盘接真实聚合
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);

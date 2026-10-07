@@ -6,6 +6,8 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <RootNamespace>Beacon.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- exe 图标（Explorer/快捷方式/标题栏）；托盘图标另由 TrayIconService 按状态运行时绘制 -->
+    <ApplicationIcon>Assets\beacon.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>
     <!-- Unpackaged 自包含（RFC §10）：便携 exe + %AppData% 直写 -->
     <WindowsPackageType>None</WindowsPackageType>
