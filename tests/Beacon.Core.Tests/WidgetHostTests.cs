@@ -20,6 +20,24 @@ public sealed class WidgetHostTests
         };
         public List<WidgetStateChanged> States { get; } = [];
         public List<ConnectionHealthChanged> Healths { get; } = [];
+        private readonly object _gate = new();
+
+        /// <summary>后台刷新循环并发追加事件，轮询断言须用快照枚举（避免 Collection was modified）。</summary>
+        public WidgetStateChanged[] StatesSnapshot()
+        {
+            lock (_gate)
+            {
+                return [.. States];
+            }
+        }
+
+        public ConnectionHealthChanged[] HealthsSnapshot()
+        {
+            lock (_gate)
+            {
+                return [.. Healths];
+            }
+        }
 
         public WidgetHost CreateHost(RefreshScheduler scheduler)
         {
@@ -28,8 +46,20 @@ public sealed class WidgetHostTests
             var host = new WidgetHost(
                 Bus, Clock, scheduler, Cache, Config, new InMemorySecretStore(),
                 new FakeResolver(new Dictionary<string, IWidgetProvider> { ["test.type"] = Provider }));
-            Bus.Subscribe<WidgetStateChanged>(States.Add);
-            Bus.Subscribe<ConnectionHealthChanged>(Healths.Add);
+            Bus.Subscribe<WidgetStateChanged>(evt =>
+            {
+                lock (_gate)
+                {
+                    States.Add(evt);
+                }
+            });
+            Bus.Subscribe<ConnectionHealthChanged>(evt =>
+            {
+                lock (_gate)
+                {
+                    Healths.Add(evt);
+                }
+            });
             return host;
         }
     }
@@ -167,19 +197,19 @@ public sealed class WidgetHostTests
             throw new ConnectionException("down", ConnectionHealthState.Offline);
 
         host.Start(); // 启动即 kick → 第一轮立刻执行
-        await Poll.UntilAsync(() => fixture.Healths.Any(h => h.State == ConnectionHealthState.Offline)
+        await Poll.UntilAsync(() => fixture.HealthsSnapshot().Any(h => h.State == ConnectionHealthState.Offline)
                                      && delayer.Calls.Count >= 2);
 
         // 两个 widget 同连接失败 → Offline 健康事件按连接去重，只发一次
-        Assert.Single(fixture.Healths);
+        Assert.Single(fixture.HealthsSnapshot());
         // 整组失败 → 调度器进入退避 ×2
         Assert.Equal(TimeSpan.FromSeconds(2), delayer.Calls[1].Requested);
 
         fixture.Provider.Handler = null; // 恢复
         delayer.Calls[1].Complete();
-        await Poll.UntilAsync(() => fixture.Healths.Any(h => h.State == ConnectionHealthState.Healthy));
+        await Poll.UntilAsync(() => fixture.HealthsSnapshot().Any(h => h.State == ConnectionHealthState.Healthy));
 
-        var healthy = Assert.Single(fixture.Healths, h => h.State == ConnectionHealthState.Healthy);
+        var healthy = Assert.Single(fixture.HealthsSnapshot(), h => h.State == ConnectionHealthState.Healthy);
         Assert.Equal("conn-1", healthy.ConnectionId);
         // 成功复位 → 下一轮回到基础周期
         await Poll.UntilAsync(() => delayer.Calls.Count >= 3);
