@@ -20,4 +20,11 @@ jobs:
         run: dotnet build Beacon.sln -c Release
 
       - name: Test
-        run: dotnet test Beacon.sln -c Release --no-build
+        run: dotnet test Beacon.sln -c Release --no-build --collect "XPlat Code Coverage" --results-directory TestResults
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: TestResults/**/coverage.cobertura.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

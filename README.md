@@ -1,10 +1,27 @@
-# Beacon
+<p align="center">
+  <img src="docs/img/logo.svg" width="160" alt="Beacon logo">
+</p>
+
+<h1 align="center">Beacon</h1>
+
+<p align="center">
+  <a href="https://github.com/cuihairu/beacon/actions/workflows/ci.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://codecov.io/gh/cuihairu/beacon"><img src="https://codecov.io/gh/cuihairu/beacon/branch/main/graph/badge.svg" alt="Code coverage"></a>
+  <a href="https://cuihairu.github.io/beacon/"><img src="https://img.shields.io/badge/docs-online-8A2BE2" alt="在线文档"></a>
+  <img src="https://img.shields.io/badge/.NET-8.0-5C2D91?logo=dotnet&logoColor=white" alt=".NET 8">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows11&logoColor=white" alt="Windows 10/11">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3DA639" alt="License: Apache-2.0"></a>
+</p>
 
 > **Windows Developer Status & Action Center** — See what needs your attention.
 
 常驻 Windows 桌面的开发者状态与操作中心：聚合 GitHub / CI 等开发环境状态，主动提醒，一键操作。**Signal + Action，不是 Dashboard。**
 
-## 文档（当前阶段：文档优先，未开始编码）
+## 在线文档
+
+**[https://cuihairu.github.io/beacon/](https://cuihairu.github.io/beacon/)** — 由 [docs 工作流](.github/workflows/docs.yml)自动发布到 GitHub Pages（mkdocs-material）。
+
+## 文档
 
 | 文档 | 内容 |
 |---|---|
@@ -16,7 +33,10 @@
 ## 路线
 
 1. ✅ 任务书 + 技术 RFC + Solution 目录 + MVP Issue 列表
-2. ⬜ M1 Windows Shell（Tray / 胶囊 / 热键 / 自启）
-3. ⬜ M2 Core 内核 → M3 GitHub 闭环 → M4 通知与面板 → M5 L0 悬浮组件 = MVP
+2. ✅ M1 Windows Shell（Tray / 胶囊 / 热键 / 自启）
+3. ✅ M2 Core 内核（刷新调度 / 状态聚合 / 缓存 / 事件总线）
+4. ✅ M3 GitHub 闭环（PR / Actions Provider，ETag + 限额感知）
+5. 🔨 M4 通知与面板（Action 执行器 / Toast / 通知中心 / 托盘着色）
+6. ⬜ M5 L0 悬浮组件 + Quick Panel = MVP
 
 > 构建要求：Windows + .NET 8 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。
