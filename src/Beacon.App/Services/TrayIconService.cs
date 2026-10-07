@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Beacon.App.Infrastructure;
+using Beacon.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace Beacon.App.Services;
@@ -14,16 +15,21 @@ internal sealed class TrayIconService : IDisposable
 
     private const int MenuOpenPanel = 1;
     private const int MenuSettings = 2;
+    private const int MenuNotifications = 3;
+    private const int MenuRefreshAll = 4;
     private const int MenuExit = 99;
 
     private readonly Win32MessageWindow _messageWindow;
     private readonly ILogger<TrayIconService> _logger;
+    private readonly Dictionary<Severity, IntPtr> _severityIcons = [];
     private NativeMethods.NOTIFYICONDATA _nid;
     private IntPtr _icon;
     private bool _added;
 
     public event Action? OpenPanelRequested;
     public event Action? SettingsRequested;
+    public event Action? NotificationsRequested;
+    public event Action? RefreshAllRequested;
     public event Action? ExitRequested;
 
     public TrayIconService(Win32MessageWindow messageWindow, ILogger<TrayIconService> logger)
@@ -78,6 +84,48 @@ internal sealed class TrayIconService : IDisposable
         _nid.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
     }
 
+    /// <summary>随总体 Severity 着色（B-503，绿/黄/红/灰）：聚合变化 ≤1 刷新周期内调用。</summary>
+    public void SetSeverity(Severity severity)
+    {
+        if (!_added)
+        {
+            return;
+        }
+        var icon = GetSeverityIcon(severity);
+        if (icon == IntPtr.Zero)
+        {
+            return;
+        }
+        _nid.uFlags = NativeMethods.NIF_ICON;
+        _nid.hIcon = icon;
+        NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_MODIFY, ref _nid);
+        _nid.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
+    }
+
+    private IntPtr GetSeverityIcon(Severity severity)
+    {
+        if (_severityIcons.TryGetValue(severity, out var cached))
+        {
+            return cached;
+        }
+        var file = severity switch
+        {
+            Severity.Success or Severity.Info => "tray-success.ico",
+            Severity.Warning => "tray-warning.ico",
+            Severity.Error or Severity.Critical => "tray-error.ico",
+            _ => "tray-idle.ico",
+        };
+        var path = Path.Combine(AppContext.BaseDirectory, "Assets", file);
+        var icon = NativeMethods.LoadImageW(IntPtr.Zero, path, NativeMethods.IMAGE_ICON, 0, 0, NativeMethods.LR_LOADFROMFILE);
+        if (icon == IntPtr.Zero)
+        {
+            _logger.LogWarning("Severity icon not loaded from {Path}: {Error}", path, Marshal.GetLastWin32Error());
+            return IntPtr.Zero;
+        }
+        _severityIcons[severity] = icon;
+        return icon;
+    }
+
     /// <summary>更新托盘提示文本（B-503 接聚合状态）。</summary>
     public void SetTip(string tip)
     {
@@ -121,6 +169,8 @@ internal sealed class TrayIconService : IDisposable
         try
         {
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuOpenPanel, "Open Beacon");
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuNotifications, "Notifications");
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuRefreshAll, "Refresh All");
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuSettings, "Settings");
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuExit, "Exit");
@@ -137,6 +187,12 @@ internal sealed class TrayIconService : IDisposable
             {
                 case MenuOpenPanel:
                     OpenPanelRequested?.Invoke();
+                    break;
+                case MenuNotifications:
+                    NotificationsRequested?.Invoke();
+                    break;
+                case MenuRefreshAll:
+                    RefreshAllRequested?.Invoke();
                     break;
                 case MenuSettings:
                     SettingsRequested?.Invoke();
