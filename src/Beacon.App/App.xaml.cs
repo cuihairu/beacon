@@ -21,6 +21,7 @@ public partial class App : Application
     private ILogger<App> _logger = null!;
     private Windows.QuickPanelWindow? _quickPanel;
     private Windows.PinnedHostWindow? _pinnedHost;
+    private TopmostGuard? _topmostGuard;
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
     public App()
@@ -153,6 +154,15 @@ public partial class App : Application
             _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
             _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
             _pinnedHost.Initialize();
+        }
+
+        // 置顶哨兵：右键菜单/开始菜单/任意应用抢前台会重排 topmost 带，NOACTIVATE 悬浮窗
+        // （胶囊/L0 宿主）会被盖住或挤出——前台与菜单事件后自动钉回（尊重 showCapsule 门控）
+        _topmostGuard = new TopmostGuard();
+        _topmostGuard.Watch(() => capsule.Hwnd, () => capsule.IsUserVisible);
+        if (_pinnedHost is { } host)
+        {
+            _topmostGuard.Watch(() => host.Hwnd, () => true);
         }
 
         // B-103：全局热键（config.json 可改，B-801 提供设置 UI）

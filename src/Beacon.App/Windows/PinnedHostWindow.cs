@@ -229,6 +229,9 @@ internal sealed class PinnedHostWindow
     private Window _window = null!;
     private StackPanel _tilePanel = null!;
     private IntPtr _hwnd;
+
+    /// <summary>TopmostGuard 用：宿主窗口句柄（Loaded 前为 Zero，哨兵会跳过）。</summary>
+    public IntPtr Hwnd => _hwnd;
     private NativeMethods.WndProcDelegate? _wndProc; // 字段持有防 GC 回收子类化回调
     private IntPtr _prevWndProc;
 

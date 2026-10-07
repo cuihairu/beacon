@@ -61,6 +61,15 @@ internal static class NativeMethods
     public const uint SWP_NOMOVE = 0x2;
     public const uint SWP_NOACTIVATE = 0x10;
     public const IntPtr HWND_TOPMOST = -1;
+    public const int SW_SHOWNOACTIVATE = 4;
+
+    // —— 前台/菜单事件（TopmostGuard）——
+    public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+    public const uint EVENT_SYSTEM_MENUSTART = 0x0004;
+    public const uint EVENT_SYSTEM_MENUEND = 0x0005;
+    public const uint EVENT_SYSTEM_MENUPOPUPSTART = 0x0006;
+    public const uint EVENT_SYSTEM_MENUPOPUPEND = 0x0007;
+    public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
 
     /// <summary>
     /// 全 blittable 版 WNDCLASSEX：委托/字符串一律显式转原生指针（编组零魔法）。
@@ -208,6 +217,20 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern int GetDpiForWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    // —— WinEvent（前台/菜单哨兵）——
+    public delegate void WinEventProc(IntPtr hHook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+
+    [DllImport("user32.dll", SetLastError = false)]
+    public static extern IntPtr SetWinEventHook(
+        uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventProc pfnWinEventProc,
+        uint idProcess, uint idThread, uint dwFlags);
+
+    [DllImport("user32.dll", SetLastError = false)]
+    public static extern bool UnhookWinEvent(IntPtr hWinEventHook);
 
     // —— 全局热键 ——
     [DllImport("user32.dll", SetLastError = true)]

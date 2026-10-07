@@ -24,6 +24,7 @@ public sealed partial class CapsuleWindow : Window
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
     private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
+    private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
     private bool _dragging;
     private global::Windows.Foundation.Point _dragStart;
     private double _dragDistance;
@@ -69,7 +70,16 @@ public sealed partial class CapsuleWindow : Window
     }
 
     /// <summary>启动前声明「隐藏启动」（B-801 showCapsule=false；避免先显示后隐藏的闪烁）。</summary>
-    public void StartHidden() => _startVisible = false;
+    public void StartHidden()
+    {
+        _startVisible = false;
+        _showAllowed = false;
+    }
+
+    /// <summary>TopmostGuard 用：消息窗句柄与用户显隐意愿。</summary>
+    public IntPtr Hwnd => _hwnd;
+
+    public bool IsUserVisible => _showAllowed;
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
@@ -189,6 +199,7 @@ public sealed partial class CapsuleWindow : Window
     /// <summary>config.showCapsule 开关（B-801）：启动门控 + 设置页实时显隐。</summary>
     public void SetVisible(bool visible)
     {
+        _showAllowed = visible; // 先记意愿再动窗口（AppWindow 未就绪时哨兵也能拿到正确门控）
         if (_appWindow is null)
         {
             return; // Loaded 前无 AppWindow，启动门控走 App.xaml.cs 的 Activate 分支
