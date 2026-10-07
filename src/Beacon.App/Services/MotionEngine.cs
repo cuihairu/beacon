@@ -109,8 +109,7 @@ internal sealed class MotionEngine
             breathe.InsertKeyFrame(0.0f, 1f);
             breathe.InsertKeyFrame(0.5f, (float)BreathFloor());
             breathe.InsertKeyFrame(1.0f, 1f, compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.4f, 0f), new System.Numerics.Vector2(0.6f, 1f)));
-            breathe.IterationBehavior = AnimationIterationBehavior.Countdown;
-            breathe.IterationCount = int.MaxValue; // 常驻循环；收起态由宿主 StopLoops 暂停
+            breathe.IterationBehavior = AnimationIterationBehavior.Forever; // 常驻循环；收起态由宿主 StopLoops 暂停
             breathe.Duration = TimeSpan.FromMilliseconds(2400 * Intensity);
             visual.StartAnimation("Opacity", breathe);
         }
@@ -136,8 +135,7 @@ internal sealed class MotionEngine
             pulse.InsertKeyFrame(0.0f, 1f);
             pulse.InsertKeyFrame(0.5f, peak);
             pulse.InsertKeyFrame(1.0f, 1f, compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.4f, 0f), new System.Numerics.Vector2(0.6f, 1f)));
-            pulse.IterationBehavior = AnimationIterationBehavior.Countdown;
-            pulse.IterationCount = int.MaxValue;
+            pulse.IterationBehavior = AnimationIterationBehavior.Forever;
             pulse.Duration = TimeSpan.FromMilliseconds(1000 * Math.Max(1.0, Intensity)); // ≤1Hz 铁律
             visual.StartAnimation("Scale", pulse);
         }
