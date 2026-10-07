@@ -21,7 +21,8 @@ Beacon/
 └── tests/
     ├── Beacon.Core.Tests/
     ├── Beacon.Connections.Tests/
-    └── Beacon.Storage.Tests/
+    ├── Beacon.Storage.Tests/
+    └── Beacon.Actions.Tests/
 ```
 
 ## 2. 项目依赖规则
@@ -75,11 +76,11 @@ Beacon.Core/
 Beacon.Connections/
 ├── GitHub/
 │   ├── GitHubConnectionProvider.cs  # PAT 认证、连接测试、rate-limit 感知
-│   ├── GitHubApiClient.cs           # Octokit 封装 + ETag 条件请求
-│   ├── Widgets/
-│   │   ├── PullRequestsWidget.cs    # type: github.pull_requests
-│   │   └── ActionsRunsWidget.cs     # type: github.actions.runs
-│   └── Actions/
+│   ├── GitHubApiClient.cs           # 手写 REST 客户端（不引 Octokit）+ ETag 条件请求 + 限额感知
+│   ├── GitHubWidgetDescriptors.cs   # Widget 类型元数据注册表（开闭性：新增 Provider 零 Core 改动）
+│   ├── GitHubPullRequestsProvider.cs  # type: github.pull_requests
+│   ├── GitHubActionsProvider.cs       # type: github.actions.runs
+│   └── GitHubWorkflowExecutors.cs   # gh.workflow_dispatch/rerun/cancel 执行器
 │       └── WorkflowDispatchAction.cs # Run/Retry/Cancel（gh.workflow_dispatch）
 └── Rest/
     ├── RestConnectionProvider.cs
@@ -140,7 +141,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则，时钟注入）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 
@@ -150,11 +151,12 @@ xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则，时钟注入）、`B
 | `Microsoft.Windows.SDK.BuildTools` | Win32 interop（NoActivate/热键等） |
 | `CommunityToolkit.Mvvm` | MVVM（ObservableObject/RelayCommand） |
 | `CommunityToolkit.WinUI.*` | 控件/动画 |
-| `H.NotifyIcon.WinUI` | 托盘图标 |
-| `CommunityToolkit.Notifications` | Toast（unpackaged AUMID） |
-| `Octokit` | GitHub API |
+| 托盘 | 不引第三方库，Win32 `Shell_NotifyIcon` 自实现（TrayIconService） |
+| `Microsoft.Toolkit.Uwp.Notifications` | Toast（unpackaged AUMID 自愈与激活路由） |
+| GitHub API | 手写 REST 客户端（ETag/限额可控，B-301 决策，不引 Octokit） |
+| `System.Security.Cryptography.ProtectedData` | DPAPI 密钥存储 |
 | `Microsoft.Extensions.Hosting` / `.DependencyInjection` / `.Logging` | DI/日志 |
-| `xunit` / `NSubstitute` | 测试 |
+| `xunit` / `NSubstitute` / `coverlet.collector` | 测试与覆盖率 |
 
 （以还原时最新 stable 为准，版本集中在 Directory.Packages.props。）
 
@@ -170,6 +172,7 @@ dotnet new winui -o src/Beacon.App        # 模板可用缺失时：手建 cspro
 dotnet new xunit -o tests/Beacon.Core.Tests
 dotnet new xunit -o tests/Beacon.Connections.Tests
 dotnet new xunit -o tests/Beacon.Storage.Tests
+dotnet new xunit -o tests/Beacon.Actions.Tests
 dotnet sln add (git ls-files "**/*.csproj")
 ```
 
