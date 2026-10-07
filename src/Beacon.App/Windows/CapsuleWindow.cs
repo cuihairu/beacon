@@ -23,6 +23,7 @@ public sealed partial class CapsuleWindow : Window
 
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
+    private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
     private bool _dragging;
     private global::Windows.Foundation.Point _dragStart;
     private double _dragDistance;
@@ -61,7 +62,14 @@ public sealed partial class CapsuleWindow : Window
 
         _appWindow.Resize(new SizeInt32(180, 46));
         RestorePosition();
+        if (!_startVisible)
+        {
+            _appWindow.Hide(); // showCapsule=false：注册(hwnd/AppWindow 就绪)但不显示
+        }
     }
+
+    /// <summary>启动前声明「隐藏启动」（B-801 showCapsule=false；避免先显示后隐藏的闪烁）。</summary>
+    public void StartHidden() => _startVisible = false;
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
@@ -177,6 +185,27 @@ public sealed partial class CapsuleWindow : Window
             _lastFetchedAt = fetchedAt;
         }
     }
+
+    /// <summary>config.showCapsule 开关（B-801）：启动门控 + 设置页实时显隐。</summary>
+    public void SetVisible(bool visible)
+    {
+        if (_appWindow is null)
+        {
+            return; // Loaded 前无 AppWindow，启动门控走 App.xaml.cs 的 Activate 分支
+        }
+        if (visible)
+        {
+            _appWindow.Show();
+        }
+        else
+        {
+            _appWindow.Hide();
+        }
+    }
+
+    /// <summary>config.uiOpacity（B-801 外观透明度）作用于胶囊整体。</summary>
+    public void ApplyOpacity(double opacity)
+        => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
 
     /// <summary>接入真实聚合（B-504）：分级计数 + Offline 横幅。</summary>
     public void UpdateStatus(AggregateStatusChanged status)

@@ -27,6 +27,16 @@ public partial class App : Application
     {
         Instance = this;
         InitializeComponent();
+        // B-801 外观主题：RequestedTheme 只能在 App 构造器设置——重启生效口径（浅色/深色，缺省跟随系统）
+        var theme = new Storage.AppConfigFile().Load().Theme?.Trim().ToLowerInvariant();
+        if (theme == "light")
+        {
+            RequestedTheme = ApplicationTheme.Light;
+        }
+        else if (theme == "dark")
+        {
+            RequestedTheme = ApplicationTheme.Dark;
+        }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -65,7 +75,6 @@ public partial class App : Application
         tray.OpenPanelRequested += () => quickPanel.Toggle();
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
         quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => _pinnedHost?.ReloadTiles()); // B-702：Pin 入口联动 L0
-        tray.SettingsRequested += () => { /* P8 接入 SettingsWindow */ };
         // B-503：Notifications 入口（P6 B-602 换成通知中心视图）；Refresh All 在 B-504 接运行时
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         tray.ExitRequested += () => Exit();
@@ -88,7 +97,12 @@ public partial class App : Application
         capsule.UpdateStatus(snapshot);
         tray.SetSeverity(snapshot.Overall);
         tray.SetTip(BuildTrayTip(snapshot));
+        if (!runtime.Config.App.ShowCapsule)
+        {
+            capsule.StartHidden(); // B-801：showCapsule=false 时注册但不显示（避免先显示后隐藏的闪烁）
+        }
         capsule.Activate();
+        capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
 
         // B-701：L0 悬浮组件宿主（主屏单实例；多显示器分配随 B-703 位置持久化）
@@ -111,6 +125,39 @@ public partial class App : Application
         {
             tray.ShowBalloon("Beacon", $"热键 {config.Hotkey} 注册失败（可能被占用），可在设置中更换。", Infrastructure.NativeMethods.NIIF_WARNING);
         }
+
+        // B-801：Settings 窗口（托盘入口，单例）。常规项落库即存 config.json，经 ApplySettingsEffects
+        // 重挂热键/对齐自启/胶囊显隐与透明度（主题走 App 构造器，重启生效）；组件增删与钉选重建 L0。
+        void ApplySettingsEffects()
+        {
+            var appConfig = runtime.Config.App;
+            if (!string.IsNullOrWhiteSpace(appConfig.Hotkey) && appConfig.Hotkey != hotkey.Current)
+            {
+                hotkey.Unregister();
+                if (!hotkey.Register(appConfig.Hotkey))
+                {
+                    tray.ShowBalloon("Beacon", $"热键 {appConfig.Hotkey} 注册失败（可能被占用），可在设置中更换。", Infrastructure.NativeMethods.NIIF_WARNING);
+                }
+            }
+            Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
+            capsule.SetVisible(appConfig.ShowCapsule);
+            capsule.ApplyOpacity(appConfig.UiOpacity);
+        }
+
+        Windows.SettingsWindow? settingsWindow = null;
+        tray.SettingsRequested += () => Dispatcher.TryEnqueue(() =>
+        {
+            if (settingsWindow is { } open)
+            {
+                open.Activate();
+                return;
+            }
+            settingsWindow = new Windows.SettingsWindow(runtime);
+            settingsWindow.Closed += (_, _) => settingsWindow = null;
+            settingsWindow.SettingsApplied += ApplySettingsEffects;
+            settingsWindow.PinsChanged += () => Dispatcher.TryEnqueue(() => _pinnedHost?.ReloadTiles());
+            settingsWindow.Activate();
+        });
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
     }

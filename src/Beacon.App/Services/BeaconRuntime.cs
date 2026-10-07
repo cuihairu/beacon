@@ -30,6 +30,10 @@ public sealed class BeaconRuntime : IAsyncDisposable
     public StatusAggregator Aggregator { get; }
     public NotificationEngine Notifications { get; }
     public ActionRunner Actions { get; }
+    /// <summary>密钥存储（B-801 Settings 录入 token：credentialRef → DPAPI，严禁明文 JSON）。</summary>
+    public DpapiSecretStore Secrets { get; }
+    /// <summary>连接 Provider 注册表（B-801 测试连接）：类型标识 → Provider。</summary>
+    public IReadOnlyDictionary<string, IConnectionProvider> ConnectionProviders { get; }
 
     private readonly RefreshScheduler _scheduler;
 
@@ -42,7 +46,9 @@ public sealed class BeaconRuntime : IAsyncDisposable
         WidgetHost host,
         StatusAggregator aggregator,
         NotificationEngine notifications,
-        ActionRunner actions)
+        ActionRunner actions,
+        DpapiSecretStore secrets,
+        IReadOnlyDictionary<string, IConnectionProvider> connectionProviders)
     {
         Bus = bus;
         Config = config;
@@ -53,6 +59,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
         Aggregator = aggregator;
         Notifications = notifications;
         Actions = actions;
+        Secrets = secrets;
+        ConnectionProviders = connectionProviders;
     }
 
     public static BeaconRuntime Start(INotificationSink sink, ILogger? logger = null)
@@ -84,7 +92,12 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ],
             bus, clock, config, secrets, logger);
 
-        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions);
+        var connectionProviders = new Dictionary<string, IConnectionProvider>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["github"] = new GitHubConnectionProvider(),
+        };
+
+        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders);
     }
 
     /// <summary>手动全量刷新（托盘 Refresh All）：逐 Widget 立即拉取，随后组循环恢复常规节奏。</summary>

@@ -126,7 +126,9 @@ Beacon.App/
 │   │                                #   Topmost+NoActivate+透明+hit-test tile
 │   ├── QuickPanelWindow.xaml|cs     # L2 Flyout（可激活，ESC 关）
 │   ├── DetailWindow.xaml|cs         # L3 详情 + 全部 Action
-│   └── SettingsWindow.xaml|cs
+│   ├── CapsuleWindow.xaml|cs        # L1 聚合 tile（置顶常驻，位置持久化）
+│   ├── PinnedHostWindow.cs          # L0 悬浮 tile 宿主（每显示器一个，代码建 UI）
+│   └── SettingsWindow.cs            # B-801：常规/连接 CRUD/组件 CRUD/通知规则（代码建 UI）
 ├── Controls/
 │   ├── StatusLight.xaml             # 五级状态灯（含 Critical 脉冲 / Offline 灰）
 │   ├── PinTile.xaml                 # L0 小胶囊 tile（灯+标签+数字/进度）
