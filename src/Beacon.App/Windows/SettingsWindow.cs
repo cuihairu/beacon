@@ -219,8 +219,8 @@ internal sealed class SettingsWindow : Window
         }
     }
 
-    /// <summary>模块图标（PowerToys 形态：每模块独立 icon）——Simple Icons 品牌图优先（BrandIcons 本地内置），
-    /// 未收录品牌（如智谱）退色块 + Segoe Fluent 字形兜底；品牌渲染失败同样退字形并落日志（单块失败不拖死整页）。</summary>
+    /// <summary>模块图标（PowerToys 形态：每模块独立 icon）——品牌图优先（BrandIconFactory 本地内置），
+    /// 未收录品牌退色块 + Segoe Fluent 字形兜底；品牌渲染失败同样退字形并落日志（单块失败不拖死整页）。</summary>
     private Border MakeModuleIcon(ModuleDef module)
     {
         var tint = module.ConnectionType switch
@@ -230,35 +230,13 @@ internal sealed class SettingsWindow : Window
             "http" => SeverityPalette.Rgb(255, 63, 185, 80),
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
-        UIElement? content = null;
-        if (module.ConnectionType is { } type && BrandIcons.TryGet(type, out var pathData))
-        {
-            try
+        var content = BrandIconFactory.TryCreate(module.ConnectionType, 15, SeverityPalette.Rgb(255, 255, 255, 255), _runtime.Logger)
+            ?? new FontIcon
             {
-                // 24×24 原生 path 经 Viewbox 等比缩到显示尺寸（PathIcon 不自动 fit 几何）
-                content = new Viewbox
-                {
-                    Width = 15,
-                    Height = 15,
-                    Child = new PathIcon
-                    {
-                        Data = BrandGeometry(pathData),
-                        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
-                    },
-                };
-            }
-            catch (Exception exception)
-            {
-                _runtime.Logger?.LogError(exception, "品牌图标渲染失败，退回字形兜底：{Type}", type);
-                content = null;
-            }
-        }
-        content ??= new FontIcon
-        {
-            Glyph = module.Glyph,
-            FontSize = 15,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
-        };
+                Glyph = module.Glyph,
+                FontSize = 15,
+                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
+            };
         return new Border
         {
             Width = 30,
@@ -269,51 +247,6 @@ internal sealed class SettingsWindow : Window
             Child = content,
         };
     }
-
-    /// <summary>Simple Icons path d → Geometry：SvgPathParser 中性模型 → WinUI PathGeometry 代码构建。
-    /// 不走 XamlReader——其对 Geometry 元素文本的处理与 WPF/UWP 不一致，解析失败会炸掉设置窗口构建
-    /// （2026-10-08 用户实测设置打不开的根因），代码构建零字符串魔法、解析层在 Core 单测覆盖。</summary>
-    private static Geometry BrandGeometry(string pathData)
-    {
-        var geometry = new PathGeometry { FillRule = FillRule.Nonzero }; // SVG 填充默认 nonzero
-        foreach (var figure in SvgPathParser.Parse(pathData))
-        {
-            var pathFigure = new PathFigure
-            {
-                StartPoint = Point(figure.Start),
-                IsClosed = figure.Closed,
-                IsFilled = true, // SVG 填充形：开放子路径也闭合填充
-            };
-            foreach (var segment in figure.Segments)
-            {
-                pathFigure.Segments.Add(segment switch
-                {
-                    SvgLine line => new LineSegment { Point = Point(line.To) },
-                    SvgCubic cubic => new BezierSegment
-                    {
-                        Point1 = Point(cubic.Control1),
-                        Point2 = Point(cubic.Control2),
-                        Point3 = Point(cubic.To),
-                    },
-                    SvgQuadratic quad => new QuadraticBezierSegment { Point1 = Point(quad.Control), Point2 = Point(quad.To) },
-                    SvgArc arc => new ArcSegment
-                    {
-                        Size = new global::Windows.Foundation.Size(arc.RadiusX, arc.RadiusY),
-                        RotationAngle = arc.Rotation,
-                        IsLargeArc = arc.LargeArc,
-                        SweepDirection = arc.Sweep ? SweepDirection.Clockwise : SweepDirection.Counterclockwise,
-                        Point = Point(arc.To),
-                    },
-                    _ => throw new InvalidOperationException($"未知路径段类型：{segment.GetType().Name}"),
-                });
-            }
-            geometry.Figures.Add(pathFigure);
-        }
-        return geometry;
-    }
-
-    /// <summary>Beacon.App.Windows 命名空间遮蔽全局 Windows.*，WinRT Point 必须 global::（CI 实证教训）。</summary>
-    private static global::Windows.Foundation.Point Point(SvgPoint point) => new(point.X, point.Y);
 
     /// <summary>模块启用语义：该类型存在连接且全部 Enabled（无连接 = 未启用，开关引导去配置页）。</summary>
     private bool TypeEnabled(string connectionType)

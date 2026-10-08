@@ -157,7 +157,8 @@ internal sealed class FloatingTileHost
             }
             else
             {
-                var window = new FloatingTileWindow(this, widget, _palette, _motion, index, _fallbackMonitor);
+                var window = new FloatingTileWindow(this, widget, _palette, _motion, index, _fallbackMonitor,
+                    _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type);
                 _windows[widget.Id] = window;
                 window.Initialize();
                 if (_latest.TryGetValue(widget.Id, out var state))
@@ -238,13 +239,13 @@ internal sealed class FloatingTileHost
 
         public IntPtr Hwnd => _hwnd;
 
-        public FloatingTileWindow(FloatingTileHost host, WidgetConfig widget, UiPalette palette, MotionEngine motion, int cascadeIndex, MonitorInfo fallbackMonitor)
+        public FloatingTileWindow(FloatingTileHost host, WidgetConfig widget, UiPalette palette, MotionEngine motion, int cascadeIndex, MonitorInfo fallbackMonitor, string? connectionType = null)
         {
             _host = host;
             _widget = widget;
             _fallbackMonitor = fallbackMonitor;
             CascadeIndex = cascadeIndex;
-            _tile = new PinTile(widget, palette, motion);
+            _tile = new PinTile(widget, palette, motion, connectionType);
             _tile.Root.PointerPressed += OnPointerPressed;
             _tile.Root.PointerMoved += OnPointerMoved;
             _tile.Root.PointerReleased += OnPointerReleased;

@@ -51,10 +51,11 @@ tests/* ──► 对应被测项目（+ Beacon.Core 接口）
 
 ```text
 Beacon.Core/
-├── Models/                            # 12 文件
+├── Models/                            # 13 文件
 │   ├── Severity.cs                    # Info/Success/Warning/Error/Critical（+ Offline 展示态）
 │   ├── LifecycleState.cs              # Queued/Running/…/Unknown
 │   ├── ConnectionConfig.cs  ConnectionHealthState.cs  WidgetConfig.cs  WidgetTypeDescriptor.cs
+│   ├── WidgetDisplayPolicy.cs         # 数值类悬浮总闸（FloatingOptIn × NumericFloatingEnabled，两 L0 形态共用）
 │   ├── WidgetState.cs                 # widgetId/widgetType/connectionId/severity/summary/payload/…
 │   ├── ActionModels.cs                # ActionConfig / ActionResult（合并文件）
 │   ├── NotificationModels.cs          # NotificationRule / NotificationRecord / Delivery（合并文件）
@@ -69,7 +70,7 @@ Beacon.Core/
 │   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）
 ├── Services/
 │   ├── EventBus.cs                    # 线程安全的进程内发布/订阅
-│   ├── RefreshScheduler.cs            # (connection,tier) 合并轮询 + 抖动 + 退避
+│   ├── RefreshScheduler.cs            # (connection,tier,间隔覆盖) 合并轮询 + 抖动 + 退避
 │   ├── StatusAggregator.cs            # WidgetState* → 总体 Severity + 计数
 │   ├── NotificationEngine.cs          # 规则求值 + 冷却去重 + 默认规则
 │   ├── ActionRunner.cs                # 确认策略 + 超时 + 取消
@@ -158,13 +159,14 @@ Beacon.App/
 │   ├── FileLoggerProvider.cs  CrashLog.cs    # beacon-YYYYMMDD.log / crash-*.log
 │   ├── UiPalette.cs  MotionEngine.cs  ShellStateStore.cs  UiDispatcher.cs
 │   └── （+ Monitor 相关辅助）
-└── Windows/                           # 6 文件（UI 多为代码构建）
+└── Windows/                           # 7 文件（UI 多为代码构建）
     ├── CapsuleWindow.xaml|cs          # L1 聚合胶囊（独立置顶常驻窗，位置记忆）
     ├── QuickPanelWindow.xaml|cs       # L2 快捷面板（可激活，ESC 关；通知中心/组件列表）
     ├── PinnedHostWindow.cs            # ★ L0 宿主面板形态（默认）：每显示器一窗，代码建 UI，
     │                                  #   Topmost+NoActivate+空白点击穿透；含 PinTile 控件
     ├── FloatingTileWindow.cs          # ★ L0 独立悬浮框形态（pinDisplayMode=floating）：
     │                                  #   每钉选组件一窗，拖放位置按组件持久化（FloatingX/Y）
+    ├── BrandIconFactory.cs            # 品牌 path → Viewbox(PathIcon)（设置目录/悬浮 tile 共用，渲染失败退兜底）
     ├── DetailWindow.cs                # L3 详情 + 全部 Action（代码建 UI）
     └── SettingsWindow.cs              # B-801/802/805：PowerToys 形态配置中心（模块目录+启停+连接/组件 CRUD，
                                        #   悬浮形态二选一、导入导出、通知规则；代码建 UI）
@@ -174,7 +176,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 337 个测试（Connections 163 / Core 133 / Actions 19 / Storage 22），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 347 个测试（Connections 163 / Core 141 / Actions 19 / Storage 22），即本地门禁。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

@@ -77,7 +77,7 @@ internal sealed class PinTile
 
     public string WidgetId { get; }
 
-    public PinTile(WidgetConfig widget, UiPalette palette, MotionEngine motion)
+    public PinTile(WidgetConfig widget, UiPalette palette, MotionEngine motion, string? connectionType = null)
     {
         WidgetId = widget.Id;
         _widget = widget;
@@ -86,14 +86,28 @@ internal sealed class PinTile
         _label.Text = LabelOf(widget);
         _value.Text = "加载中…"; // 空白即 bug：首态也要有信息（首个状态事件到达即被覆盖）
 
+        // 数据源品牌图标（用户令：悬浮框必须带对应 icon，不然分不清哪个悬浮框是哪个源）：
+        // BrandIcons 命中 → 品牌 path（智谱 z/claude/jenkins…）；未收录/渲染失败 → 通用 globe 字形兜底
+        var icon = BrandIconFactory.TryCreate(connectionType, 14, SeverityPalette.Rgb(255, 226, 232, 240))
+            ?? new FontIcon
+            {
+                Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+            };
+
         var grid = new Grid { ColumnSpacing = 6 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Grid.SetColumn(_light, 0);
-        Grid.SetColumn(_label, 1);
-        Grid.SetColumn(_value, 2);
+        Grid.SetColumn(icon, 1);
+        Grid.SetColumn(_label, 2);
+        Grid.SetColumn(_value, 3);
         grid.Children.Add(_light);
+        grid.Children.Add(icon);
         grid.Children.Add(_label);
         grid.Children.Add(_value);
 
@@ -366,7 +380,8 @@ internal sealed class PinnedHostWindow
                 _latest.Remove(widget.Id);
                 continue;
             }
-            var tile = new PinTile(widget, _palette, _motion);
+            var tile = new PinTile(widget, _palette, _motion,
+                _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type);
             AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;
             _tilePanel.Children.Add(tile.Root);
