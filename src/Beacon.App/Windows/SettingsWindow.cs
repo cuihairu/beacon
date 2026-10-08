@@ -109,6 +109,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("mimo", "小米 MiMo", "模型目录 · 用量待官方开放", "\uE7F8", "mimo"),
             new ModuleDef("codex", "OpenAI Codex", "本机会话统计 · 零凭据", "\uE99A", "codex"),
             new ModuleDef("copilot", "GitHub Copilot", "套餐配额 · 高级请求", "\uE99B", "copilot"),
+            new ModuleDef("opencode", "OpenCode Go", "Console Budgets · 月度用量", "\uEA8F", "opencode"),
             new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
             new ModuleDef("advanced", "高级", "导入导出 · 通知规则", "\ue90f", null),
         ];
@@ -235,6 +236,7 @@ internal sealed class SettingsWindow : Window
             "mimo" => SeverityPalette.Rgb(255, 255, 105, 0), // 小米橙 #FF6900
             "codex" => SeverityPalette.Rgb(255, 16, 22, 34), // OpenAI 黑（近墨）
             "copilot" => SeverityPalette.Rgb(255, 142, 78, 198), // Copilot 紫渐变主色 #8E4EC6
+            "opencode" => SeverityPalette.Rgb(255, 13, 148, 136), // OpenCode 青 #0D9488
             "http" => SeverityPalette.Rgb(255, 63, 185, 80),
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
@@ -508,6 +510,7 @@ internal sealed class SettingsWindow : Window
         "mimo" => "尚无连接——填小米开放平台 API Key（platform.xiaomimimo.com，实测推理域可用）。官方未开放用量接口（推理域 /usage 实测 404），卡片显示模型目录真数据；日后开放可在连接 Settings 填 usage_endpoint。",
         "codex" => "无需连接配置——直接读本机 ~/.codex/sessions 会话记录；名称随意填（如 codex-local），Endpoint 可空。官方用量口需 ChatGPT OAuth（不同凭据体系），卡片为本地统计口径。",
         "copilot" => "尚无连接——填 GitHub PAT（github.com/settings/tokens 创建并勾选 copilot scope，官方扩展同款配额端点自动带默认地址）。卡片直读套餐配额（Pro 1500 高级请求/月、聊天/补全无限）与额度重置日；续费信息在 github.com/settings/copilot 查看。",
+        "opencode" => "尚无连接——填 OpenCode Key（oc_sk，opencode.ai Console Keys 创建；读 Budgets 需 All 权限，inference-only Key 读不了）。卡片直读官方 Console Budgets 用量（本月消费/月度上限/重置日）。",
         _ => "尚无连接——填局域网/内部接口地址（可空凭据）；状态词表/额度字段映射在组件向导里配。",
     };
 
@@ -897,6 +900,7 @@ internal sealed class SettingsWindow : Window
         "mimo" => "mimo-main",
         "codex" => "codex-local",
         "copilot" => "copilot-main",
+        "opencode" => "opencode-main",
         "http" => "ci-local",
         _ => "github-main",
     };
@@ -911,6 +915,7 @@ internal sealed class SettingsWindow : Window
         "mimo" => "Endpoint（可空 = 推理域 token-plan-cn.xiaomimimo.com/v1）",
         "codex" => "会话目录（可空 = 默认 ~/.codex/sessions）",
         "copilot" => "Endpoint（可空 = 官方配额端点 copilot_internal/user）",
+        "opencode" => "Endpoint（可空 = 官方 Console Budgets 接口）",
         "http" => "Endpoint（必填，如局域网打包工具地址）",
         _ => "Endpoint（可空 = 官方 API）",
     };
@@ -925,6 +930,7 @@ internal sealed class SettingsWindow : Window
         "mimo" => "https://token-plan-cn.xiaomimimo.com/v1",
         "codex" => "C:\\Users\\me\\.codex\\sessions",
         "copilot" => "https://api.github.com/copilot_internal/user",
+        "opencode" => "https://opencode.ai/console/api/v1/budgets/members",
         "http" => "http://192.168.1.10:8080/api/status",
         _ => "https://api.github.com",
     };
@@ -940,6 +946,7 @@ internal sealed class SettingsWindow : Window
         "mimo" => "API Key（只写 DPAPI；Bearer 直传）",
         "codex" => "无需凭据（留空）",
         "copilot" => "PAT（需 copilot scope，只写 DPAPI）",
+        "opencode" => "API Key（oc_sk，只写 DPAPI；读 Budgets 需 All 权限）",
         "http" => "API Key（可选，只写 DPAPI；默认 Bearer 头，可在 config.json 改）",
         _ => "Token（只写 DPAPI，JSON 仅存引用）",
     };

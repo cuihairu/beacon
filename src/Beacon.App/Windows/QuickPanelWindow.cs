@@ -219,6 +219,7 @@ public sealed partial class QuickPanelWindow : Window
         var type when type.StartsWith("mimo.", StringComparison.Ordinal) => "MiMo",
         var type when type.StartsWith("codex.", StringComparison.Ordinal) => "Codex",
         var type when type.StartsWith("copilot.", StringComparison.Ordinal) => "Copilot",
+        var type when type.StartsWith("opencode.", StringComparison.Ordinal) => "OpenCode",
         var type when type.StartsWith("claude.", StringComparison.Ordinal) => "Claude",
         var type when type.StartsWith("deepseek.", StringComparison.Ordinal) => "DeepSeek",
         var type when type.StartsWith("kimi.", StringComparison.Ordinal) => "Kimi",

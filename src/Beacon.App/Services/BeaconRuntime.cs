@@ -93,6 +93,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [MiMoWidgetDescriptors.UsageType] = new MiMoUsageProvider(), // positioning P0 #5：小米 MiMo（用量口未开放→模型目录真数据）
             [CodexWidgetDescriptors.UsageType] = new CodexUsageProvider(), // positioning P0 #5：OpenAI Codex（本地统计兜底，如实标注）
             [CopilotWidgetDescriptors.UsageType] = new CopilotUsageProvider(), // AI Usage 第八家：GitHub Copilot（官方扩展同款配额端点直连）
+            [OpenCodeWidgetDescriptors.UsageType] = new OpenCodeUsageProvider(), // AI Usage 第九家：OpenCode Go（官方 Console Budgets API 直连）
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -122,6 +123,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["mimo"] = new MiMoConnectionProvider(),
             ["codex"] = new CodexConnectionProvider(),
             ["copilot"] = new CopilotConnectionProvider(),
+            ["opencode"] = new OpenCodeConnectionProvider(),
         };
 
         return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders, logger);
