@@ -50,80 +50,113 @@ Name: "autostart"; Description: "开机自动启动"
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Beacon"; ValueData: """{app}\Beacon.App.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
-; -- Config protection: preserve existing config on install unless user explicitly overrides
-; 警告文案：保留可能存在配置不兼容
+; -- 安装器配置保护（不许静默覆盖用户配置）--
+; ①检测到旧配置目录 → 单选页：保留现有配置(默认) / 覆盖为全新配置；
+; ②「覆盖」须勾选「我已知悉将丢失现有配置」才放行；③/SILENT 默认保留，覆盖须显式 /OVERWRITE_CONFIG；
+; ④无旧配置直接跳页。配置目录 %APPDATA%\Beacon（应用运行时生成，安装包不带配置文件）。
 [Code]
 const
-  sOverwriteWarn = '保留可能存在配置不兼容——新版本若调整配置结构，旧配置可能无法加载或部分功能异常，出问题可重装选覆盖';
-  sOverwriteConfirm = '我已知悉将丢失现有配置';
-var
-  selRestore: Boolean;
-  selOverride: Boolean;
-procedure CurStepChanged(step: Integer);
-var
-  cfgDir: string;
-begin
-  if step = ssInstall then
-  begin
-    cfgDir := '{userappdata}\Beacon';
-    if not DirectoryExists(cfgDir) then
-    begin
-      ; 无旧配置，跳过询问，直接使用默认
-      exit;
-    end;
-    ; 弹出自定义页确认：保留(默认) / 覆盖
-    if not CreateCustomPage(wpSelectTasks, @SelectConfigPage) then
-      Fail('创建配置保留页失败');
-    ; 若是静默安装，默认保留，自动带参数覆盖
-    if IsSilent then
-    begin
-      if ParamIsCmdLine('/OVERWRITE_CONFIG') then
-        SelectOverride
-      else
-        SelectRestore;
-    end
-    else
-    begin
-      ; 交互模式：询问用户
-      SelectRestore;
-    end;
-  end;
-end;
+  OverwriteParam = '/OVERWRITE_CONFIG';
 
-function SelectConfigPage(wp: Integer): Boolean;
 var
-  r: Integer;
+  ConfigPage: TInputOptionWizardPage;
+  AckCheckBox: TNewCheckBox;
+  WarnLabel: TNewStaticText;
+  OverrideConfig: Boolean; // 是否覆盖（NextButtonClick 记录 → CurStepChanged 执行；静默时由参数定）
+
+function CmdLineParamExists(const Value: String): Boolean;
+var
+  I: Integer;
 begin
   Result := False;
-  { 单选按钮：保留默认 / 覆盖 }
-  r := MsgBox('Beacon 将要安装到 {localappdata}\Beacon'#13#10'已检测到旧配置目录'#13#10'是否保留现有配置？', mbConfirmation, MB_YESNOCANCEL or MB_DEFBUTTON2);
-  case r of
-    IDYES: begin selRestore := True; selOverride := False; end;
-    IDNO:  begin selOverride := True; end;
-    IDCANCEL: begin abort; end;
-  end;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), Value) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+function HasExistingConfig: Boolean;
+begin
+  Result := DirExists(ExpandConstant('{userappdata}\Beacon'));
+end;
+
+// 选「保留」显示保留警告；选「覆盖」切知悉勾选框（切回保留清勾选，重新覆盖须重新知悉）
+procedure SyncOverrideUi;
+begin
+  WarnLabel.Visible := ConfigPage.Values[0];
+  AckCheckBox.Visible := ConfigPage.Values[1];
+  if not ConfigPage.Values[1] then
+    AckCheckBox.Checked := False;
+end;
+
+procedure ConfigPageClick(Sender: TObject);
+begin
+  SyncOverrideUi;
+end;
+
+procedure InitializeWizard;
+begin
+  OverrideConfig := False;
+  ConfigPage := CreateInputOptionPage(wpSelectTasks,
+    '现有 Beacon 配置', '检测到已存在的配置目录', '如何处理现有配置？（%APPDATA%\Beacon）', True);
+  ConfigPage.Add('保留现有配置（推荐，默认）');
+  ConfigPage.Add('覆盖为全新配置（删除现有连接/组件/设置）');
+  ConfigPage.Values[0] := True; // 默认保留
+  ConfigPage.OnClickCheck := @ConfigPageClick;
+
+  WarnLabel := TNewStaticText.Create(WizardForm);
+  WarnLabel.Parent := ConfigPage.Surface;
+  WarnLabel.Left := 0;
+  WarnLabel.Top := ConfigPage.CheckListBox.Top + ConfigPage.CheckListBox.Height + ScaleY(8);
+  WarnLabel.Width := ConfigPage.Surface.Width;
+  WarnLabel.WordWrap := True;
+  WarnLabel.AutoSize := True;
+  WarnLabel.Caption :=
+    '提示：保留可能存在配置不兼容——新版本若调整配置结构，旧配置可能无法加载或部分功能异常，出问题可重装选覆盖。';
+
+  AckCheckBox := TNewCheckBox.Create(WizardForm);
+  AckCheckBox.Parent := ConfigPage.Surface;
+  AckCheckBox.Left := 0;
+  AckCheckBox.Top := ConfigPage.CheckListBox.Top + ConfigPage.CheckListBox.Height + ScaleY(8);
+  AckCheckBox.Width := ConfigPage.Surface.Width;
+  AckCheckBox.Caption := '我已知悉将丢失现有配置';
+  SyncOverrideUi;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if PageID = ConfigPage.ID then
+    Result := (not HasExistingConfig) or IsSilent; // 无旧配置/静默安装不弹页
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
   Result := True;
-end;
-
-procedure DoSelectRestore;
-begin
-  selRestore := True;
-  selOverride := False;
-  ; 保留旧配置 - 通过 DelTree 后重新写入默认模板实现
-  DelTree('{userappdata}\Beacon');
-end;
-
-procedure DoSelectOverride;
-begin
-  selOverride := True;
-  ; 显式确认：二次确认框
-  if not AskYesNo('Beacon 安装'#13#10'确定要覆盖现有配置吗？'#13#10''#13#10+sOverwriteWarn + #13#10+'「' + sOverwriteConfirm + '」才能继续。', mbConfirmation, MB_YESNOCANCEL or MB_DEFBUTTON2) then
+  if CurPageID = ConfigPage.ID then
   begin
-    ; 用户取消，回到保留分支
-    selRestore := True;
-    selOverride := False;
-    exit;
+    if ConfigPage.Values[1] then
+    begin
+      if not AckCheckBox.Checked then
+      begin
+        MsgBox('勾选「我已知悉将丢失现有配置」后才能选择覆盖。', mbError, MB_OK);
+        Result := False;
+        Exit;
+      end;
+      OverrideConfig := True;
+    end
+    else
+      OverrideConfig := False;
   end;
-  ; 执行清理：删除旧配置目录
-  DelTree('{userappdata}\Beacon');
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  // 静默安装不弹页：默认保留，覆盖必须显式带 /OVERWRITE_CONFIG（参数即确权）
+  if IsSilent then
+    OverrideConfig := CmdLineParamExists(OverwriteParam);
+  if (CurStep = ssInstall) and OverrideConfig then
+    DelTree(ExpandConstant('{userappdata}\Beacon'), True, True, True);
 end;
