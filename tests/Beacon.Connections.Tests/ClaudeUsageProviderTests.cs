@@ -196,7 +196,8 @@ public sealed class ClaudeUsageProviderTests
         try
         {
             Directory.CreateDirectory(dir);
-            var todayStamp = DateTimeOffset.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+            // 必须是真 UTC + 字面 Z：Now（本地）贴 Z 会被解析成 UTC，本地 16:00 后 ToLocalTime 落到明天 → ageDays=-1 全被过滤
+            var todayStamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffZ", CultureInfo.InvariantCulture);
             var fresh = Path.Combine(dir, "fresh.jsonl");
             await File.WriteAllLinesAsync(fresh,
             [
@@ -229,7 +230,7 @@ public sealed class ClaudeUsageProviderTests
         try
         {
             Directory.CreateDirectory(dir);
-            var todayStamp = DateTimeOffset.Now.ToString("yyyy-MM-dd'T'HH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+            var todayStamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffZ", CultureInfo.InvariantCulture); // 真 UTC，同上
             await File.WriteAllTextAsync(Path.Combine(dir, "s.jsonl"),
                 $"{{\"type\":\"assistant\",\"message\":{{\"id\":\"m1\",\"usage\":{{\"input_tokens\":1}}}},\"costUSD\":0.25,\"timestamp\":\"{todayStamp}\"}}");
 
