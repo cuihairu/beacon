@@ -40,6 +40,7 @@ internal sealed class SettingsWindow : Window
     private StackPanel _connectionList = null!;
     private ComboBox _connTypeBox = null!;
     private TextBox _connIdBox = null!;
+    private string _lastPrefilledConnectionId = "";
     private TextBox _connEndpointBox = null!;
     private PasswordBox _connTokenBox = null!;
     private Button _connSaveButton = null!;
@@ -216,7 +217,8 @@ internal sealed class SettingsWindow : Window
         }
     }
 
-    /// <summary>模块图标（PowerToys 形态：每模块独立 icon，色块 + Segoe Fluent 字形）。</summary>
+    /// <summary>模块图标（PowerToys 形态：每模块独立 icon）——Simple Icons 品牌图优先（BrandIcons 本地内置），
+    /// 未收录品牌（如智谱）退色块 + Segoe Fluent 字形兜底。</summary>
     private static Border MakeModuleIcon(ModuleDef module)
     {
         var tint = module.ConnectionType switch
@@ -226,6 +228,27 @@ internal sealed class SettingsWindow : Window
             "http" => SeverityPalette.Rgb(255, 63, 185, 80),
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
+        UIElement? content = null;
+        if (module.ConnectionType is { } type && BrandIcons.TryGet(type, out var pathData))
+        {
+            // 24×24 原生 path 经 Viewbox 等比缩到显示尺寸（PathIcon 不自动 fit 几何）
+            content = new Viewbox
+            {
+                Width = 15,
+                Height = 15,
+                Child = new PathIcon
+                {
+                    Data = BrandGeometry(pathData),
+                    Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
+                },
+            };
+        }
+        content ??= new FontIcon
+        {
+            Glyph = module.Glyph,
+            FontSize = 15,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
+        };
         return new Border
         {
             Width = 30,
@@ -233,14 +256,14 @@ internal sealed class SettingsWindow : Window
             CornerRadius = new CornerRadius(7),
             Background = new SolidColorBrush(tint),
             VerticalAlignment = VerticalAlignment.Center,
-            Child = new FontIcon
-            {
-                Glyph = module.Glyph,
-                FontSize = 15,
-                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
-            },
+            Child = content,
         };
     }
+
+    /// <summary>Simple Icons path d 数据 → Geometry（XAML 紧凑语法解析，24×24 viewBox 原生尺寸）。</summary>
+    private static Geometry BrandGeometry(string pathData)
+        => (Geometry)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            $"<Geometry xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\">{pathData}</Geometry>");
 
     /// <summary>模块启用语义：该类型存在连接且全部 Enabled（无连接 = 未启用，开关引导去配置页）。</summary>
     private bool TypeEnabled(string connectionType)
@@ -766,6 +789,8 @@ internal sealed class SettingsWindow : Window
             _connTypeBox.SelectedIndex = 0;
         }
         _connIdBox = new TextBox { Header = "名称（唯一 Id）", Width = 200, PlaceholderText = ConnectionIdHint(lockType) };
+        _connIdBox.Text = PrefillConnectionId(lockType); // 预填唯一 Id：不改即用，改了以用户为准（不再强制手填）
+        _connTypeBox.SelectionChanged += (_, _) => PrefillConnectionIdIfUntouched();
         _connEndpointBox = new TextBox { Header = ConnectionEndpointHeader(lockType), Width = 280, PlaceholderText = ConnectionEndpointHint(lockType) };
         _connTokenBox = new PasswordBox { Header = ConnectionTokenHeader(lockType), Width = 280 };
 
@@ -835,6 +860,33 @@ internal sealed class SettingsWindow : Window
         SettingsApplied?.Invoke();
     }
 
+    /// <summary>生成该类型的唯一连接 Id：默认名（ConnectionIdHint）+ 重名 -2/-3 递增；预填输入框，不改即用。</summary>
+    private string PrefillConnectionId(string? lockType)
+    {
+        var seed = ConnectionIdHint(lockType ?? SelectedString(_connTypeBox) ?? "github");
+        var id = seed;
+        for (var suffix = 2; _runtime.Config.Connections.Any(c => c.Id == id); suffix++)
+        {
+            id = $"{seed}-{suffix}";
+        }
+        _lastPrefilledConnectionId = id;
+        return id;
+    }
+
+    /// <summary>类型切换时仅当 Id 框未被用户改过（空或仍是上次预填值）才重预填，不覆盖用户输入。</summary>
+    private void PrefillConnectionIdIfUntouched()
+    {
+        if (!_connIdBox.IsEnabled)
+        {
+            return; // 编辑已有连接（Id 锁定）
+        }
+        var current = _connIdBox.Text.Trim();
+        if (current.Length == 0 || current == _lastPrefilledConnectionId)
+        {
+            _connIdBox.Text = PrefillConnectionId(null);
+        }
+    }
+
     private static string ConnectionIdHint(string? lockType) => lockType switch
     {
         "github" => "github-main",
@@ -881,8 +933,8 @@ internal sealed class SettingsWindow : Window
     {
         _editingConnectionId = null;
         _connSaveButton.Content = "保存连接";
-        _connIdBox.Text = "";
         _connIdBox.IsEnabled = true;
+        _connIdBox.Text = PrefillConnectionId(null);
         _connEndpointBox.Text = "";
         _connTokenBox.Password = "";
         _connTokenBox.PlaceholderText = "";
