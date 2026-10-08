@@ -33,6 +33,7 @@ public static class HttpWidgetDescriptors
         Type = QuotaType,
         DisplayName = "HTTP 额度（数值卡，任意配额 JSON）",
         PinSupported = true,
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

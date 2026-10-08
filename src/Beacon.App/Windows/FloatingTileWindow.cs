@@ -43,8 +43,21 @@ internal sealed class FloatingTileHost
     }
 
     /// <summary>悬浮形态准入（产品拍板）：钉选准入之外还须信息密度够（FloatingSupported）——数值/额度类只在宿主面板。</summary>
+    /// <summary>悬浮形态准入：信息密集组件（FloatingSupported，趋势图/灯组）恒可悬浮；
+    /// 数值/额度类（FloatingOptIn）由设置「数量悬浮窗」开关放行，默认关=桌面零残留（拍板 2026-10-08）。</summary>
     public bool IsFloatingEligible(string widgetType)
-        => _runtime.Resolver.Resolve(widgetType)?.Descriptor is { PinSupported: true, FloatingSupported: true };
+    {
+        var descriptor = _runtime.Resolver.Resolve(widgetType)?.Descriptor;
+        if (descriptor is not { PinSupported: true })
+        {
+            return false;
+        }
+        if (descriptor.FloatingSupported)
+        {
+            return true;
+        }
+        return descriptor.FloatingOptIn && _runtime.Config.App.NumericFloatingEnabled;
+    }
 
     /// <summary>TopmostGuard 用：全部悬浮窗句柄（Loaded 前该窗句柄为 Zero，哨兵跳过）。</summary>
     public IReadOnlyList<IntPtr> Hwnds => _windows.Values
@@ -116,7 +129,7 @@ internal sealed class FloatingTileHost
                 SourceWidgetId = "",
                 Severity = Severity.Info,
                 Title = "悬浮形态提示",
-                Message = "数值/额度类组件不显示悬浮窗（信息密度低），钉选内容请在宿主面板查看；悬浮形态仅对信息密集组件（趋势图/灯组）生效。",
+                Message = "数量类组件默认不显示悬浮窗（桌面零残留），钉选内容在宿主面板查看，数据未动；可在 设置 → 常规 → 数量悬浮窗 打开。",
                 Timestamp = DateTimeOffset.UtcNow,
             }, new NotificationDelivery(Toast: true, Sound: false));
         }

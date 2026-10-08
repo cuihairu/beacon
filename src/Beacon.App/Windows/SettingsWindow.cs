@@ -36,6 +36,7 @@ internal sealed class SettingsWindow : Window
     private ComboBox _pinModeBox = null!;
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
+    private ToggleSwitch _numericFloatingToggle = null!;
 
     private StackPanel _connectionList = null!;
     private ComboBox _connTypeBox = null!;
@@ -386,6 +387,9 @@ internal sealed class SettingsWindow : Window
         _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
         _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
+        // 拍板 2026-10-08：数量悬浮窗不删功能改可配置——默认关（新装/升级零残留），开=数值/额度类恢复独立悬浮窗
+        _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认关）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
+        _numericFloatingToggle.Toggled += (_, _) => SaveGeneral();
         _pinModeBox = new ComboBox { Header = "悬浮形态（重启生效）", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var item in new[] { ("panel", "宿主面板（单窗多 tile）"), ("floating", "独立悬浮框（每组件一窗，任意拖放）") })
         {
@@ -393,8 +397,8 @@ internal sealed class SettingsWindow : Window
         }
         _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
         _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox } });
-        page.Children.Add(Hint("悬浮形态说明：数值/额度类组件不上悬浮窗（信息密度低）——钉选请在宿主面板查看；悬浮形态仅对信息密集组件（趋势图/灯组）生效。切换重启生效。"));
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle } });
+        page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认关=桌面零残留，开启即刻生效）。"));
         return page;
     }
 
@@ -570,6 +574,7 @@ internal sealed class SettingsWindow : Window
         app.PinDisplayMode = TagOf(_pinModeBox) ?? "panel";
         app.UiOpacity = _opacitySlider.Value;
         app.ShowCapsule = _capsuleToggle.IsOn;
+        app.NumericFloatingEnabled = _numericFloatingToggle.IsOn;
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke();
     }

@@ -13,6 +13,8 @@ public sealed class AppConfig
     public bool ShowCapsule { get; set; } = true;
     /// <summary>L0 悬浮形态：panel = 单宿主多 tile（默认）；floating = 每钉选组件一窗、可拖桌面任意位置（切换重启生效）。</summary>
     public string PinDisplayMode { get; set; } = "panel";
+    /// <summary>数量悬浮窗（数值/额度类独立悬浮窗）总开关，默认关（拍板 2026-10-08：功能保留改可配置——关=桌面零残留，开=数值类恢复悬浮窗）。</summary>
+    public bool NumericFloatingEnabled { get; set; } = false;
     /// <summary>用户通知规则；空列表时使用 DefaultNotificationRules（RFC §8）。</summary>
     public List<NotificationRule> NotificationRules { get; set; } = [];
     /// <summary>外观：级别色覆盖与动效（config.json appearance 段，RFC §4.1/§6.2.8/§9.1）。</summary>

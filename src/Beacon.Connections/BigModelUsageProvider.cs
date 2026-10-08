@@ -15,6 +15,7 @@ public static class BigModelWidgetDescriptors
         Type = UsageType,
         DisplayName = "GLM Coding Plan 额度（智谱）",
         PinSupported = true,
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

@@ -74,6 +74,7 @@ Beacon.Core/
 │   ├── NotificationEngine.cs          # 规则求值 + 冷却去重 + 默认规则
 │   ├── ActionRunner.cs                # 确认策略 + 超时 + 取消
 │   ├── WidgetHost.cs  TemplateRenderer.cs  PaletteResolver.cs  PinLayoutMath.cs
+│   ├── SvgPathParser.cs               # SVG path d → 中性几何（品牌图标渲染前置层，纯函数供单测）
 ├── Events/
 │   └── Events.cs                      # WidgetStateChanged / AggregateStatusChanged 等事件
 └── Json/
@@ -172,7 +173,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 298 个测试（Connections 163 / Core 101 / Actions 19 / Storage 22），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 323 个测试（Connections 163 / Core 119 / Actions 19 / Storage 22），即本地门禁。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 
