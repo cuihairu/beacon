@@ -5,6 +5,7 @@ using Beacon.Core.Events;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
@@ -67,14 +68,19 @@ internal sealed class FloatingTileHost
 
     public void Initialize()
     {
+        // EventBus.Publish 在刷新线程回调——UI 对象（FloatingTileWindow.Update）必须回 UI 线程碰
+        // （Initialize 在 UI 线程被调：ReloadTiles 建 Window 本就要求 UI 线程）
+        var dispatcherQueue = DispatcherQueue.GetForCurrentThread()
+            ?? throw new InvalidOperationException("FloatingTileHost.Initialize 必须在 UI 线程调用");
         _subscriptions.Add(_runtime.Bus.Subscribe<WidgetStateChanged>(evt =>
-        {
-            _latest[evt.State.WidgetId] = evt.State;
-            if (_windows.TryGetValue(evt.State.WidgetId, out var window))
+            dispatcherQueue.TryEnqueue(() =>
             {
-                window.Update(evt.State);
-            }
-        }));
+                _latest[evt.State.WidgetId] = evt.State;
+                if (_windows.TryGetValue(evt.State.WidgetId, out var window))
+                {
+                    window.Update(evt.State);
+                }
+            })));
         ReloadTiles();
     }
 

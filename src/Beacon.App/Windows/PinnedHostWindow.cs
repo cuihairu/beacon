@@ -4,6 +4,7 @@ using Beacon.App.Services;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -288,6 +289,7 @@ internal sealed class PinnedHostWindow
     private StackPanel _tilePanel = null!;
     private AppWindow _appWindow = null!;
     private IntPtr _hwnd;
+    private DispatcherQueue _dispatcherQueue = null!; // 事件回调 marshal 回 UI 线程（Initialize 在 UI 线程取）
 
     /// <summary>TopmostGuard 用：宿主窗口句柄（Loaded 前为 Zero，哨兵会跳过）。</summary>
     public IntPtr Hwnd => _hwnd;
@@ -319,12 +321,14 @@ internal sealed class PinnedHostWindow
         _window.Content = _tilePanel;
         ((FrameworkElement)_window.Content).Loaded += OnLoaded;
         _window.Activate();
+        _dispatcherQueue = _window.DispatcherQueue; // EventBus.Publish 在刷新线程，UI 对象必须回 UI 线程碰
 
         _subscriptions.Add(_runtime.Bus.Subscribe<WidgetStateChanged>(evt =>
-        {
-            _latest[evt.State.WidgetId] = evt.State;
-            UpdateTile(evt.State);
-        }));
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                _latest[evt.State.WidgetId] = evt.State;
+                UpdateTile(evt.State);
+            })));
 
         ReloadTiles();
     }
