@@ -15,6 +15,8 @@ public sealed class AppConfig
     public string PinDisplayMode { get; set; } = "panel";
     /// <summary>数量悬浮窗（数值/额度类独立悬浮窗）总开关，默认关（拍板 2026-10-08：功能保留改可配置——关=桌面零残留，开=数值类恢复悬浮窗）。</summary>
     public bool NumericFloatingEnabled { get; set; } = false;
+    /// <summary>升级迁移标记：NumericFloatingEnabled 强制置关是一次性动作（老包开关 ON 的配置升级即回干净桌面），已执行不再动用户选择。</summary>
+    public bool NumericFloatingResetDone { get; set; }
     /// <summary>用户通知规则；空列表时使用 DefaultNotificationRules（RFC §8）。</summary>
     public List<NotificationRule> NotificationRules { get; set; } = [];
     /// <summary>外观：级别色覆盖与动效（config.json appearance 段，RFC §4.1/§6.2.8/§9.1）。</summary>

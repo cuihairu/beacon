@@ -2,6 +2,7 @@ using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
+using Beacon.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
@@ -151,6 +152,22 @@ public partial class App : Application
         capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
 
+        // 数量悬浮窗升级迁移（拍板 2026-10-08 ×4）：老配置开关 ON 强制置关 + 一次性提示，
+        // 标记只置一次（NumericFloatingResetDone）——此后用户再开是自己的选择，升级不再动。
+        // 老包「改了还弹」根因即钉选面板路径没闸，本迁移保证升级后桌面默认干净。
+        if (!runtime.Config.App.NumericFloatingResetDone)
+        {
+            runtime.Config.App.NumericFloatingResetDone = true;
+            var numericWasOn = runtime.Config.App.NumericFloatingEnabled;
+            runtime.Config.App.NumericFloatingEnabled = false;
+            runtime.Config.SaveApp();
+            _logger.LogInformation("数量悬浮窗升级迁移：开关原值 {WasOn} → 强制关（一次性）。", numericWasOn);
+            if (numericWasOn)
+            {
+                tray.ShowBalloon("Beacon", "数量悬浮窗已默认关闭（桌面零残留），可在 设置 → 常规 重新打开。");
+            }
+        }
+
         // B-701：L0 悬浮组件（主屏单实例宿主或独立悬浮框两形态；多显示器分配随 B-703 位置持久化）
         if (Infrastructure.MonitorService.Primary() is { } primaryMonitor)
         {
@@ -163,7 +180,9 @@ public partial class App : Application
                 // 产品拍板：数值/额度类不上悬浮窗（信息密度低）——悬浮形态下同时挂宿主面板承载这些钉选（数据不删）；
                 // 信息密集组件（FloatingSupported，趋势图/灯组）上线后悬浮窗与面板混排。
                 if (runtime.Config.Widgets.Any(w => w.Pinned && !_floatingHost.IsFloatingEligible(w.Type)
-                    && runtime.Resolver.Resolve(w.Type)?.Descriptor.PinSupported == true))
+                    && runtime.Resolver.Resolve(w.Type)?.Descriptor.PinSupported == true
+                    // 数值类被总闸关闭时不算「需要面板承载」（面板门与悬浮窗门同一判定）
+                    && !WidgetDisplayPolicy.IsNumericSuppressed(runtime.Resolver.Resolve(w.Type)?.Descriptor, runtime.Config.App.NumericFloatingEnabled)))
                 {
                     _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
                     _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
