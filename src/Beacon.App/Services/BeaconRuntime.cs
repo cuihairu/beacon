@@ -91,6 +91,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [DeepSeekWidgetDescriptors.BalanceType] = new DeepSeekBalanceProvider(), // positioning P0 #5：DeepSeek 余额
             [KimiWidgetDescriptors.CodingType] = new KimiCodingUsageProvider(), // positioning P0 #5：Kimi Coding 套餐余量
             [MiMoWidgetDescriptors.UsageType] = new MiMoUsageProvider(), // positioning P0 #5：小米 MiMo（用量口未开放→模型目录真数据）
+            [CodexWidgetDescriptors.UsageType] = new CodexUsageProvider(), // positioning P0 #5：OpenAI Codex（本地统计兜底，如实标注）
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -118,6 +119,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["deepseek"] = new DeepSeekConnectionProvider(),
             ["kimi"] = new KimiConnectionProvider(),
             ["mimo"] = new MiMoConnectionProvider(),
+            ["codex"] = new CodexConnectionProvider(),
         };
 
         return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders, logger);
