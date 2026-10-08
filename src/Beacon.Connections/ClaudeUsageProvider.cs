@@ -97,9 +97,10 @@ public sealed class ClaudeUsageProvider : IWidgetProvider
         {
             return DefaultDir();
         }
-        // 允许 ~ 起头的家目录写法
+        // 允许 ~ 起头的家目录写法；按目录段拆分再 Combine——Path.Combine 不归一化段内分隔符，
+        // 直接拼 ".claude/projects" 在 Windows 会产出混合斜杠（CI 实证）
         return configured.StartsWith('~')
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), configured[1..].TrimStart('/', '\\'))
+            ? Path.Combine([Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), .. configured[1..].Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)])
             : configured;
     }
 

@@ -153,10 +153,13 @@ public sealed class ClaudeUsageProviderTests
 
     // ---- 目录解析与连接测试 ----
 
-    [Fact]
-    public void ResolveDir_TildeExpandsToProfile()
+    [Theory]
+    [InlineData("~/.claude/projects")]
+    [InlineData("~\\.claude\\projects")] // Windows 分隔符写法同样归一化（CI 实证：Path.Combine 不归一化段内分隔符）
+    [InlineData("~/.claude/projects/")]  // 尾分隔符不产生空段
+    public void ResolveDir_TildeExpandsToProfile(string endpoint)
     {
-        var resolved = ClaudeUsageProvider.ResolveDir(new ConnectionConfig { Id = "c", Type = "claude", Endpoint = "~/.claude/projects" });
+        var resolved = ClaudeUsageProvider.ResolveDir(new ConnectionConfig { Id = "c", Type = "claude", Endpoint = endpoint });
 
         var expected = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
