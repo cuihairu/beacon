@@ -146,8 +146,27 @@ Codex    71% used   weekly 8h 后重置
 - **智谱 GLM 套餐额度（P0 #5 提前）**：组件类型 `bigmodel.usage`——`GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`，
   裸 Key 认证（Authorization 头不带 Bearer），`data.limits[]` 归一化为 5 小时/周/月三窗口，阈值告警；
   Z.AI 国际站把连接 Endpoint 换成 `https://api.z.ai/api/monitor/usage/quota/limit` 即用；
+- **Claude Code 本机用量（P0 #5）**：组件类型 `claude.usage`——读本机 `~/.claude/projects/**\/*.jsonl`（ccusage 同源数据，
+  ccusage.com 口径），按窗口聚合 token 与 costUSD；零凭据零网络，`daily_cost_limit` 可选阈值告警（无上限恒 Success）；
+- **Kimi For Coding 套餐余量（P0 #5）**：组件类型 `kimi.coding`——`GET https://api.kimi.com/coding/v1/usages`，
+  Bearer 认证（sk-kimi-* Key，与 Moonshot 开放平台两套体系），窗口 `{duration,timeUnit}` 归一化为 5h/周，
+  顶层 `usage` 兜底为周限，按剩余百分比阈值告警（warn 30 / error 10）；
+- **DeepSeek 开放平台余额（P0 #5）**：组件类型 `deepseek.balance`——`GET https://api.deepseek.com/user/balance`，
+  Bearer 认证，`balance_infos[]` 字符串金额，`is_available=false` 直接 Error，余额击穿下限告警（warn 20 / error 5，按余额币种）；
 - **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
   启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
+
+### 调研结论（暂缓接入）
+
+- **阿里云百炼（DashScope/千问）**：无独立的余额/用量查询接口——账户余额要走阿里云 BSS OpenAPI
+  `QueryAccountBalance`（AccessKey/Secret 签名，非 Bearer REST），且统计的是整个阿里云账号消费而非百炼模型单独口径；
+  接入成本高、信息增益低，暂缓。过渡方案：自建代理转发再配 `http.status`。
+- **小米 MiMo**：API 开放平台（platform.xiaomimimo.com）已开放、模型权重 MIT 开源，但**未见公开的余额/用量查询接口**；
+  有公开接口后按 bigmodel/kimi 同构接入。过渡方案：`http.status` 监控自部署网关的健康状态。
+- **Moonshot 开放平台余额**（区别于 Kimi For Coding 套餐）：`GET https://api.moonshot.cn/v1/users/me/balance`
+  Bearer 认证，响应 `{code:0, data:{available_balance}}`（dsh-plugin-llm-balance 验证）——端点已确认，后续按 deepseek 同构接入。
+- **OpenAI Codex 用量**：社区走 ChatGPT OAuth（`chatgpt.com/backend-api/wham/usage`，5h/周/月限额+Credits），
+  需要本机 OAuth 凭据封装，与当前"连接+凭据"模型不同构，单独排期（或先走本机会话 JSONL 统计，同 claude.usage）。
 
 ### 配置示例（config 目录 %APPDATA%/Beacon/）
 
@@ -169,12 +188,33 @@ Codex    71% used   weekly 8h 后重置
     "endpoint": null,
     "credentialRef": "conn:zhipu",
     "enabled": true
+  },
+  {
+    "id": "claude-local",
+    "type": "claude",
+    "endpoint": null,
+    "enabled": true
+  },
+  {
+    "id": "kimi",
+    "type": "kimi",
+    "endpoint": null,
+    "credentialRef": "conn:kimi",
+    "enabled": true
+  },
+  {
+    "id": "deepseek",
+    "type": "deepseek",
+    "endpoint": null,
+    "credentialRef": "conn:deepseek",
+    "enabled": true
   }
 ]
 ```
 
 `http` 连接 settings：`auth_header`（默认 `Authorization`）、`auth_prefix`（默认 `"Bearer "`，可置空）；
-`bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）。
+`bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）；
+`claude` 连接零凭据零网络（endpoint 可填自定义会话目录）；`kimi`/`deepseek` endpoint 可空走官方接口，Bearer 认证。
 
 组件 `widgets.json`：
 
@@ -202,10 +242,34 @@ Codex    71% used   weekly 8h 后重置
     "connectionId": "zhipu",
     "refreshTier": "ci",
     "config": { "label": "GLM", "warn_percent": "60", "error_percent": "90" }
+  },
+  {
+    "id": "claude.usage:claude",
+    "type": "claude.usage",
+    "connectionId": "claude-local",
+    "refreshTier": "static",
+    "config": { "label": "Claude", "days": "1", "daily_cost_limit": "35" }
+  },
+  {
+    "id": "kimi.coding:kimi",
+    "type": "kimi.coding",
+    "connectionId": "kimi",
+    "refreshTier": "ci",
+    "config": { "label": "Kimi", "warn_percent": "30", "error_percent": "10" }
+  },
+  {
+    "id": "deepseek.balance:deepseek",
+    "type": "deepseek.balance",
+    "connectionId": "deepseek",
+    "refreshTier": "default",
+    "config": { "label": "DeepSeek", "warn_below": "20", "error_below": "5" }
   }
 ]
 ```
 
 `http.status` 状态词表可整体省略（用上例默认值）；未知状态词按 Warning 兜底（宁报勿漏）。
 `bigmodel.usage` 摘要形如 `GLM Coding Pro · 5h 42.5% · 周 8% · 月 3%`，级别取各窗口最差者过阈值。
+`claude.usage` 摘要形如 `Claude · 今日 · $1.00 · 2.5K tok · 12 条`（costUSD 缺失时只报 token，不自行估价）。
+`kimi.coding` 摘要形如 `Pro · 5h 剩25% · 周 剩55%`，剩余百分比越低越差。
+`deepseek.balance` 摘要形如 `DeepSeek · ¥110.00（含赠 ¥10.00）`，币种 CNY/USD 自适应。
 

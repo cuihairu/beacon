@@ -77,6 +77,9 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [GitHubWidgetDescriptors.ActionsRunsType] = new GitHubActionsProvider(),
             [HttpWidgetDescriptors.StatusType] = new HttpStatusProvider(), // positioning P0 #3：Generic HTTP
             [BigModelWidgetDescriptors.UsageType] = new BigModelUsageProvider(), // positioning P0 #5：GLM 套餐额度
+            [ClaudeWidgetDescriptors.UsageType] = new ClaudeUsageProvider(), // positioning P0 #5：Claude 本机用量（读会话 JSONL）
+            [DeepSeekWidgetDescriptors.BalanceType] = new DeepSeekBalanceProvider(), // positioning P0 #5：DeepSeek 余额
+            [KimiWidgetDescriptors.CodingType] = new KimiCodingUsageProvider(), // positioning P0 #5：Kimi Coding 套餐余量
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -99,6 +102,9 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["github"] = new GitHubConnectionProvider(),
             ["http"] = new HttpConnectionProvider(),
             ["bigmodel"] = new BigModelConnectionProvider(),
+            ["claude"] = new ClaudeConnectionProvider(),
+            ["deepseek"] = new DeepSeekConnectionProvider(),
+            ["kimi"] = new KimiConnectionProvider(),
         };
 
         return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders);

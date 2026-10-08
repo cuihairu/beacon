@@ -95,6 +95,9 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
             new ModuleDef("bigmodel", "智谱 GLM", "Coding Plan 额度", "\ue945", "bigmodel"),
+            new ModuleDef("claude", "Claude Code", "本机用量 · 零凭据", "\ue8bd", "claude"),
+            new ModuleDef("kimi", "Kimi For Coding", "套餐余量 · 5h/周", "\ue823", "kimi"),
+            new ModuleDef("deepseek", "DeepSeek", "开放平台余额", "\ue7bf", "deepseek"),
             new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
             new ModuleDef("advanced", "高级", "导入导出 · 通知规则", "\ue90f", null),
         ];
@@ -267,7 +270,7 @@ internal sealed class SettingsWindow : Window
         => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
 
     private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
-        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All];
+        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All];
 
     private static TextBlock Hint(string text) => new()
     {
@@ -429,6 +432,9 @@ internal sealed class SettingsWindow : Window
     {
         "github" => "尚无连接——填一个 GitHub PAT（需要 repo / workflow 读权限）。",
         "bigmodel" => "尚无连接——填智谱 API Key（open.bigmodel.cn 控制台获取，监控接口自动带默认端点；Z.AI 填国际站 Endpoint）。",
+        "claude" => "无需连接配置——直接读本机 ~/.claude/projects 会话记录；名称随意填（如 claude-local），Endpoint 可空。",
+        "kimi" => "尚无连接——填 Kimi Code 控制台 Key（sk-kimi-*，与 Moonshot 开放平台不通用；用量接口自动带默认端点）。",
+        "deepseek" => "尚无连接——填 DeepSeek 开放平台 API Key（platform.deepseek.com；余额接口自动带默认端点）。",
         _ => "尚无连接——填局域网/内部接口地址（可空凭据），状态词表在组件向导里配。",
     };
 
@@ -780,6 +786,9 @@ internal sealed class SettingsWindow : Window
     {
         "github" => "github-main",
         "bigmodel" => "zhipu",
+        "claude" => "claude-local",
+        "kimi" => "kimi",
+        "deepseek" => "deepseek",
         "http" => "ci-local",
         _ => "github-main",
     };
@@ -787,6 +796,9 @@ internal sealed class SettingsWindow : Window
     private static string ConnectionEndpointHeader(string? lockType) => lockType switch
     {
         "bigmodel" => "Endpoint（可空 = 官方监控接口；Z.AI 填国际站地址）",
+        "claude" => "会话目录（可空 = 默认 ~/.claude/projects）",
+        "kimi" => "Endpoint（可空 = 官方用量接口）",
+        "deepseek" => "Endpoint（可空 = 官方余额接口）",
         "http" => "Endpoint（必填，如局域网打包工具地址）",
         _ => "Endpoint（可空 = 官方 API）",
     };
@@ -794,6 +806,9 @@ internal sealed class SettingsWindow : Window
     private static string ConnectionEndpointHint(string? lockType) => lockType switch
     {
         "bigmodel" => "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+        "claude" => "C:\\Users\\me\\.claude\\projects",
+        "kimi" => "https://api.kimi.com/coding/v1/usages",
+        "deepseek" => "https://api.deepseek.com/user/balance",
         "http" => "http://192.168.1.10:8080/api/status",
         _ => "https://api.github.com",
     };
@@ -802,6 +817,9 @@ internal sealed class SettingsWindow : Window
     {
         "github" => "PAT（只写 DPAPI，JSON 仅存引用）",
         "bigmodel" => "API Key（只写 DPAPI；监控接口裸 Key 直传）",
+        "claude" => "无需凭据（留空）",
+        "kimi" => "API Key（sk-kimi-*，只写 DPAPI）",
+        "deepseek" => "API Key（只写 DPAPI）",
         "http" => "API Key（可选，只写 DPAPI；默认 Bearer 头，可在 config.json 改）",
         _ => "Token（只写 DPAPI，JSON 仅存引用）",
     };
