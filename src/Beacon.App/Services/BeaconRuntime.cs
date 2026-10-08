@@ -71,6 +71,10 @@ public sealed class BeaconRuntime : IAsyncDisposable
     {
         var bus = new EventBus(logger);
         var config = new JsonConfigurationStore();
+        // 白板总根因收口（用户实测「退出再启动，之前的配置消失了」2026-10-08）：LoadAll 此前全仓
+        // 只有测试在调，App 启动从装配起就跑在空配置上——会话内任何落盘（存设置/钉选拖动/Upsert）
+        // 把空集原子写回真实文件，重启即丢。装配第一件事必须是读盘。
+        config.LoadAll();
         var secrets = new DpapiSecretStore();
         var cache = new JsonCacheStore();
         var clock = new SystemClock();

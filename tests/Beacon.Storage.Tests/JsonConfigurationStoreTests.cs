@@ -119,6 +119,51 @@ public sealed class JsonConfigurationStoreTests
     }
 
     [Fact]
+    public async Task CorruptMainFile_KeepsCorruptCopy_AndReportsDiagnostics()
+    {
+        using var dir = new TempDir();
+        var store = new JsonConfigurationStore(dir.Path);
+        store.UpsertConnection(Connection("gh-first", "https://first.invalid"));
+        store.UpsertConnection(Connection("gh-second", "https://second.invalid"));
+
+        var mainPath = System.IO.Path.Combine(dir.Path, "connections.json");
+        await File.WriteAllTextAsync(mainPath, "{ this is not json");
+
+        var recovered = new JsonConfigurationStore(dir.Path);
+        recovered.LoadAll();
+
+        Assert.Single(recovered.Connections); // .bak 恢复生效
+        Assert.Contains(recovered.LoadErrors, e => e.StartsWith("connections.json", StringComparison.Ordinal));
+        Assert.Contains(recovered.LoadErrors, e => e.Contains(".bak", StringComparison.Ordinal));
+        var corrupt = System.IO.Path.Combine(dir.Path, "connections.json.corrupt");
+        Assert.True(File.Exists(corrupt)); // 损坏原件留档（后续落盘不再冲掉恢复依据）
+        Assert.Contains("not json", await File.ReadAllTextAsync(corrupt));
+    }
+
+    [Fact]
+    public void LoadAllBeforeMutate_PreservesPreexistingConfig()
+    {
+        // 「退出再启动，之前的配置消失了」回归锚（2026-10-08 实证：LoadAll 全仓只有测试在调，
+        // App 启动跑在空配置上，会话内任何落盘把空集原子写回真实文件）——
+        // 写路径前必须 LoadAll（BeaconRuntime.Start 装配第一步），无关落盘不得波及其他文件内容
+        using var dir = new TempDir();
+        var previous = new JsonConfigurationStore(dir.Path);
+        previous.UpsertConnection(Connection("gh-main", "https://github.invalid"));
+        previous.UpsertWidget(new WidgetConfig { Id = "w-1", Type = "github.pr.list", ConnectionId = "gh-main" });
+
+        var session = new JsonConfigurationStore(dir.Path);
+        session.LoadAll();
+        session.App.LaunchOnStartup = false;
+        session.SaveApp(); // 只改设置，连接/组件必须原样保留
+
+        var after = new JsonConfigurationStore(dir.Path);
+        after.LoadAll();
+        Assert.Single(after.Connections);
+        Assert.Single(after.Widgets);
+        Assert.False(after.App.LaunchOnStartup);
+    }
+
+    [Fact]
     public void Pins_RoundTrips()
     {
         using var dir = new TempDir();

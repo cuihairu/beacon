@@ -18,6 +18,9 @@ public sealed class JsonConfigurationStore : IConfigurationStore
     private List<WidgetConfig> _widgets = [];
     private PinsConfig _pins = new();
 
+    /// <summary>LoadAll 的读取诊断：哪些文件读坏了、恢复走到哪一步（主文件→.bak→默认）。空列表 = 全部健康。</summary>
+    public List<string> LoadErrors { get; } = [];
+
     public JsonConfigurationStore(string? rootDirectory = null)
     {
         _directory = rootDirectory
@@ -36,6 +39,7 @@ public sealed class JsonConfigurationStore : IConfigurationStore
     {
         lock (_gate)
         {
+            LoadErrors.Clear();
             _app = LoadFile<AppConfig>("config.json") ?? new AppConfig();
             _connections = LoadFile<List<ConnectionConfig>>("connections.json") ?? [];
             _widgets = LoadFile<List<WidgetConfig>>("widgets.json") ?? [];
@@ -133,23 +137,36 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             {
                 return BeaconJson.Deserialize<T>(File.ReadAllText(path));
             }
+            return null;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            // 损坏原件先留档（*.corrupt 单份覆盖），绝不让后续落盘把坏文件直接冲掉——恢复的最小依据
+            LoadErrors.Add($"{fileName}: {exception.Message}");
+            try
+            {
+                File.Copy(path, path + ".corrupt", overwrite: true);
+            }
+            catch (Exception copyFailure)
+            {
+                LoadErrors.Add($"{fileName}: 留档 .corrupt 失败 {copyFailure.Message}");
+            }
             var backup = path + ".bak";
             if (File.Exists(backup))
             {
                 try
                 {
-                    return BeaconJson.Deserialize<T>(File.ReadAllText(backup));
+                    var recovered = BeaconJson.Deserialize<T>(File.ReadAllText(backup));
+                    LoadErrors.Add($"{fileName}: 已从 .bak 备份恢复");
+                    return recovered;
                 }
-                catch (Exception)
+                catch (Exception backupFailure)
                 {
-                    // 备份也坏：用默认值
+                    LoadErrors.Add($"{fileName}: .bak 备份也损坏 {backupFailure.Message}");
                 }
             }
+            return null;
         }
-        return null;
     }
 
     private void SaveFile<T>(string fileName, T value)

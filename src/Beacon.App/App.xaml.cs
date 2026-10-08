@@ -111,6 +111,18 @@ public partial class App : Application
 
         // B-504/B-602：运行时先行装配，L2 Quick Panel 直接消费事件流（缓存优先，打开零等待）
         var runtime = BeaconRuntime.Start(toast, _logger);
+        // 配置读取诊断（用户令：读取失败不静默清——恢复尝试 + 提示）：损坏原件已留档 *.corrupt，
+        // .bak 可恢复时已生效；这里逐条落错误日志 + 托盘一次性告知，绝不带病静默跑
+        foreach (var loadError in runtime.Config.LoadErrors)
+        {
+            _logger.LogError("配置读取失败：{LoadError}", loadError);
+        }
+        if (runtime.Config.LoadErrors.Count > 0)
+        {
+            tray.ShowBalloon("Beacon",
+                $"有 {runtime.Config.LoadErrors.Count} 个配置文件读取失败（已尝试 .bak 备份恢复，损坏原件留档 *.corrupt），详见日志。",
+                Infrastructure.NativeMethods.NIIF_WARNING);
+        }
         var dispatcher = Services.GetRequiredService<IUiDispatcher>();
         var tray = Services.GetRequiredService<TrayIconService>();
         tray.Palette = new UiPalette(runtime.Config); // B-706：托盘圆点按 appearance.SeverityColors 运行时绘制
