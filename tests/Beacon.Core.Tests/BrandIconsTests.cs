@@ -19,6 +19,7 @@ public sealed class BrandIconsTests
     [InlineData("kimi")]
     [InlineData("deepseek")]
     [InlineData("uptime-kuma")]
+    [InlineData("bigmodel")] // 智谱（Simple Icons 无 slug，自绘 Z 字母——用户指名）
     public void TryGet_KnownBrand_ReturnsNonEmptyPath(string brand)
     {
         Assert.True(BrandIcons.TryGet(brand, out var pathData));
@@ -35,7 +36,6 @@ public sealed class BrandIconsTests
     }
 
     [Theory]
-    [InlineData("bigmodel")] // 智谱未收录（Simple Icons 无 slug）——调用方退字形兜底
     [InlineData("unknown-brand")]
     [InlineData("")]
     public void TryGet_UnknownBrand_ReturnsFalse(string brand)
