@@ -100,7 +100,7 @@ procedure InitializeWizard;
 begin
   OverrideConfig := False;
   ConfigPage := CreateInputOptionPage(wpSelectTasks,
-    '现有 Beacon 配置', '检测到已存在的配置目录', '如何处理现有配置？（%APPDATA%\Beacon）', True);
+    '现有 Beacon 配置', '检测到已存在的配置目录', '如何处理现有配置？（%APPDATA%\Beacon）', True, False);
   ConfigPage.Add('保留现有配置（推荐，默认）');
   ConfigPage.Add('覆盖为全新配置（删除现有连接/组件/设置）');
   ConfigPage.Values[0] := True; // 默认保留
