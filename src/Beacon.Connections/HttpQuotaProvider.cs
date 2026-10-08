@@ -29,7 +29,7 @@ public sealed class HttpQuotaProvider : IWidgetProvider
     {
         var body = await HttpEndpoint.FetchAsync(_client, connection, context, cancellationToken).ConfigureAwait(false);
 
-        QuotaReading reading;
+        QuotaReading? reading;
         try
         {
             using var document = JsonDocument.Parse(body);

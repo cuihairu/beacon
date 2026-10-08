@@ -86,11 +86,13 @@ public sealed class BigModelUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
-            Progress = null,
+            // 数值卡进度条：取最差窗口用量（与级别判定同源）；无数据 → null（tile 不画条）
+            Progress = usage.WorstPercent is { } worst ? Math.Clamp(worst, 0, 100) / 100.0 : null,
             Summary = summary,
             DetailUrl = "https://open.bigmodel.cn/usage",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["percent"] = usage.WorstPercent is { } worstPercent ? Format(worstPercent) : "", // tile 主数值（最差窗口已用 %）
                 ["level"] = usage.Level ?? "",
                 ["rolling_percent"] = usage.Rolling?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_percent"] = usage.Weekly?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",

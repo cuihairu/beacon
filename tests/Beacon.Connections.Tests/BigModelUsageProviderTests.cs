@@ -124,6 +124,9 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal("42.5", state.Payload["rolling_percent"]);
         Assert.Equal(expectedReset, state.Payload["reset_iso"]);
         Assert.Equal("https://open.bigmodel.cn/usage", state.DetailUrl);
+        // 数值卡：进度条取最差窗口（5h 42.5%），tile 主数值 percent（验收：额度组件不再只出摘要纯文本）
+        Assert.Equal(0.425, state.Progress!.Value, 5);
+        Assert.Equal("42.5", state.Payload["percent"]);
 
         // 裸 Key：Authorization 头不带 Bearer 前缀（监控接口口径）
         var hasAuth = http.Requests[0].Headers.TryGetValues("Authorization", out var authorization);

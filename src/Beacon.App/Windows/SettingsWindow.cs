@@ -57,6 +57,7 @@ internal sealed class SettingsWindow : Window
     private ComboBox _widgetTierBox = null!;
     private StackPanel _widgetFields = null!;
     private TextBox _widgetColorBox = null!;
+    private ToggleSwitch _widgetPinBox = null!;
     private TextBlock _widgetFeedback = null!;
 
     private readonly Dictionary<string, TextBox> _colorBoxes = [];
@@ -1044,6 +1045,8 @@ internal sealed class SettingsWindow : Window
 
         _widgetFields = new StackPanel { Spacing = 8 };
         _widgetColorBox = new TextBox { Header = "颜色覆盖（可选 #RRGGBB，作用于状态灯）", PlaceholderText = "#3fb950", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
+        // 验收反馈：向导保存即上板——默认勾选钉到桌面，避免「加了组件板面却空白」（同白板三连根因收口）
+        _widgetPinBox = new ToggleSwitch { Header = "添加到桌面（钉选）", IsOn = true };
 
         var save = new Button { Content = "添加组件" };
         save.Click += (_, _) => SaveWidget();
@@ -1052,6 +1055,7 @@ internal sealed class SettingsWindow : Window
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _widgetTypeBox, _widgetConnectionBox, _widgetTierBox } });
         form.Children.Add(_widgetFields);
         form.Children.Add(_widgetColorBox);
+        form.Children.Add(_widgetPinBox);
         form.Children.Add(save);
         var root = new Border
         {
@@ -1162,7 +1166,7 @@ internal sealed class SettingsWindow : Window
             ConnectionId = TagOf(_widgetConnectionBox) ?? "",
             Config = config,
             RefreshTier = SelectedString(_widgetTierBox) ?? descriptor.SuggestedTier,
-            Pinned = false,
+            Pinned = _widgetPinBox.IsOn,
             ColorOverride = colorOverride,
         };
         _runtime.Config.UpsertWidget(widget);
@@ -1170,7 +1174,9 @@ internal sealed class SettingsWindow : Window
         RebuildWidgetFields(); // 清空已提交的字段输入（含颜色覆盖）
         RebuildWidgets();
         RefreshWidgetConnectionOptions();
-        Feedback(_widgetFeedback, $"✓ 组件 {id} 已添加并上板拉取中。", error: false);
+        Feedback(_widgetFeedback, widget.Pinned
+            ? $"✓ 组件 {id} 已添加并钉到桌面，正在拉取（几秒内出数）。"
+            : $"✓ 组件 {id} 已添加（未钉选，可在上方组件行开启「钉」上板）。", error: false);
         PinsChanged?.Invoke();
     }
 

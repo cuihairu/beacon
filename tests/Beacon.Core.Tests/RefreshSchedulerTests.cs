@@ -104,6 +104,25 @@ public sealed class RefreshSchedulerTests
     }
 
     [Fact]
+    public async Task RegisterWhileRunning_StartsNewGroupLoop()
+    {
+        // 白板根因守卫：组件在调度器已运行时注册（设置页新增组件）→ 新组循环须立即启动，不等重启
+        var delayer = new FakeDelayer();
+        await using var scheduler = Create(delayer);
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+
+        var requests = new List<RefreshRequest>();
+        var gate = new object();
+        scheduler.Start((request, _) => { lock (gate) requests.Add(request); return Task.CompletedTask; });
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 1);
+
+        scheduler.Register(new WidgetRegistration("w-2", "conn-2", RefreshTiers.Ci)); // 不同 (connection,tier) 新组
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 2);
+
+        Assert.Equal(2, delayer.Calls.Count);
+    }
+
+    [Fact]
     public async Task Kick_WakesGroupBeforeDelayElapses()
     {
         var delayer = new FakeDelayer();

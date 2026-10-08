@@ -223,8 +223,19 @@ internal sealed class PinTile
     /// <summary>⑤ 滑入：tile 出现在未收起的展开态时调用（full 档）。</summary>
     public void PlaySlideIn() => _motion.SlideIn(_root);
 
+    /// <summary>tile 标签：优先用户配的显示名（label），再取自然名（GitHub repo/owner），否则退类型尾段。
+    /// 此前只认 repo，额度类（bigmodel.usage/http.quota）tile 显示成类型尾段「usage/quota」，来源不可辨。</summary>
     private static string LabelOf(WidgetConfig widget)
-        => widget.Config.TryGetValue("repo", out var repo) ? repo : widget.Type.Split('.')[^1];
+    {
+        foreach (var key in new[] { "label", "repo", "owner" })
+        {
+            if (widget.Config.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+        return widget.Type.Split('.')[^1];
+    }
 
     private static string ValueOf(WidgetState state)
     {
