@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Beacon.Core.Services;
 
-/// <summary>Widget → 调度组 的注册项。</summary>
-public sealed record WidgetRegistration(string WidgetId, string ConnectionId, string Tier);
+/// <summary>Widget → 调度组 的注册项。IntervalOverride：组件级检测间隔覆盖（null=按 Tier 策略表）。</summary>
+public sealed record WidgetRegistration(string WidgetId, string ConnectionId, string Tier, TimeSpan? IntervalOverride = null);
 
 /// <summary>同一 (Connection, Tier) 的合并刷新请求（RFC §7.1：不搞 N 个 tile = N 倍请求）。</summary>
 public sealed record RefreshRequest(string ConnectionId, string Tier, IReadOnlyList<string> WidgetIds);
@@ -20,6 +20,7 @@ public sealed class RefreshScheduler : IAsyncDisposable
     {
         public required string ConnectionId { get; init; }
         public required string Tier { get; init; }
+        public TimeSpan? IntervalOverride { get; init; } // 同档不同间隔的组件各成组，合并模型在组内仍成立
         public List<string> WidgetIds { get; } = [];
         public int ConsecutiveFailures { get; set; }
         public SemaphoreSlim Kick { get; } = new(0, 1);
@@ -28,8 +29,8 @@ public sealed class RefreshScheduler : IAsyncDisposable
     }
 
     private readonly object _gate = new();
-    private readonly Dictionary<(string ConnectionId, string Tier), GroupState> _groups = [];
-    private readonly Dictionary<string, (string ConnectionId, string Tier)> _widgetToGroup = [];
+    private readonly Dictionary<(string ConnectionId, string Tier, TimeSpan? Override), GroupState> _groups = [];
+    private readonly Dictionary<string, (string ConnectionId, string Tier, TimeSpan? Override)> _widgetToGroup = [];
     private readonly Func<string, RefreshTierPolicy> _tierPolicy;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly ILogger? _logger;
@@ -58,10 +59,15 @@ public sealed class RefreshScheduler : IAsyncDisposable
             {
                 UnregisterCore(registration.WidgetId);
             }
-            var key = (registration.ConnectionId, registration.Tier);
+            var key = (registration.ConnectionId, registration.Tier, registration.IntervalOverride);
             if (!_groups.TryGetValue(key, out var group))
             {
-                group = new GroupState { ConnectionId = registration.ConnectionId, Tier = registration.Tier };
+                group = new GroupState
+                {
+                    ConnectionId = registration.ConnectionId,
+                    Tier = registration.Tier,
+                    IntervalOverride = registration.IntervalOverride,
+                };
                 _groups[key] = group;
             }
             group.WidgetIds.Add(registration.WidgetId);
@@ -176,7 +182,7 @@ public sealed class RefreshScheduler : IAsyncDisposable
             }
             try
             {
-                await WaitAsync(group, NextDelay(group.Tier, group.ConsecutiveFailures), cancellationToken).ConfigureAwait(false);
+                await WaitAsync(group, NextDelay(group.Tier, group.ConsecutiveFailures, group.IntervalOverride), cancellationToken).ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
@@ -228,10 +234,15 @@ public sealed class RefreshScheduler : IAsyncDisposable
         await completed.ConfigureAwait(false); // 传播取消/完成
     }
 
-    /// <summary>下一次刷新延迟：周期 × 退避倍数 ± 抖动；static/infinite 级别返回 Infinite。</summary>
-    internal TimeSpan NextDelay(string tier, int consecutiveFailures)
+    /// <summary>
+    /// 下一次刷新延迟：周期 × 退避倍数 ± 抖动；static/infinite 级别返回 Infinite。
+    /// intervalOverride 优先于档位策略表（组件级「检测间隔」），退避/抖动参数同档位默认。
+    /// </summary>
+    internal TimeSpan NextDelay(string tier, int consecutiveFailures, TimeSpan? intervalOverride = null)
     {
-        var policy = _tierPolicy(tier);
+        var policy = intervalOverride is { } interval
+            ? new RefreshTierPolicy(interval)
+            : _tierPolicy(tier);
         if (policy.Interval <= TimeSpan.Zero || policy.Interval == Timeout.InfiniteTimeSpan)
         {
             return Timeout.InfiniteTimeSpan;

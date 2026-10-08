@@ -57,6 +57,7 @@ internal sealed class SettingsWindow : Window
     private ComboBox _widgetTypeBox = null!;
     private ComboBox _widgetConnectionBox = null!;
     private ComboBox _widgetTierBox = null!;
+    private ComboBox _widgetIntervalBox = null!;
     private StackPanel _widgetFields = null!;
     private TextBox _widgetColorBox = null!;
     private ToggleSwitch _widgetPinBox = null!;
@@ -1147,6 +1148,14 @@ internal sealed class SettingsWindow : Window
         {
             _widgetTierBox.Items.Add(tier);
         }
+        // 检测间隔覆盖（拍板：频率要可设）——不选=按刷新档默认；秒数落 WidgetConfig.RefreshIntervalSeconds
+        _widgetIntervalBox = new ComboBox { Header = "检测间隔（可选）", Width = 150 };
+        foreach (var (tag, label) in new[] { ("", "跟随刷新档"), ("30", "30 秒"), ("60", "1 分钟"), ("120", "2 分钟"), ("300", "5 分钟"), ("900", "15 分钟"), ("3600", "1 小时") })
+        {
+            var item = new ComboBoxItem { Content = label, Tag = tag };
+            _widgetIntervalBox.Items.Add(item);
+        }
+        _widgetIntervalBox.SelectedIndex = 0;
 
         _widgetFields = new StackPanel { Spacing = 8 };
         _widgetColorBox = new TextBox { Header = "颜色覆盖（可选 #RRGGBB，作用于状态灯）", PlaceholderText = "#3fb950", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
@@ -1157,7 +1166,7 @@ internal sealed class SettingsWindow : Window
         save.Click += (_, _) => SaveWidget();
 
         var form = new StackPanel { Spacing = 8, Padding = new Thickness(0, 4, 0, 0) };
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _widgetTypeBox, _widgetConnectionBox, _widgetTierBox } });
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _widgetTypeBox, _widgetConnectionBox, _widgetTierBox, _widgetIntervalBox } });
         form.Children.Add(_widgetFields);
         form.Children.Add(_widgetColorBox);
         form.Children.Add(_widgetPinBox);
@@ -1271,6 +1280,9 @@ internal sealed class SettingsWindow : Window
             ConnectionId = TagOf(_widgetConnectionBox) ?? "",
             Config = config,
             RefreshTier = SelectedString(_widgetTierBox) ?? descriptor.SuggestedTier,
+            RefreshIntervalSeconds = TagOf(_widgetIntervalBox) is { } tag && int.TryParse(tag, out var seconds) && seconds > 0
+                ? seconds
+                : null,
             Pinned = _widgetPinBox.IsOn,
             ColorOverride = colorOverride,
         };
@@ -1314,6 +1326,7 @@ internal sealed class SettingsWindow : Window
         var label = new TextBlock
         {
             Text = $"{widget.Id} · {widget.RefreshTier}"
+                   + (widget.RefreshIntervalSeconds is { } seconds ? $" · {seconds}s" : "")
                    + (widget.Pinned ? " · 已钉" : "")
                    + (widget.ColorOverride is { } color ? $" · 覆盖 {color}" : "")
                    + (missingConnection ? " · 连接缺失" : ""),

@@ -47,7 +47,11 @@ public sealed class WidgetHost : IAsyncDisposable
     {
         foreach (var widget in _config.Widgets)
         {
-            _scheduler.Register(new WidgetRegistration(widget.Id, widget.ConnectionId, widget.RefreshTier));
+            // 组件级检测间隔覆盖（设置页「检测间隔」）：null=按刷新档策略表
+            TimeSpan? intervalOverride = widget.RefreshIntervalSeconds is { } seconds && seconds > 0
+                ? TimeSpan.FromSeconds(seconds)
+                : null;
+            _scheduler.Register(new WidgetRegistration(widget.Id, widget.ConnectionId, widget.RefreshTier, intervalOverride));
         }
         _scheduler.Start(OnGroupRefreshAsync);
         foreach (var widget in _config.Widgets)

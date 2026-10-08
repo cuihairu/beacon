@@ -51,6 +51,32 @@ public sealed class RefreshSchedulerTests
     }
 
     [Fact]
+    public void NextDelay_IntervalOverride_BeatsTierPolicy()
+    {
+        // 检测间隔覆盖（设置页「检测间隔」）：组件级秒数优先于档位表（档位表给 1s），抖动默认 0.2
+        var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromSeconds(1), JitterFraction: 0));
+
+        var delay = scheduler.NextDelay(RefreshTiers.Ci, 0, TimeSpan.FromSeconds(60));
+        Assert.InRange(delay.TotalSeconds, 48, 72); // 60s ±20% 抖动
+        // 退避仍作用于覆盖间隔：×2^n
+        var backed = scheduler.NextDelay(RefreshTiers.Ci, 1, TimeSpan.FromSeconds(60));
+        Assert.InRange(backed.TotalSeconds, 96, 144); // 120s ±20%
+        // null 回落档位表（tier 表 JitterFraction: 0 → 精确值）
+        Assert.Equal(TimeSpan.FromSeconds(1), scheduler.NextDelay(RefreshTiers.Ci, 0, null));
+    }
+
+    [Fact]
+    public void NextDelay_IntervalOverride_ManualTierWithOverride_PollsAtInterval()
+    {
+        // static 档（Manual/infinite）被组件间隔覆盖后按间隔轮询——覆盖是显式意图，优先于「不自动刷新」
+        var scheduler = new RefreshScheduler(_ => RefreshTierPolicy.Manual, randomSeed: 3);
+
+        var delay = scheduler.NextDelay(RefreshTiers.Static, 0, TimeSpan.FromSeconds(30));
+        Assert.InRange(delay.TotalSeconds, 24, 36); // 30s ±20% 抖动
+    }
+
+    [Fact]
     public void NextDelay_ManualTier_ReturnsInfinite()
     {
         var scheduler = new RefreshScheduler(tier => tier == RefreshTiers.Static
