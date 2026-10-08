@@ -13,8 +13,10 @@ namespace Beacon.App.Windows;
 /// </summary>
 internal static class BrandIconFactory
 {
-    /// <summary>品牌图标元素；connectionType 未收录或渲染异常 → null。size 为显示 DIP（24×24 原生 path 等比缩入）。</summary>
-    public static UIElement? TryCreate(string? connectionType, double size, global::Windows.UI.Color foreground, ILogger? logger = null)
+    /// <summary>品牌图标元素；connectionType 未收录或渲染异常 → null。size 为显示 DIP（24×24 原生 path 等比缩入）。
+    /// 返回类型 FrameworkElement：WinUI 3 的 Grid.SetColumn 只收 FrameworkElement（UIElement 过不了，CI 实证），
+    /// 调用方（PinTile 图标列）要直接进 Grid 布局。</summary>
+    public static FrameworkElement? TryCreate(string? connectionType, double size, global::Windows.UI.Color foreground, ILogger? logger = null)
     {
         if (connectionType is null || !BrandIcons.TryGet(connectionType, out var pathData))
         {

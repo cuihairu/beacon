@@ -112,16 +112,11 @@ public partial class App : Application
         // B-504/B-602：运行时先行装配，L2 Quick Panel 直接消费事件流（缓存优先，打开零等待）
         var runtime = BeaconRuntime.Start(toast, _logger);
         // 配置读取诊断（用户令：读取失败不静默清——恢复尝试 + 提示）：损坏原件已留档 *.corrupt，
-        // .bak 可恢复时已生效；这里逐条落错误日志 + 托盘一次性告知，绝不带病静默跑
+        // .bak 可恢复时已生效；逐条落错误日志，托盘气泡在 tray.Initialize() 之后统一发（气泡服务未
+        // 初始化时发了也白发，且 tray 变量此刻还没声明——CI CS0841 实证）
         foreach (var loadError in runtime.Config.LoadErrors)
         {
             _logger.LogError("配置读取失败：{LoadError}", loadError);
-        }
-        if (runtime.Config.LoadErrors.Count > 0)
-        {
-            tray.ShowBalloon("Beacon",
-                $"有 {runtime.Config.LoadErrors.Count} 个配置文件读取失败（已尝试 .bak 备份恢复，损坏原件留档 *.corrupt），详见日志。",
-                Infrastructure.NativeMethods.NIIF_WARNING);
         }
         var dispatcher = Services.GetRequiredService<IUiDispatcher>();
         var tray = Services.GetRequiredService<TrayIconService>();
@@ -137,6 +132,13 @@ public partial class App : Application
         tray.Initialize();
         // 托盘常驻无主窗口：启动即给可见反馈，避免被当成「点了没反应」
         tray.ShowBalloon("Beacon", "已启动并常驻托盘——状态胶囊在屏幕右下角，点胶囊或托盘图标打开面板。");
+        // 配置读取失败的一次性托盘警示放最后发（覆盖启动气泡，警示是用户更需要看到的）
+        if (runtime.Config.LoadErrors.Count > 0)
+        {
+            tray.ShowBalloon("Beacon",
+                $"有 {runtime.Config.LoadErrors.Count} 个配置文件读取失败（已尝试 .bak 备份恢复，损坏原件留档 *.corrupt），详见日志。",
+                Infrastructure.NativeMethods.NIIF_WARNING);
+        }
 
         // B-504：胶囊/托盘接真实聚合
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
