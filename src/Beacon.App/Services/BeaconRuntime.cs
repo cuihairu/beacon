@@ -90,6 +90,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [ClaudeWidgetDescriptors.UsageType] = new ClaudeUsageProvider(), // positioning P0 #5：Claude 本机用量（读会话 JSONL）
             [DeepSeekWidgetDescriptors.BalanceType] = new DeepSeekBalanceProvider(), // positioning P0 #5：DeepSeek 余额
             [KimiWidgetDescriptors.CodingType] = new KimiCodingUsageProvider(), // positioning P0 #5：Kimi Coding 套餐余量
+            [MiMoWidgetDescriptors.UsageType] = new MiMoUsageProvider(), // positioning P0 #5：小米 MiMo（用量口未开放→模型目录真数据）
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -116,6 +117,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["claude"] = new ClaudeConnectionProvider(),
             ["deepseek"] = new DeepSeekConnectionProvider(),
             ["kimi"] = new KimiConnectionProvider(),
+            ["mimo"] = new MiMoConnectionProvider(),
         };
 
         return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders, logger);

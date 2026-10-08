@@ -106,6 +106,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("claude", "Claude Code", "本机用量 · 零凭据", "\ue8bd", "claude"),
             new ModuleDef("kimi", "Kimi For Coding", "套餐余量 · 5h/周", "\ue823", "kimi"),
             new ModuleDef("deepseek", "DeepSeek", "开放平台余额", "\ue7bf", "deepseek"),
+            new ModuleDef("mimo", "小米 MiMo", "模型目录 · 用量待官方开放", "\uE7F8", "mimo"),
             new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
             new ModuleDef("advanced", "高级", "导入导出 · 通知规则", "\ue90f", null),
         ];
@@ -229,6 +230,7 @@ internal sealed class SettingsWindow : Window
             "github" => SeverityPalette.Rgb(255, 110, 118, 129),
             "bigmodel" => SeverityPalette.Rgb(255, 56, 89, 255),
             "ark" => SeverityPalette.Rgb(255, 41, 112, 255), // 火山引擎蓝
+            "mimo" => SeverityPalette.Rgb(255, 255, 105, 0), // 小米橙 #FF6900
             "http" => SeverityPalette.Rgb(255, 63, 185, 80),
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
@@ -499,6 +501,7 @@ internal sealed class SettingsWindow : Window
         "claude" => "无需连接配置——直接读本机 ~/.claude/projects 会话记录；名称随意填（如 claude-local），Endpoint 可空。",
         "kimi" => "尚无连接——填 Kimi Code 控制台 Key（sk-kimi-*，与 Moonshot 开放平台不通用；用量接口自动带默认端点）。",
         "deepseek" => "尚无连接——填 DeepSeek 开放平台 API Key（platform.deepseek.com；余额接口自动带默认端点）。",
+        "mimo" => "尚无连接——填小米开放平台 API Key（platform.xiaomimimo.com，实测推理域可用）。官方未开放用量接口（推理域 /usage 实测 404），卡片显示模型目录真数据；日后开放可在连接 Settings 填 usage_endpoint。",
         _ => "尚无连接——填局域网/内部接口地址（可空凭据）；状态词表/额度字段映射在组件向导里配。",
     };
 
@@ -885,6 +888,7 @@ internal sealed class SettingsWindow : Window
         "claude" => "claude-local",
         "kimi" => "kimi",
         "deepseek" => "deepseek",
+        "mimo" => "mimo-main",
         "http" => "ci-local",
         _ => "github-main",
     };
@@ -896,6 +900,7 @@ internal sealed class SettingsWindow : Window
         "claude" => "会话目录（可空 = 默认 ~/.claude/projects）",
         "kimi" => "Endpoint（可空 = 官方用量接口）",
         "deepseek" => "Endpoint（可空 = 官方余额接口）",
+        "mimo" => "Endpoint（可空 = 推理域 token-plan-cn.xiaomimimo.com/v1）",
         "http" => "Endpoint（必填，如局域网打包工具地址）",
         _ => "Endpoint（可空 = 官方 API）",
     };
@@ -907,6 +912,7 @@ internal sealed class SettingsWindow : Window
         "claude" => "C:\\Users\\me\\.claude\\projects",
         "kimi" => "https://api.kimi.com/coding/v1/usages",
         "deepseek" => "https://api.deepseek.com/user/balance",
+        "mimo" => "https://token-plan-cn.xiaomimimo.com/v1",
         "http" => "http://192.168.1.10:8080/api/status",
         _ => "https://api.github.com",
     };
@@ -919,6 +925,7 @@ internal sealed class SettingsWindow : Window
         "claude" => "无需凭据（留空）",
         "kimi" => "API Key（sk-kimi-*，只写 DPAPI）",
         "deepseek" => "API Key（只写 DPAPI）",
+        "mimo" => "API Key（只写 DPAPI；Bearer 直传）",
         "http" => "API Key（可选，只写 DPAPI；默认 Bearer 头，可在 config.json 改）",
         _ => "Token（只写 DPAPI，JSON 仅存引用）",
     };

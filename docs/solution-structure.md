@@ -18,7 +18,7 @@ Beacon/
 ├── src/
 │   ├── Beacon.App/                  # WinUI 3 壳（唯一 exe，代码建 UI 为主）
 │   ├── Beacon.Core/                 # 领域模型 + 抽象 + 服务（无 UI 依赖）
-│   ├── Beacon.Connections/          # 连接与 Widget Provider（GitHub / HTTP / 智谱 / 方舟 / Claude / Kimi / DeepSeek）
+│   ├── Beacon.Connections/          # 连接与 Widget Provider（GitHub / HTTP / 智谱 / 方舟 / Claude / Kimi / DeepSeek / MiMo）
 │   ├── Beacon.Actions/              # Action 执行器
 │   └── Beacon.Storage/              # JSON 配置 / 缓存 / DPAPI Secrets / 导入导出
 └── tests/
@@ -86,7 +86,7 @@ Beacon.Core/
 ### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
 
 ```text
-Beacon.Connections/                    # 19 文件
+Beacon.Connections/                    # 20 文件
 ├── GitHub 6 文件
 │   ├── GitHubConnectionProvider.cs    # PAT 认证、连接测试、rate-limit 感知
 │   ├── GitHubApiClient.cs             # 手写 REST 客户端（不引 Octokit）+ ETag 条件请求 + 限额感知
@@ -111,8 +111,10 @@ Beacon.Connections/                    # 19 文件
 │   └── ClaudeUsageProvider.cs         # type: claude.usage（本机 JSONL 聚合，零凭据）
 ├── Kimi 1 文件
 │   └── KimiCodingUsageProvider.cs     # type: kimi.coding（5h/周套餐余量）+ KimiConnectionProvider（同文件）
-└── DeepSeek 1 文件
-    └── DeepSeekBalanceProvider.cs     # type: deepseek.balance（开放平台余额）+ DeepSeekConnectionProvider（同文件）
+├── DeepSeek 1 文件
+│   └── DeepSeekBalanceProvider.cs     # type: deepseek.balance（开放平台余额）+ DeepSeekConnectionProvider（同文件）
+└── MiMo 1 文件
+    └── MiMoUsageProvider.cs           # type: mimo.usage（官方未开放用量口→模型目录真数据）+ MiMoConnectionProvider（同文件）
 ```
 
 ### 3.3 src/Beacon.Actions（类库）
@@ -179,7 +181,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 379 个测试（Connections 194 / Core 142 / Actions 19 / Storage 24），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 391 个测试（Connections 205 / Core 143 / Actions 19 / Storage 24），即本地门禁。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

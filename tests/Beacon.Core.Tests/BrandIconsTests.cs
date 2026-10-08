@@ -21,6 +21,7 @@ public sealed class BrandIconsTests
     [InlineData("uptime-kuma")]
     [InlineData("bigmodel")] // 智谱（Simple Icons 无 slug，自绘 Z 字母——用户指名）
     [InlineData("ark")] // 火山方舟（Simple Icons 无 slug，自绘火山剪影）
+    [InlineData("xiaomi")] // 小米（Simple Icons slug xiaomi）
     public void TryGet_KnownBrand_ReturnsNonEmptyPath(string brand)
     {
         Assert.True(BrandIcons.TryGet(brand, out var pathData));
