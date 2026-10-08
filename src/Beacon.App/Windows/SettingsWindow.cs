@@ -321,6 +321,7 @@ internal sealed class SettingsWindow : Window
         _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
         _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
         page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox } });
+        page.Children.Add(Hint("悬浮形态说明：数值/额度类组件不上悬浮窗（信息密度低）——钉选请在宿主面板查看；悬浮形态仅对信息密集组件（趋势图/灯组）生效。切换重启生效。"));
         return page;
     }
 

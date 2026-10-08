@@ -157,9 +157,18 @@ public partial class App : Application
             if (runtime.Config.App.PinDisplayMode == "floating")
             {
                 // 独立悬浮框：每钉选组件一窗，桌面任意拖放、位置按组件各记
-                _floatingHost = new Windows.FloatingTileHost(runtime, primaryMonitor);
+                _floatingHost = new Windows.FloatingTileHost(runtime, primaryMonitor, toast);
                 _floatingHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
                 _floatingHost.Initialize();
+                // 产品拍板：数值/额度类不上悬浮窗（信息密度低）——悬浮形态下同时挂宿主面板承载这些钉选（数据不删）；
+                // 信息密集组件（FloatingSupported，趋势图/灯组）上线后悬浮窗与面板混排。
+                if (runtime.Config.Widgets.Any(w => w.Pinned && !_floatingHost.IsFloatingEligible(w.Type)
+                    && runtime.Resolver.Resolve(w.Type)?.Descriptor.PinSupported == true))
+                {
+                    _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
+                    _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
+                    _pinnedHost.Initialize();
+                }
             }
             else
             {

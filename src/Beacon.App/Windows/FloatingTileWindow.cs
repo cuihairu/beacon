@@ -22,20 +22,27 @@ internal sealed class FloatingTileHost
     private readonly UiPalette _palette;
     private readonly MotionEngine _motion;
     private readonly MonitorInfo _fallbackMonitor;
+    private readonly INotificationSink? _sink;
     private readonly Dictionary<string, FloatingTileWindow> _windows = [];
     private readonly Dictionary<string, WidgetState> _latest = [];
     private readonly List<IDisposable> _subscriptions = [];
+    private bool _migrationNoticeShown;
 
     /// <summary>tile 点击：下钻 L2（RFC §6.2.7，与单宿主同义）。</summary>
     public event Action? TileActivated;
 
-    public FloatingTileHost(BeaconRuntime runtime, MonitorInfo fallbackMonitor)
+    public FloatingTileHost(BeaconRuntime runtime, MonitorInfo fallbackMonitor, INotificationSink? sink = null)
     {
         _runtime = runtime;
         _palette = new UiPalette(runtime.Config);
         _motion = new MotionEngine(runtime.Config);
         _fallbackMonitor = fallbackMonitor;
+        _sink = sink;
     }
+
+    /// <summary>悬浮形态准入（产品拍板）：钉选准入之外还须信息密度够（FloatingSupported）——数值/额度类只在宿主面板。</summary>
+    public bool IsFloatingEligible(string widgetType)
+        => _runtime.Resolver.Resolve(widgetType)?.Descriptor is { PinSupported: true, FloatingSupported: true };
 
     /// <summary>TopmostGuard 用：全部悬浮窗句柄（Loaded 前该窗句柄为 Zero，哨兵跳过）。</summary>
     public IReadOnlyList<IntPtr> Hwnds => _windows.Values
@@ -75,6 +82,7 @@ internal sealed class FloatingTileHost
     public void ReloadTiles()
     {
         var wanted = new List<WidgetConfig>();
+        var migrated = 0;
         foreach (var widget in _runtime.Config.Widgets)
         {
             if (!widget.Pinned || !IsPinSupported(widget.Type))
@@ -87,7 +95,28 @@ internal sealed class FloatingTileHost
                 _latest.Remove(widget.Id);
                 continue;
             }
+            // 产品拍板：数值/额度类不上悬浮窗（信息密度低）——钉选数据不动，宿主面板承载（App 装配负责挂面板）
+            if (!IsFloatingEligible(widget.Type))
+            {
+                migrated++;
+                continue;
+            }
             wanted.Add(widget);
+        }
+
+        if (migrated > 0 && !_migrationNoticeShown)
+        {
+            _migrationNoticeShown = true;
+            _runtime.Logger?.LogInformation("悬浮形态：{Count} 个数值类钉选组件不适用悬浮窗，已在宿主面板展示（钉选数据未动）。", migrated);
+            _sink?.Show(new NotificationRecord
+            {
+                Id = "floating-form-migrated",
+                SourceWidgetId = "",
+                Severity = Severity.Info,
+                Title = "悬浮形态提示",
+                Message = "数值/额度类组件不显示悬浮窗（信息密度低），钉选内容请在宿主面板查看；悬浮形态仅对信息密集组件（趋势图/灯组）生效。",
+                Timestamp = DateTimeOffset.UtcNow,
+            }, new NotificationDelivery(Toast: true, Sound: false));
         }
 
         var wantedIds = wanted.Select(w => w.Id).ToHashSet(StringComparer.Ordinal);
