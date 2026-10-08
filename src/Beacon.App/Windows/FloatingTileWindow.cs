@@ -143,10 +143,10 @@ internal sealed class FloatingTileHost
         _runtime.Config.UpsertWidget(widget);
 
         var pins = _runtime.Config.Pins;
-        var tile = pins.Tiles.FirstOrDefault(t => t.WidgetId == widgetId);
-        if (tile is { } existingTile)
+        var tileIndex = pins.Tiles.FindIndex(t => t.WidgetId == widgetId);
+        if (tileIndex >= 0)
         {
-            existingTile.Layout = layout;
+            pins.Tiles[tileIndex] = new Core.Models.PinTile { WidgetId = widgetId, Layout = layout }; // PinTile.Layout 为 init-only，重建替换
         }
         else
         {
