@@ -312,6 +312,7 @@ public sealed partial class QuickPanelWindow : Window
         }
         widget.Pinned = !widget.Pinned;
         _runtime.Config.UpsertWidget(widget);
+        _runtime.ReloadWidgets(widget.Pinned ? [widgetId] : null); // 开钉=重建注册+立即拉数（与设置页钉开关同口径）
         PinsChanged?.Invoke();
     }
 }

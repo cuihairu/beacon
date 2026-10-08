@@ -83,6 +83,7 @@ internal sealed class PinTile
         _palette = palette;
         _motion = motion;
         _label.Text = LabelOf(widget);
+        _value.Text = "加载中…"; // 空白即 bug：首态也要有信息（首个状态事件到达即被覆盖）
 
         var grid = new Grid { ColumnSpacing = 6 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

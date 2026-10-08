@@ -34,6 +34,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
     public DpapiSecretStore Secrets { get; }
     /// <summary>连接 Provider 注册表（B-801 测试连接）：类型标识 → Provider。</summary>
     public IReadOnlyDictionary<string, IConnectionProvider> ConnectionProviders { get; }
+    /// <summary>诊断日志（文件通道，%APPDATA%\Beacon\logs）——UI 层（设置/面板）逐跳打点共用。</summary>
+    public ILogger? Logger { get; }
 
     private readonly RefreshScheduler _scheduler;
 
@@ -48,7 +50,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
         NotificationEngine notifications,
         ActionRunner actions,
         DpapiSecretStore secrets,
-        IReadOnlyDictionary<string, IConnectionProvider> connectionProviders)
+        IReadOnlyDictionary<string, IConnectionProvider> connectionProviders,
+        ILogger? logger = null)
     {
         Bus = bus;
         Config = config;
@@ -61,6 +64,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
         Actions = actions;
         Secrets = secrets;
         ConnectionProviders = connectionProviders;
+        Logger = logger;
     }
 
     public static BeaconRuntime Start(INotificationSink sink, ILogger? logger = null)
@@ -108,7 +112,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["kimi"] = new KimiConnectionProvider(),
         };
 
-        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders);
+        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders, logger);
     }
 
     /// <summary>手动全量刷新（托盘 Refresh All）：逐 Widget 立即拉取，随后组循环恢复常规节奏。</summary>
@@ -118,6 +122,23 @@ public sealed class BeaconRuntime : IAsyncDisposable
         {
             _ = Host.RefreshWidgetAsync(widget.Id);
         }
+    }
+
+    /// <summary>
+    /// 组件增删/钉选后的全链初始化（白板三连根因收口）：以前 UpsertWidget 只落盘，
+    /// 调度器全然不知（Host.Reload 无人调用）——新组件进不了组循环，tile 空等到重启；
+    /// 托盘强刷（RefreshAll 直调 RefreshWidgetAsync）是唯一出数路径，即「强刷才出数据」。
+    /// 现在任何组件变更走这里：重建注册 + 立即拉取 + 事件驱动重渲，一次开钉即到位。
+    /// </summary>
+    public void ReloadWidgets(IEnumerable<string>? kickIds = null)
+    {
+        Host.Reload();
+        var ids = (kickIds ?? Config.Widgets.Select(w => w.Id)).ToList();
+        foreach (var id in ids)
+        {
+            _ = Host.RefreshWidgetAsync(id);
+        }
+        Logger?.LogInformation("组件注册已重建并立即拉取 {Count} 个：{Ids}", ids.Count, string.Join(", ", ids));
     }
 
     /// <summary>

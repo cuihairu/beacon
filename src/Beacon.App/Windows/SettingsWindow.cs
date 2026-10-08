@@ -5,6 +5,7 @@ using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
 using Beacon.Storage;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -338,6 +339,8 @@ internal sealed class SettingsWindow : Window
     private UIElement BuildAdvancedPage()
     {
         var page = PageShell();
+        page.Children.Add(SectionTitle("诊断"));
+        page.Children.Add(Hint($"逐跳诊断日志：%APPDATA%\\Beacon\\logs\\beacon-*.log（每跳一行：一键添加→拉取→字段映射→渲染；组件不出数先看这里最新一份）。"));
         page.Children.Add(SectionTitle("导入导出"));
         page.Children.Add(BuildImportExportSection());
         page.Children.Add(SectionTitle("通知规则"));
@@ -432,7 +435,8 @@ internal sealed class SettingsWindow : Window
         return page;
     }
 
-    /// <summary>绑定流捷径：GLM 连接就绪后一键建 bigmodel.usage 组件（label 预填，零表单），列表开「钉」即上板。</summary>
+    /// <summary>绑定流捷径：GLM 连接就绪后一键建 bigmodel.usage 组件——直接钉选上板（白板三连根因之一：
+    /// 以前 Pinned=false 只建不钉，用户看到的是空板），并经 ReloadWidgets 立即拉取（一次开即到位）。</summary>
     private void AddGlmQuotaExample()
     {
         var connection = _runtime.Config.Connections.FirstOrDefault(c => c.Type == "bigmodel");
@@ -452,11 +456,13 @@ internal sealed class SettingsWindow : Window
             Type = BigModelWidgetDescriptors.UsageType,
             ConnectionId = connection.Id,
             RefreshTier = RefreshTiers.Ci,
-            Pinned = false,
+            Pinned = true, // 一键即上板——「添加了组件板面却空白」比「多一步钉选」更伤
             Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["label"] = "GLM" },
         });
+        _runtime.Logger?.LogInformation("一键示例：组件 {Id} 已创建并钉选（连接 {ConnectionId}，端点 {Endpoint}）。", id, connection.Id, connection.Endpoint);
+        _runtime.ReloadWidgets([id]); // 挂载即拉数：不等组循环，事件到达自动重渲
         RebuildWidgets();
-        Feedback(_widgetFeedback, $"✓ 组件 {id} 已添加（连接 {connection.Id}）——在上方组件列表打开「钉」，或 L2 面板右键 Pin，即刻上板。", error: false);
+        Feedback(_widgetFeedback, $"✓ GLM 额度组件 {id} 已上板（连接 {connection.Id}）——正在拉取，几秒内出数；若持续空白看日志 %APPDATA%\\Beacon\\logs。", error: false);
         PinsChanged?.Invoke();
     }
 
@@ -1158,10 +1164,11 @@ internal sealed class SettingsWindow : Window
             ColorOverride = colorOverride,
         };
         _runtime.Config.UpsertWidget(widget);
+        _runtime.ReloadWidgets([widget.Id]); // 新组件即建即拉（调度器重建+首拉，白板收口）
         RebuildWidgetFields(); // 清空已提交的字段输入（含颜色覆盖）
         RebuildWidgets();
         RefreshWidgetConnectionOptions();
-        Feedback(_widgetFeedback, $"✓ 组件 {id} 已添加。", error: false);
+        Feedback(_widgetFeedback, $"✓ 组件 {id} 已添加并上板拉取中。", error: false);
         PinsChanged?.Invoke();
     }
 
@@ -1209,6 +1216,7 @@ internal sealed class SettingsWindow : Window
             {
                 widget.Pinned = pin.IsOn;
                 _runtime.Config.UpsertWidget(widget);
+                _runtime.ReloadWidgets(widget.Pinned ? [widget.Id] : null); // 开钉=重建注册+立即拉数（用户实测：以前首开不出数，关/开几次才显）
                 PinsChanged?.Invoke();
             };
             row.Children.Add(pin);
@@ -1219,6 +1227,7 @@ internal sealed class SettingsWindow : Window
         {
             _runtime.InvalidateWidgets([widget.Id]); // 面板/聚合器丢弃残留状态
             _runtime.Config.RemoveWidget(widget.Id);
+            _runtime.ReloadWidgets(); // 调度器同步移除（防幽灵刷新）
             RebuildWidgets();
             PinsChanged?.Invoke();
         };

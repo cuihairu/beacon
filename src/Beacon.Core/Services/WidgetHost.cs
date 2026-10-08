@@ -125,20 +125,21 @@ public sealed class WidgetHost : IAsyncDisposable
             _cache.SaveState(connection.Id, state);
             PublishHealth(connection.Id, ConnectionHealthState.Healthy);
             _bus.Publish(new WidgetStateChanged(state));
+            _logger?.LogInformation("Widget {WidgetId} refreshed ok: {Summary}", widgetId, state.Summary); // 逐跳诊断：拉取成功一行
             return true;
         }
         catch (ConnectionException exception)
         {
             _logger?.LogWarning(exception, "Widget {WidgetId} refresh failed: {Health}.", widgetId, exception.Health);
             PublishHealth(connection.Id, exception.Health);
-            PublishStale(widget, connection.Id);
+            PublishStale(widget, connection.Id, exception.Message); // 失败原因直显 tile（空白/静默吞错零容忍）
             return false;
         }
         catch (Exception exception)
         {
             _logger?.LogError(exception, "Widget {WidgetId} refresh failed unexpectedly.", widgetId);
             PublishHealth(connection.Id, ConnectionHealthState.Degraded);
-            PublishStale(widget, connection.Id);
+            PublishStale(widget, connection.Id, exception.Message);
             return false;
         }
     }
@@ -156,7 +157,7 @@ public sealed class WidgetHost : IAsyncDisposable
         _bus.Publish(new ConnectionHealthChanged(connectionId, state, _clock.UtcNow));
     }
 
-    private void PublishStale(WidgetConfig widget, string connectionId)
+    private void PublishStale(WidgetConfig widget, string connectionId, string reason)
     {
         var cached = _cache.LoadStates(connectionId).GetValueOrDefault(widget.Id);
         var state = cached is null
@@ -166,7 +167,7 @@ public sealed class WidgetHost : IAsyncDisposable
                 WidgetType = widget.Type,
                 ConnectionId = connectionId,
                 Severity = Severity.Warning,
-                Summary = "Unable to refresh",
+                Summary = $"拉取失败：{reason}", // 首错直显（tile 值位/L2 摘要可查，替代原 "Unable to refresh" 零信息）
                 FetchedAt = _clock.UtcNow,
                 IsStale = true,
                 ConnectionHealthy = false,

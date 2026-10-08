@@ -117,7 +117,7 @@ public sealed class WidgetHostTests
 
         var state = Assert.Single(fixture.States).State;
         Assert.Equal(Severity.Warning, state.Severity);
-        Assert.Equal("Unable to refresh", state.Summary);
+        Assert.Equal("拉取失败：down", state.Summary); // 首错直显（原 "Unable to refresh" 零信息）
         Assert.True(state.IsStale);
     }
 
