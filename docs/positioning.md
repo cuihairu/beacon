@@ -250,6 +250,21 @@ Codex    71% used   weekly 8h 后重置
     }
   },
   {
+    "id": "http.quota:custom",
+    "type": "http.quota",
+    "connectionId": "ci-local",
+    "refreshTier": "ci",
+    "config": {
+      "label": "自定义额度",
+      "total_path": "$.data.total",
+      "used_path": "$.data.used",
+      "reset_path": "$.data.reset_at",
+      "unit": "tokens",
+      "warn_percent": "60",
+      "error_percent": "90"
+    }
+  },
+  {
     "id": "bigmodel.usage:GLM",
     "type": "bigmodel.usage",
     "connectionId": "zhipu",
