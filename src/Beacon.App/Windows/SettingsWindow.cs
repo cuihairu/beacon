@@ -102,6 +102,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
             new ModuleDef("bigmodel", "智谱 GLM", "Coding Plan 额度", "\ue945", "bigmodel"),
+            new ModuleDef("ark", "火山方舟", "Coding Plan Pro 额度", "\uE7C3", "ark"),
             new ModuleDef("claude", "Claude Code", "本机用量 · 零凭据", "\ue8bd", "claude"),
             new ModuleDef("kimi", "Kimi For Coding", "套餐余量 · 5h/周", "\ue823", "kimi"),
             new ModuleDef("deepseek", "DeepSeek", "开放平台余额", "\ue7bf", "deepseek"),
@@ -227,6 +228,7 @@ internal sealed class SettingsWindow : Window
         {
             "github" => SeverityPalette.Rgb(255, 110, 118, 129),
             "bigmodel" => SeverityPalette.Rgb(255, 56, 89, 255),
+            "ark" => SeverityPalette.Rgb(255, 41, 112, 255), // 火山引擎蓝
             "http" => SeverityPalette.Rgb(255, 63, 185, 80),
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
@@ -280,7 +282,7 @@ internal sealed class SettingsWindow : Window
         => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
 
     private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
-        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All];
+        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All];
 
     private static TextBlock Hint(string text) => new()
     {
@@ -493,6 +495,7 @@ internal sealed class SettingsWindow : Window
     {
         "github" => "尚无连接——填一个 GitHub PAT（需要 repo / workflow 读权限）。",
         "bigmodel" => "尚无连接——填智谱 API Key（open.bigmodel.cn 控制台获取，监控接口自动带默认端点；Z.AI 填国际站 Endpoint）。",
+        "ark" => "尚无连接——火山控制台「API 访问密钥」创建 AK/SK（ArkReadOnlyAccess 权限即可），Token 框一次粘贴 AccessKey:SecretKey；推理用 ARK_API_KEY 调不了额度口（管控面实测 400 拒绝）。",
         "claude" => "无需连接配置——直接读本机 ~/.claude/projects 会话记录；名称随意填（如 claude-local），Endpoint 可空。",
         "kimi" => "尚无连接——填 Kimi Code 控制台 Key（sk-kimi-*，与 Moonshot 开放平台不通用；用量接口自动带默认端点）。",
         "deepseek" => "尚无连接——填 DeepSeek 开放平台 API Key（platform.deepseek.com；余额接口自动带默认端点）。",
@@ -878,6 +881,7 @@ internal sealed class SettingsWindow : Window
     {
         "github" => "github-main",
         "bigmodel" => "zhipu",
+        "ark" => "ark-main",
         "claude" => "claude-local",
         "kimi" => "kimi",
         "deepseek" => "deepseek",
@@ -888,6 +892,7 @@ internal sealed class SettingsWindow : Window
     private static string ConnectionEndpointHeader(string? lockType) => lockType switch
     {
         "bigmodel" => "Endpoint（可空 = 官方监控接口；Z.AI 填国际站地址）",
+        "ark" => "Endpoint（可空 = 官方网关 open.volcengineapi.com，一般不用改）",
         "claude" => "会话目录（可空 = 默认 ~/.claude/projects）",
         "kimi" => "Endpoint（可空 = 官方用量接口）",
         "deepseek" => "Endpoint（可空 = 官方余额接口）",
@@ -898,6 +903,7 @@ internal sealed class SettingsWindow : Window
     private static string ConnectionEndpointHint(string? lockType) => lockType switch
     {
         "bigmodel" => "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
+        "ark" => "https://open.volcengineapi.com/",
         "claude" => "C:\\Users\\me\\.claude\\projects",
         "kimi" => "https://api.kimi.com/coding/v1/usages",
         "deepseek" => "https://api.deepseek.com/user/balance",
@@ -909,6 +915,7 @@ internal sealed class SettingsWindow : Window
     {
         "github" => "PAT（只写 DPAPI，JSON 仅存引用）",
         "bigmodel" => "API Key（只写 DPAPI；监控接口裸 Key 直传）",
+        "ark" => "AccessKey:SecretKey（冒号分隔一次粘贴，只进 DPAPI；控制台「API 访问密钥」创建）",
         "claude" => "无需凭据（留空）",
         "kimi" => "API Key（sk-kimi-*，只写 DPAPI）",
         "deepseek" => "API Key（只写 DPAPI）",

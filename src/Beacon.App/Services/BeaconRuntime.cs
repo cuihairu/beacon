@@ -86,6 +86,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [HttpWidgetDescriptors.StatusType] = new HttpStatusProvider(), // positioning P0 #3：Generic HTTP
             [HttpWidgetDescriptors.QuotaType] = new HttpQuotaProvider(), // 验收反馈：通用额度数值卡（字段映射可配）
             [BigModelWidgetDescriptors.UsageType] = new BigModelUsageProvider(), // positioning P0 #5：GLM 套餐额度
+            [ArkWidgetDescriptors.UsageType] = new ArkUsageProvider(), // positioning P0 #6：方舟 Coding Plan 额度
             [ClaudeWidgetDescriptors.UsageType] = new ClaudeUsageProvider(), // positioning P0 #5：Claude 本机用量（读会话 JSONL）
             [DeepSeekWidgetDescriptors.BalanceType] = new DeepSeekBalanceProvider(), // positioning P0 #5：DeepSeek 余额
             [KimiWidgetDescriptors.CodingType] = new KimiCodingUsageProvider(), // positioning P0 #5：Kimi Coding 套餐余量
@@ -111,6 +112,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["github"] = new GitHubConnectionProvider(),
             ["http"] = new HttpConnectionProvider(),
             ["bigmodel"] = new BigModelConnectionProvider(),
+            ["ark"] = new ArkConnectionProvider(),
             ["claude"] = new ClaudeConnectionProvider(),
             ["deepseek"] = new DeepSeekConnectionProvider(),
             ["kimi"] = new KimiConnectionProvider(),

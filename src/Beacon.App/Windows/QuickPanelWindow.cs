@@ -215,6 +215,7 @@ public sealed partial class QuickPanelWindow : Window
         var type when type.StartsWith("github.", StringComparison.Ordinal) => "GitHub",
         var type when type.StartsWith("http.", StringComparison.Ordinal) => "HTTP",
         var type when type.StartsWith("bigmodel.", StringComparison.Ordinal) => "GLM",
+        var type when type.StartsWith("ark.", StringComparison.Ordinal) => "ARK",
         var type when type.StartsWith("claude.", StringComparison.Ordinal) => "Claude",
         var type when type.StartsWith("deepseek.", StringComparison.Ordinal) => "DeepSeek",
         var type when type.StartsWith("kimi.", StringComparison.Ordinal) => "Kimi",

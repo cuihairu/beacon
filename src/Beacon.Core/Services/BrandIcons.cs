@@ -23,6 +23,9 @@ public static class BrandIcons
         // 智谱 GLM（Simple Icons 无 zhipu/zai slug，实测 404）：自绘 Z 字母——2 边距、20×20 视框、
         // 上下横梁高 6、斜梁垂直厚度≈6.3 与横梁视觉等宽，锐角几何与同库 Simple Icons 风格一致（用户指名 Z 字形）
         ["bigmodel"] = "M2 2H22V8L11.7 16H22V22H2V16L12.3 8H2Z",
+        // 火山方舟（Simple Icons 无 volcengine slug，实测 404）：自绘火山剪影——平顶火山口（宽 5.6）
+        // 双坡展至满幅底边，与同库锐角几何风格一致
+        ["ark"] = "M9.2 2H14.8L16.5 6.3L22 22H2L7.5 6.3Z",
     };
 
     /// <summary>
