@@ -237,11 +237,21 @@ public partial class App : Application
                 open.Activate();
                 return;
             }
-            settingsWindow = new Windows.SettingsWindow(runtime);
-            settingsWindow.Closed += (_, _) => settingsWindow = null;
-            settingsWindow.SettingsApplied += ApplySettingsEffects;
-            settingsWindow.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); });
-            settingsWindow.Activate();
+            try
+            {
+                settingsWindow = new Windows.SettingsWindow(runtime);
+                settingsWindow.Closed += (_, _) => settingsWindow = null;
+                settingsWindow.SettingsApplied += ApplySettingsEffects;
+                settingsWindow.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); });
+                settingsWindow.Activate();
+            }
+            catch (Exception exception)
+            {
+                // 设置创建失败必须可感知：落日志 + 托盘气泡，不再静默（2026-10-08 用户实测点击无响应的教训）
+                settingsWindow = null;
+                _logger.LogError(exception, "设置窗口创建失败：{Message}", exception.Message);
+                tray.ShowBalloon("设置窗口打开失败", exception.Message);
+            }
         });
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
