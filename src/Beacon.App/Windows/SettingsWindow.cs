@@ -87,6 +87,7 @@ internal sealed class SettingsWindow : Window
             Width = (int)Math.Round(880 * dpi),
             Height = (int)Math.Round(640 * dpi),
         });
+        Services.AppIcon.Apply(AppWindow, _runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
     }
 
     private UIElement BuildRoot()

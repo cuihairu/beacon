@@ -40,7 +40,7 @@ internal sealed class TrayIconService : IDisposable
         _messageWindow.MessageReceived += OnWindowMessage;
     }
 
-    private static string IconPath => Path.Combine(AppContext.BaseDirectory, "Assets", "beacon.ico");
+    private static string IconPath => AppIcon.Path; // 图标路径唯一来源（AppIcon）
 
     /// <summary>
     /// B-706：非空时 SetSeverity 按配置色运行时绘制托盘圆点（appearance.SeverityColors 即刻生效）；

@@ -34,6 +34,7 @@ internal sealed class DetailWindow : Window
         Title = $"Beacon · {state.Summary}";
         Content = BuildContent();
         Closed += (_, _) => closed?.Invoke();
+        Services.AppIcon.Apply(AppWindow, runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
     }
 
     private UIElement BuildContent()
