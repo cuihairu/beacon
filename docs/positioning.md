@@ -133,7 +133,7 @@ Codex    71% used   weekly 8h 后重置
 | 刷新 | `RefreshScheduler` 分层调度（状态与额度的窗口粒度可复用） |
 | 通知 | `NotificationEngine` + Toast（B-5xx 已接） |
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
-| Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage（§8，详细进度） |
+| Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage（§8，详细进度） |
 | Machine Provider | 未实现——M5 收口后并入 [mvp-issues](mvp-issues.md) |
 
 ## 7. 排期约定
@@ -165,12 +165,17 @@ Codex    71% used   weekly 8h 后重置
   （open.volcengineapi.com，V4 签名火山变体；凭据为控制台 AK/SK 一次粘贴 `AccessKey:SecretKey` 只进 DPAPI——
   推理 ARK_API_KEY 实测被管控面 400 拒绝，不能互推），`Result.QuotaUsage[]` 归一化 5h/周/月三窗口已用百分比
   （接口只给百分比，绝对数不经此口）；空数组=未订阅/已回收，渲染「无套餐」Info 卡非错误；
-- **小米 MiMo 模型目录卡（AI Usage 七家之一）**：组件类型 `mimo.usage`——官方未开放用量接口（推理域
+- **小米 MiMo 模型目录卡（AI Usage 八家之一）**：组件类型 `mimo.usage`——官方未开放用量接口（推理域
   /usage 路由实测 404），卡片显示 `/v1/models` 模型目录真数据并如实标注「用量口径官方未开放」（不编数字）；
   连接 Settings 可填 `usage_endpoint`，官方日后开放即透传显示；
-- **OpenAI Codex 本机统计（AI Usage 七家之一）**：组件类型 `codex.usage`——读本机
+- **OpenAI Codex 本机统计（AI Usage 八家之一）**：组件类型 `codex.usage`——读本机
   `~/.codex/sessions/**/rollout-*.jsonl` 的 token_count 事件（total_token_usage 为会话内累计值，每文件取末条求和），
   零凭据零网络，卡面如实标注「本地统计」（ChatGPT OAuth 官方用量口与「连接+凭据」模型不同构，暂不接）；
+- **GitHub Copilot 套餐配额（AI Usage 第八家）**：组件类型 `copilot.usage`——官方编辑器扩展同款配额端点
+  `GET api.github.com/copilot_internal/user`（PAT 需 copilot scope；Editor-Version / Copilot-Integration-Id
+  两头实测必带，api.githubcopilot.com 域同样两头才通），`quota_snapshots` 三槽——高级请求（Pro 实测 1500/月
+  含额）按已用百分比过阈值（默认 80/95 可配），聊天/补全 unlimited 显 ∞；Pro 月付标官方价 $10/月，
+  `quota_reset_date` 为**额度重置日**（订阅续费日本接口不返回，不编造）；401/403/404→Degraded、5xx→Offline；
 - **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
   启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
 - **L0 独立悬浮框形态（B-701 扩展）**：设置「悬浮形态」二选一——宿主面板（默认，单窗多 tile）/ 独立悬浮框
@@ -256,6 +261,13 @@ Codex    71% used   weekly 8h 后重置
     "type": "codex",
     "endpoint": null,
     "enabled": true
+  },
+  {
+    "id": "copilot",
+    "type": "copilot",
+    "endpoint": null,
+    "credentialRef": "conn:copilot",
+    "enabled": true
   }
 ]
 ```
@@ -264,7 +276,8 @@ Codex    71% used   weekly 8h 后重置
 `bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）；
 `claude` 连接零凭据零网络（endpoint 可填自定义会话目录）；`kimi`/`deepseek` endpoint 可空走官方接口，Bearer 认证；
 `ark` 凭据为控制台 AK/SK（`AccessKey:SecretKey` 一次粘贴，只进 DPAPI）；`mimo` endpoint 可空走官方推理域，
-`usage_endpoint` 留给官方日后开放的用量口（填了即透传显示）；`codex` 零凭据零网络（endpoint 可填自定义会话目录）。
+`usage_endpoint` 留给官方日后开放的用量口（填了即透传显示）；`codex` 零凭据零网络（endpoint 可填自定义会话目录）；
+`copilot` 凭据为 GitHub PAT（需 copilot scope），endpoint 可空走官方配额端点（官方扩展同款两头自动带）。
 
 组件 `widgets.json`：
 
@@ -349,6 +362,13 @@ Codex    71% used   weekly 8h 后重置
     "connectionId": "codex-local",
     "refreshTier": "static",
     "config": { "label": "Codex", "days": "1" }
+  },
+  {
+    "id": "copilot.usage:copilot",
+    "type": "copilot.usage",
+    "connectionId": "copilot",
+    "refreshTier": "default",
+    "config": { "label": "Copilot", "warn_percent": "80", "error_percent": "95" }
   }
 ]
 ```
@@ -360,5 +380,6 @@ Codex    71% used   weekly 8h 后重置
 `deepseek.balance` 摘要形如 `DeepSeek · ¥110.00（含赠 ¥10.00）`，币种 CNY/USD 自适应。
 `ark.usage` 摘要形如 `方舟 · 5h 42% · 周 8% · 月 3%`（接口只给百分比，级别取各窗口最差者过阈值）；`mimo.usage`
 摘要形如 `MiMo · 3 模型可用 · 用量口径官方未开放`；`codex.usage` 摘要形如 `Codex · 今日 · 8 会话 · 12.3K tok · 本地统计`
-（`days` 默认 7，`days=1` 显示「今日」）。
+（`days` 默认 7，`days=1` 显示「今日」）；`copilot.usage` 摘要形如 `Copilot · Pro $10/月 · 高级 1/1500 · 聊天 ∞ · 补全 ∞ · 11-01 重置`
+（级别取高级请求已用百分比过阈值）。
 
