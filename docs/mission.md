@@ -28,7 +28,7 @@
 - **Notification Engine**：规则化（IF CI status == Failed → Notify），不是裸 Toast；Severity 统一五级（Info/Success/Warning/Error/Critical），不许 Provider 各自定义状态
 - **Refresh Strategy 分级**：PR 30~120s、CI 10~30s…不许全量每秒刷；失败显示「Unable to refresh, Last update 2min ago [Retry]」不甩异常
 - **Offline Mode**：离线可运行
-- **Local First**：配置本机（%AppData%\Beacon：config/widgets/connections/workflows.json），**Secrets 进 Windows Secret Storage，严禁进普通 JSON**
+- **Local First**：配置本机（%AppData%\Beacon：config/connections/widgets/pins.json——原方案的 workflows.json 随「MVP 不做 Workflow」未实现），**Secrets 进 Windows Secret Storage，严禁进普通 JSON**
 - **架构原则**：Local First + Provider First；Agent Server 只作 Connector 不写死
 
 ## 分期

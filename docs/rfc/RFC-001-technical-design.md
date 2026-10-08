@@ -6,7 +6,7 @@
 | 日期 | 2026-10-07 |
 | 上游 | [任务书](../mission.md)（定位 / 分期 / 验收标准） |
 | 下游 | [Solution 项目目录](../solution-structure.md) · [MVP Issue 列表](../mvp-issues.md) |
-| 平台 | Windows 10 1903+ / Windows 11，仅 Windows |
+| 平台 | Windows 10 1809 (17763)+ / Windows 11，仅 Windows（`TargetPlatformMinVersion=10.0.17763.0`） |
 
 ---
 
@@ -39,7 +39,7 @@ Beacon 是**常驻 Windows 桌面的开发者状态与操作中心**（Developer
 │  Tray │ Hotkey │ PinnedHost(L0/L1) │ QuickPanel(L2) │ Detail(L3) │ Settings │
 │                    Toast │ 启动项 │ 单实例 │ 多显示器/DPI                      │
 └──────────────┬───────────────────────────────────────────────┬──────────────┘
-               │ MVVM / Event Bus（UI 只消费状态，不直接拉数据）  │
+               │ Event Bus（UI 只消费状态，不直接拉数据；代码建 UI + code-behind）│
 ┌──────────────▼──────────── Beacon.Core ───────────────────────▼──────────────┐
 │ Models(Severity/LifecycleState…) │ StatusAggregator │ RefreshScheduler        │
 │ NotificationEngine │ ActionRunner │ CacheStore │                              │
@@ -47,8 +47,8 @@ Beacon 是**常驻 Windows 桌面的开发者状态与操作中心**（Developer
 └──────┬─────────────────┬──────────────────────┬─────────────────┬────────────┘
        │                 │                      │                 │
  Beacon.Connections   Beacon.Actions        Beacon.Storage      （二期: Plugin 拆分）
-  GitHub / Rest        Http/Command/Url      JSON 配置/Cache/
-                       /Webhook              DPAPI Secrets
+  GitHub/HTTP/用量     Url/Http/Command       JSON 配置/Cache/
+ （六类连接）                               DPAPI Secrets/导入导出
 ```
 
 数据流（单向）：
@@ -98,20 +98,24 @@ CI/Workflow 统一生命周期：`Queued / Running / Success / Failed / Cancelle
   "id": "w-ci-client",
   "type": "github.actions.runs",
   "connectionId": "conn-github-main",
-  "config": { "repository": "cuihairu/example", "workflow": "build-client.yml", "branch": "main" },
+  "config": { "repo": "cuihairu/example", "workflow": "build-client.yml", "branch": "main" },
   "refreshTier": "ci",
   "pinned": false,
-  "pinLayout": null          // pinned=true 时由 pins.json 承载布局
+  "pinLayout": null          // pinned=true 时由 pins.json 承载布局（此处为便利引用）
 }
 
-// pins.json（L0 悬浮组件布局，见 §6.2）
+// pins.json（L0 悬浮组件布局，见 §6.2；嵌套在 tile.layout 下，枚举 camelCase 序列化）
 {
   "tiles": [{
     "widgetId": "w-ci-client",
-    "monitor": "DEL-U2723QE-3840x2160",
-    "anchor": "bottom-right",
-    "offsetDips": { "x": 24, "y": 120 },
-    "collapsed": false
+    "layout": {
+      "monitor": "DEL-U2723QE-3840x2160",
+      "anchor": "bottomRight",
+      "offsetDips": { "x": 24, "y": 120 },
+      "collapsed": false,
+      "floatingX": null,     // 独立悬浮框形态的窗口位置（物理像素）；panel 模式不写
+      "floatingY": null
+    }
   }]
 }
 ```
@@ -119,8 +123,8 @@ CI/Workflow 统一生命周期：`Queued / Running / Success / Failed / Cancelle
 ### 4.3 WidgetState（运行时状态）
 
 ```text
-WidgetState = { widgetId, severity, lifecycle?, summary, detailUrl?, progress?,
-                payload, fetchedAt, isStale, connectionHealthy }
+WidgetState = { widgetId, widgetType, connectionId, severity, lifecycle?, summary,
+                detailUrl?, progress?, payload, fetchedAt, isStale, connectionHealthy }
 ```
 
 ### 4.4 状态聚合
@@ -134,13 +138,13 @@ public enum Severity { Info, Success, Warning, Error, Critical }
 public enum LifecycleState { Queued, Running, Success, Failed, Cancelled, Skipped, Unknown }
 
 public interface IConnectionProvider {
-    string ConnectionType { get; }                       // "github" | "rest" | ...
-    Task<ConnectionHealth> TestAsync(ConnectionConfig c, CancellationToken ct);
+    string ConnectionType { get; }                       // "github" | "http" | "bigmodel" | "claude" | "kimi" | "deepseek"
+    Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
 }
 
 public interface IWidgetProvider {
     WidgetTypeDescriptor Descriptor { get; }             // 含 pinSupported、refreshTier 建议
-    Task<WidgetState> GetStateAsync(WidgetConfig w, ConnectionContext conn, CancellationToken ct);
+    Task<WidgetState?> GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
 }
 
 public interface IActionExecutor {
@@ -149,7 +153,7 @@ public interface IActionExecutor {
 }
 
 public interface ISecretStore {
-    Task<string> GetAsync(string credentialRef);
+    Task<string?> GetAsync(string credentialRef);
     Task SetAsync(string credentialRef, string secret);
     Task DeleteAsync(string credentialRef);
 }
@@ -172,7 +176,9 @@ public interface ISecretStore {
 ```text
                     常驻入口：Tray（任意层级可达）+ Global Hotkey（Ctrl+Alt+B）
 
- L0  Pinned Widgets   —— 每显示器一个透明置顶宿主窗口，NoActivate，只看不弹
+ L0  Pinned Widgets   —— 两种形态（设置「悬浮形态」二选一）：宿主面板（默认，
+                          每显示器一个透明置顶宿主窗口，单窗多 tile）/ 独立悬浮框
+                          （每钉选组件一窗，桌面任意拖放）；均 NoActivate，只看不弹
  ┌────────────┐ ┌────────────┐ ┌──────────────┐
  │ 🔴 CI   1  │ │ 🟡 PR   3  │ │ ⏳ build 62% │    单 Widget 钉住：五级状态灯 + 极简数字
  └─────┬──────┘ └─────┬──────┘ └──────┬───────┘    只放变化敏感内容，分级刷新；离线显示 Last update
@@ -201,8 +207,8 @@ public interface ISecretStore {
 
 | 层 | 载体 | 可见性 | 职责 | 焦点 |
 |---|---|---|---|---|
-| L0 Pinned Widget | 透明置顶宿主窗口内的 tile | 常驻（可收起） | 单 Widget 的变化敏感状态 | **永不抢焦点** |
-| L1 Status Capsule | 同一宿主窗口内的常驻 tile | 常驻 | 全局聚合「有没有事」 | 永不抢焦点 |
+| L0 Pinned Widget | 宿主面板形态：透明置顶宿主窗口内的 tile；悬浮框形态：每组件一窗 | 常驻（可收起） | 单 Widget 的变化敏感状态 | **永不抢焦点** |
+| L1 Status Capsule | 独立置顶常驻窗口（`CapsuleWindow`） | 常驻（设置可关） | 全局聚合「有没有事」 | 永不抢焦点 |
 | L2 Quick Panel | 独立 Flyout 窗口 | 点击出现，失焦/ESC 关闭 | 概览 + 快捷操作 | 可激活 |
 | L3 Detail Window | 独立窗口 | 点击出现 | 单对象细节 + 全部 Action | 可激活 |
 
@@ -236,15 +242,17 @@ public interface ISecretStore {
 | 行为 | 规格 |
 |---|---|
 | 置顶 | Topmost，但 **WS_EX_NOACTIVATE**：点击不抢焦点，当前输入焦点不被打断 |
-| 可拖动 | 左键按住 tile 拖动；拖动中吸附到四边与相邻 tile |
+| 可拖动 | 左键按住 tile 拖动（3px 死区）；拖动中吸附四边（`SnapDips=16`），拖至屏边收起为细条 |
 | 吸边收起 | 拖至屏幕边缘 → 收起为细条/圆点；悬停展开、点击进入 L2；收起状态持久化 |
 | 多显示器位置记忆 | 按「显示器标识 + 锚点角 + DIP 偏移」持久化；显示器热插拔/RDP 断连后按锚点恢复；恢复失败（如分辨率变小越界）自动回收到最近合法锚点角 |
 | DPI 自适应 | PerMonitorV2；监听 DPIChanged，tile 以 DIP 布局按显示器缩放 |
-| 多显示器 | **每个显示器一个宿主窗口**，tile 只能在所属显示器宿主内；跨显示器拖动 = 迁移 pinLayout 记录 |
+| 多显示器 | 宿主面板形态：**每个显示器一个宿主窗口**，tile 只能在所属显示器宿主内；跨显示器拖动 = 迁移 pinLayout 记录。独立悬浮框形态：每组件一窗，位置按组件各记（`floatingX/Y` 物理像素） |
 
 #### 6.2.4 渲染架构：单窗口多组件共享渲染
 
-- **不做**每个 pinned widget 一个 HWND（窗口数量爆炸、DPI/hit-test 各自维护）。**做法**：每显示器一个透明分层宿主窗口（`PinnedHostWindow`），内部以 tile 列表布局渲染全部该显示器的 pinned widgets 与 L1 胶囊。
+- 默认（宿主面板形态）**不做**每个 pinned widget 一个 HWND（窗口数量爆炸、DPI/hit-test 各自维护）。**做法**：每显示器一个透明分层宿主窗口（`PinnedHostWindow`），内部以 tile 列表布局渲染全部该显示器的 pinned widgets。
+- **独立悬浮框形态**（`pinDisplayMode=floating`，重启生效，B-701 扩展）：每钉选组件一个独立窗口（`FloatingTileWindow`，168×32 DIP，Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`），桌面任意拖放，位置按组件各记（`PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）。设计初衷的「窗口数量爆炸」顾虑由「用户显式选择 + 组件数量少（钉选通常 <10）」化解；两形态共用同一 `PinTile` 渲染与点击下钻链路。
+- **L1 胶囊（`CapsuleWindow`）是独立窗口**，不随悬浮形态变化；宿主面板形态下与 L0 tile 同为置顶 NoActivate 常驻物——「单窗口多组件共享渲染」指宿主面板内的 L0 tile 共享同一渲染管线、事件处理、DPI 处理。
 - **L1 胶囊 = 宿主窗口中的一个常驻聚合 tile**，与 L0 tile 共享同一渲染管线、事件处理、DPI 处理——这是「单窗口多组件共享渲染」的具体含义。
 - 宿主窗口 `ClickThrough=false`（要收点击），仅 tile 矩形参与 hit-test，空白区域点击穿透到桌面。
 - tile 渲染走 Composition（视觉层 + 属性动画），状态变化只更新对应 tile 的视觉属性，不重建整窗。
@@ -287,7 +295,7 @@ L0 只承载**用户需要被动感知变化**的信息，由 Widget 类型元�
 
 ### 6.3 L1 Status Capsule（摘要）
 
-聚合 tile（§6.2.4），默认常驻于宿主窗口；显示各 severity 计数；点击打开 L2。可在设置中关闭胶囊只留 L0 tile，反之亦然。
+独立置顶常驻窗口（`CapsuleWindow`，屏幕右下角，位置记忆），显示各 severity 计数；点击打开 L2。可在设置中关闭胶囊只留 L0，反之亦然（`showCapsule`）。
 
 ### 6.4 L2 Quick Panel（摘要）
 
@@ -309,8 +317,8 @@ Flyout 窗口，出现在胶囊/托盘附近：Overview（按来源计数）+ Re
 |---|---|---|
 | GitHub PR | 30–120s（默认 60s） | ETag 条件请求 |
 | CI / Actions | 10–30s（默认 15s） | Running 态取下限，Queued 取上限 |
-| Machine | 5–30s | 二期 |
-| Agent | 5–15s | 二期 |
+| Machine | 15s（区间设计 5–30s，配置可覆盖） | 已实现 |
+| Agent | 10s（区间设计 5–15s，配置可覆盖） | 已实现 |
 | Workflow 执行 | 事件优先 / 10s 跟随 | 触发后短轮询直至终态 |
 | 静态配置 | 手动 | — |
 
@@ -337,16 +345,18 @@ Flyout 窗口，出现在胶囊/托盘附近：Overview（按来源计数）+ Re
 ```jsonc
 {
   "id": "rule-ci-failed",
-  "when": { "widgetType": "github.actions.runs", "severityAtLeast": "Error" },
-  "then": { "toast": true, "sound": true, "dockColor": "red" },
-  "cooldown": "PT10M"
+  "widgetType": "github.actions.runs",   // null = 匹配所有类型；另有 widgetId 精确匹配
+  "severityAtLeast": "Error",            // 与可选 severityAtMost 构成频带（如「仅 Warning」）
+  "toast": true,
+  "sound": true,
+  "cooldown": "00:10:00"                 // TimeSpan 序列化值；null = 同一阈值期间只提醒一次
 }
 ```
 
 - 规则引擎输入 = WidgetState 变化事件；表驱动，可单测。
 - 内置默认规则（无需配置即生效）：CI Failed → Toast；运行超 15min → Warning。
 - 去重：同 widget 同 severity 冷却期内不重复提醒；状态转好可发 Success 通知。
-- 通知记录滚动保留（默认 200 条）+ 已读/未读；L2 Recent Events 与通知中心同源。
+- 通知记录滚动保留（默认 200 条）+ 已读/未读；L2 Recent Events 与通知中心同源（**会话内视图，尚未落盘**——计划的 `notifications.json` 未实现）。
 - 通道：Windows Toast（§10）+ 托盘图标着色 + L0/L1 状态灯。
 
 ## 9. 配置、密钥与导入导出
@@ -355,14 +365,14 @@ Flyout 窗口，出现在胶囊/托盘附近：Overview（按来源计数）+ Re
 
 ```text
 %AppData%\Beacon\
-├── config.json            # 全局设置（hotkey、startup、appearance、refresh 覆盖）
-├── connections.json       # 连接元数据（credentialRef，无明文密钥）
-├── widgets.json           # Widget 实例（含 pinned 标记）
-├── pins.json              # L0 tile 布局（锚点/偏移/收起态）
-├── notifications.json     # 近期通知 + 已读状态（滚动 200 条）
-├── cache\{connId}\*.json  # last-known-state
+├── config.json            # 全局设置（hotkey、startup、appearance、refresh 覆盖、通知规则）
+├── connections.json       # 连接元数据（credentialRef，无明文密钥；enabled 启停）
+├── widgets.json           # Widget 实例（含 pinned 标记与 pinLayout 便利引用）
+├── pins.json              # L0 tile 布局（嵌套 layout：锚点/偏移/收起态 + floating 悬浮框位置）
+├── notifications.json     # 未实现（计划中）——通知记录现为会话内视图，未落盘
+├── cache\{connId}\states.json  # last-known-state
 ├── secrets.bin            # DPAPI(CurrentUser) 加密的密钥库
-└── logs\beacon-YYYYMMDD.log  # 滚动日志，token 一律脱敏为 ***
+└── logs\beacon-YYYYMMDD.log  # 按天滚动（保留 7 天）+ crash-*.log 崩溃日志，token 一律脱敏
 ```
 
 写入策略：临时文件 + 原子替换 + 上一版备份（防写坏配置）。
@@ -395,13 +405,13 @@ config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/
 | 能力 | 方案 | 备注 |
 |---|---|---|
 | 打包形态 | **Unpackaged**（自包含 exe） | 便携、%AppData% 直写、开发迭代快；二期可加 MSIX |
-| System Tray | H.NotifyIcon.WinUI | 备选：Win32 NOTIFYICONDATA 自封装 |
-| Toast 通知 | CommunityToolkit Notifications + AUMID 快捷方式注册 | unpackaged 应用需创建 Start Menu 快捷方式承载 AUMID；激活路由回 Beacon（深链到 L3） |
+| System Tray | Win32 `Shell_NotifyIcon` 自实现（TrayIconService，不引第三方托盘库） | NOTIFYICONDATA + 消息窗回调；图标按配置色 GDI+ 运行时绘制（B-706） |
+| Toast 通知 | Microsoft.Toolkit.Uwp.Notifications（`ToastNotificationManagerCompat`） | unpackaged 应用由 Compat 首次发送时自动创建/修复 AUMID Start Menu 快捷方式；激活路由回 Beacon（深链到 L3） |
 | Global Hotkey | `RegisterHotKey`（默认 Ctrl+Alt+B） | 设置可改；冲突时提示重设 |
 | 开机自启 | HKCU `Run` 键 | MSIX 化后改 StartupTask |
 | 置顶/不激活 | `AppWindow.IsAlwaysOnTop` + `WS_EX_NOACTIVATE` interop | 见 §16 风险 1 |
 | DPI | PerMonitorV2 manifest | 宿主窗口处理 DPIChanged |
-| 多显示器 | 每显示器一个 PinnedHostWindow | 监听显示拓扑变化重建 |
+| 多显示器 | 宿主面板形态：每显示器一个 PinnedHostWindow；悬浮框形态：每组件一 FloatingTileWindow | 监听显示拓扑变化重建/越界回收 |
 | 单实例 | 命名 Mutex | 二次启动唤起已有实例 |
 | 崩溃兜底 | 全局异常 → 写日志 + 托盘气泡，**不闪退不留僵尸窗口** | |
 

@@ -42,28 +42,26 @@ Provider
 
 1. **不为公司内部系统写死接口**——公司打包工具实现 Status Provider 适配自己的 API，
    转换成统一模型后进 Core，系统换了 Core 不动。
-2. **Generic HTTP Provider（杀手级能力）**：不为每个内部系统写 C# 插件，配置化接入任意 HTTP API：
+2. **Generic HTTP Provider（杀手级能力）**：不为每个内部系统写 C# 插件，配置化接入任意 HTTP API。
+   **已落地形态**：组件类型 `http.status`——widgets.json 内 JSON 配置（连接 endpoint + 凭据 + 点路径与状态词表映射）：
 
-   ```yaml
-   provider:
-     type: http
-     name: company-build
-     endpoint: https://build.example.com/api/latest
-     mapping:
-       id: $.id
-       title: $.project
-       status: $.status
-       updatedAt: $.updatedAt
-     status:
-       running: warning
-       success: success
-       failed: error
-
-   actions:
-     retry:
-       method: POST
-       endpoint: https://build.example.com/api/builds/{id}/retry
+   ```jsonc
+   {
+     "type": "http.status",
+     "connectionId": "ci-local",
+     "config": {
+       "label": "company-build",
+       "status_path": "$.status",       // $.a.b[0] 点路径提取
+       "summary_path": "$.message",
+       "url_path": "$.html_url",
+       "success_values": "success,ok,passed,healthy",
+       "warning_values": "running,building,pending,queued",
+       "error_values": "failed,failure,error,critical"
+     }
+   }
    ```
+
+   **计划中（未实现）**：原设计的 YAML provider DSL（`mapping` 声明式字段映射 + per-provider `actions.retry` 动作配置）——当前动作仍走既有 Action 执行器链路，声明式 DSL 待后续排期。
 
    > 不管内部是自研、老旧还是「垃圾」系统，只要有 HTTP API 就能接入 Beacon。
    > 凭据一律 `credentialRef` + DPAPI（**严禁明文 token**，与连接密钥同一条安全约束）。
@@ -72,6 +70,8 @@ Provider
    直接落成 `GitHubProvider`；公司打包系统落成 `HttpProvider`——两者共同验证抽象是否通用。
 
 ## 4. AI Usage 一级概念：UsageMetric
+
+> 状态：**概念设计，未落地独立类型**——当前用量组件直接以 `WidgetState`（payload + 阈值严重度）承载，不引入 `UsageMetric` 结构；下列模型为后续抽象的方向记录。
 
 CI 与 AI 额度的本质区别：
 
@@ -132,7 +132,8 @@ Codex    71% used   weekly 8h 后重置
 | 刷新 | `RefreshScheduler` 分层调度（状态与额度的窗口粒度可复用） |
 | 通知 | `NotificationEngine` + Toast（B-5xx 已接） |
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
-| Usage / Machine Provider、Generic HTTP | **新增**——M5 收口后并入 [mvp-issues](mvp-issues.md) |
+| Usage Provider、Generic HTTP | **已落地**：http.status / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance（§8，详细进度） |
+| Machine Provider | 未实现——M5 收口后并入 [mvp-issues](mvp-issues.md) |
 
 ## 7. 排期约定
 

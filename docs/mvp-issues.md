@@ -56,9 +56,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ### B-101 单实例 + 托盘 + 后台常驻
 - **依赖**：B-001
-- **内容**：命名 Mutex 单实例（二次启动唤起既有实例）；H.NotifyIcon 托盘图标（菜单：Open / Settings / Exit）；启动时不打开主窗口，仅托盘。
+- **内容**：命名 Mutex 单实例（二次启动退出并通知既有实例，气泡提示「Beacon 已在运行。」）；Win32 `Shell_NotifyIcon` 自实现托盘图标（菜单：Open / Settings / Exit）；启动时不打开主窗口，仅托盘。
 - **验收**：
-  - [ ] 双击 exe 二次启动不重复进程，且唤出面板
+  - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）
   - [ ] 关闭所有窗口后进程驻留托盘，Exit 才退出
 
 ### B-102 L1 Status Capsule 窗口
@@ -250,10 +250,11 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ### B-701 PinnedHostWindow：单窗口多 tile 宿主
 - **依赖**：B-102、B-304
-- **内容**：每显示器一个透明置顶宿主（Topmost + WS_EX_NOACTIVATE + 空白点击穿透）；内部 tile 化布局渲染全部 pinned widgets + L1 胶囊常驻 tile；Composition 渲染，状态变化只更新对应 tile 视觉。
+- **内容**：每显示器一个透明置顶宿主（Topmost + WS_EX_NOACTIVATE + 空白点击穿透）；内部 tile 化布局渲染全部 pinned widgets；Composition 渲染，状态变化只更新对应 tile 视觉。（扩展已落地：设置「悬浮形态」可切换为独立悬浮框——每钉选组件一窗、桌面任意拖放、位置按组件记 `PinLayout.FloatingX/Y`，见 positioning §8。）
 - **验收**：
   - [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面
   - [ ] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab
+  - [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一
 
 ### B-702 Pin/Unpin + PinTile 渲染
 - **依赖**：B-701、B-602
@@ -322,7 +323,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ### B-804 打包发布
 - **依赖**：B-803
-- **内容**：self-contained 单 exe 发布（win-x64）；版本号；GitHub Release 产物 + 安装说明（自启/托盘/热键/权限）。
+- **内容**：self-contained 发布——Inno Setup `setup.exe`（x86_64，装到 %LOCALAPPDATA%\Beacon）+ 便携 zip（win-x64 自包含）双产物；版本号；GitHub Release 产物 + 安装说明（自启/托盘/热键/权限）。
 - **验收**：
   - [ ] 干净 Windows 11 虚拟机：下载→运行→完成 B-803 脚本
 
