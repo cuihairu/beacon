@@ -75,6 +75,7 @@ Beacon.Core/
 │   ├── ActionRunner.cs                # 确认策略 + 超时 + 取消
 │   ├── WidgetHost.cs  TemplateRenderer.cs  PaletteResolver.cs  PinLayoutMath.cs
 │   ├── SvgPathParser.cs               # SVG path d → 中性几何（品牌图标渲染前置层，纯函数供单测）
+│   ├── BrandIcons.cs                  # Simple Icons CC0 品牌 path 字典（纯字符串零依赖，供单测；未收录由 App 字形兜底）
 ├── Events/
 │   └── Events.cs                      # WidgetStateChanged / AggregateStatusChanged 等事件
 └── Json/
@@ -146,7 +147,7 @@ Beacon.App/
 │   ├── MonitorService.cs              # 显示器枚举/工作区/按像素定位（多屏）
 │   ├── NativeMethods.cs               # P/Invoke（NOTIFYICONDATA、窗口扩展样式、DPI、热键）
 │   └── Win32MessageWindow.cs          # 自驻留消息窗（托盘/热键/单实例事件回调）
-├── Services/                          # 13 文件
+├── Services/                          # 14 文件
 │   ├── BeaconRuntime.cs               # 运行时装配：Provider 解析器、调度、聚合、启停联动
 │   ├── TrayIconService.cs             # Win32 Shell_NotifyIcon 自实现：菜单、按配置色着色、气泡
 │   ├── ToastNotificationService.cs    # Microsoft.Toolkit.Uwp.Notifications（Compat 激活路由、深链 L3）
@@ -173,7 +174,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 323 个测试（Connections 163 / Core 119 / Actions 19 / Storage 22），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 337 个测试（Connections 163 / Core 133 / Actions 19 / Storage 22），即本地门禁。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 
