@@ -117,9 +117,12 @@ public sealed class BigModelUsageProviderTests
 
         Assert.Equal(Severity.Success, state!.Severity);
         Assert.Equal(LifecycleState.Success, state.Lifecycle);
-        Assert.Equal("GLM Coding Pro · 5h 42.5% · 周 8% · 月 3%", state.Summary);
+        var expectedReset = DateTimeOffset.FromUnixTimeMilliseconds(1770000000000).ToLocalTime()
+            .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture); // 5h 窗 nextResetTime 最近优先
+        Assert.Equal($"GLM Coding Pro · 5h 42.5% · 周 8% · 月 3% · {expectedReset} 重置", state.Summary);
         Assert.Equal("GLM Coding Pro", state.Payload["level"]);
         Assert.Equal("42.5", state.Payload["rolling_percent"]);
+        Assert.Equal(expectedReset, state.Payload["reset_iso"]);
         Assert.Equal("https://open.bigmodel.cn/usage", state.DetailUrl);
 
         // 裸 Key：Authorization 头不带 Bearer 前缀（监控接口口径）

@@ -97,6 +97,7 @@ public sealed class BigModelUsageProvider : IWidgetProvider
                 ["monthly_percent"] = usage.Monthly?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["rolling_reset_ms"] = usage.Rolling?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
                 ["weekly_reset_ms"] = usage.Weekly?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
+                ["reset_iso"] = NearestResetMs(usage) is { } nearest ? FormatReset(nearest) : "", // 最近一次重置（5h 窗优先，本地时区 MM-dd HH:mm）
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
@@ -198,7 +199,8 @@ public sealed class BigModelUsageProvider : IWidgetProvider
             : worst >= warnPercent ? Severity.Warning
             : Severity.Success;
 
-    /// <summary>摘要尾巴：有数据才出现的紧凑窗口列表（“ · 5h 42% · 周 8%”）。</summary>
+    /// <summary>摘要尾巴：有数据才出现的紧凑窗口列表（“ · 5h 42% · 周 8% · 02-09 18:00 重置”）。
+    /// 重置时间取监控接口原生 nextResetTime（epoch ms，最近窗口优先）——源自带字段，不做窗口文案推算。</summary>
     internal static string Summarize(PlanUsage usage)
     {
         var parts = new List<string>();
@@ -214,8 +216,19 @@ public sealed class BigModelUsageProvider : IWidgetProvider
         {
             parts.Add($"月 {Format(monthly)}%");
         }
+        if (NearestResetMs(usage) is { } reset)
+        {
+            parts.Add($"{FormatReset(reset)} 重置");
+        }
         return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
     }
+
+    /// <summary>最近一次重置（5h 滚动窗 → 周 → 月，第一个有值的）。</summary>
+    internal static long? NearestResetMs(PlanUsage usage) => usage.Rolling?.ResetMs ?? usage.Weekly?.ResetMs ?? usage.Monthly?.ResetMs;
+
+    /// <summary>epoch ms → 本地时区「MM-dd HH:mm」。</summary>
+    internal static string FormatReset(long resetMs)
+        => DateTimeOffset.FromUnixTimeMilliseconds(resetMs).ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     private static string Format(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 }

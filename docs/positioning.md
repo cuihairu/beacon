@@ -152,6 +152,7 @@ Codex    71% used   weekly 8h 后重置
   连接测试通过后提示经组件向导上板——绑定流：连接测试 → 选组件类型 → 选连接 → 配字段 → 钉选显示（带 source 标注）。
 - **智谱 GLM 套餐额度（P0 #5 提前）**：组件类型 `bigmodel.usage`——`GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`，
   裸 Key 认证（Authorization 头不带 Bearer），`data.limits[]` 归一化为 5 小时/周/月三窗口，阈值告警；
+  摘要与 payload 带最近重置时间（监控接口原生 `nextResetTime` epoch ms，5h 窗优先，本地时区 MM-dd HH:mm）；
   Z.AI 国际站把连接 Endpoint 换成 `https://api.z.ai/api/monitor/usage/quota/limit` 即用；
 - **Claude Code 本机用量（P0 #5）**：组件类型 `claude.usage`——读本机 `~/.claude/projects/**\/*.jsonl`（ccusage 同源数据，
   ccusage.com 口径），按窗口聚合 token 与 costUSD；零凭据零网络，`daily_cost_limit` 可选阈值告警（无上限恒 Success）；
