@@ -180,7 +180,7 @@ internal sealed class PinTile
     }
 
     /// <summary>额度进度条：Progress（0-1）→ 底部细条比例填色；无进度语义的类型保持隐藏。</summary>
-    private void UpdateBar(WidgetState state, Windows.UI.Color color)
+    private void UpdateBar(WidgetState state, global::Windows.UI.Color color) // global::：本命名空间 Beacon.App.Windows 会遮蔽全局 Windows.*
     {
         if (state.Progress is not { } progress)
         {
