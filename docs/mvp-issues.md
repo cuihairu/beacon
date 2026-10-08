@@ -265,7 +265,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ### B-703 拖动 / 吸边收起 / 位置记忆 / DPI
 - **依赖**：B-701
-- **内容**：tile 拖动+边缘吸附；拖至屏边收起为细条/圆点（悬停展开、点击进 L2）；pinLayout 持久化（monitor+anchor+offsetDips+collapsed）；显示拓扑变化按锚点恢复、越界回收；DPIChanged 适配。
+- **内容**：tile 拖动+边缘吸附；贴死边缘收起为细条/圆点（悬停展开、水滴态点击弹回展开、近边松手回弹不误收）；pinLayout 持久化（monitor+anchor+offsetDips+collapsed）；显示拓扑变化按锚点恢复、越界回收；DPIChanged 适配。
 - **验收**：
   - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢
   - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区

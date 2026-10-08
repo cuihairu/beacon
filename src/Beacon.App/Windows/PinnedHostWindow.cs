@@ -244,8 +244,12 @@ internal sealed class PinTile
     }
 }
 
-/// <summary>一次拖动会话（左键按住 tile 起手）。</summary>
-internal sealed record DragSession(UIElement Element, global::Windows.Foundation.Point StartDip, int StartX, int StartY);
+/// <summary>一次拖动会话（左键按住 tile 起手）；FreeX/FreeY = 吸附前的自由落点（收起判定用，防 snap 假贴边）。</summary>
+internal sealed record DragSession(UIElement Element, global::Windows.Foundation.Point StartDip, int StartX, int StartY)
+{
+    public int LastFreeX { get; set; }
+    public int LastFreeY { get; set; }
+}
 
 /// <summary>
 /// L0 单窗口多 tile 宿主（B-701/703，RFC §6.2.3/6.2.4）：
@@ -521,6 +525,14 @@ internal sealed class PinnedHostWindow
         {
             return;
         }
+        // 水滴坍缩修复（用户实测：细条拖不回桌面）：收起态起拖先弹回全宽，
+        // 拖拽会话坐标用弹回后的窗口位置——杜绝会话锁死在 12px 收纳位、拖动整窗只有细条跟着走
+        if (_layout is { Collapsed: true } && !_hoverExpanded)
+        {
+            _hoverExpanded = true; // 临时展开（不落库），FinalizeDrag 按落点重新判收起
+            ApplyLayout();
+            appWindow = GetAppWindow() ?? appWindow;
+        }
         _dragMoved = false;
         _drag = new DragSession(tile, e.GetCurrentPoint(null).Position, appWindow.Position.X, appWindow.Position.Y);
         tile.CapturePointer(e.Pointer);
@@ -549,6 +561,8 @@ internal sealed class PinnedHostWindow
         var snap = (int)(SnapDips * dpi);
         var x = _drag.StartX + dx;
         var y = _drag.StartY + dy;
+        _drag.LastFreeX = x; // 记录吸附前自由落点：收起判定看它，snap 对齐不算「用户贴边」
+        _drag.LastFreeY = y;
         // 吸附四边（RFC §6.2.3：拖动中吸附到四边）
         if (Math.Abs(x - work.X) < snap)
         {
@@ -577,17 +591,23 @@ internal sealed class PinnedHostWindow
             return;
         }
         var element = _drag.Element;
+        var freeX = _drag.LastFreeX; // 先取后置空（FinalizeDrag 用自由落点判收起）
+        var freeY = _drag.LastFreeY;
         _drag = null;
         element.ReleasePointerCapture(e.Pointer);
         if (_dragMoved)
         {
-            FinalizeDrag();
+            FinalizeDrag(freeX: freeX, freeY: freeY);
         }
         e.Handled = true;
     }
 
-    /// <summary>拖动落点：跨显示器迁移记录、最近锚点角 + DIP 偏移持久化、贴边（snap 吸上后 0 距）判收起。</summary>
-    private void FinalizeDrag()
+    /// <summary>
+    /// 拖动落点：跨显示器迁移记录、最近锚点角 + DIP 偏移持久化、收起判定。
+    /// 防抖/回弹（用户令：短暂路过不误坍缩）：收起只看吸附前的自由落点贴死边缘（≤2px，snap 对齐后的刻意贴边）；
+    /// 近边但未贴死的松手 = 回弹保持展开（旧口径 12 DIP 内即收起，路过边缘的随手一放就没了面板）。
+    /// </summary>
+    private void FinalizeDrag(int freeX, int freeY)
     {
         if (GetAppWindow() is not { } appWindow || _layout is null)
         {
@@ -603,8 +623,10 @@ internal sealed class PinnedHostWindow
         var rect = PinLayoutMath.ClampInto(work, new PinRect(position.X, position.Y, size.Width, size.Height), margin: 0);
         (_layout.Anchor, _layout.OffsetDips) = PinLayoutMath.Locate(work, rect, dpi);
         _layout.Monitor = Identity(monitor); // 跨显示器拖动 = 迁移 pinLayout 记录
-        var edge = Math.Min(Math.Min(rect.X - work.X, work.Right - rect.Right), Math.Min(rect.Y - work.Y, work.Bottom - rect.Bottom));
-        _layout.Collapsed = edge <= (int)(CollapseStripDips * dpi); // 拖至屏边 → 收起细条
+        var edge = Math.Min(
+            Math.Min(freeX - work.X, work.Right - (freeX + size.Width)),
+            Math.Min(freeY - work.Y, work.Bottom - (freeY + size.Height)));
+        _layout.Collapsed = edge <= Math.Max(2, (int)(2 * dpi)); // 贴死才收起；未贴死=回弹展开
         _hoverExpanded = false;
         ApplyLayout();
         PersistLayout();
@@ -617,7 +639,15 @@ internal sealed class PinnedHostWindow
             _dragMoved = false; // 拖动结束的合成点击忽略
             return;
         }
-        TileActivated?.Invoke(); // 点击下钻 L2（RFC §6.2.7；收起态点击即「点击进 L2」）
+        // 水滴态点击 = 弹回展开（用户令：坍缩必须可逆——可拖出/可点击弹回）；进 L2 需在展开态点击
+        if (_layout is { Collapsed: true } && !_hoverExpanded)
+        {
+            _hoverExpanded = true;
+            ApplyLayout();
+            e.Handled = true;
+            return;
+        }
+        TileActivated?.Invoke(); // 点击下钻 L2（RFC §6.2.7）
         e.Handled = true;
     }
 

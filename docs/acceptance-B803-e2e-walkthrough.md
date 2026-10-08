@@ -38,7 +38,19 @@
 - [ ] 托盘菜单全部入口可用（面板/设置/通知/刷新/退出）；热键 `Ctrl+Alt+B` 呼出面板
 - [ ] B-705 铁律真机手动清单 5 项全部勾选（见该文档）
 
-## 3. 归档
+## 3. GLM 额度端到端（验收反馈阻断级：连源→加组件→板上出真实数字）
+
+| # | 步骤 | 操作 | 通过标准 | 结果 |
+|---|---|---|---|---|
+| G1 | 录入 GLM 连接 | 设置 → 连接 → 类型 `bigmodel` → Id + PAT（或裸 Key） | 测试连接返回 Healthy；提示「在下方组件向导选该连接，或用『一键添加』即可上板」 | ☐ |
+| G2 | 一键示例 | 设置 → bigmodel 模块 →「一键添加 GLM 额度组件（示例）」 | 组件列表出现 `bigmodel.usage:GLM`；Pinned=true 自动钉选；右下角 L0 胶囊出现 **数值卡 + 进度条** | ☐ |
+| G3 | 首数出屏 | 等待 ≤10s（CI/Ci 档） | 胶囊显示「GLM 额度 · 已用 XX% · 剩 YY tokens · MM-DD HH:MM 重置」；进度条按已用%填充；右键 L2 行可见 `Source: GLM` 标注 | ☐ |
+| G4 | 字段映射自验 | 设置 → 组件 `bigmodel.usage:GLM` → 编辑 → 确认 `total_path/used_path/reset_path` 映射正确 | 字段路径与 GLM `quota/limit` 响应结构一致（`$.data.total` / `$.data.used` / `$.data.reset_at`） | ☐ |
+| G5 | 手动强刷 | 托盘菜单 → Refresh All | 数值/进度条实时刷新；日志 `%APPDATA%\Beacon\logs\beacon-*.log` 有逐跳行（一键添加→拉取→字段映射→渲染） | ☐ |
+
+> ⚠️ **截图必须在 Windows 真机产出**（Linux 仅能跑单测/构建，WinUI 3 无法在此环境运行）。请在完成上述 G1–G5 后，对 L0 胶囊与 L2 面板各截一张，存入 `docs/img/` 并在 PR/回复中附上。
+
+## 4. 归档
 
 - [ ] 录屏/截图存 `docs/img/`（大录屏可放 Release 附件，README 链接）
 - [ ] 每个不通过项：当场修复（走门禁推送）或开 Issue
