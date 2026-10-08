@@ -104,15 +104,14 @@ begin
   ConfigPage.Add('保留现有配置（推荐，默认）');
   ConfigPage.Add('覆盖为全新配置（删除现有连接/组件/设置）');
   ConfigPage.Values[0] := True; // 默认保留
-  ConfigPage.OnClickCheck := @ConfigPageClick;
+  ConfigPage.CheckListBox.OnClickCheck := @ConfigPageClick; // OnClickCheck 在 TNewCheckListBox 上（TInputOptionWizardPage 无此属性）
 
   WarnLabel := TNewStaticText.Create(WizardForm);
   WarnLabel.Parent := ConfigPage.Surface;
   WarnLabel.Left := 0;
   WarnLabel.Top := ConfigPage.CheckListBox.Top + ConfigPage.CheckListBox.Height + ScaleY(8);
   WarnLabel.Width := ConfigPage.Surface.Width;
-  WarnLabel.WordWrap := True;
-  WarnLabel.AutoSize := True;
+  WarnLabel.WordWrap := True; // WordWrap 需固定 Width，与 AutoSize 互斥（不设 AutoSize）
   WarnLabel.Caption :=
     '提示：保留可能存在配置不兼容——新版本若调整配置结构，旧配置可能无法加载或部分功能异常，出问题可重装选覆盖。';
 
