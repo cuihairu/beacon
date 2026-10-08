@@ -128,7 +128,7 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
   if PageID = ConfigPage.ID then
-    Result := (not HasExistingConfig) or IsSilent; // 无旧配置/静默安装不弹页
+    Result := (not HasExistingConfig) or WizardSilent; // 无旧配置/静默安装不弹页
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -154,7 +154,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   // 静默安装不弹页：默认保留，覆盖必须显式带 /OVERWRITE_CONFIG（参数即确权）
-  if IsSilent then
+  if WizardSilent then
     OverrideConfig := CmdLineParamExists(OverwriteParam);
   if (CurStep = ssInstall) and OverrideConfig then
     DelTree(ExpandConstant('{userappdata}\Beacon'), True, True, True);
