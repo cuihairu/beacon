@@ -1,5 +1,6 @@
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
+using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
