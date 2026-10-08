@@ -5,9 +5,14 @@ name: Daily Build
 # 附 SHA256SUMS 全量校验单。Release 资产是硬交付面，Actions artifacts 只是
 # run 页临时下载（14 天过期），本工作流不依赖它。
 #
-# 发布机制（cage/chirp 同款）：tag 固定 `nightly` 不动，每次发布删旧资产再传
-# 新；--prerelease --latest=false 保证滚动构建永不冒充正式版。仓库红线是
-# 「禁版本 tag」；`nightly` 是固定滚动 tag，不是版本号，不受限。
+# 发布机制：tag 固定 `nightly` 不动，每次发布**删旧 release 连 tag 一并重建**
+# （delete --cleanup-tag → create --target=本次 SHA）——release publishedAt 恒等
+# 于本次构建时间，时间戳即交付凭证（复用 release 对象换资产的方式 publishedAt
+# 停在首次发布日，装机验收无法凭它确认装到新包）。发布步骤末尾带硬断言：
+# publishedAt / 三个资产 updatedAt 必须 ≥ 本次 run 起始时间，远端 SHA256SUMS 须与
+# 本地构建逐字节一致——发布失败=run 红，不许绿着不发货。--prerelease
+# --latest=false 保证滚动构建永不冒充正式版。仓库红线是「禁版本 tag」；
+# `nightly` 是固定滚动 tag，不是版本号，不受限。
 #
 # 调度：GitHub schedule 只在默认分支（main）生效；北京时间凌晨执行。
 
@@ -129,17 +134,36 @@ jobs:
             echo "- 每日构建只证明可构建 + 打包成功；完整质量门禁以仓库 CI（ci.yml）为准。"
           } > notes.md
           TAG=nightly
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --target "$GITHUB_SHA" \
-              --title "Nightly · 每日构建" --notes "初始化" \
-              --prerelease --latest=false
+          # 滚动 release 每次删旧重建（连 tag）：publishedAt=本次 run，时间戳即交付凭证。
+          # concurrency 已串行化同一 job，无并发互踩；delete 不存在时容许失败（首跑）。
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" --target "$GITHUB_SHA" \
+            --title "Nightly · 每日构建 ${stamp}" --notes-file notes.md \
+            --prerelease --latest=false
+          gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS
+
+          # ── 发布后硬断言：任一不过=本步失败（发布失败必须红，不许绿着不发货）──
+          # ①publishedAt 与三个资产 updatedAt 必须 ≥ 本次 run 起始（同为 ISO8601 UTC，字典序可比）；
+          # ②远端 SHA256SUMS 下载回来与本地 diff——发出的就是本次构建的硬证明。
+          sleep 5
+          view="$(gh release view "$TAG" --json publishedAt,assets)"
+          pub="$(echo "$view" | jq -r '.publishedAt')"
+          started="${{ github.run_started_at }}"
+          if [[ -z "$pub" || "$pub" < "$started" ]]; then
+            echo "::error::发布断言失败：Release publishedAt=${pub:-空} 早于本次 run 起始 ${started}——新 release 未建成"
+            exit 1
           fi
-          gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r a; do
-            if [ -n "$a" ]; then
-              gh release delete-asset "$TAG" "$a" --yes
+          for f in "$ZIP" "$SETUP" SHA256SUMS; do
+            ts="$(echo "$view" | jq -r --arg n "$f" '.assets[] | select(.name == $n) | .updatedAt')"
+            if [[ -z "$ts" || "$ts" < "$started" ]]; then
+              echo "::error::发布断言失败：资产 ${f} 缺失或 updatedAt=${ts:-空} 早于本次 run 起始 ${started}"
+              exit 1
             fi
           done
-          gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS
-          gh release edit "$TAG" --title "Nightly · 每日构建 ${stamp}" \
-            --notes-file notes.md --prerelease --latest=false
+          gh release download "$TAG" -p SHA256SUMS -O /tmp/SHA256SUMS.remote --clobber
+          if ! diff -u SHA256SUMS /tmp/SHA256SUMS.remote; then
+            echo "::error::发布断言失败：远端 SHA256SUMS 与本次构建不一致——传错/传漏资产"
+            exit 1
+          fi
+          echo "发布断言通过：publishedAt=${pub}，三资产时间戳均为本次 run，SHA256SUMS 与本地构建一致"
           echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
