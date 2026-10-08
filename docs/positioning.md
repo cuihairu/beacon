@@ -133,7 +133,7 @@ Codex    71% used   weekly 8h 后重置
 | 刷新 | `RefreshScheduler` 分层调度（状态与额度的窗口粒度可复用） |
 | 通知 | `NotificationEngine` + Toast（B-5xx 已接） |
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
-| Usage Provider、Generic HTTP | **已落地**：http.status / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance（§8，详细进度） |
+| Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage（§8，详细进度） |
 | Machine Provider | 未实现——M5 收口后并入 [mvp-issues](mvp-issues.md) |
 
 ## 7. 排期约定
@@ -161,6 +161,16 @@ Codex    71% used   weekly 8h 后重置
   顶层 `usage` 兜底为周限，按剩余百分比阈值告警（warn 30 / error 10）；
 - **DeepSeek 开放平台余额（P0 #5）**：组件类型 `deepseek.balance`——`GET https://api.deepseek.com/user/balance`，
   Bearer 认证，`balance_infos[]` 字符串金额，`is_available=false` 直接 Error，余额击穿下限告警（warn 20 / error 5，按余额币种）；
+- **火山方舟 Coding Plan Pro 额度（P0 #6）**：组件类型 `ark.usage`——火山控制面 OpenAPI `GetCodingPlanUsage`
+  （open.volcengineapi.com，V4 签名火山变体；凭据为控制台 AK/SK 一次粘贴 `AccessKey:SecretKey` 只进 DPAPI——
+  推理 ARK_API_KEY 实测被管控面 400 拒绝，不能互推），`Result.QuotaUsage[]` 归一化 5h/周/月三窗口已用百分比
+  （接口只给百分比，绝对数不经此口）；空数组=未订阅/已回收，渲染「无套餐」Info 卡非错误；
+- **小米 MiMo 模型目录卡（AI Usage 七家之一）**：组件类型 `mimo.usage`——官方未开放用量接口（推理域
+  /usage 路由实测 404），卡片显示 `/v1/models` 模型目录真数据并如实标注「用量口径官方未开放」（不编数字）；
+  连接 Settings 可填 `usage_endpoint`，官方日后开放即透传显示；
+- **OpenAI Codex 本机统计（AI Usage 七家之一）**：组件类型 `codex.usage`——读本机
+  `~/.codex/sessions/**/rollout-*.jsonl` 的 token_count 事件（total_token_usage 为会话内累计值，每文件取末条求和），
+  零凭据零网络，卡面如实标注「本地统计」（ChatGPT OAuth 官方用量口与「连接+凭据」模型不同构，暂不接）；
 - **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
   启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
 - **L0 独立悬浮框形态（B-701 扩展）**：设置「悬浮形态」二选一——宿主面板（默认，单窗多 tile）/ 独立悬浮框
@@ -176,12 +186,14 @@ Codex    71% used   weekly 8h 后重置
 - **阿里云百炼（DashScope/千问）**：无独立的余额/用量查询接口——账户余额要走阿里云 BSS OpenAPI
   `QueryAccountBalance`（AccessKey/Secret 签名，非 Bearer REST），且统计的是整个阿里云账号消费而非百炼模型单独口径；
   接入成本高、信息增益低，暂缓。过渡方案：自建代理转发再配 `http.status`。
-- **小米 MiMo**：API 开放平台（platform.xiaomimimo.com）已开放、模型权重 MIT 开源，但**未见公开的余额/用量查询接口**；
-  有公开接口后按 bigmodel/kimi 同构接入。过渡方案：`http.status` 监控自部署网关的健康状态。
+- **小米 MiMo**：API 开放平台（platform.xiaomimimo.com）已开放、模型权重 MIT 开源，但**未见公开的余额/用量查询接口**
+  （2026-10-08 实测推理域 /usage 404）——已先落 `mimo.usage` 模型目录卡（见 §8）；真正的用量接口公开后，
+  在连接 Settings 填 `usage_endpoint` 或按 bigmodel/kimi 同构升级。
 - **Moonshot 开放平台余额**（区别于 Kimi For Coding 套餐）：`GET https://api.moonshot.cn/v1/users/me/balance`
   Bearer 认证，响应 `{code:0, data:{available_balance}}`（dsh-plugin-llm-balance 验证）——端点已确认，后续按 deepseek 同构接入。
 - **OpenAI Codex 用量**：社区走 ChatGPT OAuth（`chatgpt.com/backend-api/wham/usage`，5h/周/月限额+Credits），
-  需要本机 OAuth 凭据封装，与当前"连接+凭据"模型不同构，单独排期（或先走本机会话 JSONL 统计，同 claude.usage）。
+  需要本机 OAuth 凭据封装，与当前"连接+凭据"模型不同构——已按第三档落本机会话 JSONL 统计（`codex.usage`，见 §8），
+  OAuth 口单独排期。
 
 ### 配置示例（config 目录 %APPDATA%/Beacon/）
 
@@ -223,13 +235,36 @@ Codex    71% used   weekly 8h 后重置
     "endpoint": null,
     "credentialRef": "conn:deepseek",
     "enabled": true
+  },
+  {
+    "id": "ark",
+    "type": "ark",
+    "endpoint": null,
+    "credentialRef": "conn:ark",
+    "enabled": true
+  },
+  {
+    "id": "mimo",
+    "type": "mimo",
+    "endpoint": null,
+    "credentialRef": "conn:mimo",
+    "enabled": true,
+    "settings": { "usage_endpoint": "" }
+  },
+  {
+    "id": "codex-local",
+    "type": "codex",
+    "endpoint": null,
+    "enabled": true
   }
 ]
 ```
 
 `http` 连接 settings：`auth_header`（默认 `Authorization`）、`auth_prefix`（默认 `"Bearer "`，可置空）；
 `bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）；
-`claude` 连接零凭据零网络（endpoint 可填自定义会话目录）；`kimi`/`deepseek` endpoint 可空走官方接口，Bearer 认证。
+`claude` 连接零凭据零网络（endpoint 可填自定义会话目录）；`kimi`/`deepseek` endpoint 可空走官方接口，Bearer 认证；
+`ark` 凭据为控制台 AK/SK（`AccessKey:SecretKey` 一次粘贴，只进 DPAPI）；`mimo` endpoint 可空走官方推理域，
+`usage_endpoint` 留给官方日后开放的用量口（填了即透传显示）；`codex` 零凭据零网络（endpoint 可填自定义会话目录）。
 
 组件 `widgets.json`：
 
@@ -293,6 +328,27 @@ Codex    71% used   weekly 8h 后重置
     "connectionId": "deepseek",
     "refreshTier": "default",
     "config": { "label": "DeepSeek", "warn_below": "20", "error_below": "5" }
+  },
+  {
+    "id": "ark.usage:ark",
+    "type": "ark.usage",
+    "connectionId": "ark",
+    "refreshTier": "ci",
+    "config": { "label": "方舟", "warn_percent": "60", "error_percent": "90" }
+  },
+  {
+    "id": "mimo.usage:mimo",
+    "type": "mimo.usage",
+    "connectionId": "mimo",
+    "refreshTier": "ci",
+    "config": { "label": "MiMo" }
+  },
+  {
+    "id": "codex.usage:codex",
+    "type": "codex.usage",
+    "connectionId": "codex-local",
+    "refreshTier": "static",
+    "config": { "label": "Codex", "days": "1" }
   }
 ]
 ```
@@ -302,4 +358,7 @@ Codex    71% used   weekly 8h 后重置
 `claude.usage` 摘要形如 `Claude · 今日 · $1.00 · 2.5K tok · 12 条`（costUSD 缺失时只报 token，不自行估价）。
 `kimi.coding` 摘要形如 `Pro · 5h 剩25% · 周 剩55%`，剩余百分比越低越差。
 `deepseek.balance` 摘要形如 `DeepSeek · ¥110.00（含赠 ¥10.00）`，币种 CNY/USD 自适应。
+`ark.usage` 摘要形如 `方舟 · 5h 42% · 周 8% · 月 3%`（接口只给百分比，级别取各窗口最差者过阈值）；`mimo.usage`
+摘要形如 `MiMo · 3 模型可用 · 用量口径官方未开放`；`codex.usage` 摘要形如 `Codex · 今日 · 8 会话 · 12.3K tok · 本地统计`
+（`days` 默认 7，`days=1` 显示「今日」）。
 
