@@ -20,4 +20,7 @@ public sealed class PinLayout
     public required PinOffset OffsetDips { get; set; }
     /// <summary>吸边收起态：细条/圆点，悬停展开（RFC §6.2.2）。</summary>
     public bool Collapsed { get; set; }
+    /// <summary>独立悬浮框模式的窗口位置（物理像素，按组件各记；null = 未拖过，按序级联）。panel 模式不写。</summary>
+    public int? FloatingX { get; set; }
+    public int? FloatingY { get; set; }
 }

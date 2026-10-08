@@ -13,6 +13,7 @@ public sealed class TopmostGuard : IDisposable
 {
     private readonly NativeMethods.WinEventProc _callback; // 字段持有防委托 GC，native 钩子只存裸指针
     private readonly List<(Func<IntPtr> Hwnd, Func<bool> Allowed)> _clients = [];
+    private readonly List<(Func<IReadOnlyList<IntPtr>> Hwnds, Func<bool> Allowed)> _multiClients = [];
     private readonly IntPtr _hook;
 
     public TopmostGuard()
@@ -32,6 +33,15 @@ public sealed class TopmostGuard : IDisposable
         lock (_clients)
         {
             _clients.Add((hwnd, allowed));
+        }
+    }
+
+    /// <summary>注册多窗悬浮宿主（独立悬浮框模式：每组件一窗，集合随 Pin/Unpin 动态变化）；allowed 门控全体。</summary>
+    public void WatchAll(Func<IReadOnlyList<IntPtr>> hwnds, Func<bool> allowed)
+    {
+        lock (_clients)
+        {
+            _multiClients.Add((hwnds, allowed));
         }
     }
 
@@ -57,6 +67,27 @@ public sealed class TopmostGuard : IDisposable
                 NativeMethods.SetWindowPos(
                     clientHwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
                     NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+            }
+            foreach (var (hwndsAccessor, allowed) in _multiClients)
+            {
+                if (!allowed())
+                {
+                    continue;
+                }
+                foreach (var clientHwnd in hwndsAccessor())
+                {
+                    if (clientHwnd == IntPtr.Zero)
+                    {
+                        continue;
+                    }
+                    if (!NativeMethods.IsWindowVisible(clientHwnd))
+                    {
+                        NativeMethods.ShowWindow(clientHwnd, NativeMethods.SW_SHOWNOACTIVATE);
+                    }
+                    NativeMethods.SetWindowPos(
+                        clientHwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                        NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+                }
             }
         }
     }

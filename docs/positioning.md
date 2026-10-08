@@ -155,6 +155,9 @@ Codex    71% used   weekly 8h 后重置
   Bearer 认证，`balance_infos[]` 字符串金额，`is_available=false` 直接 Error，余额击穿下限告警（warn 20 / error 5，按余额币种）；
 - **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
   启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
+- **L0 独立悬浮框形态（B-701 扩展）**：设置「悬浮形态」二选一——宿主面板（默认，单窗多 tile）/ 独立悬浮框
+  （每钉选组件一窗，桌面任意拖放，位置按组件各记 `PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）；
+  两形态同享置顶哨兵、点击下钻 L2、停用模块即时消失；切换重启生效。
 
 ### 调研结论（暂缓接入）
 

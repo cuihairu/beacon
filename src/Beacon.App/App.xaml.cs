@@ -22,6 +22,7 @@ public partial class App : Application
     private Windows.QuickPanelWindow? _quickPanel;
     private Windows.CapsuleWindow? _capsule;
     private Windows.PinnedHostWindow? _pinnedHost;
+    private Windows.FloatingTileHost? _floatingHost;
     private TopmostGuard? _topmostGuard;
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
@@ -116,7 +117,7 @@ public partial class App : Application
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => quickPanel.Toggle();
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
-        quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => _pinnedHost?.ReloadTiles()); // B-702：Pin 入口联动 L0
+        quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
         // B-503：Notifications 入口（P6 B-602 换成通知中心视图）；Refresh All 在 B-504 接运行时
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         tray.ExitRequested += () => Dispatcher.TryEnqueue(ShutdownApp);
@@ -150,12 +151,22 @@ public partial class App : Application
         capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
 
-        // B-701：L0 悬浮组件宿主（主屏单实例；多显示器分配随 B-703 位置持久化）
+        // B-701：L0 悬浮组件（主屏单实例宿主或独立悬浮框两形态；多显示器分配随 B-703 位置持久化）
         if (Infrastructure.MonitorService.Primary() is { } primaryMonitor)
         {
-            _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
-            _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
-            _pinnedHost.Initialize();
+            if (runtime.Config.App.PinDisplayMode == "floating")
+            {
+                // 独立悬浮框：每钉选组件一窗，桌面任意拖放、位置按组件各记
+                _floatingHost = new Windows.FloatingTileHost(runtime, primaryMonitor);
+                _floatingHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
+                _floatingHost.Initialize();
+            }
+            else
+            {
+                _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
+                _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
+                _pinnedHost.Initialize();
+            }
         }
 
         // 置顶哨兵：右键菜单/开始菜单/任意应用抢前台会重排 topmost 带，NOACTIVATE 悬浮窗
@@ -165,6 +176,10 @@ public partial class App : Application
         if (_pinnedHost is { } host)
         {
             _topmostGuard.Watch(() => host.Hwnd, () => true);
+        }
+        if (_floatingHost is { } floating)
+        {
+            _topmostGuard.WatchAll(() => floating.Hwnds, () => true); // 窗集动态，哨兵按现值重钉
         }
 
         // B-103：全局热键（config.json 可改，B-801 提供设置 UI）
@@ -202,6 +217,7 @@ public partial class App : Application
             tray.SetSeverity(snapshot.Overall);
             tray.SetTip(BuildTrayTip(snapshot));
             _pinnedHost?.ReloadTiles();
+            _floatingHost?.ReloadTiles();
         }
 
         Windows.SettingsWindow? settingsWindow = null;
@@ -215,7 +231,7 @@ public partial class App : Application
             settingsWindow = new Windows.SettingsWindow(runtime);
             settingsWindow.Closed += (_, _) => settingsWindow = null;
             settingsWindow.SettingsApplied += ApplySettingsEffects;
-            settingsWindow.PinsChanged += () => Dispatcher.TryEnqueue(() => _pinnedHost?.ReloadTiles());
+            settingsWindow.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); });
             settingsWindow.Activate();
         });
 
@@ -236,6 +252,7 @@ public partial class App : Application
             _quickPanel?.Hide();
             _capsule?.Close();
             _pinnedHost?.Close();
+            _floatingHost?.Close();
         }
         catch
         {

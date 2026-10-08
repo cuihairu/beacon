@@ -32,6 +32,7 @@ internal sealed class SettingsWindow : Window
     private TextBox _hotkeyBox = null!;
     private ToggleSwitch _startupToggle = null!;
     private ComboBox _themeBox = null!;
+    private ComboBox _pinModeBox = null!;
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
 
@@ -311,7 +312,14 @@ internal sealed class SettingsWindow : Window
         _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
         _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle } });
+        _pinModeBox = new ComboBox { Header = "悬浮形态（重启生效）", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
+        foreach (var item in new[] { ("panel", "宿主面板（单窗多 tile）"), ("floating", "独立悬浮框（每组件一窗，任意拖放）") })
+        {
+            _pinModeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
+        }
+        _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
+        _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox } });
         return page;
     }
 
@@ -444,6 +452,7 @@ internal sealed class SettingsWindow : Window
         app.Hotkey = _hotkeyBox.Text.Trim();
         app.LaunchOnStartup = _startupToggle.IsOn;
         app.Theme = TagOf(_themeBox) ?? "system";
+        app.PinDisplayMode = TagOf(_pinModeBox) ?? "panel";
         app.UiOpacity = _opacitySlider.Value;
         app.ShowCapsule = _capsuleToggle.IsOn;
         _runtime.Config.SaveApp();
