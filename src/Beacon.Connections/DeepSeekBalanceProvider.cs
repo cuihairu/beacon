@@ -88,6 +88,7 @@ public sealed class DeepSeekBalanceProvider : IWidgetProvider
             DetailUrl = "https://platform.deepseek.com/usage",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["usage_source"] = "api", // 官方余额接口直连（2026-10-09 实测真数据）
                 ["currency"] = balance.Currency,
                 ["total"] = balance.Total.ToString("0.00", CultureInfo.InvariantCulture),
                 ["granted"] = balance.Granted?.ToString("0.00", CultureInfo.InvariantCulture) ?? "",

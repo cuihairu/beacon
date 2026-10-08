@@ -130,6 +130,7 @@ public sealed class DeepSeekBalanceProviderTests
         Assert.Equal("DeepSeek · ¥110.00（含赠 ¥10.00）", state.Summary);
         Assert.Equal("CNY", state.Payload["currency"]);
         Assert.Equal("110.00", state.Payload["total"]);
+        Assert.Equal("api", state.Payload["usage_source"]); // 官方余额接口直连口径
         Assert.Equal("https://platform.deepseek.com/usage", state.DetailUrl);
 
         var hasAuth = http.Requests[0].Headers.TryGetValues("Authorization", out var authorization);
