@@ -4,6 +4,7 @@ using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;

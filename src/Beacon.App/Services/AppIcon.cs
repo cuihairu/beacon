@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.UI.Windowing;
 
 namespace Beacon.App.Services;
@@ -13,7 +14,7 @@ internal static class AppIcon
     public static string Path { get; } = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "beacon.ico");
 
     /// <summary>给窗口补任务栏/Alt-Tab 图标；图标缺失只记错不致命（缺文件不该拦住窗口）。</summary>
-    public static void Apply(AppWindow appWindow, Microsoft.Extensions.Logging.ILogger? logger = null)
+    public static void Apply(AppWindow appWindow, ILogger? logger = null)
     {
         try
         {
