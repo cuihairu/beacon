@@ -54,6 +54,10 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; ①检测到旧配置目录 → 单选页：保留现有配置(默认) / 覆盖为全新配置；
 ; ②「覆盖」须勾选「我已知悉将丢失现有配置」才放行；③/SILENT 默认保留，覆盖须显式 /OVERWRITE_CONFIG；
 ; ④无旧配置直接跳页。配置目录 %APPDATA%\Beacon（应用运行时生成，安装包不带配置文件）。
+; 布局注：警告文案与知悉勾选**固定常显**（压缩 CheckListBox 高度腾出底部两行）——
+; 不做动态显隐：其一，TInputOptionPage 的列表本就占满 Surface，控件叠在 CheckListBox.Bottom
+; 之后整个落在可视区外（2026-10-08 用户装机实证：MsgBox 拦截在响、勾选框却看不见）；
+; 其二，动态显隐依赖 OnClickCheck 在 radio 切换时触发，时序未经实证，能不依赖就不依赖。
 [Code]
 const
   OverwriteParam = '/OVERWRITE_CONFIG';
@@ -82,20 +86,6 @@ begin
   Result := DirExists(ExpandConstant('{userappdata}\Beacon'));
 end;
 
-// 选「保留」显示保留警告；选「覆盖」切知悉勾选框（切回保留清勾选，重新覆盖须重新知悉）
-procedure SyncOverrideUi;
-begin
-  WarnLabel.Visible := ConfigPage.Values[0];
-  AckCheckBox.Visible := ConfigPage.Values[1];
-  if not ConfigPage.Values[1] then
-    AckCheckBox.Checked := False;
-end;
-
-procedure ConfigPageClick(Sender: TObject);
-begin
-  SyncOverrideUi;
-end;
-
 procedure InitializeWizard;
 begin
   OverrideConfig := False;
@@ -104,24 +94,26 @@ begin
   ConfigPage.Add('保留现有配置（推荐，默认）');
   ConfigPage.Add('覆盖为全新配置（删除现有连接/组件/设置）');
   ConfigPage.Values[0] := True; // 默认保留
-  ConfigPage.CheckListBox.OnClickCheck := @ConfigPageClick; // OnClickCheck 在 TNewCheckListBox 上（TInputOptionWizardPage 无此属性）
 
+  // 底部固定两行：先压缩列表（两个 radio 项绰绰有余），再按列表新底缘顺排
+  ConfigPage.CheckListBox.Height := ConfigPage.CheckListBox.Height - ScaleY(60);
   WarnLabel := TNewStaticText.Create(WizardForm);
   WarnLabel.Parent := ConfigPage.Surface;
   WarnLabel.Left := 0;
-  WarnLabel.Top := ConfigPage.CheckListBox.Top + ConfigPage.CheckListBox.Height + ScaleY(8);
+  WarnLabel.Top := ConfigPage.CheckListBox.Top + ConfigPage.CheckListBox.Height + ScaleY(6);
   WarnLabel.Width := ConfigPage.Surface.Width;
-  WarnLabel.WordWrap := True; // WordWrap 需固定 Width，与 AutoSize 互斥（不设 AutoSize）
+  WarnLabel.Height := ScaleY(32); // WordWrap 需固定 Width+Height（不设 AutoSize）
+  WarnLabel.WordWrap := True;
   WarnLabel.Caption :=
-    '提示：保留可能存在配置不兼容——新版本若调整配置结构，旧配置可能无法加载或部分功能异常，出问题可重装选覆盖。';
+    '提示：选「覆盖」将删除 %APPDATA%\Beacon 下全部现有配置（连接/组件/设置），不可恢复；' +
+    '选「保留」时若新版本调整了配置结构，旧配置可能无法加载或部分功能异常。';
 
   AckCheckBox := TNewCheckBox.Create(WizardForm);
   AckCheckBox.Parent := ConfigPage.Surface;
   AckCheckBox.Left := 0;
-  AckCheckBox.Top := ConfigPage.CheckListBox.Top + ConfigPage.CheckListBox.Height + ScaleY(8);
+  AckCheckBox.Top := WarnLabel.Top + ScaleY(36);
   AckCheckBox.Width := ConfigPage.Surface.Width;
-  AckCheckBox.Caption := '我已知悉将丢失现有配置';
-  SyncOverrideUi;
+  AckCheckBox.Caption := '我已知悉，覆盖将丢失现有配置（选择覆盖时必须勾选）';
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
@@ -140,7 +132,7 @@ begin
     begin
       if not AckCheckBox.Checked then
       begin
-        MsgBox('勾选「我已知悉将丢失现有配置」后才能选择覆盖。', mbError, MB_OK);
+        MsgBox('请先勾选「我已知悉，覆盖将丢失现有配置」。', mbError, MB_OK);
         Result := False;
         Exit;
       end;
