@@ -76,6 +76,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [GitHubWidgetDescriptors.PullRequestsType] = new GitHubPullRequestsProvider(),
             [GitHubWidgetDescriptors.ActionsRunsType] = new GitHubActionsProvider(),
             [HttpWidgetDescriptors.StatusType] = new HttpStatusProvider(), // positioning P0 #3：Generic HTTP
+            [HttpWidgetDescriptors.QuotaType] = new HttpQuotaProvider(), // 验收反馈：通用额度数值卡（字段映射可配）
             [BigModelWidgetDescriptors.UsageType] = new BigModelUsageProvider(), // positioning P0 #5：GLM 套餐额度
             [ClaudeWidgetDescriptors.UsageType] = new ClaudeUsageProvider(), // positioning P0 #5：Claude 本机用量（读会话 JSONL）
             [DeepSeekWidgetDescriptors.BalanceType] = new DeepSeekBalanceProvider(), // positioning P0 #5：DeepSeek 余额

@@ -421,8 +421,43 @@ internal sealed class SettingsWindow : Window
         }
         page.Children.Add(_widgetList);
         page.Children.Add(BuildWidgetEditor());
+        if (type == "bigmodel")
+        {
+            // 绑定流捷径（验收反馈：连上 GLM 却无组件可展示）——一条按钮从「连接就绪」直达「上板」
+            var quick = new Button { Content = "一键添加 GLM 额度组件（示例）", HorizontalAlignment = HorizontalAlignment.Left };
+            quick.Click += (_, _) => AddGlmQuotaExample();
+            page.Children.Add(quick);
+        }
         page.Children.Add(_widgetFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
         return page;
+    }
+
+    /// <summary>绑定流捷径：GLM 连接就绪后一键建 bigmodel.usage 组件（label 预填，零表单），列表开「钉」即上板。</summary>
+    private void AddGlmQuotaExample()
+    {
+        var connection = _runtime.Config.Connections.FirstOrDefault(c => c.Type == "bigmodel");
+        if (connection is null)
+        {
+            Feedback(_widgetFeedback, "✗ 先在上方添加并测试一个智谱 GLM 连接（bigmodel 类型）。", error: true);
+            return;
+        }
+        var id = "bigmodel.usage:GLM";
+        for (var suffix = 2; _runtime.Config.FindWidget(id) is not null; suffix++)
+        {
+            id = $"bigmodel.usage:GLM-{suffix}";
+        }
+        _runtime.Config.UpsertWidget(new WidgetConfig
+        {
+            Id = id,
+            Type = BigModelWidgetDescriptors.UsageType,
+            ConnectionId = connection.Id,
+            RefreshTier = RefreshTiers.Ci,
+            Pinned = false,
+            Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["label"] = "GLM" },
+        });
+        RebuildWidgets();
+        Feedback(_widgetFeedback, $"✓ 组件 {id} 已添加（连接 {connection.Id}）——在上方组件列表打开「钉」，或 L2 面板右键 Pin，即刻上板。", error: false);
+        PinsChanged?.Invoke();
     }
 
     private static string ProviderStatus(ModuleDef module, List<ConnectionConfig> connections, int widgetCount)
@@ -443,7 +478,7 @@ internal sealed class SettingsWindow : Window
         "claude" => "无需连接配置——直接读本机 ~/.claude/projects 会话记录；名称随意填（如 claude-local），Endpoint 可空。",
         "kimi" => "尚无连接——填 Kimi Code 控制台 Key（sk-kimi-*，与 Moonshot 开放平台不通用；用量接口自动带默认端点）。",
         "deepseek" => "尚无连接——填 DeepSeek 开放平台 API Key（platform.deepseek.com；余额接口自动带默认端点）。",
-        _ => "尚无连接——填局域网/内部接口地址（可空凭据），状态词表在组件向导里配。",
+        _ => "尚无连接——填局域网/内部接口地址（可空凭据）；状态词表/额度字段映射在组件向导里配。",
     };
 
     private void SaveGeneral()
@@ -965,8 +1000,8 @@ internal sealed class SettingsWindow : Window
             var health = await provider.TestAsync(connection, new ConnectionContext { Secrets = _runtime.Secrets }, CancellationToken.None);
             Feedback(_connFeedback, health switch
             {
-                ConnectionHealthState.Healthy => $"✓ {connection.Id} 连接正常。",
-                ConnectionHealthState.Degraded => $"△ {connection.Id} 降级（限流等）。",
+                ConnectionHealthState.Healthy => $"✓ {connection.Id} 连接正常——在下方组件向导选该连接，或用「一键添加」即可上板。",
+                ConnectionHealthState.Degraded => $"△ {connection.Id} 降级（限流等）——仍可添加组件上板。",
                 ConnectionHealthState.Offline => $"✗ {connection.Id} 不可达。",
                 ConnectionHealthState.Unauthorized => $"✗ {connection.Id} 认证失败，检查 token。",
                 _ => $"✗ {connection.Id} 状态未知。",

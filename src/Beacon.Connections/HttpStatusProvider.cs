@@ -4,10 +4,11 @@ using Beacon.Core.Models;
 
 namespace Beacon.Connections;
 
-/// <summary>HTTP Widget 类型元数据（positioning P0 #3）：驱动 Settings 向导与 L0 准入。</summary>
+/// <summary>HTTP Widget 类型元数据（positioning P0 #3 + 验收反馈额度卡）：驱动 Settings 向导与 L0 准入。</summary>
 public static class HttpWidgetDescriptors
 {
     public const string StatusType = "http.status";
+    public const string QuotaType = "http.quota";
 
     public static WidgetTypeDescriptor Status { get; } = new()
     {
@@ -27,7 +28,26 @@ public static class HttpWidgetDescriptors
         ],
     };
 
-    public static IReadOnlyList<WidgetTypeDescriptor> All { get; } = [Status];
+    public static WidgetTypeDescriptor Quota { get; } = new()
+    {
+        Type = QuotaType,
+        DisplayName = "HTTP 额度（数值卡，任意配额 JSON）",
+        PinSupported = true,
+        SuggestedTier = RefreshTiers.Ci,
+        Fields =
+        [
+            new WidgetFieldDescriptor("label", "显示名", Placeholder: "GLM 额度"),
+            new WidgetFieldDescriptor("total_path", "总量字段路径", Required: true, Placeholder: "$.data.total"),
+            new WidgetFieldDescriptor("used_path", "已用字段路径（与剩余二选一）", Placeholder: "$.data.used"),
+            new WidgetFieldDescriptor("remaining_path", "剩余字段路径（与已用二选一）", Placeholder: "$.data.remaining"),
+            new WidgetFieldDescriptor("reset_path", "重置时间路径（epoch 秒/毫秒/ISO 自动识别）", Placeholder: "$.data.reset_at"),
+            new WidgetFieldDescriptor("unit", "单位（如 tokens / 元）", Placeholder: "tokens"),
+            new WidgetFieldDescriptor("warn_percent", "告警阈值（已用 %）", Placeholder: "默认 60"),
+            new WidgetFieldDescriptor("error_percent", "错误阈值（已用 %）", Placeholder: "默认 90"),
+        ],
+    };
+
+    public static IReadOnlyList<WidgetTypeDescriptor> All { get; } = [Status, Quota];
 }
 
 /// <summary>

@@ -83,7 +83,7 @@ Beacon.Core/
 ### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
 
 ```text
-Beacon.Connections/                    # 16 文件
+Beacon.Connections/                    # 17 文件
 ├── GitHub 6 文件
 │   ├── GitHubConnectionProvider.cs    # PAT 认证、连接测试、rate-limit 感知
 │   ├── GitHubApiClient.cs             # 手写 REST 客户端（不引 Octokit）+ ETag 条件请求 + 限额感知
@@ -91,10 +91,11 @@ Beacon.Connections/                    # 16 文件
 │   ├── GitHubPullRequestsProvider.cs  # type: github.pull_requests
 │   ├── GitHubActionsProvider.cs       # type: github.actions.runs
 │   └── GitHubWorkflowExecutors.cs     # gh.workflow_dispatch/rerun/cancel 执行器
-├── HTTP 4 文件（Generic HTTP 接入）
+├── HTTP 5 文件（Generic HTTP 接入）
 │   ├── HttpConnectionProvider.cs      # 连接测试（支持 auth_header/auth_prefix 覆盖）
 │   ├── HttpEndpoint.cs                # 端点请求与凭据装配
 │   ├── HttpJsonPath.cs                # $.a.b[0] 点路径提取
+│   ├── HttpQuotaProvider.cs           # type: http.quota（任意配额 JSON 字段映射 → 数值卡 + 进度条）
 │   └── HttpStatusProvider.cs          # type: http.status（点路径 + 状态词表 → Severity）
 ├── BigModel 2 文件
 │   ├── BigModelConnectionProvider.cs  # 裸 Key 认证（Authorization 不带 Bearer）

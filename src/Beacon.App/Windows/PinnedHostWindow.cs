@@ -61,6 +61,15 @@ internal sealed class PinTile
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Right,
     };
+    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 2px 细条，按已用比例填色
+    private readonly Grid _barRow = new() { Height = 2, Visibility = Visibility.Collapsed };
+    private readonly Border _barFill = new()
+    {
+        CornerRadius = new CornerRadius(1),
+        Background = new SolidColorBrush(SeverityPalette.Rgb(255, 63, 185, 80)),
+    };
+    private readonly ColumnDefinition _barUsed = new() { Width = new GridLength(0, GridUnitType.Star) };
+    private readonly ColumnDefinition _barFree = new() { Width = new GridLength(1, GridUnitType.Star) };
 
     /// <summary>宿主面板挂载与输入挂接的根元素。</summary>
     public Border Root => _root;
@@ -85,7 +94,19 @@ internal sealed class PinTile
         grid.Children.Add(_light);
         grid.Children.Add(_label);
         grid.Children.Add(_value);
-        _root.Child = grid;
+
+        var rows = new Grid { RowSpacing = 2 };
+        rows.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        rows.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(grid, 0);
+        rows.Children.Add(grid);
+        _barRow.ColumnDefinitions.Add(_barUsed);
+        _barRow.ColumnDefinitions.Add(_barFree);
+        Grid.SetColumn(_barFill, 0);
+        _barRow.Children.Add(_barFill);
+        Grid.SetRow(_barRow, 1);
+        rows.Children.Add(_barRow);
+        _root.Child = rows;
     }
 
     /// <summary>
@@ -123,6 +144,7 @@ internal sealed class PinTile
 
             _light.Stroke = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _value.Text = ValueOf(state);
+            UpdateBar(state, color);
             ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
 
             if (changed && !_suspended)
@@ -136,6 +158,7 @@ internal sealed class PinTile
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
+            _barRow.Visibility = Visibility.Collapsed;
             ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
             _motion.StopLoops(_light);
             _motion.StopLoops(_root);
@@ -154,6 +177,21 @@ internal sealed class PinTile
         {
             _motion.StartBreathing(_light);
         }
+    }
+
+    /// <summary>额度进度条：Progress（0-1）→ 底部细条比例填色；无进度语义的类型保持隐藏。</summary>
+    private void UpdateBar(WidgetState state, Windows.UI.Color color)
+    {
+        if (state.Progress is not { } progress)
+        {
+            _barRow.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var fraction = Math.Clamp(progress, 0, 1);
+        _barUsed.Width = new GridLength(fraction, GridUnitType.Star);
+        _barFree.Width = new GridLength(1.0 - fraction, GridUnitType.Star);
+        _barFill.Background = new SolidColorBrush(color);
+        _barRow.Visibility = Visibility.Visible;
     }
 
     /// <summary>收起为细条（宿主 ApplyLayout 判定）：暂停全部动画循环省电；展开复位。</summary>
@@ -192,6 +230,10 @@ internal sealed class PinTile
         if (state.Payload.TryGetValue("open_count", out var open))
         {
             return $"{open} open";
+        }
+        if (state.Payload.TryGetValue("percent", out var percent) && percent.Length > 0)
+        {
+            return $"{percent}%"; // 额度卡：已用百分比是主数值
         }
         if (state.IsStale)
         {

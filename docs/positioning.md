@@ -43,7 +43,8 @@ Provider
 1. **不为公司内部系统写死接口**——公司打包工具实现 Status Provider 适配自己的 API，
    转换成统一模型后进 Core，系统换了 Core 不动。
 2. **Generic HTTP Provider（杀手级能力）**：不为每个内部系统写 C# 插件，配置化接入任意 HTTP API。
-   **已落地形态**：组件类型 `http.status`——widgets.json 内 JSON 配置（连接 endpoint + 凭据 + 点路径与状态词表映射）：
+   **已落地形态**：组件类型 `http.status`（状态灯：状态词表→级别映射）与 `http.quota`（额度数值卡：
+   total/used/remaining/reset 字段映射，见 §8）——widgets.json 内 JSON 配置（连接 endpoint + 凭据 + 点路径）：
 
    ```jsonc
    {
@@ -144,6 +145,11 @@ Codex    71% used   weekly 8h 后重置
 ## 8. 已落地（P0 进度）
 
 - **Generic HTTP Provider（P0 #3）**：组件类型 `http.status`——点路径提取 `$.a.b[0].c`，状态词→级别映射可配；
+- **通用额度数值卡（验收反馈）**：组件类型 `http.quota`——任意配额 JSON 字段映射上板：`total_path` 必配，
+  `used_path`/`remaining_path` 二选一（后者自动推导已用），`reset_path` 支持 epoch 秒/毫秒/ISO 自动识别，
+  `unit`/`warn_percent`（默认 60）/`error_percent`（默认 90）可配；`WidgetState.Progress` 渲染为 tile 底部
+  进度条（额度占比同色填充），payload 存裸数值（% 属显示层）；设置页 bigmodel 模块附「一键添加 GLM 额度组件（示例）」，
+  连接测试通过后提示经组件向导上板——绑定流：连接测试 → 选组件类型 → 选连接 → 配字段 → 钉选显示（带 source 标注）。
 - **智谱 GLM 套餐额度（P0 #5 提前）**：组件类型 `bigmodel.usage`——`GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`，
   裸 Key 认证（Authorization 头不带 Bearer），`data.limits[]` 归一化为 5 小时/周/月三窗口，阈值告警；
   Z.AI 国际站把连接 Endpoint 换成 `https://api.z.ai/api/monitor/usage/quota/limit` 即用；
