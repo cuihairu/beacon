@@ -11,6 +11,14 @@ Beacon 是**托盘常驻应用，没有主窗口**——启动成功的可见形
 3. **查日志**：`%AppData%\Beacon\logs\beacon-*.log`（运行日志，按天滚动）。
 4. **启动失败弹窗 / crash 日志**：启动阶段出错会**弹错误框**（含堆栈与日志路径），同时落盘 `%AppData%\Beacon\logs\crash-*.log`——把弹窗截图或日志内容提 Issue 即可定位。
 
+## 升级后行为没变？
+
+Beacon 是**单实例常驻**：安装器覆盖了文件，但托盘里驻留的还是旧进程，二次启动只会通知旧实例——「更新了还是老样子」多半是这个。
+
+1. 托盘图标右键 → **Exit**（唯一退出路径），再重新启动；
+2. 设置 → 常规底部看 **版本行**：nightly 形如 `0.0.20261009+<commit短sha>`，对一下构建日期；
+3. 版本行还是旧的 = 没装上新包（重新下载 nightly 资产，见下方校验）。
+
 ## 便携 zip 校验
 
 `Get-FileHash beacon-nightly-windows-x86_64.zip -Algorithm SHA256` 与 Release 内 `SHA256SUMS` 逐行比对；装了 Git Bash 也可 `sha256sum -c SHA256SUMS`。

@@ -126,7 +126,7 @@ public partial class App : Application
         tray.OpenPanelRequested += () => quickPanel.Toggle();
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
         quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
-        // B-503：Notifications 入口（P6 B-602 换成通知中心视图）；Refresh All 在 B-504 接运行时
+        // B-503：Notifications 入口 → L2 通知中心视图（148c3bd 落地）；Refresh All 已接 runtime.RefreshAll
         tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
         tray.ExitRequested += () => Dispatcher.TryEnqueue(ShutdownApp);
         tray.Initialize();
