@@ -43,10 +43,11 @@ jobs:
 
       - name: Publish (self-contained win-x64)
         shell: pwsh
-        # 版本盖进 exe（FileVersion=0.0.日期，InformationalVersion=+commit）——设置页「关于」据此显示，
-        # 装机排障可自查构建日期与提交（此前 exe 恒 0.1.0，装的哪版全靠猜）
+        # 版本盖进 exe（yyyy.M.d，InformationalVersion=+commit）——设置页「关于」据此显示，
+        # 装机排障可自查构建日期与提交。此前 0.0.yyyyMMdd 触发 CS7034（AssemblyVersion
+        # 每段 ≤65535，日期八位数超限）——四段日期方案（2026.10.9）全部合规且可读可排序。
         run: |
-          $version = "0.0." + (Get-Date -Format "yyyyMMdd")
+          $version = Get-Date -Format "yyyy.M.d"
           dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish -p:Version=$version "-p:InformationalVersion=$version+$env:GITHUB_SHA"
 
       # 真机冒烟（B-803 的 CI 化）：发布产物在本机真启动 30s——进程存活 + 日志出现
@@ -107,7 +108,7 @@ jobs:
           # 向导中文语言包与 DPI 修复需要 Inno 6.5+，强制升到最新稳定（choco 无则装、旧则升）
           choco upgrade innosetup -y --no-progress | Out-Null
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          $version = "0.0." + (Get-Date -Format "yyyyMMdd")
+          $version = Get-Date -Format "yyyy.M.d"
           & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
