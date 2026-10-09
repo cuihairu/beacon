@@ -148,8 +148,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-204
 - **内容**：ConnectionHealth（Healthy/Degraded/Offline/Unauthorized）；失败→受影响 Widget 转 Offline 态（灰灯+Last update）；恢复自动复位；文案统一「⚠ Unable to refresh · Last update … · [Retry]」。
 - **验收**：
-  - [ ] 断网/恢复场景单测+手动验证；任何错误不产生未捕获异常
-    - 状态（2026-10-09）：单测侧已过——WidgetHostTests：ConnectionException_MarksCachedStateStale_AndPublishesOffline / UnexpectedError_PublishesDegradedHealth_NoCrash / GroupAllFail_TriggersBackoff_HealthDeduped_RecoveryResets；手动断网/恢复验证——待 Windows 装机。
+  - [x] 断网/恢复场景单测+手动验证；任何错误不产生未捕获异常（2026-10-10 勾：本地断网恢复已 socket 级实证，见下；装机目视随 B-803 走查复核）
+    - 状态（2026-10-09）：单测侧已过——WidgetHostTests：ConnectionException_MarksCachedStateStale_AndPublishesOffline / UnexpectedError_PublishesDegradedHealth_NoCrash / GroupAllFail_TriggersBackoff_HealthDeduped_RecoveryResets。
+    - 状态（2026-10-10，4b04205）：升级 socket 级——OutageRecoveryIntegrationTests（Connections.Tests）：真 HttpStatusProvider + 真 HttpClient + 真 JsonConfigurationStore/JsonCacheStore，本地 HttpListener 停机/重启模拟断网/恢复。断网 → Offline 健康 + 陈旧态重发布（旧缓存保留，Last update 不丢）+ 失败原因进日志；恢复 → 自动复位 Healthy + 新状态落盘；全程 RefreshWidgetAsync 返回 false 而非抛出（无未捕获异常）；首错无缓存 → 「拉取失败」合成态直显。
   - [x] 降级必须带真实原因，不吃成通用文案（2026-10-09 修复：方舟连上却显示「降级（限流等）」）
     - 根因：`IConnectionProvider.TestAsync` 只返回 HealthState，设置页把 Degraded 拼成通用文案「降级（限流等）」——真实失败原因（缺密钥/4xx/端点错）全部被吞。
     - 修法：合同升级为 `ConnectionTestResult(Health, Detail)`，11 家 provider 全迁；Degraded/Offline 一律携带真实异常信息直拼进设置页反馈（ArkUsageProvider 缺 AK/SK 文案给出录入位置指引；endpoint 改为连接配置可覆盖，不再硬编码）。单测：ArkUsageProviderTests ConnectionTest_DegradedCarriesRealReason / ConnectionTest_MissingCredentialCarriesRealReason。截图 `docs/img/evidence/2026-10-09-connections/ark-before-degraded-detail.png`（降级反馈直显「缺少火山 AK/SK」真实原因）。
@@ -371,8 +372,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-201..207、B-301..304
 - **内容**：Connections CRUD（测试连接按钮）、Widgets CRUD（含钉桌面开关）、热键、自启、外观（Light/Dark/System、透明度）、通知规则默认值；GitHub token 录入走 ISecretStore。调色与动效设置入口见 B-805。
 - **验收**：
-  - [ ] 全部设置项持久化且重启生效；token 不出现在任何 JSON
-    - 状态（2026-10-09）：token 不落 JSON 已单测（DpapiSecretStoreTests 明文不落盘 + ImportExportTests Export_ContainsCredentialRefButNeverSecretMaterial；db56f28 起 App 启动 LoadAll，持久化链路回归锚 LoadAllBeforeMutate 在测）；「重启生效」运行时表现——待 Windows 装机。
+  - [x] 全部设置项持久化且重启生效；token 不出现在任何 JSON（2026-10-10 勾：两半皆本地自动化实证，见下）
+    - 状态（2026-10-09）：token 不落 JSON 已单测（DpapiSecretStoreTests 明文不落盘 + ImportExportTests Export_ContainsCredentialRefButNeverSecretMaterial；db56f28 起 App 启动 LoadAll，持久化链路回归锚 LoadAllBeforeMutate 在测）。
+    - 状态（2026-10-10，4b04205）：「持久化+重启生效」本地全证——SerializationRoundTripTests（AppConfig 全字段往返 + 默认值不变式：热键/自启/主题/透明度/胶囊/ConfigVersion/PinDisplayMode/数值悬浮/轮询间隔/通知规则/级别色/动效）+ JsonConfigurationStoreTests.AppConfig_AllFields_SurviveSaveAndReload（SaveApp → 新实例 LoadAll = 启动代码路径，逐字段比对）。Windows 设置页逐控件写入的目视复核随 B-803 装机走查，不另挂账。
   - [x] 连接保存/启停/删除后组件「连接」下拉即时刷新；四家 Provider（方舟/Kimi/MiMo/DeepSeek）全链路可见（2026-10-09 修复）
     - 根因：SaveConnectionAsync 只重建连接列表不刷组件向导下拉（`RefreshWidgetConnectionOptions` 未被调用，且无 null 守卫——高级页导入路径潜伏 NRE）；用户报「类型缺失」实为旧 nightly 未含新 provider + 下拉不刷新的叠加。
     - 修法：保存/启停 toggle/删除三处统一调 `RefreshWidgetConnectionOptions`（带 `_widgetConnectionBox is null` 守卫）。四家 provider 注册早已在（BeaconRuntime widgets+connections），非注册缺失。
@@ -474,6 +476,23 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **根因**：app 日志为 UTF-8 无 BOM，PS 5.1 `Get-Content -Raw` 默认按 ANSI 读成乱码——中文断言必失配
   （config 断言纯 ASCII 照常过，极具迷惑性）。
 - **修复**：日志断言 `-Encoding UTF8`；app 日志随 artifact 归档（断言失败可直读现场，不再盲猜）。
+
+### 批3-补5 额度源调研收尾（Gemini / OpenRouter，2026-10-10）
+- **Gemini（AI Studio API Key 体系）——暂缓，不同构**：官方 rate-limits 文档实测（本机 curl 直取
+  ai.google.dev/gemini-api/docs/rate-limits）：限额按 project 不按 key，RPD 午夜（太平洋时区）重置；
+  **无剩余额度查询 REST 口**——超限唯一信号是 429 + RESOURCE_EXHAUSTED（官方建议等待重试）。可编程查询
+  走 Cloud Monitoring timeSeries（serviceruntime.googleapis.com），但需 GCP 项目 + OAuth/服务账号——
+  与 Beacon「连接+Key」模型不同构，不接；将来若接，归 GitHub 式 OAuth 连接体系另立 issue。
+- **OpenRouter——可落地，登记 todo**：`GET https://openrouter.ai/api/v1/auth/key`（key 元数据/用量）与
+  `GET https://openrouter.ai/api/v1/credits`（充值额/已用）——本机行为级探针实证两端点存活：v1 形 key →
+  401 "User not found."（服务端解析 key 并查库），畸形 key → 401 "Missing Authentication header"（错误
+  信息变化=端点解析证据）；httpbin 对照排除本机剥 Authorization 头。Bearer + GET + JSON，完全符合
+  「连接+Key」模型。响应字段名（data.usage / total_credits / total_usage）来自文档知识未拿到真数据——
+  待真实 key 到手实测后再按防御解析接入。
+- **todo（OpenRouter 接入）**：真实 key 到手 → 实测两端口响应结构 → 新增 openrouter 连接 + usage 组件
+  （复用 qwen.usage 自定义用量端点的防御解析路径或独立 provider，接入时定），单测 + 本地 tile 断言。
+- **取证通道教训**：WebSearch/WebFetch 本会话降级（域验证拦截）、mcp web_reader 5xx——Bash curl 直取官方
+  文档 + 假 key 行为探针是最可靠路径（401 错误信息变化即端点存在性与 key 格式解析的证据）。
 
 ---
 

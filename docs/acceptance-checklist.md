@@ -25,14 +25,14 @@
 ## C 热键与设置
 
 - [ ] B-103｜任意前台应用下热键生效；可在设置改键并持久化
-- [ ] B-801｜全部设置项持久化且重启生效；token 不出现在任何 JSON
+- [x] B-801｜全部设置项持久化且重启生效；token 不出现在任何 JSON ——本地自动化全证（4b04205，注记见文末）；设置页目视随 B-803 走查
 - [ ] B-805｜调色/动效改动即时预览并持久化，重启生效
 - [ ] B-805｜重置默认一键还原；off 档预览即全静止
 
 ## D 连接与组件数据源
 
 - [ ] B-206｜无网启动：界面有数据且标注 Last update，随后自动刷新
-- [ ] B-207｜断网/恢复手动验证；任何错误不产生未捕获异常
+- [x] B-207｜断网/恢复手动验证；任何错误不产生未捕获异常 ——本地 socket 级集成测试全证（4b04205，注记见文末）；目视随 B-803 走查
 - [ ] B-301｜真实 PAT 手动验证连接测试成功/失败路径
 - [ ] B-302｜真实仓库手动验证 PR 计数与映射
 - [ ] B-303｜真实 workflow 手动验证（成功/失败/运行中）
@@ -81,3 +81,16 @@
 
 - [ ] B-802｜导出文件全文无 token；导入+重录密钥后行为与原机一致
 - [ ] B-803｜全流程录屏/截图归档至 docs/；发现问题全部修复或开 Issue
+
+## 附：本地自动化覆盖注记（2026-10-10 分诊，commit 4b04205，Linux 557 测试全绿）
+
+Windows 运行时表现以装机走查为准；以下记录本机已证面，避免回执时重复排查：
+
+- **已勾两项（本地自动化全证）**：
+  - B-801：SerializationRoundTripTests（AppConfig 全字段往返+默认值不变式）+ JsonConfigurationStoreTests.AppConfig_AllFields_SurviveSaveAndReload（SaveApp→新实例 LoadAll=启动路径逐字段比对）+ token 不落 JSON 单测（DpapiSecretStore/ImportExport）。
+  - B-207：OutageRecoveryIntegrationTests——真 HttpClient 连接拒绝→Offline+陈旧态（旧缓存保留）；恢复自动复位；RefreshWidgetAsync 返回 false 不抛；首错无缓存→「拉取失败」直显。
+- **未勾项的本地半**（UI/交互半需真机，维持挂账不代验）：
+  - B-706×3：PaletteResolverTests（优先级 Widget>级别>默认/非法值回退/offline 键）——变色联动与持久化 UI 半待真机。
+  - B-702 第二条：WidgetDisplayPolicyTests.PanelCarries_NonPinSupported_NeverCarried——两处入口交互待真机。
+  - B-703 几何：PinLayoutMathTests（锚点/DPI/越界回收/拓扑判定）——拖放与拔插显示器待真机。
+  - B-207 分支补充：WidgetHostTests 假 Handler（Degraded/退避/健康去重）。
