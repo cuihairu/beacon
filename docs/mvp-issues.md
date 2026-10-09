@@ -45,6 +45,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] PR 上 CI 自动跑 build+test；失败阻断合并
     - 状态（2026-10-09）：`ci.yml` 已配置 push(main)/pull_request 触发、windows-latest build+test，main 上连绿（37781910707 / 37781345045 均success）；「失败阻断合并」需仓库分支保护把 CI 设为 required check——仓库设置项，非代码缺口，待配置。
+    - 进展（2026-10-10）：main 分支保护已启用（API：allow_force_pushes=false、allow_deletions=false，无 required check/PR 要求——直推流程不受影响）；「CI 设为 required check」仍待定 PR 工作流后一并配（直接 required check 会挡直推）。
 
 ### B-003 Core 模型与枚举
 - **依赖**：B-001
