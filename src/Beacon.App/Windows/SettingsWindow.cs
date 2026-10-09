@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Threading;
 using Beacon.App.Services;
 using Beacon.Connections;

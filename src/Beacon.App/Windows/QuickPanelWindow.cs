@@ -3,6 +3,7 @@ using Beacon.App.Services;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
+using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;

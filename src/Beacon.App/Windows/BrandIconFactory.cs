@@ -50,10 +50,11 @@ internal static class BrandIconFactory
         }
     }
 
-    /// <summary>Simple Icons path d → Geometry：SvgPathParser 中性模型 → WinUI PathGeometry 代码构建。
+    /// <summary>Simple Icons path d → PathGeometry：SvgPathParser 中性模型 → WinUI 代码构建。
     /// 不走 XamlReader——其对 Geometry 元素文本的处理与 WPF/UWP 不一致，解析失败会炸掉承载窗口
-    /// （2026-10-08 用户实测设置打不开的根因），代码构建零字符串魔法、解析层在 Core 单测覆盖。</summary>
-    public static Geometry Geometry(string pathData)
+    /// （2026-10-08 用户实测设置打不开的根因），代码构建零字符串魔法、解析层在 Core 单测覆盖。
+    /// 返回具体类型 PathGeometry（基类 Geometry 无 Figures，空几何检查要用）。</summary>
+    public static PathGeometry Geometry(string pathData)
     {
         var geometry = new PathGeometry { FillRule = FillRule.Nonzero }; // SVG 填充默认 nonzero
         foreach (var figure in SvgPathParser.Parse(pathData))
