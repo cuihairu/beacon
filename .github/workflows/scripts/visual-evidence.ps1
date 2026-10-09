@@ -590,6 +590,7 @@ try
     Select-ComboItemById $settings $pollBox "poll-15"
     Save-FullScreenshot "D-general-poll-15s-selected.png"
     Start-Sleep -Seconds 3
+    Copy-Item (Join-Path $configDir "logs\*.log") evidence/ -Force # app 日志随 artifact 归档（断言失败可直读现场）
     $appConfigJson = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
     if ("$($appConfigJson.pollIntervalSeconds)" -ne "15")
     {
@@ -597,7 +598,7 @@ try
     }
     $logPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
     if (!(Test-Path $logPath)) { throw "断言失败（场景 D）：日志文件不存在 $logPath" }
-    $logText = Get-Content $logPath -Raw
+    $logText = Get-Content $logPath -Raw -Encoding UTF8 # app 日志 UTF-8 无 BOM：PS 5.1 默认按 ANSI 读中文成乱码，断言必失配
     if ($logText -notmatch "检查频率变更为 15s")
     {
         throw "断言失败（场景 D）：日志未见「检查频率变更为 15s」——调度未按新间隔重建"
