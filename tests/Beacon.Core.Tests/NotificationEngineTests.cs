@@ -252,3 +252,90 @@ public sealed class NotificationEngineTests
         Assert.Contains("Last update", record.Message);
     }
 }
+
+// ---- 记录水合与落盘钩子（notifications.json，RFC §8 跨重启） ----
+
+public sealed class NotificationEnginePersistenceTests
+{
+    private sealed class NoopSink : INotificationSink
+    {
+        public void Show(NotificationRecord notification, NotificationDelivery delivery) { }
+    }
+
+    private static NotificationRecord Record(string id, Severity severity = Severity.Error, bool read = false) => new()
+    {
+        Id = id,
+        SourceWidgetId = "w-ci",
+        WidgetType = "github.actions.runs",
+        Severity = severity,
+        Title = "ci.yml · failure",
+        Timestamp = DateTimeOffset.UtcNow,
+        Read = read,
+    };
+
+    [Fact]
+    public void Hydrate_RestoresRecords_AndCapsAtRollingLimit()
+    {
+        using var engine = new NotificationEngine(new EventBus(), new NoopSink(), new FakeClock());
+        var records = Enumerable.Range(1, NotificationEngine.MaxRecords + 40)
+            .Select(i => Record($"r-{i}"))
+            .ToList();
+
+        engine.Hydrate(records);
+
+        Assert.Equal(NotificationEngine.MaxRecords, engine.Records.Count);
+        Assert.Equal("r-41", engine.Records[0].Id); // 旧→新：掐掉最老的 40 条
+        Assert.Equal($"r-{NotificationEngine.MaxRecords + 40}", engine.Records[^1].Id);
+    }
+
+    [Fact]
+    public void Hydrate_DoesNotRaiseRecordsChanged()
+    {
+        using var engine = new NotificationEngine(new EventBus(), new NoopSink(), new FakeClock());
+        var raised = 0;
+        engine.RecordsChanged += () => raised++;
+
+        engine.Hydrate([Record("r-1")]);
+
+        Assert.Equal(0, raised); // 启动水合不回写盘（读什么还写什么没有意义）
+    }
+
+    [Fact]
+    public void Deliver_RaisesRecordsChanged()
+    {
+        var bus = new EventBus();
+        // 单条显式规则（不传 provider 会走默认表——Error 状态同时命中 ci-failed 与 connection-degraded 两条）
+        using var engine = new NotificationEngine(
+            bus, new NoopSink(), new FakeClock(),
+            () => [new NotificationRule { Id = "r-1", SeverityAtLeast = Severity.Warning }]);
+        var raised = 0;
+        engine.RecordsChanged += () => raised++;
+
+        bus.Publish(new WidgetStateChanged(new WidgetState
+        {
+            WidgetId = "w-ci",
+            WidgetType = "github.actions.runs",
+            ConnectionId = "gh",
+            Severity = Severity.Error,
+            Summary = "failed",
+        }));
+
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void MarkRead_RaisesRecordsChanged()
+    {
+        var bus = new EventBus();
+        using var engine = new NotificationEngine(bus, new NoopSink(), new FakeClock());
+        engine.Hydrate([Record("r-1"), Record("r-2", read: false)]);
+        var raised = 0;
+        engine.RecordsChanged += () => raised++;
+
+        engine.MarkRead("r-1");
+        engine.MarkAllRead();
+
+        Assert.Equal(2, raised); // 已读态随盘：单条与全读各触发一次
+        Assert.Equal(0, engine.UnreadCount);
+    }
+}

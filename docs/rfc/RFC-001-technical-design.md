@@ -356,7 +356,7 @@ Flyout 窗口，出现在胶囊/托盘附近：Overview（按来源计数）+ Re
 - 规则引擎输入 = WidgetState 变化事件；表驱动，可单测。
 - 内置默认规则（无需配置即生效）：CI Failed → Toast；运行超 15min → Warning。
 - 去重：同 widget 同 severity 冷却期内不重复提醒；状态转好可发 Success 通知。
-- 通知记录滚动保留（默认 200 条）+ 已读/未读；L2 Recent Events 与通知中心同源（**会话内视图，尚未落盘**——计划的 `notifications.json` 未实现）。
+- 通知记录滚动保留（默认 200 条）+ 已读/未读；L2 Recent Events 与通知中心同源。**已落盘（2026-10-09）**：`notifications.json` 持久化滚动记录与已读态（启动水合 + RecordsChanged 即存；重启后在告警期的组件按阈值跨越语义重新提醒一次，属预期）。
 - 通道：Windows Toast（§10）+ 托盘图标着色 + L0/L1 状态灯。
 
 ## 9. 配置、密钥与导入导出
@@ -369,7 +369,7 @@ Flyout 窗口，出现在胶囊/托盘附近：Overview（按来源计数）+ Re
 ├── connections.json       # 连接元数据（credentialRef，无明文密钥；enabled 启停）
 ├── widgets.json           # Widget 实例（含 pinned 标记与 pinLayout 便利引用）
 ├── pins.json              # L0 tile 布局（嵌套 layout：锚点/偏移/收起态 + floating 悬浮框位置）
-├── notifications.json     # 未实现（计划中）——通知记录现为会话内视图，未落盘
+├── notifications.json     # 通知记录 + 已读态（滚动保留跨重启，JsonNotificationRecordStore）
 ├── cache\{connId}\states.json  # last-known-state
 ├── secrets.bin            # DPAPI(CurrentUser) 加密的密钥库
 └── logs\beacon-YYYYMMDD.log  # 按天滚动（保留 7 天）+ crash-*.log 崩溃日志，token 一律脱敏

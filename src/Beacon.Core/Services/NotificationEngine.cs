@@ -43,6 +43,9 @@ public sealed class NotificationEngine : IDisposable
         _subscription = bus.Subscribe<WidgetStateChanged>(OnWidgetStateChanged);
     }
 
+    /// <summary>记录集变化（新增投递 / 已读标记）——App 侧据此持久化 notifications.json（fire-and-forget）。</summary>
+    public event Action? RecordsChanged;
+
     /// <summary>通知中心记录（旧→新）。</summary>
     public IReadOnlyList<NotificationRecord> Records
     {
@@ -52,6 +55,17 @@ public sealed class NotificationEngine : IDisposable
             {
                 return [.. _records];
             }
+        }
+    }
+
+    /// <summary>启动水合（notifications.json 恢复记录，RFC §8 跨重启）；只回放展示记录，
+    /// 不重建冷却/跨越状态——重启后仍在告警期的组件按阈值跨越语义重新提醒一次，属预期。</summary>
+    public void Hydrate(IReadOnlyList<NotificationRecord> records)
+    {
+        lock (_gate)
+        {
+            _records.Clear();
+            _records.AddRange(records.TakeLast(MaxRecords)); // 恢复超限旧数据同样按滚动上限裁齐
         }
     }
 
@@ -75,6 +89,7 @@ public sealed class NotificationEngine : IDisposable
                 record.Read = true;
             }
         }
+        RaiseRecordsChanged();
     }
 
     public void MarkAllRead()
@@ -86,6 +101,7 @@ public sealed class NotificationEngine : IDisposable
                 record.Read = true;
             }
         }
+        RaiseRecordsChanged();
     }
 
     private void OnWidgetStateChanged(WidgetStateChanged evt)
@@ -171,7 +187,10 @@ public sealed class NotificationEngine : IDisposable
             _logger?.LogError(exception, "通知出口投递失败（{NotificationId}）。", record.Id);
         }
         _bus.Publish(new NotificationRaised(record));
+        RaiseRecordsChanged();
     }
+
+    private void RaiseRecordsChanged() => RecordsChanged?.Invoke();
 
     public void Dispose() => _subscription.Dispose();
 }

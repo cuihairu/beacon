@@ -8,3 +8,11 @@ public interface INotificationSink
 {
     void Show(NotificationRecord notification, NotificationDelivery delivery);
 }
+
+/// <summary>通知记录落盘（RFC §8：记录滚动保留 + 已读/未读跨重启）。默认实现 Storage 的 notifications.json。</summary>
+public interface INotificationRecordStore
+{
+    Task<IReadOnlyList<NotificationRecord>> LoadAsync();
+
+    Task SaveAsync(IReadOnlyList<NotificationRecord> records);
+}

@@ -67,7 +67,7 @@ Beacon.Core/
 │   ├── IActionExecutor.cs  ISecretStore.cs  IConfigurationStore.cs  ICacheStore.cs
 │   ├── IClock.cs                      # 注入时钟，供退避/冷却单测
 │   ├── IEventBus.cs
-│   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）
+│   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）+ 记录落盘抽象 INotificationRecordStore
 ├── Services/
 │   ├── EventBus.cs                    # 线程安全的进程内发布/订阅
 │   ├── RefreshScheduler.cs            # (connection,tier,间隔覆盖) 合并轮询 + 抖动 + 退避
@@ -140,9 +140,10 @@ Beacon.Actions/                        # 5 文件
 ### 3.4 src/Beacon.Storage（类库）
 
 ```text
-Beacon.Storage/                        # 5 文件
+Beacon.Storage/                        # 6 文件
 ├── JsonConfigurationStore.cs          # config/connections/widgets/pins.json 原子写 + 备份
 ├── AppConfigFile.cs                   # config.json 快速读写（App 启动主题等早期读取）
+├── JsonNotificationRecordStore.cs     # notifications.json 通知记录 + 已读态（滚动保留跨重启）
 ├── JsonCacheStore.cs                  # cache\{connId}\states.json last-known-state
 ├── DpapiSecretStore.cs                # DPAPI CurrentUser → secrets.bin（唯一默认实现）
 └── ImportExport.cs                    # 打包导出（不含 secrets）/导入
@@ -188,7 +189,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 466 个测试（Connections 249 / Core 166 / Actions 27 / Storage 24），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 474 个测试（Connections 249 / Core 170 / Actions 27 / Storage 28），即本地门禁。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

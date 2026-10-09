@@ -100,6 +100,24 @@ public sealed class BeaconRuntime : IAsyncDisposable
         var host = new WidgetHost(bus, clock, scheduler, cache, config, secrets, resolver, logger);
         var aggregator = new StatusAggregator(bus);
         var notifications = new NotificationEngine(bus, sink, clock, logger: logger);
+        // 通知记录跨重启（RFC §8）：启动水合 notifications.json，变化即落盘（fire-and-forget，失败只记日志）
+        var notificationRecords = new JsonNotificationRecordStore();
+        notifications.Hydrate(notificationRecords.LoadAsync().GetAwaiter().GetResult());
+        notifications.RecordsChanged += () =>
+        {
+            var snapshot = notifications.Records; // 锁内拷贝，避免序列化期间被并发改
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await notificationRecords.SaveAsync(snapshot).ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    logger?.LogError(exception, "通知记录落盘失败（notifications.json）。");
+                }
+            });
+        };
         var actions = new ActionRunner(
             [
                 new OpenUrlExecutor(),
