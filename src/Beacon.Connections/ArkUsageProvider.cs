@@ -77,10 +77,13 @@ public sealed class ArkUsageProvider : IWidgetProvider
         var region = connection.Settings.TryGetValue("region", out var customRegion) && customRegion.Length > 0
             ? customRegion
             : DefaultRegion;
-        var host = "open.volcengineapi.com";
         var query = $"Action={Action}&Region={region}&Version={Version}";
+        // Endpoint 可覆盖（区域/代理/验收 mock）——与其余 Provider 的 HttpEndpoint 口径一致；
+        // 签名 host 取实际端点（默认 open.volcengineapi.com）
+        var endpoint = (connection.Endpoint?.Trim().Length > 0 ? connection.Endpoint!.Trim() : DefaultEndpoint).TrimEnd('/');
+        var host = new Uri(endpoint).Host;
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{DefaultEndpoint}?{query}");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{endpoint}?{query}");
         var authorization = BuildAuthorization(accessKey, secretKey, host, region, query, DateTimeOffset.UtcNow,
             out var xDate, out var payloadHash);
         request.Headers.TryAddWithoutValidation("Authorization", authorization);

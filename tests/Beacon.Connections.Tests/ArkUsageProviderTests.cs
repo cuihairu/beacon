@@ -154,6 +154,26 @@ public sealed class ArkUsageProviderTests
         Assert.Contains("Region=cn-shanghai", captured!.RequestUri!.Query, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task FetchUsageAsync_EndpointOverride_ComesFromConnection()
+    {
+        // 端点可覆盖（区域/代理/验收 mock）——与其余 Provider 的 HttpEndpoint 口径一致
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, Body);
+        });
+        var connection = Connection();
+        connection = connection with { Endpoint = "http://127.0.0.1:18081" };
+
+        await provider.FetchUsageAsync(connection, Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal("http://127.0.0.1:18081/?Action=GetCodingPlanUsage&Region=cn-beijing&Version=2024-01-01",
+            captured!.RequestUri!.ToString());
+    }
+
     // ---- 凭据拆分与错误分级 ----
 
     [Fact]
