@@ -281,7 +281,7 @@ public partial class App : Application
         }
 
         Windows.SettingsWindow? settingsWindow = null;
-        tray.SettingsRequested += () => Dispatcher.TryEnqueue(() =>
+        void OpenSettings()
         {
             if (settingsWindow is { } open)
             {
@@ -303,7 +303,14 @@ public partial class App : Application
                 _logger.LogError(exception, "设置窗口创建失败：{Message}", exception.Message);
                 tray.ShowBalloon("设置窗口打开失败", exception.Message);
             }
-        });
+        }
+        tray.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings);
+
+        // --settings 启动参数：装配完成即开设置页（CI 视觉取证/装机排查入口，与托盘入口同一 OpenSettings 路径）
+        if (Environment.GetCommandLineArgs().Any(a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
+        {
+            Dispatcher.TryEnqueue(OpenSettings);
+        }
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
     }

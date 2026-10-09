@@ -219,6 +219,7 @@ internal sealed class SettingsWindow : Window
                 Padding = new Thickness(10, 7, 8, 7),
                 CornerRadius = new CornerRadius(6),
             };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
             var captured = module;
             row.Click += (_, _) => SelectModule(captured);
             _moduleRows[module.Key] = row;
@@ -1065,6 +1066,7 @@ internal sealed class SettingsWindow : Window
         };
 
         var test = new Button { Content = "测试" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(test, $"test-{connection.Id}"); // UIA 取证：点测试截反馈
         test.Click += async (_, _) => await TestConnectionAsync(connection);
         var edit = new Button { Content = "编辑" };
         edit.Click += (_, _) =>
@@ -1140,6 +1142,7 @@ internal sealed class SettingsWindow : Window
         }
         _widgetTypeBox.SelectionChanged += (_, _) => RebuildWidgetFields();
         _widgetConnectionBox = new ComboBox { Header = "连接", Width = 200 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_widgetConnectionBox, "widget-connection-box"); // UIA 取证：展开截可选项
         _widgetTierBox = new ComboBox { Header = "刷新档", Width = 140 };
         foreach (var tier in new[] { RefreshTiers.Pr, RefreshTiers.Ci, RefreshTiers.Machine, RefreshTiers.Agent, RefreshTiers.Workflow, RefreshTiers.Static, RefreshTiers.Default })
         {
