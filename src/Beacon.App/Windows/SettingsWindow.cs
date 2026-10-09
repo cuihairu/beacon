@@ -204,6 +204,7 @@ internal sealed class SettingsWindow : Window
                         RebuildConnections();
                         RebuildWidgets();
                     }
+                    PinsChanged?.Invoke(); // 2026-10-09 修:模块停用/启用必须重建 L0(悬浮窗/宿主)——漏发导致停用后悬浮框不消失
                 };
                 _moduleToggles[type] = toggle;
                 content.Children.Add(toggle);
@@ -1038,6 +1039,7 @@ internal sealed class SettingsWindow : Window
             }
             RebuildConnections();
             RebuildWidgets();
+            PinsChanged?.Invoke(); // 2026-10-09 修:连接停用/启用同样要重建 L0(悬浮窗/宿主)——与模块开关同口径
         };
 
         var test = new Button { Content = "测试" };
