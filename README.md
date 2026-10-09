@@ -21,7 +21,9 @@
 A developer status and action center that lives on the Windows desktop: it aggregates GitHub / CI and other development-environment states, alerts you proactively, and offers one-click actions. **Signal + Action, not a Dashboard.**
 
 
-<img width="688" height="1408" alt="demo" src="https://github.com/user-attachments/assets/db0ae7e4-2725-4f2d-9446-ae306afdac49" />
+<img width="716" height="1426" alt="image" src="https://github.com/user-attachments/assets/5df0bb66-6941-4208-9888-f2dd876f8f67" />
+
+
 
 
 ## Online Documentation
