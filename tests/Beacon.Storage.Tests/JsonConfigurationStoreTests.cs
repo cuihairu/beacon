@@ -164,6 +164,58 @@ public sealed class JsonConfigurationStoreTests
     }
 
     [Fact]
+    public void AppConfig_AllFields_SurviveSaveAndReload()
+    {
+        // B-801 本地半（设置持久化）：全部设置项经 SaveApp 落盘、新实例 LoadAll（= 启动路径）后逐字段不变。
+        using var dir = new TempDir();
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+        store.App.Hotkey = "Ctrl+Alt+T";
+        store.App.LaunchOnStartup = false;
+        store.App.Theme = "light";
+        store.App.UiOpacity = 0.75;
+        store.App.ShowCapsule = true;
+        store.App.ConfigVersion = 1;
+        store.App.PinDisplayMode = "floating";
+        store.App.NumericFloatingEnabled = true;
+        store.App.NumericFloatingResetDone = true;
+        store.App.PollIntervalSeconds = 30;
+        store.App.NotificationRules =
+        [
+            new NotificationRule { Id = "r1", WidgetType = "github.actions.runs", SeverityAtLeast = Severity.Error, Toast = true, Cooldown = TimeSpan.FromMinutes(10) },
+        ];
+        store.App.Appearance.SeverityColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["warning"] = "#ffaa00",
+            ["offline"] = "#808080",
+        };
+        store.App.Appearance.Motion = new MotionConfig { Mode = "full", Intensity = 1.5 };
+        store.SaveApp();
+
+        var reloaded = new JsonConfigurationStore(dir.Path);
+        reloaded.LoadAll();
+
+        Assert.Equal("Ctrl+Alt+T", reloaded.App.Hotkey);
+        Assert.False(reloaded.App.LaunchOnStartup);
+        Assert.Equal("light", reloaded.App.Theme);
+        Assert.Equal(0.75, reloaded.App.UiOpacity);
+        Assert.True(reloaded.App.ShowCapsule);
+        Assert.Equal(1, reloaded.App.ConfigVersion);
+        Assert.Equal("floating", reloaded.App.PinDisplayMode);
+        Assert.True(reloaded.App.NumericFloatingEnabled);
+        Assert.True(reloaded.App.NumericFloatingResetDone);
+        Assert.Equal(30, reloaded.App.PollIntervalSeconds);
+        var rule = Assert.Single(reloaded.App.NotificationRules);
+        Assert.Equal("r1", rule.Id);
+        Assert.Equal(Severity.Error, rule.SeverityAtLeast);
+        Assert.Equal(TimeSpan.FromMinutes(10), rule.Cooldown);
+        Assert.Equal("#ffaa00", reloaded.App.Appearance.SeverityColors["warning"]);
+        Assert.Equal("#808080", reloaded.App.Appearance.SeverityColors["offline"]);
+        Assert.Equal("full", reloaded.App.Appearance.Motion.Mode);
+        Assert.Equal(1.5, reloaded.App.Appearance.Motion.Intensity);
+    }
+
+    [Fact]
     public void Pins_RoundTrips()
     {
         using var dir = new TempDir();

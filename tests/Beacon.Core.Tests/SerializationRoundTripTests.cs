@@ -164,15 +164,39 @@ public class SerializationRoundTripTests
             Theme = "dark",
             UiOpacity = 0.85,
             ShowCapsule = true,
+            ConfigVersion = 1,
+            PinDisplayMode = "floating",
+            NumericFloatingEnabled = true,
+            NumericFloatingResetDone = true,
+            PollIntervalSeconds = 15,
             NotificationRules = [new NotificationRule { Id = "r1", SeverityAtLeast = Severity.Warning, Cooldown = TimeSpan.FromMinutes(5) }],
+            Appearance = new AppearanceConfig
+            {
+                SeverityColors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["warning"] = "#ffaa00",
+                    ["offline"] = "#808080",
+                },
+                Motion = new MotionConfig { Mode = "full", Intensity = 1.5 },
+            },
         };
         var restoredApp = BeaconJson.RoundTrip(app);
         Assert.Equal("Ctrl+Alt+Q", restoredApp.Hotkey);
         Assert.False(restoredApp.LaunchOnStartup);
         Assert.Equal("dark", restoredApp.Theme);
         Assert.Equal(0.85, restoredApp.UiOpacity);
+        Assert.True(restoredApp.ShowCapsule);
+        Assert.Equal(1, restoredApp.ConfigVersion);
+        Assert.Equal("floating", restoredApp.PinDisplayMode);
+        Assert.True(restoredApp.NumericFloatingEnabled);
+        Assert.True(restoredApp.NumericFloatingResetDone);
+        Assert.Equal(15, restoredApp.PollIntervalSeconds);
         Assert.Single(restoredApp.NotificationRules);
         Assert.Equal(Severity.Warning, restoredApp.NotificationRules[0].SeverityAtLeast);
+        Assert.Equal("#ffaa00", restoredApp.Appearance.SeverityColors["warning"]);
+        Assert.Equal("#808080", restoredApp.Appearance.SeverityColors["offline"]);
+        Assert.Equal("full", restoredApp.Appearance.Motion.Mode);
+        Assert.Equal(1.5, restoredApp.Appearance.Motion.Intensity);
 
         var pins = new PinsConfig
         {
@@ -185,5 +209,23 @@ public class SerializationRoundTripTests
         var restoredPins = BeaconJson.RoundTrip(pins);
         Assert.Single(restoredPins.Tiles);
         Assert.True(restoredPins.Tiles[0].Layout.Collapsed);
+    }
+
+    [Fact]
+    public void AppConfig_defaults_survive_round_trip()
+    {
+        // B-801 本地半：默认值（含 2026-10-09 用户令 ShowCapsule=false、动效默认 reduced/1.0）不得被往返改写
+        var restored = BeaconJson.RoundTrip(new AppConfig());
+        Assert.Equal("Ctrl+Alt+B", restored.Hotkey);
+        Assert.True(restored.LaunchOnStartup);
+        Assert.Equal("system", restored.Theme);
+        Assert.Equal(1.0, restored.UiOpacity);
+        Assert.False(restored.ShowCapsule);
+        Assert.Equal("panel", restored.PinDisplayMode);
+        Assert.False(restored.NumericFloatingEnabled);
+        Assert.Equal(0, restored.PollIntervalSeconds);
+        Assert.Equal("reduced", restored.Appearance.Motion.Mode);
+        Assert.Equal(1.0, restored.Appearance.Motion.Intensity);
+        Assert.Empty(restored.Appearance.SeverityColors);
     }
 }
