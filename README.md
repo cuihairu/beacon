@@ -20,6 +20,10 @@
 
 A developer status and action center that lives on the Windows desktop: it aggregates GitHub / CI and other development-environment states, alerts you proactively, and offers one-click actions. **Signal + Action, not a Dashboard.**
 
+
+<img width="688" height="1408" alt="demo" src="https://github.com/user-attachments/assets/db0ae7e4-2725-4f2d-9446-ae306afdac49" />
+
+
 ## Online Documentation
 
 **[https://cuihairu.github.io/beacon/](https://cuihairu.github.io/beacon/)** — published automatically to GitHub Pages (mkdocs-material) by the [docs workflow](.github/workflows/docs.yml).
