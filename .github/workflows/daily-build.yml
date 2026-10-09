@@ -83,6 +83,20 @@ jobs:
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           Write-Host "冒烟测试通过：进程存活且日志含启动完成标记"
 
+      # 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完）：A=数量悬浮窗开（悬浮框在桌面，
+      # 品牌 icon 近景截图）；B=数量悬浮窗关（桌面零残留窗，硬断言）。两态截图上传 run artifact
+      # visual-evidence；断言失败=红构建不发版——悬浮窗渲染回归从此在这里现形。
+      - name: Visual evidence (tile icon + zero-residue screenshots)
+        shell: pwsh
+        run: .github/workflows/scripts/visual-evidence.ps1
+
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-evidence
+          path: evidence/
+
       - name: Pack (zip)
         shell: pwsh
         run: Compress-Archive -Path "publish/*" -DestinationPath "beacon-nightly-windows-x86_64.zip"

@@ -294,6 +294,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
   - [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+  - [x] 数量悬浮窗全局关 → 悬浮框零残留；悬浮框品牌 icon 可见（2026-10-09 修复 + CI 取证）
+    - 白板残留根因：`Window.Close` 在无边框 NOACTIVATE 窗不保证销毁 HWND，内容已拆壳残留——Close 后句柄存活即 `DestroyWindow` 硬销毁；icon 空白根因：`Viewbox(PathIcon)` 在 WinUI 3 量测为空，改 `Path(Stretch=Uniform)` 直渲。
+    - 截图证据：daily-build run artifact「visual-evidence」（开=悬浮框+icon 六倍近景；关=零残留，硬断言失败即红构建）。
 
 ### B-702 Pin/Unpin + PinTile 渲染
 - **依赖**：B-701、B-602
