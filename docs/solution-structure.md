@@ -127,15 +127,15 @@ Beacon.Connections/                    # 23 文件
 ### 3.3 src/Beacon.Actions（类库）
 
 ```text
-Beacon.Actions/                        # 4 文件
+Beacon.Actions/                        # 5 文件
 ├── ActionVars.cs                      # 参数模板占位符替换（{repo} 等）
 ├── OpenUrlExecutor.cs                 # open.url（系统默认浏览器）
 ├── HttpExecutor.cs                    # http（GET/POST + 头/体模板）
+├── WebhookExecutor.cs                 # webhook（POST + HMAC-SHA256 签名头，密钥 credentialRef 只进 DPAPI、取不到即 fail closed）
 └── LocalCommandExecutor.cs            # local.command（powershell/cmd/exe，工作目录/Env/超时/捕获输出）
 ```
 
 - `gh.workflow_dispatch / gh.workflow_rerun / gh.workflow_cancel` 三个执行器在 `Beacon.Connections/GitHubWorkflowExecutors.cs`。
-- **未实现**：webhook 执行器（RFC 设计保留，代码未落地）。
 
 ### 3.4 src/Beacon.Storage（类库）
 
@@ -188,7 +188,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 458 个测试（Connections 249 / Core 166 / Actions 19 / Storage 24），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 466 个测试（Connections 249 / Core 166 / Actions 27 / Storage 24），即本地门禁。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

@@ -105,6 +105,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
                 new OpenUrlExecutor(),
                 new LocalCommandExecutor(),
                 new HttpExecutor(),
+                new WebhookExecutor(),
                 new GitHubWorkflowDispatchExecutor(),
                 new GitHubWorkflowRerunExecutor(),
                 new GitHubWorkflowCancelExecutor(),
