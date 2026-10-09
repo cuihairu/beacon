@@ -264,6 +264,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+  - 通知中心半区（2026-10-09 补齐）：NOTIFICATIONS 区渲染 `NotificationEngine.Records`（notifications.json 落盘水合，跨重启带出历史）——未读徽标/单击标已读/全部已读；此前 App 层零处消费 Records，仅 Recent Events 状态流。
 
 ### B-602 Overview + Recent Events
 - **依赖**：B-601、B-203

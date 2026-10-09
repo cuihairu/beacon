@@ -14,24 +14,60 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- 头部：总体状态灯 + 告警计数 -->
+            <!-- 头部：总体状态灯 + 告警计数 + 未读通知徽标 -->
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
                 <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
                 <TextBlock Text="Beacon" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="15" FontWeight="SemiBold" />
                 <TextBlock x:Name="OverallSummary" Text="all clear" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                <Border
+                    x:Name="UnreadBadge"
+                    Visibility="Collapsed"
+                    CornerRadius="8"
+                    Padding="7,1,7,1"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Right"
+                    Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}">
+                    <TextBlock x:Name="UnreadCount" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="11" />
+                </Border>
+            </StackPanel>
+
+            <!-- B-601：通知中心（NotificationEngine.Records，notifications.json 落盘水合——跨重启带出历史）；
+                 单击标已读，「全部已读」一键清 -->
+            <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="NOTIFICATIONS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+                    <HyperlinkButton
+                        Grid.Column="1"
+                        x:Name="MarkAllReadButton"
+                        Content="全部已读"
+                        FontSize="11"
+                        Padding="4,0,4,0"
+                        Click="OnMarkAllRead" />
+                </Grid>
+                <ListView
+                    x:Name="NotificationList"
+                    MaxHeight="118"
+                    SelectionMode="Single"
+                    IsItemClickEnabled="True"
+                    ItemClick="OnNotificationItemClick" />
             </StackPanel>
 
             <!-- B-602：按来源计数区（GitHub / CI / …） -->
-            <StackPanel Grid.Row="1" Margin="0,12,0,0" Spacing="6">
+            <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
                 <TextBlock Text="OVERVIEW" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <StackPanel x:Name="SourceCounts" Orientation="Horizontal" Spacing="6" />
             </StackPanel>
 
             <!-- B-602：Recent Events（状态变化流，与通知同源）；单击进 L3，右键 Pin -->
-            <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
+            <StackPanel Grid.Row="3" Margin="0,12,0,0" Spacing="6">
                 <TextBlock Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <ListView
                     x:Name="RecentList"

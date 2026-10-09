@@ -23,7 +23,7 @@ internal sealed record RecentEvent(DateTimeOffset At, WidgetState State);
 public sealed partial class QuickPanelWindow : Window
 {
     private const int PanelWidth = 320;
-    private const int PanelHeight = 480;
+    private const int PanelHeight = 540; // 通知中心区加入后加高（未读徽标 + 记录列表 MaxHeight 118）
     private const int MaxRecentEvents = 50;
 
     private readonly NativeMethods.RECT _fallbackWorkArea = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
@@ -56,6 +56,7 @@ public sealed partial class QuickPanelWindow : Window
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => dispatcher.Post(() => OnStateChanged(evt.State, record: true)));
         runtime.Bus.Subscribe<WidgetsInvalidated>(evt => dispatcher.Post(() => OnWidgetsInvalidated(evt.WidgetIds)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(_ => dispatcher.Post(UpdateHeader));
+        runtime.Bus.Subscribe<NotificationRaised>(_ => dispatcher.Post(RebuildNotifications)); // B-601 通知中心
 
         // 缓存优先（B-601 验收：打开无网络等待白屏）——启动即用上次落盘状态填充首屏
         foreach (var connection in runtime.Config.Connections)
@@ -99,6 +100,7 @@ public sealed partial class QuickPanelWindow : Window
         ((FrameworkElement)Content).KeyboardAccelerators.Add(escape);
 
         UpdateHeader();
+        RebuildNotifications(); // notifications.json 水合记录随面板首开带出（跨重启）
         UpdateOverview();
         RebuildRecent();
     }
@@ -258,6 +260,72 @@ public sealed partial class QuickPanelWindow : Window
         {
             RecentList.Items.Add(MakeEventRow(evt));
         }
+    }
+
+    /// <summary>
+    /// B-601 通知中心：渲染 NotificationEngine.Records（旧→新 → 界面新→旧）。
+    /// 记录由 notifications.json 水合跨重启；单击单条标已读，「全部已读」一键清；
+    /// 无跳转（记录的 Widget 可能已删，链接语义交给 L3 详情）。
+    /// </summary>
+    private void RebuildNotifications()
+    {
+        var records = _runtime.Notifications.Records;
+        NotificationList.Items.Clear();
+        foreach (var record in records.Reverse())
+        {
+            NotificationList.Items.Add(MakeNotificationRow(record));
+        }
+        var unread = _runtime.Notifications.UnreadCount;
+        UnreadBadge.Visibility = unread > 0 ? Visibility.Visible : Visibility.Collapsed;
+        UnreadCount.Text = unread.ToString();
+    }
+
+    private ListViewItem MakeNotificationRow(NotificationRecord record)
+    {
+        var dot = new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            Fill = new SolidColorBrush(_palette.SeverityColor(record.Severity)),
+        };
+        var time = new TextBlock
+        {
+            Text = record.Timestamp.ToLocalTime().ToString("MM-dd HH:mm"),
+            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var title = new TextBlock
+        {
+            Text = record.Title,
+            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 210,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontWeight = record.Read ? FontWeights.Normal : FontWeights.SemiBold, // 未读加粗区分
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+        row.Children.Add(dot);
+        row.Children.Add(time);
+        row.Children.Add(title);
+        return new ListViewItem { Content = row, Padding = new Thickness(2, 2, 2, 2), Tag = record };
+    }
+
+    private void OnNotificationItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is ListViewItem { Tag: NotificationRecord { Read: false } record })
+        {
+            _runtime.Notifications.MarkRead(record.Id); // RecordsChanged 不进总线，直接重画
+            RebuildNotifications();
+        }
+    }
+
+    private void OnMarkAllRead(object sender, RoutedEventArgs e)
+    {
+        _runtime.Notifications.MarkAllRead();
+        RebuildNotifications();
     }
 
     private ListViewItem MakeEventRow(RecentEvent evt)
