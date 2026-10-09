@@ -877,6 +877,7 @@ internal sealed class SettingsWindow : Window
         _runtime.Config.UpsertConnection(connection);
         ResetConnectionEditor();
         RebuildConnections();
+        RefreshWidgetConnectionOptions(); // 保存连接后必须刷组件向导下拉——否则新建连接不出现在可选列表（用户实测「下拉空白」根因）
         Feedback(_connFeedback, $"✓ 连接 {id} 已保存。", error: false);
         SettingsApplied?.Invoke();
     }
@@ -1057,6 +1058,7 @@ internal sealed class SettingsWindow : Window
             }
             RebuildConnections();
             RebuildWidgets();
+            RefreshWidgetConnectionOptions(); // 停用连接后下拉同步移除，启用后恢复
             PinsChanged?.Invoke(); // 2026-10-09 修:连接停用/启用同样要重建 L0(悬浮窗/宿主)——与模块开关同口径
         };
 
@@ -1080,6 +1082,7 @@ internal sealed class SettingsWindow : Window
             _runtime.Config.RemoveConnection(connection.Id);
             RebuildConnections();
             RebuildWidgets(); // ConnectionId 失联的组件如实展示
+            RefreshWidgetConnectionOptions(); // 删除连接后下拉同步移除
             PinsChanged?.Invoke();
         };
 
@@ -1201,6 +1204,11 @@ internal sealed class SettingsWindow : Window
 
     private void RefreshWidgetConnectionOptions()
     {
+        // 常规/外观/高级页无组件编辑器（_widgetConnectionBox 未构建）——导入等路径会调到，空守卫防 NRE
+        if (_widgetConnectionBox is null)
+        {
+            return;
+        }
         var previous = TagOf(_widgetConnectionBox);
         _widgetConnectionBox.Items.Clear();
         foreach (var connection in _runtime.Config.Connections.Where(c => _scopeType is null || c.Type == _scopeType))
