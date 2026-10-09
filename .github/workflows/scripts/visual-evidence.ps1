@@ -135,10 +135,10 @@ function Write-ProviderConfig
 '@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     @'
 [
-  { "id": "ark-main", "type": "ark", "endpoint": "http://127.0.0.1:18081", "enabled": true },
-  { "id": "kimi-main", "type": "kimi", "endpoint": "http://127.0.0.1:18081/coding/v1/usages", "enabled": true },
-  { "id": "mimo-main", "type": "mimo", "endpoint": "http://127.0.0.1:18081/v1", "enabled": true },
-  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "enabled": true }
+  { "id": "ark-main", "type": "ark", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ark-main", "enabled": true },
+  { "id": "kimi-main", "type": "kimi", "endpoint": "http://127.0.0.1:18081/coding/v1/usages", "credentialRef": "conn:kimi-main", "enabled": true },
+  { "id": "mimo-main", "type": "mimo", "endpoint": "http://127.0.0.1:18081/v1", "credentialRef": "conn:mimo-main", "enabled": true },
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
 ]
 '@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
     '[]' | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
