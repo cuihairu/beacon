@@ -193,10 +193,12 @@ public partial class App : Application
                 _floatingHost.Initialize();
                 // 产品拍板：数值/额度类不上悬浮窗（信息密度低）——悬浮形态下同时挂宿主面板承载这些钉选（数据不删）；
                 // 信息密集组件（FloatingSupported，趋势图/灯组）上线后悬浮窗与面板混排。
-                if (runtime.Config.Widgets.Any(w => w.Pinned && !_floatingHost.IsFloatingEligible(w.Type)
-                    && runtime.Resolver.Resolve(w.Type)?.Descriptor.PinSupported == true
-                    // 数值类被总闸关闭时不算「需要面板承载」（面板门与悬浮窗门同一判定）
-                    && !WidgetDisplayPolicy.IsNumericSuppressed(runtime.Resolver.Resolve(w.Type)?.Descriptor, runtime.Config.App.NumericFloatingEnabled)))
+                if (runtime.Config.Widgets.Any(w => w.Pinned
+                    && WidgetDisplayPolicy.PanelCarries(
+                        runtime.Resolver.Resolve(w.Type)?.Descriptor,
+                        runtime.Config.App.NumericFloatingEnabled,
+                        floatingMode: true,
+                        floatingEligible: _floatingHost.IsFloatingEligible(w.Type))))
                 {
                     _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
                     _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
@@ -258,8 +260,24 @@ public partial class App : Application
             capsule.UpdateStatus(snapshot);
             tray.SetSeverity(snapshot.Overall);
             tray.SetTip(BuildTrayTip(snapshot));
-            _pinnedHost?.ReloadTiles();
-            _floatingHost?.ReloadTiles();
+            // L0 重建两宿主各自兜异常：面板重建失败若拖着悬浮窗不重建（或反之），
+            // 单点异常即造成残留窗——各救各的（2026-10-09 白板残留批教训）。
+            try
+            {
+                _pinnedHost?.ReloadTiles();
+            }
+            catch (Exception reloadFailure)
+            {
+                _logger.LogError(reloadFailure, "面板宿主重建失败：{Message}", reloadFailure.Message);
+            }
+            try
+            {
+                _floatingHost?.ReloadTiles();
+            }
+            catch (Exception reloadFailure)
+            {
+                _logger.LogError(reloadFailure, "悬浮宿主重建失败：{Message}", reloadFailure.Message);
+            }
         }
 
         Windows.SettingsWindow? settingsWindow = null;

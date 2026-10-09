@@ -30,4 +30,28 @@ public sealed class WidgetDisplayPolicyTests
     [InlineData(true)]
     public void UnknownDescriptor_NeverSuppressed(bool switchOn)
         => Assert.False(WidgetDisplayPolicy.IsNumericSuppressed(null, switchOn));
+
+    // —— PanelCarries：面板承载判定（启动建板/设置后重建/空板自关复活三处合一，2026-10-09 白板空壳收口） ——
+
+    [Fact]
+    public void PanelCarries_PanelMode_KeepsNumericTileWhenSwitchOn()
+        => Assert.True(WidgetDisplayPolicy.PanelCarries(Descriptor(floatingOptIn: true), numericFloatingEnabled: true, floatingMode: false, floatingEligible: true));
+
+    [Fact]
+    public void PanelCarries_NumericSwitchOff_Suppresses()
+        => Assert.False(WidgetDisplayPolicy.PanelCarries(Descriptor(floatingOptIn: true), numericFloatingEnabled: false, floatingMode: false, floatingEligible: false));
+
+    [Fact]
+    public void PanelCarries_FloatingMode_ExcludesEligibleTile()
+        => Assert.False(WidgetDisplayPolicy.PanelCarries(Descriptor(floatingOptIn: true), numericFloatingEnabled: true, floatingMode: true, floatingEligible: true));
+
+    [Fact]
+    public void PanelCarries_FloatingMode_KeepsIneligibleTile()
+        => Assert.True(WidgetDisplayPolicy.PanelCarries(Descriptor(), numericFloatingEnabled: false, floatingMode: true, floatingEligible: false));
+
+    [Fact]
+    public void PanelCarries_NonPinSupported_NeverCarried()
+        => Assert.False(WidgetDisplayPolicy.PanelCarries(
+            new WidgetTypeDescriptor { Type = "test.type", DisplayName = "t", PinSupported = false },
+            numericFloatingEnabled: true, floatingMode: false, floatingEligible: false));
 }

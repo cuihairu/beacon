@@ -179,7 +179,8 @@ Beacon.App/
     │                                  #   Topmost+NoActivate+空白点击穿透；含 PinTile 控件
     ├── FloatingTileWindow.cs          # ★ L0 独立悬浮框形态（pinDisplayMode=floating）：
     │                                  #   每钉选组件一窗，拖放位置按组件持久化（FloatingX/Y）
-    ├── BrandIconFactory.cs            # 品牌 path → Viewbox(PathIcon)（设置目录/悬浮 tile 共用，渲染失败退兜底）
+    ├── BrandIconFactory.cs            # 品牌 path → Path(Stretch=Uniform)（设置目录/悬浮 tile 共用，
+    │                                  #   空几何/渲染失败退 null 让调用方字形兜底）
     ├── DetailWindow.cs                # L3 详情 + 全部 Action（代码建 UI）
     └── SettingsWindow.cs              # B-801/802/805：PowerToys 形态配置中心（模块目录+启停+连接/组件 CRUD，
                                        #   悬浮形态二选一、导入导出、通知规则；代码建 UI）

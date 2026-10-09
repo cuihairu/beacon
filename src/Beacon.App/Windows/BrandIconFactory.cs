@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Media;
 namespace Beacon.App.Windows;
 
 /// <summary>
-/// 品牌图标工厂（设置目录/悬浮 tile 共用）：BrandIcons path → Viewbox(PathIcon) 等比缩放，
+/// 品牌图标工厂（设置目录/悬浮 tile 共用）：BrandIcons path → Path(Stretch=Uniform) 等比缩放，
 /// 渲染失败退 null 落日志（单块失败不拖死调用方 UI）；未收录品牌由调用方选通用字形兜底。
 /// 从 SettingsWindow 抽出：悬浮 tile（PinTile）同样要带数据源品牌图（用户令：悬浮框必须带对应 icon）。
 /// </summary>
@@ -24,16 +24,23 @@ internal static class BrandIconFactory
         }
         try
         {
-            // 24×24 原生 path 经 Viewbox 等比缩到显示尺寸（PathIcon 不自动 fit 几何）
-            return new Viewbox
+            var geometry = Geometry(pathData);
+            if (geometry.Figures.Count == 0)
             {
+                return null; // 空几何照样渲染空块——退 null 让调用方字形兜底可见
+            }
+            // Shape 直接渲染（2026-10-09 三修）：此前 Viewbox(PathIcon) 的组合在 WinUI 3 量测为空
+            // （IconElement 无固有尺寸），实际渲染一片空白且非 null 返回挡掉兜底字形——用户三次实测
+            // 「icon 不显示」的根因。Path 有几何固有 bounds，Stretch.Uniform 按显示尺寸可靠 fit。
+            return new global::Microsoft.UI.Xaml.Shapes.Path
+            {
+                Data = geometry,
+                Fill = new SolidColorBrush(foreground),
+                Stretch = Stretch.Uniform,
                 Width = size,
                 Height = size,
-                Child = new PathIcon
-                {
-                    Data = Geometry(pathData),
-                    Foreground = new SolidColorBrush(foreground),
-                },
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
             };
         }
         catch (Exception exception)

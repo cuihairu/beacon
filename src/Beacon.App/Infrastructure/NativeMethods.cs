@@ -172,6 +172,9 @@ internal static class NativeMethods
     public static extern bool DestroyWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int nIndex);
 
     [DllImport("user32.dll")]

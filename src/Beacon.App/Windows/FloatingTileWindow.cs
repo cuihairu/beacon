@@ -261,7 +261,23 @@ internal sealed class FloatingTileHost
             _window.Activate();
         }
 
-        public void Close() => _window?.Close();
+        public void Close()
+        {
+            try
+            {
+                _window?.Close();
+            }
+            catch
+            {
+                // Close 抛异常也要走到下面的硬销毁——残留一个白板窗比任何异常都糟
+            }
+            // WinUI 3 Window.Close 在无边框 NOACTIVATE 窗上不保证销毁 HWND（2026-10-09 用户实测：
+            // 全局关数量悬浮窗后悬浮框变白板窗残留桌面）——句柄还活着就硬销毁，保证桌面零残留。
+            if (_hwnd != IntPtr.Zero && NativeMethods.IsWindow(_hwnd))
+            {
+                _ = NativeMethods.DestroyWindow(_hwnd);
+            }
+        }
 
         public void Update(WidgetState state) => _tile.Update(state);
 
