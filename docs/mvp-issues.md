@@ -451,8 +451,11 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   data 包裹剥开）→「本机累计 N 次 · 近M分 K 次 · 官方无额度接口（本机计数）」+ payload 注明 endpoint；②无计数源
   →额度位显式「无额度口」，模型数降 Summary 次行；WidgetValueHint 删 models→「N 模型」映射（不再占数值位），
   加 total_calls 计数位与 value_text 显式文本位。
-- **本机计数落地注**：小米 key 本机（litellm/relay/工具配置）无调用方——litellm 的 mimo-v2.6-flash-free 走
-  DeepSeek serverless 中转非小米直连；Windows 端点计数源需自行起计数服务（返回上述 JSON 形状即可挂上）。
+- **本机计数落地（拍板 2026-10-10：Windows 计数器做）**：`tools/mimo-counter.py`——tail 本机
+  relay_req.log 按模型名逐行计数（litellm.log 访问行无模型名，实测不可按模型计；文件后建/rotate 从头部
+  重读，inode 检测），HTTP 返回约定 JSON（total_calls/window_calls/window_minutes），挂 MiMo 连接
+  「用量端点」即亮本机计数。已部署本机 192.168.5.188:18082（现如实 0——本机 relay 1710 行全
+  space-bunny-free，无 mimo 调用；MiMo 调用经 litellm→relay 后即被计入）。
 - **验收**：CI mock 计数端点 → tile「小米 MiMo | 128 次」UIA 硬断言 + 近景截图；无计数源卡「无额度口」单测。
 
 ### 批3-补3 DeepSeek base 端点丢路径（CI 实证根因，2026-10-10）
