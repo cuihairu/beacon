@@ -164,7 +164,8 @@ function Write-ProviderConfig
             [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
         $store[$pair[0]] = [Convert]::ToBase64String($protectedBytes)
     }
-    ($store | ConvertTo-Json -Compress) | Set-Content -Path $secretsPath -Encoding UTF8
+    # WriteAllText = UTF-8 无 BOM——Set-Content UTF8 的 BOM 会让 JsonDocument.Parse 拒读（before 轮实证）
+    [System.IO.File]::WriteAllText($secretsPath, ($store | ConvertTo-Json -Compress))
     Write-Host "预置四家连接 + DPAPI 密钥完成（secrets.bin）"
 }
 
