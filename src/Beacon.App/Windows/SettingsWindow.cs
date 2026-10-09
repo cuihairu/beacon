@@ -349,7 +349,7 @@ internal sealed class SettingsWindow : Window
         return page;
     }
 
-    /// <summary>版本信息：nightly exe 盖 0.0.日期+commit（daily-build publish 步），本地构建 0.1.0——
+    /// <summary>版本信息：nightly exe 盖 yyyy.M.d 日期+commit（daily-build publish 步），本地构建 0.1.0——
     /// 装机排障先对构建日期，别再猜装的哪版。</summary>
     private static UIElement BuildAboutSection()
     {

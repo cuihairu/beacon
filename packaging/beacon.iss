@@ -1,6 +1,7 @@
 ; Beacon Windows 安装包（B-804，daily-build 产出）——Inno Setup 6.5+ 编译。
 ; 与「用户态权限」口径一致：装到 {localappdata}、注册表只碰 HKCU，无需管理员。
-; 用法：ISCC.exe /DMyAppVersion=0.0.20261007 /DMyCommit=<sha> packaging\beacon.iss
+; 用法：ISCC.exe /DMyAppVersion=2026.10.9 /DMyCommit=<sha> packaging\beacon.iss
+; （版本四段日期 yyyy.M.d：每段 ≤65535——0.0.yyyyMMdd 八位数段会超 Inno/AssemblyVersion 上限）
 ; 向导全部简体中文（语言包 vendor 在本目录，不依赖编译器内置版本）；
 ; 向导图与图标出自 docs/img/logo.svg（wizard-small/large @1x+@2x，Inno 6.3+ 按 DPI 自取）。
 #ifndef MyAppVersion
