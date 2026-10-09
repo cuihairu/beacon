@@ -3,6 +3,7 @@ using Beacon.App.Services;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -213,24 +214,9 @@ public sealed partial class QuickPanelWindow : Window
 
     private static string SourceOf(string widgetType) => widgetType switch
     {
-        "github.pull_requests" => "GitHub",
-        "github.actions.runs" => "CI",
-        var type when type.StartsWith("github.", StringComparison.Ordinal) => "GitHub",
-        var type when type.StartsWith("http.", StringComparison.Ordinal) => "HTTP",
-        var type when type.StartsWith("bigmodel.", StringComparison.Ordinal) => "GLM",
-        var type when type.StartsWith("ark.", StringComparison.Ordinal) => "ARK",
-        var type when type.StartsWith("mimo.", StringComparison.Ordinal) => "MiMo",
-        var type when type.StartsWith("codex.", StringComparison.Ordinal) => "Codex",
-        var type when type.StartsWith("copilot.", StringComparison.Ordinal) => "Copilot",
-        var type when type.StartsWith("opencode.", StringComparison.Ordinal) => "OpenCode",
-        var type when type.StartsWith("claude.", StringComparison.Ordinal) => "Claude",
-        var type when type.StartsWith("deepseek.", StringComparison.Ordinal) => "DeepSeek",
-        var type when type.StartsWith("kimi.", StringComparison.Ordinal) => "Kimi",
-        var type => Capitalize(type.Split('.')[0]),
+        "github.actions.runs" => "CI", // CI 运行单独成 chip（与 PR 计数区分）
+        _ => WidgetTypeNames.Of(widgetType), // 短名统一 Core 单表（与 tile 标签同源；旧 GLM/ARK 硬编码并入）
     };
-
-    private static string Capitalize(string source)
-        => source.Length == 0 ? "Other" : char.ToUpperInvariant(source[0]) + source[1..];
 
     private Border MakeChip(string label, int count, Severity worst)
     {

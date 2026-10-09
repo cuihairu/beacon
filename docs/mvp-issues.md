@@ -408,6 +408,43 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ---
 
+## 2026-10-09 实测回执批（小米类型空 / 千问接入 / 检查频率 / 方舟 5h 口径 / tile 名字）
+
+### 回执① 小米组件类型一直空（连接链已好的对照下集中排查）
+- **根因**：设置页组件向导类型下拉的聚合表 `AllWidgetDescriptors` 漏聚合 `MiMoWidgetDescriptors`（同病
+  Codex/Copilot/OpenCode 三家）——`mimo.usage` 前缀本符合「类型前缀=连接类型」过滤约定，聚合补齐即修。
+- **验收**：CI 视觉取证组件向导「类型」下拉逐家断言含本家条目 + 截图（mimo/kimi/deepseek/qwen 四张
+  `D-*-type-dropdown.png`）。
+
+### 需求⑤ 全局检查频率（设置 → 常规）
+- **内容**：`PollIntervalSeconds`（0=按组件档位策略表，默认）五档 ComboBox；组件级检测间隔优先、全局兜底；
+  变化检测才重建调度（未变不重拉）。
+- **验收**：设置面板该项可见截图（`D-general-poll-interval.png`）+ 改 15 秒后 config.json 落盘与日志
+  「检查频率变更为 15s」双硬断言。
+
+### bug 批3 方舟悬浮框口径（两项）
+- **5h 窗口主口径**：tile 主数值/级别/进度此前取最差窗口（周/月冒充当前窗口）——改 session（5h）档优先
+  （无 session 退最差窗口兜底），Summary 带「5h x% · 重置 MM-dd HH:mm」，周/月留 payload；测试三处重写。
+- **名字显示 usage**：PinTile 标签兜底取类型尾段（字段名冒充显示名）——`WidgetTypeNames`（Core，可单测）
+  按前缀映射连接类型短名（火山方舟/智谱/…），L2 chip 的 GLM/ARK 硬编码并入同表；全类型巡检：tile 标签
+  /L2 chip/设置侧栏 ModuleDef/provider Summary 头四处口径核对，无第二个拿字段名当名字的点
+  （SettingsWindow 的类型尾段仅作 widget Id 种子，非显示名）。
+- **验收**：tile UIA 文本硬断言「火山方舟/DeepSeek/千问 + 42.5/¥420.5」且无 usage/quota 残留 + 截图
+  （`D-provider-tiles-desktop.png`、`D-tile-*-closeup.png`）。
+
+### 回执④ 阿里千问接入（百炼 Token Plan）
+- **内容**：连接类型 `qwen`（测试=GET /models，专属 Key sk-sp- 实测 200）+ 组件 `qwen.usage`（官方额度
+  REST 口未开放——默认模型目录真数据如实标注；连接「用量端点」填自定义口即出额度+重置日，防御键名解析）
+  + BrandIcons qwen 官方标（Simple Icons slug qwen）+ 设置模块页 + 表单用量端点框。
+- **验收**：类型可见（类型下拉断言+截图）+ 连接成功（mock /compatible-mode/v1/models→连接正常）+
+  额度/重置日显示（mock /qwen/usage → tile「千问 · 本期已用 42.5% · 重置 10-19 08:00」UIA 断言+截图）。
+
+### 回执②③ DeepSeek 展示（进度条撤销为 bug，不动）
+- **结论**：DeepSeek 按量计费本无进度（`Progress=null` 从第一天如此，非回归）——进度条代码不动；
+  余额渲染链已有（tile 值位 ¥total），CI tile 断言含「¥420.5」佐证不空白。
+
+---
+
 ## 附：MVP 明确不做（评审基线）
 
 复杂插件市场 · Workflow DSL/引擎 · AI Agent · Jenkins/GitLab/Docker 全功能管理 · 数据库 · 云账号/用户系统/团队协作/云同步 · 复杂图表 · 复杂主题 · macOS/Linux。

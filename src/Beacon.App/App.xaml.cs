@@ -25,6 +25,7 @@ public partial class App : Application
     private Windows.PinnedHostWindow? _pinnedHost;
     private Windows.FloatingTileHost? _floatingHost;
     private TopmostGuard? _topmostGuard;
+    private int _activePollInterval; // 当前调度在用的全局检查频率（设置改动检测，变化才重建调度）
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
     public App()
@@ -165,6 +166,7 @@ public partial class App : Application
         capsule.Activate();
         capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
+        _activePollInterval = runtime.Config.App.PollIntervalSeconds; // 与调度器在用值对齐（设置改动检测基线）
 
         // 数量悬浮窗升级迁移（拍板 2026-10-08 ×4）：老配置开关 ON 强制置关 + 一次性提示，
         // 标记只置一次（NumericFloatingResetDone）——此后用户再开是自己的选择，升级不再动。
@@ -255,6 +257,13 @@ public partial class App : Application
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
             capsule.SetVisible(appConfig.ShowCapsule);
             capsule.ApplyOpacity(appConfig.UiOpacity);
+            // 检查频率变更 → 重建调度注册（新间隔立即生效；未变不动——避免设置页随便一改就全量重拉）
+            if (appConfig.PollIntervalSeconds != _activePollInterval)
+            {
+                _activePollInterval = appConfig.PollIntervalSeconds;
+                _logger.LogInformation("检查频率变更为 {PollSeconds}s（0=按档位）——重建调度。", appConfig.PollIntervalSeconds);
+                runtime.ReloadWidgets();
+            }
             // B-805：调色即时生效——托盘/胶囊/L0 用最新快照按新色表重渲染（UiPalette 实时读 config）
             var snapshot = runtime.Aggregator.Snapshot();
             capsule.UpdateStatus(snapshot);

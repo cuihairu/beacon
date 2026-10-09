@@ -3,10 +3,14 @@
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
 #   场景 C 浅色主题 icon 可辨度：白桌面 + theme=light，tile 近景暗像素硬断言——
 #     近白 icon/文字叠浅底不可辨（用户实测「根本看不清」）在这里现形（修复=实色底+深前景）。
-#   场景 D 四家 Provider 连接链（方舟/Kimi/MiMo/DeepSeek）：本地 mock HTTP（127.0.0.1:18081 按
-#     path 分发四家响应）+ DPAPI 预置密钥 + --settings 启动 + UIA 驱动——逐家点模块行→点「测试」→
+#   场景 D 五家 Provider 连接链（方舟/Kimi/MiMo/DeepSeek/千问）：本地 mock HTTP（127.0.0.1:18081 按
+#     path 分发各响应）+ DPAPI 预置密钥 + --settings 启动 + UIA 驱动——逐家点模块行→点「测试」→
 #     硬断言反馈含「连接正常」→ 展开组件「连接」下拉断言该连接在列→截图；
-#     再 UIA 走一遍保存连接（save-flow），硬断言新连接**立即**出现在下拉（下拉不刷新回归在这里现形）。
+#     再 UIA 走一遍保存连接（save-flow），硬断言新连接**立即**出现在下拉（下拉不刷新回归在这里现形）；
+#     组件向导「类型」下拉逐家断言非空且含本家条目（小米类型空回归在这里现形）；预置五张钉选
+#     provider tile——UIA 读 tile 文本硬断言名字（火山方舟/DeepSeek/阿里千问）与数值（42.5/¥420.5），
+#     字段名（usage/quota）冒充名字在这里现形；设置常规页改「检查频率」→15 秒——config.json 落盘
+#     + 日志「检查频率变更为 15s」双硬断言（轮询节奏可配证据）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
 # UIA/System.Security 需 Windows PowerShell 5.1（pwsh 缺 UIA 程序集）——非 5.1 自动自重启。
 $ErrorActionPreference = "Stop"
@@ -138,10 +142,20 @@ function Write-ProviderConfig
   { "id": "ark-main", "type": "ark", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ark-main", "enabled": true },
   { "id": "kimi-main", "type": "kimi", "endpoint": "http://127.0.0.1:18081/coding/v1/usages", "credentialRef": "conn:kimi-main", "enabled": true },
   { "id": "mimo-main", "type": "mimo", "endpoint": "http://127.0.0.1:18081/v1", "credentialRef": "conn:mimo-main", "enabled": true },
-  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true },
+  { "id": "qwen-main", "type": "qwen", "endpoint": "http://127.0.0.1:18081/compatible-mode/v1", "credentialRef": "conn:qwen-main", "enabled": true, "settings": { "usage_endpoint": "http://127.0.0.1:18081/qwen/usage" } }
 ]
 '@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
-    '[]' | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
+    # 五张钉选 provider tile：名字全靠 WidgetTypeNames 兜底（无 label 配置——字段名冒充名字在这里现形）
+    @'
+[
+  { "id": "ark.usage:ark", "type": "ark.usage", "connectionId": "ark-main", "refreshTier": "ci", "pinned": true, "config": {} },
+  { "id": "deepseek.balance:ds", "type": "deepseek.balance", "connectionId": "ds-main", "refreshTier": "ci", "pinned": true, "config": {} },
+  { "id": "qwen.usage:qwen", "type": "qwen.usage", "connectionId": "qwen-main", "refreshTier": "ci", "pinned": true, "config": {} },
+  { "id": "kimi.coding:kimi", "type": "kimi.coding", "connectionId": "kimi-main", "refreshTier": "ci", "pinned": true, "config": {} },
+  { "id": "mimo.usage:mimo", "type": "mimo.usage", "connectionId": "mimo-main", "refreshTier": "ci", "pinned": true, "config": {} }
+]
+'@ | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
     '{ "tiles": [] }' | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
 
     # secrets.bin = JSON 字典 credentialRef → base64(DPAPI(CurrentUser, entropy="Beacon:"+ref))，
@@ -156,7 +170,8 @@ function Write-ProviderConfig
         @("conn:ark-main", "AKTESTKEY:SKTESTSECRET"),
         @("conn:kimi-main", "sk-kimi-mock"),
         @("conn:mimo-main", "sk-mimo-mock"),
-        @("conn:ds-main", "sk-ds-mock")))
+        @("conn:ds-main", "sk-ds-mock"),
+        @("conn:qwen-main", "sk-sp-qwen-mock")))
     {
         $entropy = [System.Text.Encoding]::UTF8.GetBytes("Beacon:" + $pair[0])
         $protectedBytes = [System.Security.Cryptography.ProtectedData]::Protect(
@@ -181,6 +196,8 @@ function Start-MockServer
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
         $mimo = '{"data":[{"id":"mimo-v1"},{"id":"mimo-mini"}]}'
+        $qwenModels = '{"object":"list","data":[{"id":"qwen3-coder-plus"},{"id":"qwen3-max"}]}'
+        $qwenUsage = '{"percent":42.5,"remaining_credits":1150,"total_credits":2000,"reset_at":"2026-10-19T00:00:00+08:00"}'
         while ($listener.IsListening)
         {
             $ctx = $listener.GetContext()
@@ -192,6 +209,8 @@ function Start-MockServer
                     "/coding/v1/usages" { $body = $kimi }
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
+                    "/compatible-mode/v1/models" { $body = $qwenModels }
+                    "/qwen/usage" { $body = $qwenUsage }
                     default { $body = $ark } # POST /?Action=GetCodingPlanUsage
                 }
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
@@ -213,7 +232,7 @@ function Start-MockServer
         Receive-Job $script:mockJob -Keep | Write-Host
         throw "mock HTTP server 启动失败（127.0.0.1:18081）"
     }
-    Write-Host "mock HTTP server 已监听 127.0.0.1:18081（四家响应按 path 分发）"
+    Write-Host "mock HTTP server 已监听 127.0.0.1:18081（各响应按 path 分发）"
 }
 
 function Stop-MockServer
@@ -338,6 +357,35 @@ function Collapse-ConnectionDropdown([System.Windows.Automation.AutomationElemen
     Start-Sleep -Milliseconds 400
 }
 
+function Get-WindowUiaTexts([IntPtr] $handle)
+{
+    $element = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+    $found = $element.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $texts = @()
+    foreach ($item in $found)
+    {
+        try { if ($item.Current.Name) { $texts += $item.Current.Name } } catch { }
+    }
+    return $texts
+}
+
+function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
+{
+    ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+    Start-Sleep -Seconds 1
+    $item = Find-UiaById $settings $itemId 8
+    if (!$item)
+    {
+        # 展开弹层可能是独立 HWND：退回桌面根子树找
+        $item = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $itemId)))
+    }
+    if (!$item) { throw "UIA 未找到下拉选项 $itemId（展开后仍未见）" }
+    ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Milliseconds 400
+}
+
 function Assert-DropdownHasItem([System.Windows.Automation.AutomationElement] $settings, [string] $itemId, [string] $what)
 {
     $nameCondition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $itemId)
@@ -427,7 +475,7 @@ catch
     Write-Host "::error::场景 C 断言失败：$($_.Exception.Message)"
 }
 
-# —— 场景 D：四家 Provider 连接链（mock + DPAPI 密钥 + 设置页 UIA） ——
+# —— 场景 D：五家 Provider 连接链（mock + DPAPI 密钥 + 设置页 UIA） ——
 try
 {
     Write-ProviderConfig
@@ -441,10 +489,11 @@ try
     }
 
     foreach ($provider in @(
-        @{ type = "ark"; conn = "ark-main" },
-        @{ type = "kimi"; conn = "kimi-main" },
-        @{ type = "mimo"; conn = "mimo-main" },
-        @{ type = "deepseek"; conn = "ds-main" }))
+        @{ type = "ark"; conn = "ark-main"; typeName = "方舟 Coding Plan 额度（火山）" },
+        @{ type = "kimi"; conn = "kimi-main"; typeName = "Kimi For Coding 套餐余量" },
+        @{ type = "mimo"; conn = "mimo-main"; typeName = "小米 MiMo 用量（开放平台）" },
+        @{ type = "deepseek"; conn = "ds-main"; typeName = "DeepSeek 余额（开放平台）" },
+        @{ type = "qwen"; conn = "qwen-main"; typeName = "阿里千问用量（百炼 Token Plan）" }))
     {
         $row = Find-UiaById $settings "module-$($provider.type)" 10
         if (!$row) { throw "UIA 未找到模块行 module-$($provider.type)（连接类型缺失？）" }
@@ -461,6 +510,16 @@ try
         Save-FullScreenshot "D-$($provider.type)-healthy-dropdown.png"
         Assert-DropdownHasItem $settings $provider.conn $provider.type
         Collapse-ConnectionDropdown $combo
+
+        # 组件向导「类型」下拉非空且含本家条目（小米类型空回归在这里现形）
+        $typeCombo = Find-UiaById $settings "widget-type-box" 10
+        if (!$typeCombo) { throw "UIA 未找到 widget-type-box（组件向导类型下拉）" }
+        ($typeCombo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+        Start-Sleep -Seconds 1
+        Save-FullScreenshot "D-$($provider.type)-type-dropdown.png"
+        Assert-DropdownHasItem $settings $provider.typeName "$($provider.type) 类型下拉"
+        ($typeCombo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse()
+        Start-Sleep -Milliseconds 400
     }
 
     # save-flow：UIA 保存新连接 ark-e2e → 硬断言**立即**出现在组件下拉（下拉不刷新回归在这里现形）
@@ -480,7 +539,60 @@ try
     Save-FullScreenshot "D-save-flow-dropdown.png"
     Assert-DropdownHasItem $settings "ark-e2e" "save-flow"
     Collapse-ConnectionDropdown $combo
-    Write-Host "场景 D 通过：四家类型可见 + 连接成功 + 组件下拉有该项；保存连接即时进下拉"
+    # provider tile 名字/数值断言（预置五张钉选 tile，无 label 配置——字段名冒充名字在这里现形）
+    $panelHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Pinned") + [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($panelHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "D-FAIL-no-tile-host.png"
+        throw "断言失败（场景 D）：tile 宿主窗未见（Beacon Pinned / Beacon Tile）"
+    }
+    $tileTexts = @()
+    for ($tileIndex = 0; $tileIndex -lt $panelHandles.Count; $tileIndex++)
+    {
+        $tileTexts += Get-WindowUiaTexts $panelHandles[$tileIndex]
+        Save-Zoom (New-Crop ([WinEnum]::RectOf($panelHandles[$tileIndex])) 8) "D-tile-$tileIndex-closeup.png" 4
+    }
+    Save-FullScreenshot "D-provider-tiles-desktop.png"
+    foreach ($expected in @("火山方舟", "DeepSeek", "千问", "42.5", "420.5"))
+    {
+        $hit = $tileTexts | Where-Object { $_ -like "*$expected*" } | Select-Object -First 1
+        if (!$hit)
+        {
+            throw "断言失败（场景 D）：tile 文本缺「$expected」——名字/数值渲染回归；实际文本：$($tileTexts -join ' | ')"
+        }
+    }
+    $fieldNamed = $tileTexts | Where-Object { $_ -eq "usage" -or $_ -eq "quota" } | Select-Object -First 1
+    if ($fieldNamed)
+    {
+        throw "断言失败（场景 D）：tile 名字出现字段名「$fieldNamed」——LabelOf 兜底回归"
+    }
+    Write-Host "tile 名称断言通过：火山方舟/DeepSeek/千问 + 42.5/420.5，无字段名残留"
+
+    # 检查频率：常规页改「检查频率」→15 秒——config.json 落盘 + 日志重建调度双硬断言
+    $row = Find-UiaById $settings "module-general" 10
+    if (!$row) { throw "UIA 未找到模块行 module-general" }
+    Invoke-Uia $row
+    Start-Sleep -Seconds 2
+    $pollBox = Find-UiaById $settings "poll-interval-box" 10
+    if (!$pollBox) { throw "UIA 未找到 poll-interval-box（检查频率设置项缺失？）" }
+    Save-FullScreenshot "D-general-poll-interval.png"
+    Select-ComboItemById $settings $pollBox "poll-15"
+    Save-FullScreenshot "D-general-poll-15s-selected.png"
+    Start-Sleep -Seconds 3
+    $appConfigJson = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($appConfigJson.pollIntervalSeconds)" -ne "15")
+    {
+        throw "断言失败（场景 D）：config.json pollIntervalSeconds=$($appConfigJson.pollIntervalSeconds)（期望 15）——检查频率未落盘"
+    }
+    $logPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    if (!(Test-Path $logPath)) { throw "断言失败（场景 D）：日志文件不存在 $logPath" }
+    $logText = Get-Content $logPath -Raw
+    if ($logText -notmatch "检查频率变更为 15s")
+    {
+        throw "断言失败（场景 D）：日志未见「检查频率变更为 15s」——调度未按新间隔重建"
+    }
+    Write-Host "检查频率断言通过：config.json 落盘 15s + 日志确认重建调度"
+    Write-Host "场景 D 通过：五家类型可见+连接成功+组件下拉有项；类型下拉逐家非空；保存连接即时进下拉；tile 名字/数值正确；检查频率落盘并重建调度"
 }
 catch
 {

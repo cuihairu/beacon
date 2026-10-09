@@ -379,7 +379,7 @@ public sealed class ArkUsageProviderTests
     }
 
     [Fact]
-    public void ToState_WorstWindowDrivesSeverityProgressAndPayload()
+    public void ToState_SessionWindowDrivesSeverityProgressAndPayload()
     {
         var usage = ArkUsageProvider.ParseUsage(Body)!;
 
@@ -390,27 +390,42 @@ public sealed class ArkUsageProviderTests
             ["error_percent"] = "90",
         }), Connection(), usage);
 
-        Assert.Equal(Severity.Error, state.Severity); // 最差窗口 92 ≥ error 90
-        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
-        Assert.Equal(0.92, state.Progress);
-        Assert.Equal("方舟 · 5h 42.5% · 周 8% · 月 92%", state.Summary);
-        Assert.Equal("92", state.Payload["percent"]);
+        // 5h session 窗口为主口径（bug 批3：周/月不得冒充当前窗口驱动主数值/级别）
+        Assert.Equal(Severity.Success, state.Severity); // session 42.5 < warn 60（周/月不参与判定）
+        Assert.Equal(LifecycleState.Success, state.Lifecycle);
+        Assert.Equal(0.425, state.Progress!.Value, 5);
+        Assert.Equal("方舟 · 5h 42.5% · 重置 " + ResetDisplay, state.Summary);
+        Assert.Equal("42.5", state.Payload["percent"]);
         Assert.Equal("42.5", state.Payload["rolling_percent"]);
         Assert.Equal("8", state.Payload["weekly_percent"]);
         Assert.Equal("92", state.Payload["monthly_percent"]);
-        Assert.Equal(ResetDisplay, state.Payload["reset_iso"]); // 1771000000 → 最近重置（三窗口中仅 session/weekly 有）
+        Assert.Equal(ResetDisplay, state.Payload["reset_iso"]); // session 重置优先（1771000000）
+    }
+
+    [Fact]
+    public void ToState_NoSession_FallsBackToWorstWindow()
+    {
+        var usage = ArkUsageProvider.ParseUsage(
+            """{"Result":{"QuotaUsage":[{"Level":"weekly","Percent":30,"ResetTimestamp":1772000000}]}}""")!;
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal("30", state.Payload["percent"]); // 无 session 时退回最差窗口，不空转
+        Assert.Contains("5h 30%", state.Summary);
     }
 
     [Fact]
     public void ToState_CustomThresholdsApply()
     {
-        var usage = ArkUsageProvider.ParseUsage(Body)!; // WorstPercent = 92
+        var usage = ArkUsageProvider.ParseUsage(Body)!; // session = 42.5
 
-        var warnState = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "95" }), Connection(), usage);
+        var warnState = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "40" }), Connection(), usage);
         var okState = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "95", ["error_percent"] = "99" }), Connection(), usage);
+        var errorState = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "40", ["error_percent"] = "42" }), Connection(), usage);
 
         Assert.Equal(Severity.Warning, warnState.Severity);
         Assert.Equal(Severity.Success, okState.Severity);
+        Assert.Equal(Severity.Error, errorState.Severity);
     }
 
     [Theory]

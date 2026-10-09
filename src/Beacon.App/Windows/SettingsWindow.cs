@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using System.Threading;
 using Beacon.App.Services;
@@ -34,6 +35,7 @@ internal sealed class SettingsWindow : Window
     private TextBox _hotkeyBox = null!;
     private ToggleSwitch _startupToggle = null!;
     private ComboBox _themeBox = null!;
+    private ComboBox _pollBox = null!;
     private ComboBox _pinModeBox = null!;
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
@@ -44,6 +46,7 @@ internal sealed class SettingsWindow : Window
     private TextBox _connIdBox = null!;
     private string _lastPrefilledConnectionId = "";
     private TextBox _connEndpointBox = null!;
+    private TextBox? _connUsageBox; // qwen 专属：自定义用量端点（官方额度口未开放，网关/代理口可填）
     private PasswordBox _connTokenBox = null!;
     private Button _connSaveButton = null!;
     private TextBlock _connFeedback = null!;
@@ -111,6 +114,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("codex", "OpenAI Codex", "本机会话统计 · 零凭据", "\uE99A", "codex"),
             new ModuleDef("copilot", "GitHub Copilot", "套餐配额 · 高级请求", "\uE99B", "copilot"),
             new ModuleDef("opencode", "OpenCode Go", "Console Budgets · 月度用量", "\uEA8F", "opencode"),
+            new ModuleDef("qwen", "阿里千问", "百炼 Token Plan · 额度/重置", "\uE753", "qwen"),
             new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
             new ModuleDef("advanced", "高级", "导入导出 · 通知规则", "\ue90f", null),
         ];
@@ -237,6 +241,7 @@ internal sealed class SettingsWindow : Window
             "bigmodel" => SeverityPalette.Rgb(255, 56, 89, 255),
             "ark" => SeverityPalette.Rgb(255, 41, 112, 255), // 火山引擎蓝
             "mimo" => SeverityPalette.Rgb(255, 255, 105, 0), // 小米橙 #FF6900
+            "qwen" => SeverityPalette.Rgb(255, 255, 106, 0), // 阿里橙 #FF6A00（Simple Icons qwen）
             "codex" => SeverityPalette.Rgb(255, 16, 22, 34), // OpenAI 黑（近墨）
             "copilot" => SeverityPalette.Rgb(255, 142, 78, 198), // Copilot 紫渐变主色 #8E4EC6
             "opencode" => SeverityPalette.Rgb(255, 13, 148, 136), // OpenCode 青 #0D9488
@@ -295,7 +300,7 @@ internal sealed class SettingsWindow : Window
         => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
 
     private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
-        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All];
+        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
 
     private static TextBlock Hint(string text) => new()
     {
@@ -339,6 +344,17 @@ internal sealed class SettingsWindow : Window
         // 拍板 2026-10-08：数量悬浮窗不删功能改可配置——默认关（新装/升级零残留），开=数值/额度类恢复独立悬浮窗
         _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认关）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
         _numericFloatingToggle.Toggled += (_, _) => SaveGeneral();
+        // 全局检查频率（2026-10-09 用户令）：组件级「检测间隔」优先，未设组件级的按此走；改后立即重建调度
+        _pollBox = new ComboBox { Header = "检查频率（未单独设置间隔的组件）", Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_pollBox, "poll-interval-box"); // UIA 取证：检查频率改动驱动
+        foreach (var item in new[] { ("0", "按组件档位（默认）"), ("15", "15 秒"), ("30", "30 秒"), ("60", "1 分钟"), ("300", "5 分钟") })
+        {
+            var pollItem = new ComboBoxItem { Content = item.Item2, Tag = item.Item1 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pollItem, $"poll-{item.Item1}");
+            _pollBox.Items.Add(pollItem);
+        }
+        _pollBox.SelectedIndex = IndexOfTag(_pollBox, _runtime.Config.App.PollIntervalSeconds > 0 ? _runtime.Config.App.PollIntervalSeconds.ToString(CultureInfo.InvariantCulture) : "0");
+        _pollBox.SelectionChanged += (_, _) => SaveGeneral();
         _pinModeBox = new ComboBox { Header = "悬浮形态（重启生效）", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var item in new[] { ("panel", "宿主面板（单窗多 tile）"), ("floating", "独立悬浮框（每组件一窗，任意拖放）") })
         {
@@ -346,7 +362,7 @@ internal sealed class SettingsWindow : Window
         }
         _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
         _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle } });
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle, _pollBox } });
         page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认关=桌面零残留，开启即刻生效）。"));
         page.Children.Add(BuildAboutSection());
         return page;
@@ -534,6 +550,7 @@ internal sealed class SettingsWindow : Window
         "codex" => "无需连接配置——直接读本机 ~/.codex/sessions 会话记录；名称随意填（如 codex-local），Endpoint 可空。官方用量口需 ChatGPT OAuth（不同凭据体系），卡片为本地统计口径。",
         "copilot" => "尚无连接——填 GitHub PAT（github.com/settings/tokens 创建并勾选 copilot scope，官方扩展同款配额端点自动带默认地址）。卡片直读套餐配额（Pro 1500 高级请求/月、聊天/补全无限）与额度重置日；续费信息在 github.com/settings/copilot 查看。",
         "opencode" => "尚无连接——填 OpenCode Key（oc_sk，opencode.ai Console Keys 创建；读 Budgets 需 All 权限，inference-only Key 读不了）。卡片直读官方 Console Budgets 用量（本月消费/月度上限/重置日）。",
+        "qwen" => "尚无连接——填百炼 Token Plan 专属 Key（bailian.console.aliyun.com 我的订阅页创建，sk-sp- 前缀）。官方额度查询 REST 口未开放（专属 Key 实测只授权模型调用），卡片默认显示模型目录真数据；有网关/代理用量口可在下方「用量端点」填入（GET + Bearer，响应含 percent/reset 即出额度+重置日）。",
         _ => "尚无连接——填局域网/内部接口地址（可空凭据）；状态词表/额度字段映射在组件向导里配。",
     };
 
@@ -547,6 +564,7 @@ internal sealed class SettingsWindow : Window
         app.UiOpacity = _opacitySlider.Value;
         app.ShowCapsule = _capsuleToggle.IsOn;
         app.NumericFloatingEnabled = _numericFloatingToggle.IsOn;
+        app.PollIntervalSeconds = int.TryParse(TagOf(_pollBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pollSeconds) && pollSeconds > 0 ? pollSeconds : 0;
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke();
     }
@@ -817,8 +835,16 @@ internal sealed class SettingsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connIdBox, "conn-id-box"); // UIA 取证：save-flow 驱动
         _connIdBox.Text = PrefillConnectionId(lockType); // 预填唯一 Id：不改即用，改了以用户为准（不再强制手填）
         _connTypeBox.SelectionChanged += (_, _) => PrefillConnectionIdIfUntouched();
+        _connTypeBox.SelectionChanged += (_, _) => SyncUsageBoxVisibility();
         _connEndpointBox = new TextBox { Header = ConnectionEndpointHeader(lockType), Width = 280, PlaceholderText = ConnectionEndpointHint(lockType) };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connEndpointBox, "conn-endpoint-box");
+        _connUsageBox = new TextBox
+        {
+            Header = "用量端点（可空 = 显示模型目录，官方额度口未开放）",
+            Width = 280,
+            PlaceholderText = "https://…/usage（GET + Bearer；响应含 percent/reset 即出额度卡）",
+            Visibility = Visibility.Collapsed,
+        };
         _connTokenBox = new PasswordBox { Header = ConnectionTokenHeader(lockType), Width = 280 };
 
         _connSaveButton = new Button { Content = "保存连接" };
@@ -830,7 +856,9 @@ internal sealed class SettingsWindow : Window
         var form = new StackPanel { Spacing = 8, Padding = new Thickness(0, 4, 0, 0) };
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _connTypeBox, _connIdBox } });
         form.Children.Add(_connEndpointBox);
+        form.Children.Add(_connUsageBox);
         form.Children.Add(_connTokenBox);
+        SyncUsageBoxVisibility();
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _connSaveButton, cancel } });
         return new Border
         {
@@ -879,7 +907,7 @@ internal sealed class SettingsWindow : Window
             Endpoint = string.IsNullOrWhiteSpace(_connEndpointBox.Text) ? null : _connEndpointBox.Text.Trim(),
             CredentialRef = credentialRef,
             Enabled = existing?.Enabled ?? true, // 编辑保留启停状态
-            Settings = existing?.Settings ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), // 保留 auth_header 等高级项
+            Settings = MergeConnectionSettings(existing, _connUsageBox?.Text.Trim()), // 保留 auth_header 等高级项 + usage_endpoint
         };
         _runtime.Config.UpsertConnection(connection);
         ResetConnectionEditor();
@@ -925,6 +953,7 @@ internal sealed class SettingsWindow : Window
         "kimi" => "kimi",
         "deepseek" => "deepseek",
         "mimo" => "mimo-main",
+        "qwen" => "qwen-main",
         "codex" => "codex-local",
         "copilot" => "copilot-main",
         "opencode" => "opencode-main",
@@ -940,6 +969,7 @@ internal sealed class SettingsWindow : Window
         "kimi" => "Endpoint（可空 = 官方用量接口）",
         "deepseek" => "Endpoint（可空 = 官方余额接口）",
         "mimo" => "Endpoint（可空 = 推理域 token-plan-cn.xiaomimimo.com/v1）",
+        "qwen" => "Endpoint（可空 = 百炼兼容口 token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1）",
         "codex" => "会话目录（可空 = 默认 ~/.codex/sessions）",
         "copilot" => "Endpoint（可空 = 官方配额端点 copilot_internal/user）",
         "opencode" => "Endpoint（可空 = 官方 Console Budgets 接口）",
@@ -955,6 +985,7 @@ internal sealed class SettingsWindow : Window
         "kimi" => "https://api.kimi.com/coding/v1/usages",
         "deepseek" => "https://api.deepseek.com/user/balance",
         "mimo" => "https://token-plan-cn.xiaomimimo.com/v1",
+        "qwen" => "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
         "codex" => "C:\\Users\\me\\.codex\\sessions",
         "copilot" => "https://api.github.com/copilot_internal/user",
         "opencode" => "https://opencode.ai/console/api/v1/budgets/members",
@@ -971,6 +1002,7 @@ internal sealed class SettingsWindow : Window
         "kimi" => "API Key（sk-kimi-*，只写 DPAPI）",
         "deepseek" => "API Key（只写 DPAPI）",
         "mimo" => "API Key（只写 DPAPI；Bearer 直传）",
+        "qwen" => "API Key（sk-sp- 专属 Key，只写 DPAPI；Bearer 直传）",
         "codex" => "无需凭据（留空）",
         "copilot" => "PAT（需 copilot scope，只写 DPAPI）",
         "opencode" => "API Key（oc_sk，只写 DPAPI；读 Budgets 需 All 权限）",
@@ -985,8 +1017,38 @@ internal sealed class SettingsWindow : Window
         _connIdBox.IsEnabled = true;
         _connIdBox.Text = PrefillConnectionId(null);
         _connEndpointBox.Text = "";
+        if (_connUsageBox is { } usage)
+        {
+            usage.Text = "";
+        }
         _connTokenBox.Password = "";
         _connTokenBox.PlaceholderText = "";
+    }
+
+    /// <summary>用量端点框仅 qwen 显示（官方额度口未开放——自定义网关/代理口填这里）。</summary>
+    private void SyncUsageBoxVisibility()
+    {
+        if (_connUsageBox is { } box)
+        {
+            box.Visibility = SelectedString(_connTypeBox) == "qwen" ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>连接 Settings 落盘：usage_endpoint 随表单值增删，其余高级项（auth_header 等）原样保留。</summary>
+    private static Dictionary<string, string> MergeConnectionSettings(ConnectionConfig? existing, string? usageEndpoint)
+    {
+        var settings = existing?.Settings is { } keep
+            ? new Dictionary<string, string>(keep, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(usageEndpoint))
+        {
+            settings.Remove("usage_endpoint");
+        }
+        else
+        {
+            settings["usage_endpoint"] = usageEndpoint!;
+        }
+        return settings;
     }
 
     private void RebuildConnections()
@@ -1080,6 +1142,26 @@ internal sealed class SettingsWindow : Window
             _connIdBox.Text = connection.Id;
             _connIdBox.IsEnabled = false;
             _connEndpointBox.Text = connection.Endpoint ?? "";
+            if (_connTypeBox.SelectedItem as string != connection.Type)
+            {
+                var typeIndex = -1;
+                for (var i = 0; i < _connTypeBox.Items.Count; i++)
+                {
+                    if (_connTypeBox.Items[i] is string typeName && typeName == connection.Type)
+                    {
+                        typeIndex = i;
+                        break;
+                    }
+                }
+                if (typeIndex >= 0)
+                {
+                    _connTypeBox.SelectedIndex = typeIndex; // 表单框头/用量框显隐随类型切换（编辑连接带出真实类型）
+                }
+            }
+            if (_connUsageBox is { } usage)
+            {
+                usage.Text = connection.Settings.GetValueOrDefault("usage_endpoint") ?? "";
+            }
             _connTokenBox.Password = "";
             _connTokenBox.PlaceholderText = "已保存（留空保持不变）";
         };
@@ -1136,6 +1218,7 @@ internal sealed class SettingsWindow : Window
     private UIElement BuildWidgetEditor()
     {
         _widgetTypeBox = new ComboBox { Header = "类型", Width = 220 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_widgetTypeBox, "widget-type-box"); // UIA 取证：类型下拉非空断言（小米类型空回归）
         foreach (var descriptor in _scopeDescriptors ?? AllWidgetDescriptors())
         {
             _widgetTypeBox.Items.Add(new ComboBoxItem { Content = descriptor.DisplayName, Tag = descriptor.Type });

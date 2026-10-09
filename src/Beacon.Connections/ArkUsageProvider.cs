@@ -135,21 +135,12 @@ public sealed class ArkUsageProvider : IWidgetProvider
             };
         }
 
-        var severity = MapSeverity(usage.WorstPercent, warnPercent, errorPercent);
+        // 5h session 窗口为主口径（2026-10-09 bug 批3：方舟 coding 是 5 小时窗口额度——
+        // 旧码主数值取最差窗口，周/月数字冒充了当前窗口；周/月仍留 payload 供 L3 详情查）
+        var primary = usage.Session ?? new ArkUsageWindow(usage.WorstPercent, null);
+        var severity = MapSeverity(primary.Percent, warnPercent, errorPercent);
         var head = widget.Config.GetValueOrDefault("label") ?? "方舟";
-        var parts = new List<string>();
-        if (usage.Session is { } session)
-        {
-            parts.Add($"5h {Format(session.Percent)}%");
-        }
-        if (usage.Weekly is { } weekly)
-        {
-            parts.Add($"周 {Format(weekly.Percent)}%");
-        }
-        if (usage.Monthly is { } monthly)
-        {
-            parts.Add($"月 {Format(monthly.Percent)}%");
-        }
+        var resetText = primary.ResetSeconds is { } reset ? FormatReset(reset) : "待重置";
         return new WidgetState
         {
             WidgetId = widget.Id,
@@ -159,17 +150,17 @@ public sealed class ArkUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
-            // 数值卡进度条：最差窗口用量（与级别判定同源）
-            Progress = Math.Clamp(usage.WorstPercent, 0, 100) / 100.0,
-            Summary = $"{head} · {string.Join(" · ", parts)}",
+            // 数值卡进度条：5h 窗口用量（与级别判定同源）
+            Progress = Math.Clamp(primary.Percent, 0, 100) / 100.0,
+            Summary = $"{head} · 5h {Format(primary.Percent)}% · 重置 {resetText}",
             DetailUrl = ConsoleUrl,
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["percent"] = Format(usage.WorstPercent), // tile 主数值（最差窗口已用 %）
+                ["percent"] = Format(primary.Percent), // tile 主数值（5h 窗口已用 %）
                 ["rolling_percent"] = usage.Session is { } s ? Format(s.Percent) : "",
                 ["weekly_percent"] = usage.Weekly is { } w ? Format(w.Percent) : "",
                 ["monthly_percent"] = usage.Monthly is { } m ? Format(m.Percent) : "",
-                ["reset_iso"] = NearestReset(usage) is { } nearest ? FormatReset(nearest) : "",
+                ["reset_iso"] = primary.ResetSeconds is { } epoch ? FormatReset(epoch) : "",
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };

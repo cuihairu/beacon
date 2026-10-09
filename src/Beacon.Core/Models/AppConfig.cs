@@ -18,6 +18,9 @@ public sealed class AppConfig
     public string PinDisplayMode { get; set; } = "panel";
     /// <summary>数量悬浮窗（数值/额度类独立悬浮窗）总开关，默认关（拍板 2026-10-08：功能保留改可配置——关=桌面零残留，开=数值类恢复悬浮窗）。</summary>
     public bool NumericFloatingEnabled { get; set; } = false;
+    /// <summary>全局检查频率（秒，0=按各组件刷新档策略表，默认）。设置「检查频率」落点：
+    /// 组件级检测间隔优先，未设组件级的按此值走（2026-10-09 用户令：轮询节奏可配）。</summary>
+    public int PollIntervalSeconds { get; set; } = 0;
     /// <summary>升级迁移标记：NumericFloatingEnabled 强制置关是一次性动作（老包开关 ON 的配置升级即回干净桌面），已执行不再动用户选择。</summary>
     public bool NumericFloatingResetDone { get; set; }
     /// <summary>用户通知规则；空列表时使用 DefaultNotificationRules（RFC §8）。</summary>

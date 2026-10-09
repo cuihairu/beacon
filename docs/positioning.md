@@ -183,6 +183,24 @@ Codex    71% used   weekly 8h 后重置
   `limit_micro_cents` null=无上限；多成员聚合（消费求和/任一 null 即无上限/任一 exceeded 即超）；
   官方 `exceeded` 一票 Error；`resets_at` 按 UTC 自然月；卡面「Go $10/月」为展示层套餐标注（用户订阅口径），
   payload 只存 API 真数字；401/403/404→Degraded、5xx→Offline；
+- **阿里千问 百炼 Token Plan（AI Usage 第十家，2026-10-09）**：组件类型 `qwen.usage`——Token Plan
+  （Coding Plan 专属 Key `sk-sp-` 前缀，Base URL `token-plan.cn-beijing.maas.aliyuncs.com`，OpenAI 兼容口
+  `/compatible-mode/v1` + Anthropic 兼容口 `/apps/anthropic`）。**官方额度查询 REST 口未开放**（FAQ 只有控制台
+  「我的订阅」页；社区实证 cc-switch#7484——专属 Key 只授权模型调用，/models 实测 200、控制台查询口不授权），
+  三档探测后如实降级：默认显示 `/models` 模型目录真数据 + 「额度口径官方未开放」；连接 Settings/表单「用量端点」
+  填自定义口（GET + Bearer），响应按防御键名解析（percent/used_percent、remaining_percent 反推、
+  remaining/total_credits、reset_at/reset/period_end ISO 或秒级 epoch）即出额度卡（已用% 进度条 + 阈值告警
+  + 重置时间）。窗口口径：个人版 7 天固定窗口、团队版月度（官方 FAQ），重置以端点数据为准；
+- **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
+  组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
+  （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；
+- **组件类型短名（tile 标签/L2 chip 统一口径）**：`WidgetTypeNames`（Core，纯函数可单测）——此前 PinTile
+  标签兜底取类型尾段（`ark.usage` → tile 名显示「usage」，字段名冒充显示名，2026-10-09 用户实测），
+  现按类型前缀映射连接类型短名（火山方舟/智谱/小米 MiMo/阿里千问/…），QuickPanel 分组 chip 的 GLM/ARK
+  硬编码并入同表；未知前缀仍退类型尾段（不抛）；
+- **方舟 5h 窗口主口径（bug 批3）**：`ark.usage` tile 主数值/级别/进度条此前取最差窗口（周/月冒充当前窗口），
+  现按 Coding Plan 5 小时窗口语义取 session 档为主口径（无 session 档退最差窗口兜底），Summary 带
+  「5h x% · 重置 MM-dd HH:mm」，周/月降为 payload 明细供 L3；智谱/千问等各窗口口径不受影响；
 - **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
   启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
 - **L0 独立悬浮框形态（B-701 扩展）**：设置「悬浮形态」二选一——宿主面板（默认，单窗多 tile）/ 独立悬浮框
@@ -195,9 +213,10 @@ Codex    71% used   weekly 8h 后重置
 
 ### 调研结论（暂缓接入）
 
-- **阿里云百炼（DashScope/千问）**：无独立的余额/用量查询接口——账户余额要走阿里云 BSS OpenAPI
-  `QueryAccountBalance`（AccessKey/Secret 签名，非 Bearer REST），且统计的是整个阿里云账号消费而非百炼模型单独口径；
-  接入成本高、信息增益低，暂缓。过渡方案：自建代理转发再配 `http.status`。
+- **阿里云百炼（DashScope/千问）**：~~无独立的余额/用量查询接口……接入成本高、信息增益低，暂缓~~
+  **已被 2026-10-09 Token Plan（Coding Plan）打破**——按量计费口径的结论不再适用：Token Plan 专属 Key
+  只授权模型调用、官方额度查询 REST 口仍未开放，已按「目录真数据 + 自定义用量端点」落 `qwen.usage`
+  （见 §8 AI Usage 第十家）；按量计费用户的账户余额仍走阿里云 BSS OpenAPI `QueryAccountBalance`（暂缓不变）。
 - **小米 MiMo**：API 开放平台（platform.xiaomimimo.com）已开放、模型权重 MIT 开源，但**未见公开的余额/用量查询接口**
   （2026-10-08 实测推理域 /usage 404）——已先落 `mimo.usage` 模型目录卡（见 §8）；真正的用量接口公开后，
   在连接 Settings 填 `usage_endpoint` 或按 bigmodel/kimi 同构升级。

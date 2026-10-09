@@ -45,12 +45,18 @@ public sealed class WidgetHost : IAsyncDisposable
     /// <summary>注册全部 Widget 并启动调度；启动即 kick 第一轮拉取。</summary>
     public void Start()
     {
+        // 全局检查频率（设置「检查频率」，0=按档位策略表）：组件级检测间隔优先，未设组件级的按全局走
+        var globalPoll = _config.App.PollIntervalSeconds > 0
+            ? TimeSpan.FromSeconds(_config.App.PollIntervalSeconds)
+            : (TimeSpan?)null;
+        _logger?.LogInformation("调度启动：全局检查频率 {PollSeconds}s（0=按档位），组件 {Count} 个。",
+            _config.App.PollIntervalSeconds, _config.Widgets.Count);
         foreach (var widget in _config.Widgets)
         {
             // 组件级检测间隔覆盖（设置页「检测间隔」）：null=按刷新档策略表
             TimeSpan? intervalOverride = widget.RefreshIntervalSeconds is { } seconds && seconds > 0
                 ? TimeSpan.FromSeconds(seconds)
-                : null;
+                : globalPoll;
             _scheduler.Register(new WidgetRegistration(widget.Id, widget.ConnectionId, widget.RefreshTier, intervalOverride));
         }
         _scheduler.Start(OnGroupRefreshAsync);

@@ -241,8 +241,9 @@ internal sealed class PinTile
     /// <summary>⑤ 滑入：tile 出现在未收起的展开态时调用（full 档）。</summary>
     public void PlaySlideIn() => _motion.SlideIn(_root);
 
-    /// <summary>tile 标签：优先用户配的显示名（label），再取自然名（GitHub repo/owner），否则退类型尾段。
-    /// 此前只认 repo，额度类（bigmodel.usage/http.quota）tile 显示成类型尾段「usage/quota」，来源不可辨。</summary>
+    /// <summary>tile 标签：优先用户配的显示名（label），再取自然名（GitHub repo/owner），
+    /// 否则取连接类型短名（WidgetTypeNames）。旧兜底取类型尾段——ark.usage tile 显示成「usage」，
+    /// 字段名冒充了显示名（2026-10-09 用户实测悬浮框名字错误）；未知前缀才退尾段。</summary>
     private static string LabelOf(WidgetConfig widget)
     {
         foreach (var key in new[] { "label", "repo", "owner" })
@@ -252,7 +253,7 @@ internal sealed class PinTile
                 return value;
             }
         }
-        return widget.Type.Split('.')[^1];
+        return WidgetTypeNames.Of(widget.Type);
     }
 
     /// <summary>数值位短文本：映射规则在 Core（WidgetValueHint，Linux 可单测），此处仅委托。</summary>

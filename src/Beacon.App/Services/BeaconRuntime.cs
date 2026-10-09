@@ -94,6 +94,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [CodexWidgetDescriptors.UsageType] = new CodexUsageProvider(), // positioning P0 #5：OpenAI Codex（本地统计兜底，如实标注）
             [CopilotWidgetDescriptors.UsageType] = new CopilotUsageProvider(), // AI Usage 第八家：GitHub Copilot（官方扩展同款配额端点直连）
             [OpenCodeWidgetDescriptors.UsageType] = new OpenCodeUsageProvider(), // AI Usage 第九家：OpenCode Go（官方 Console Budgets API 直连）
+            [QwenWidgetDescriptors.UsageType] = new QwenUsageProvider(), // AI Usage 第十家：阿里千问（百炼 Token Plan，用量口未开放→目录真数据+自定义端点）
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -140,6 +141,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["deepseek"] = new DeepSeekConnectionProvider(),
             ["kimi"] = new KimiConnectionProvider(),
             ["mimo"] = new MiMoConnectionProvider(),
+            ["qwen"] = new QwenConnectionProvider(),
             ["codex"] = new CodexConnectionProvider(),
             ["copilot"] = new CopilotConnectionProvider(),
             ["opencode"] = new OpenCodeConnectionProvider(),
