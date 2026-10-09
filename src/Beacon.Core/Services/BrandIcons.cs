@@ -37,15 +37,26 @@ public static class BrandIcons
     };
 
     /// <summary>
+    /// 连接类型 → 品牌键别名：连接类型名常与 Simple Icons slug 不一致
+    /// （MiMo 走小米品牌、Codex 走 OpenAI、Copilot 走 githubcopilot slug），
+    /// 不归一则整表直查 MISS、退回通用字形——悬浮框/组件目录「有连接无 icon」的根因之一。
+    /// </summary>
+    private static readonly Dictionary<string, string> Aliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["uptimekuma"] = "uptime-kuma", // Simple Icons slug 带连字符，连接类型名不带
+        ["mimo"] = "xiaomi",            // 小米 MiMo 平台用小米品牌标
+        ["codex"] = "openai",           // Codex 属 OpenAI 品牌
+        ["copilot"] = "githubcopilot",  // Simple Icons slug 无连字符
+    };
+
+    /// <summary>
     /// 按连接类型取品牌 path 数据；未收录 → false（调用方字形兜底）。
     /// 别名在查表时归一（初始化器内自引用 Paths 会 NullReferenceException——静态字段
     /// 初始化未完成前引用自身恒为 null，2026-10-08 实证）。
     /// </summary>
     public static bool TryGet(string connectionType, out string pathData)
     {
-        var key = string.Equals(connectionType, "uptimekuma", StringComparison.OrdinalIgnoreCase)
-            ? "uptime-kuma" // Simple Icons slug 带连字符，连接类型名不带
-            : connectionType;
+        var key = Aliases.TryGetValue(connectionType, out var canonical) ? canonical : connectionType;
         return Paths.TryGetValue(key, out pathData!);
     }
 }

@@ -252,22 +252,8 @@ internal sealed class PinTile
         return widget.Type.Split('.')[^1];
     }
 
-    private static string ValueOf(WidgetState state)
-    {
-        if (state.Payload.TryGetValue("open_count", out var open))
-        {
-            return $"{open} open";
-        }
-        if (state.Payload.TryGetValue("percent", out var percent) && percent.Length > 0)
-        {
-            return $"{percent}%"; // 额度卡：已用百分比是主数值
-        }
-        if (state.IsStale)
-        {
-            return "stale";
-        }
-        return state.Summary.Length > 22 ? state.Summary[..22] : state.Summary;
-    }
+    /// <summary>数值位短文本：映射规则在 Core（WidgetValueHint，Linux 可单测），此处仅委托。</summary>
+    private static string ValueOf(WidgetState state) => WidgetValueHint.Of(state);
 }
 
 /// <summary>一次拖动会话（左键按住 tile 起手）；FreeX/FreeY = 吸附前的自由落点（收起判定用，防 snap 假贴边）。</summary>

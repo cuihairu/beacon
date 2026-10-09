@@ -29,13 +29,17 @@ public sealed class BrandIconsTests
         Assert.False(string.IsNullOrWhiteSpace(pathData));
     }
 
-    [Fact]
-    public void TryGet_AliasUptimeKuma_ResolvesCanonicalEntry()
+    [Theory]
+    [InlineData("uptimekuma", "uptime-kuma")] // Simple Icons slug 带连字符
+    [InlineData("mimo", "xiaomi")]            // MiMo 走小米品牌标
+    [InlineData("codex", "openai")]           // Codex 属 OpenAI
+    [InlineData("copilot", "githubcopilot")]  // Copilot slug 无连字符
+    public void TryGet_ConnectionTypeAlias_ResolvesCanonicalEntry(string connectionType, string canonical)
     {
-        // 别名归一发生在查表时（初始化器内自引用会 NRE）——两种拼写都命中同一条 path
-        Assert.True(BrandIcons.TryGet("uptimekuma", out var viaAlias));
-        Assert.True(BrandIcons.TryGet("uptime-kuma", out var canonical));
-        Assert.Equal(canonical, viaAlias);
+        // 别名归一发生在查表时（初始化器内自引用会 NRE）——连接类型名与品牌 slug 不一致的必须归一到同一条 path
+        Assert.True(BrandIcons.TryGet(connectionType, out var viaAlias));
+        Assert.True(BrandIcons.TryGet(canonical, out var direct));
+        Assert.Equal(direct, viaAlias);
     }
 
     [Theory]
