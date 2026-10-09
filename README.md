@@ -62,6 +62,6 @@ On first launch the app settles into the system tray and shows the status capsul
 3. ✅ M2 Core kernel (refresh scheduling / status aggregation / cache / event bus)
 4. ✅ M3 GitHub loop (PR / Actions providers, ETag + rate-limit awareness)
 5. ✅ M4 Notifications and panel (action executors / toast / notification center / tray coloring)
-6. 🔨 M5 L0 floating widgets + Quick Panel = MVP (code-complete; remaining: [B-803 on-machine walkthrough](docs/acceptance-B803-e2e-walkthrough.md) + B-804 clean-VM acceptance, pending a Windows machine)
+6. 🔨 M5 L0 floating widgets + Quick Panel = MVP (code-complete; remaining: [44-item acceptance checklist](docs/acceptance-checklist.md) — covers the B-803 on-machine walkthrough and B-804 clean-VM run, pending a Windows machine)
 
 > Build requirements: Windows + .NET 10 SDK + Windows App SDK (WinUI 3 does not support cross-platform builds).
