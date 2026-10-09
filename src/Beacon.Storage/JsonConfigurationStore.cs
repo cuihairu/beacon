@@ -41,6 +41,14 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         {
             LoadErrors.Clear();
             _app = LoadFile<AppConfig>("config.json") ?? new AppConfig();
+            if (_app.ConfigVersion < 1)
+            {
+                // 2026-10-09 用户令：状态胶囊默认关闭——存量配置一次性拉平（含历史上以 true 落盘的），
+                // 用户仍可在设置里手动打开；打开后的值随 version 1 落盘，不再被迁移覆盖。
+                _app.ShowCapsule = false;
+                _app.ConfigVersion = 1;
+                SaveFile("config.json", _app);
+            }
             _connections = LoadFile<List<ConnectionConfig>>("connections.json") ?? [];
             _widgets = LoadFile<List<WidgetConfig>>("widgets.json") ?? [];
             _pins = LoadFile<PinsConfig>("pins.json") ?? new PinsConfig();

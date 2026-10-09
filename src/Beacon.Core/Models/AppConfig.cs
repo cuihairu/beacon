@@ -9,8 +9,11 @@ public sealed class AppConfig
     /// <summary>system / light / dark（RFC §42）。</summary>
     public string Theme { get; set; } = "system";
     public double UiOpacity { get; set; } = 1.0;
-    /// <summary>L1 胶囊开关（胶囊本身即常驻 tile，可与 L0 分显示器，RFC §16 决策 6）。</summary>
-    public bool ShowCapsule { get; set; } = true;
+    /// <summary>L1 状态胶囊开关（胶囊本身即常驻 tile，可与 L0 分显示器，RFC §16 决策 6）。
+    /// 2026-10-09 用户令：默认关闭（存量配置由 JsonConfigurationStore 一次性迁移拉平，设置里可再打开）。</summary>
+    public bool ShowCapsule { get; set; } = false;
+    /// <summary>配置结构版本：0=旧配置（缺字段），1=已执行状态胶囊默认关迁移。每次结构迁移 +1。</summary>
+    public int ConfigVersion { get; set; }
     /// <summary>L0 悬浮形态：panel = 单宿主多 tile（默认）；floating = 每钉选组件一窗、可拖桌面任意位置（切换重启生效）。</summary>
     public string PinDisplayMode { get; set; } = "panel";
     /// <summary>数量悬浮窗（数值/额度类独立悬浮窗）总开关，默认关（拍板 2026-10-08：功能保留改可配置——关=桌面零残留，开=数值类恢复悬浮窗）。</summary>
