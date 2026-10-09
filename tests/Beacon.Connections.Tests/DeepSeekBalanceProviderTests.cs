@@ -186,4 +186,36 @@ public sealed class DeepSeekBalanceProviderTests
         Assert.Equal(ConnectionHealthState.Healthy, healthy);
         Assert.Equal(ConnectionHealthState.Unauthorized, unauthorized);
     }
+
+    [Fact]
+    public async Task TestAsync_2xxWithoutBalanceData_ReturnsDegraded()
+    {
+        // CI 实证根因回归：连接端点填 base 时旧实现请求落在 / 上，200 假阳性掩盖 tile 拉取失败
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, """{"error":"not a balance response"}""") };
+        var provider = new DeepSeekConnectionProvider(http);
+
+        var result = await provider.TestAsync(Connection("http://127.0.0.1:18081"), Ctx(), CancellationToken.None);
+
+        Assert.Equal(ConnectionHealthState.Degraded, result.Health);
+        Assert.Contains("不含余额数据", result.Detail);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_BaseEndpoint_AppendsBalancePath()
+    {
+        var (provider, http) = Faked(HttpStatusCode.OK, Body);
+
+        await provider.GetStateAsync(Widget(), Connection("http://127.0.0.1:18081"), Ctx(), CancellationToken.None);
+
+        Assert.Equal("http://127.0.0.1:18081/user/balance", http.Requests[0].RequestUri!.ToString());
+    }
+
+    [Theory]
+    [InlineData(null, null)] // 未配置：走默认端点
+    [InlineData("http://127.0.0.1:18081", "http://127.0.0.1:18081/user/balance")]
+    [InlineData("http://127.0.0.1:18081/", "http://127.0.0.1:18081/user/balance")] // 尾斜杠归一
+    [InlineData("https://api.deepseek.com", "https://api.deepseek.com/user/balance")]
+    [InlineData("https://proxy.example.com/v1/user/balance", "https://proxy.example.com/v1/user/balance")] // 已带路径原样
+    public void ResolveEndpoint_BaseConfigured_AppendsBalancePath(string? configured, string? expected)
+        => Assert.Equal(expected, DeepSeekBalanceProvider.ResolveEndpoint(configured));
 }

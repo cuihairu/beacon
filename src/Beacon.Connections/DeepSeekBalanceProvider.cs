@@ -54,14 +54,15 @@ public sealed class DeepSeekBalanceProvider : IWidgetProvider
         ConnectionContext context,
         CancellationToken cancellationToken)
     {
-        // HttpEndpoint 取整 URL：默认端点直接给全路径（base + /user/balance）
+        // 端点归一后取数：连接端点按 base 语义补 /user/balance，未配置走默认全路径
         var body = await HttpEndpoint.FetchAsync(
             _client,
             connection,
             context,
             cancellationToken,
             defaultEndpoint: DefaultEndpoint + "/user/balance",
-            defaultAuthPrefix: "Bearer ").ConfigureAwait(false);
+            defaultAuthPrefix: "Bearer ",
+            endpointOverride: ResolveEndpoint(connection.Endpoint)).ConfigureAwait(false);
 
         var balance = ParseBalance(body);
         if (balance is null)
@@ -97,6 +98,20 @@ public sealed class DeepSeekBalanceProvider : IWidgetProvider
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
+    }
+
+    /// <summary>端点归一（纯函数供单测）：连接端点按 base 语义补 /user/balance（已带该路径则原样），
+    /// 未配置返回 null 走默认端点。修「填 base 端点后请求落在 / 上、200 假阳性掩盖解析失败」。</summary>
+    internal static string? ResolveEndpoint(string? configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return null;
+        }
+        var trimmed = configured.Trim().TrimEnd('/');
+        return trimmed.EndsWith("/user/balance", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : trimmed + "/user/balance";
     }
 
     /// <summary>余额快照（金额统一 double，接口字符串金额与数字都兼容）。</summary>
@@ -197,14 +212,18 @@ public sealed class DeepSeekConnectionProvider : IConnectionProvider
     {
         try
         {
-            await HttpEndpoint.FetchAsync(
+            var body = await HttpEndpoint.FetchAsync(
                 _client,
                 connection,
                 context,
                 cancellationToken,
                 defaultEndpoint: DeepSeekBalanceProvider.DefaultEndpoint + "/user/balance",
-                defaultAuthPrefix: "Bearer ").ConfigureAwait(false);
-            return ConnectionTestResult.Ok();
+                defaultAuthPrefix: "Bearer ",
+                endpointOverride: DeepSeekBalanceProvider.ResolveEndpoint(connection.Endpoint)).ConfigureAwait(false);
+            // 200 但结构不对（如代理回错误体）不算连通：余额接口语义校验（此前只看状态码，200 假阳性掩盖过 tile 拉取失败）
+            return DeepSeekBalanceProvider.ParseBalance(body) is null
+                ? new ConnectionTestResult(ConnectionHealthState.Degraded, "DeepSeek 响应不含余额数据（检查端点是否指向开放平台接口）。")
+                : ConnectionTestResult.Ok();
         }
         catch (ConnectionException exception)
         {

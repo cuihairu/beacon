@@ -17,15 +17,20 @@ internal static class HttpEndpoint
         return client;
     }
 
-    public static Task<string> FetchAsync(HttpClient? client, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken, string? defaultEndpoint = null, string defaultAuthPrefix = "Bearer ")
-        => FetchCoreAsync(client ?? Shared, connection, context, cancellationToken, defaultEndpoint, defaultAuthPrefix);
+    public static Task<string> FetchAsync(HttpClient? client, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken, string? defaultEndpoint = null, string defaultAuthPrefix = "Bearer ", string? endpointOverride = null)
+        => FetchCoreAsync(client ?? Shared, connection, context, cancellationToken, defaultEndpoint, defaultAuthPrefix, endpointOverride);
 
-    public static Task<string> FetchAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken, string? defaultEndpoint = null, string defaultAuthPrefix = "Bearer ")
-        => FetchCoreAsync(Shared, connection, context, cancellationToken, defaultEndpoint, defaultAuthPrefix);
+    public static Task<string> FetchAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken, string? defaultEndpoint = null, string defaultAuthPrefix = "Bearer ", string? endpointOverride = null)
+        => FetchCoreAsync(Shared, connection, context, cancellationToken, defaultEndpoint, defaultAuthPrefix, endpointOverride);
 
-    private static async Task<string> FetchCoreAsync(HttpClient client, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken, string? defaultEndpoint, string defaultAuthPrefix)
+    private static async Task<string> FetchCoreAsync(HttpClient client, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken, string? defaultEndpoint, string defaultAuthPrefix, string? endpointOverride)
     {
-        var endpoint = connection.Endpoint?.Trim();
+        // Provider 归一化端点最高（如 deepseek base 语义补路径），其次连接显式端点整串直用，最后 Provider 默认端点
+        var endpoint = endpointOverride?.Trim();
+        if (string.IsNullOrEmpty(endpoint))
+        {
+            endpoint = connection.Endpoint?.Trim();
+        }
         if (string.IsNullOrEmpty(endpoint))
         {
             endpoint = defaultEndpoint?.Trim(); // Provider 可给默认端点（如 bigmodel 监控接口）
