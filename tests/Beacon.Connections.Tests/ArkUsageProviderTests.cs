@@ -30,11 +30,12 @@ public sealed class ArkUsageProviderTests
         }
         """;
 
-    private static ConnectionConfig Connection(Dictionary<string, string>? settings = null, string? credentialRef = "conn:ark") => new()
+    private static ConnectionConfig Connection(Dictionary<string, string>? settings = null, string? credentialRef = "conn:ark", string? endpoint = null) => new()
     {
         Id = "ark-main",
         Type = "ark",
         CredentialRef = credentialRef,
+        Endpoint = endpoint,
         Settings = settings ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
     };
 
@@ -164,8 +165,7 @@ public sealed class ArkUsageProviderTests
             captured = request;
             return new FakeHttpResponse(HttpStatusCode.OK, Body);
         });
-        var connection = Connection();
-        connection = connection with { Endpoint = "http://127.0.0.1:18081" };
+        var connection = Connection(endpoint: "http://127.0.0.1:18081");
 
         await provider.FetchUsageAsync(connection, Ctx($"{AK}:{SK}"), CancellationToken.None);
 
