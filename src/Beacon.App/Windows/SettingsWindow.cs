@@ -455,6 +455,7 @@ internal sealed class SettingsWindow : Window
         page.Children.Add(_connectionList);
         page.Children.Add(BuildConnectionEditor(type));
         page.Children.Add(_connFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connFeedback, "conn-feedback"); // UIA 取证：测试反馈文本可硬断言
 
         page.Children.Add(SectionTitle("组件"));
         _widgetList = new StackPanel { Spacing = 6 };
