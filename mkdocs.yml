@@ -38,6 +38,7 @@ nav:
   - MVP Issue 列表: mvp-issues.md
   - 故障排查: troubleshooting.md
   - 文档一致性审计: 审计-文档一致性.md
+  - 验收·装机走查清单: acceptance-checklist.md
   - 验收·B-705 L0 行为: acceptance-B705-L0-behavior.md
   - 验收·B-803 端到端走查: acceptance-B803-e2e-walkthrough.md
   - 附录·任务书原始摘录: mission-excerpt.md

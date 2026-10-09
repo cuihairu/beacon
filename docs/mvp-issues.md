@@ -43,9 +43,10 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-001
 - **内容**：GitHub Actions workflow（windows-latest）：`dotnet build` + `dotnet test`，PR 触发。
 - **验收**：
-  - [ ] PR 上 CI 自动跑 build+test；失败阻断合并
-    - 状态（2026-10-09）：`ci.yml` 已配置 push(main)/pull_request 触发、windows-latest build+test，main 上连绿（37781910707 / 37781345045 均success）；「失败阻断合并」需仓库分支保护把 CI 设为 required check——仓库设置项，非代码缺口，待配置。
-    - 进展（2026-10-10）：main 分支保护已启用（API：allow_force_pushes=false、allow_deletions=false，无 required check/PR 要求——直推流程不受影响）；「CI 设为 required check」仍待定 PR 工作流后一并配（直接 required check 会挡直推）。
+  - [x] PR 上 CI 自动跑 build+test；失败阻断合并
+    - 状态（2026-10-09）：`ci.yml` 已配置 push(main)/pull_request 触发、windows-latest build+test，main 上连绿（37781910707 / 37781345045 均success）。
+    - 进展（2026-10-10）：main 分支保护已启用（API：allow_force_pushes=false、allow_deletions=false，无 required check/PR 要求——直推流程不受影响）。
+    - **拍板（2026-10-10 用户令）**：维持直推现状、**不设 required check**（设了会挡 daily-build 自身推送）；如需再议 PR 工作流再启。
 
 ### B-003 Core 模型与枚举
 - **依赖**：B-001
@@ -408,6 +409,11 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
 
 ---
+
+## 2026-10-10 拍板记录
+- **B-002 CI required check**：维持直推现状、不设 required check（设了会挡 daily-build 自身推送）；如需再议 PR 工作流再启。
+- **状态胶囊默认值**：维持当前实现不改（`ShowCapsule=false` 默认关，装机后设置页可开）。
+- **装机走查引导清单**：44 项验收按 nightly 资产装→验→回执格式整理为 [docs/acceptance-checklist.md](acceptance-checklist.md)，随批落仓。
 
 ## 2026-10-09 实测回执批（小米类型空 / 千问接入 / 检查频率 / 方舟 5h 口径 / tile 名字）
 
