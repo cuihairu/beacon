@@ -36,7 +36,9 @@ internal sealed class PinTile
     {
         Height = TileHeight,
         Padding = new Thickness(10, 0, 10, 0),
-        Background = new SolidColorBrush(SeverityPalette.Rgb(31, 17, 24, 32)),
+        // 实色主题底（对比度可判定）：此前 12% 透明深灰 scrim 叠在窗口/桌面上——
+        // 浅主题 + 浅桌面底时近白 icon 必然发虚（2026-10-09 用户实测「根本看不清」根因）
+        Background = new SolidColorBrush(ThemeColors.Surface()),
     };
     private readonly Ellipse _light = new()
     {
@@ -48,7 +50,7 @@ internal sealed class PinTile
     };
     private readonly TextBlock _label = new()
     {
-        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
+        Foreground = new SolidColorBrush(ThemeColors.Label()),
         FontSize = 12,
         FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         TextTrimming = TextTrimming.CharacterEllipsis,
@@ -56,7 +58,7 @@ internal sealed class PinTile
     };
     private readonly TextBlock _value = new()
     {
-        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+        Foreground = new SolidColorBrush(ThemeColors.Value()),
         FontSize = 11,
         TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center,
@@ -88,13 +90,14 @@ internal sealed class PinTile
 
         // 数据源品牌图标（用户令：悬浮框必须带对应 icon，不然分不清哪个悬浮框是哪个源）：
         // BrandIcons 命中 → 品牌 path（智谱 z/claude/jenkins…）；未收录/渲染失败 → 通用 globe 字形兜底
-        var icon = BrandIconFactory.TryCreate(connectionType, 14, SeverityPalette.Rgb(255, 226, 232, 240))
+        // 前景主题感知（浅底深字/深底亮字，≥4.5:1）——近白 icon 在浅底上不可辨（用户实测「根本看不清」）
+        var icon = BrandIconFactory.TryCreate(connectionType, 14, ThemeColors.Label())
             ?? new FontIcon
             {
                 Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底
                 FontSize = 12,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+                Foreground = new SolidColorBrush(ThemeColors.Value()),
             };
 
         var grid = new Grid { ColumnSpacing = 6 };

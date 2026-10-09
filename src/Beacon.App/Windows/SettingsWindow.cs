@@ -242,12 +242,14 @@ internal sealed class SettingsWindow : Window
             "http" => SeverityPalette.Rgb(255, 63, 185, 80),
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
-        var content = BrandIconFactory.TryCreate(module.ConnectionType, 15, SeverityPalette.Rgb(255, 255, 255, 255), _runtime.Logger)
+        // icon 前景按 tint 亮度选白/黑（≥4.5:1）：mimo 橙/http 绿/opencode 青等亮底白字仅 ≈2.9:1，必须用黑
+        var iconForeground = ThemeColors.IconOnTint(tint);
+        var content = BrandIconFactory.TryCreate(module.ConnectionType, 15, iconForeground, _runtime.Logger)
             ?? new FontIcon
             {
                 Glyph = module.Glyph,
                 FontSize = 15,
-                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255)),
+                Foreground = new SolidColorBrush(iconForeground),
             };
         return new Border
         {
