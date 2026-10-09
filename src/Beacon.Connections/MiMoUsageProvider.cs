@@ -27,12 +27,14 @@ public static class MiMoWidgetDescriptors
 }
 
 /// <summary>
-/// mimo.usage（positioning P0 #5）：小米 MiMo 开放平台用量卡——**三档探测后如实降级**（2026-10-08 实测）：
-/// ①官方用量 API：无（推理域 token-plan-cn.xiaomimimo.com 的 /usages、/usage 均 404，/v1/models 200 有效）；
-/// ②控制台口复用：platform.xiaomimimo.com 需登录态，无公开接口形状；③本地统计兜底：Beacon 不经手推理流量，
-/// 无本地会话文件可计。故本卡显示**官方模型目录真数据**（/v1/models 模型数），用量口径如实标注
-/// 「官方未开放」——不编造任何数字。日后官方开放用量口，可在连接 Settings 填 usage_endpoint
-/// （GET + Bearer），命中即切换显示该端点的 JSON 顶层摘要（原样透传不加工）。
+/// mimo.usage（positioning P0 #5）：小米 MiMo 开放平台用量卡——**官方无额度接口，如实降级**（2026-10-08 首测、
+/// 2026-10-10 复核：推理域 token-plan-cn.xiaomimimo.com 的 /usages、/usage、/quota、/balance 等 7 端点全 404，
+/// /v1/models 与 /v1/chat/completions 响应均无限流头；控制台需登录态）。
+/// 额度位按用户令（2026-10-10）给真实口径：连接 Settings 填 usage_endpoint（GET + Bearer）指向本机计数源，
+/// 防御解析 total_calls/window_calls/window_minutes（{"data":{...}} 包裹剥开）→「本机累计 N 次 · 近M分 K 次」，
+/// 数据源注明本机计数；无计数键则原样透传（不加工）。两者皆无 → 额度位「无额度口」+ 模型数降 Summary 次行
+/// ——模型数是目录不是额度，不得冒充（用户令）。Key 本机（litellm/relay）无调用方：litellm 的
+/// mimo-v2.6-flash-free 走 DeepSeek serverless 中转非小米直连，小米 key 真实用量对本机组件不可见。
 /// </summary>
 public sealed class MiMoUsageProvider : IWidgetProvider
 {
@@ -84,7 +86,10 @@ public sealed class MiMoUsageProvider : IWidgetProvider
     {
         var key = await RequireKeyAsync(connection, context).ConfigureAwait(false);
         var body = await SendAsync(usageEndpoint, key, cancellationToken).ConfigureAwait(false);
-        return ToCustomState(widget, connection, usageEndpoint, body);
+        // 本机计数形状（防御键名）优先：计数才是真实用量口径；认不出再原样透传
+        return ParseLocalCount(body) is { } count
+            ? ToLocalCountState(widget, connection, usageEndpoint, count)
+            : ToCustomState(widget, connection, usageEndpoint, body);
     }
 
     private async Task<string> SendAsync(string url, string key, CancellationToken cancellationToken)
@@ -115,17 +120,102 @@ public sealed class MiMoUsageProvider : IWidgetProvider
             ConnectionId = connection.Id,
             Severity = Severity.Info,
             Lifecycle = LifecycleState.Success,
-            Summary = $"{head} · {catalog.Models} 模型可用 · 用量口径官方未开放",
+            // 2026-10-10 用户令：模型数不是额度，不得占额度位——额度位给「无额度口」，模型数降 Summary 次行
+            Summary = $"{head} · 官方无额度接口 · {catalog.Models} 模型可用",
             DetailUrl = "https://platform.xiaomimimo.com",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["value_text"] = "无额度口", // 额度位显式文本（WidgetValueHint 优先取）
                 ["models"] = catalog.Models.ToString("0", CultureInfo.InvariantCulture),
                 ["ids"] = string.Join(",", catalog.Ids),
-                ["usage_source"] = "unavailable", // 如实口径：官方未开放用量接口，不编数
+                ["usage_source"] = "unavailable", // 如实口径：官方无额度接口（限流头/端点均实测无），不编数
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
     }
+
+    /// <summary>本机计数卡：额度位给真实口径——本机累计/窗口内调用次数 + 数据源注明（2026-10-10 用户令）。</summary>
+    internal static WidgetState ToLocalCountState(WidgetConfig widget, ConnectionConfig connection, string endpoint, MiMoLocalCount count)
+    {
+        var head = widget.Config.GetValueOrDefault("label") ?? "MiMo";
+        var window = count.WindowMinutes is { } minutes && count.WindowCalls is { } windowCalls
+            ? $" · 近{minutes:0}分 {windowCalls:0} 次"
+            : "";
+        return new WidgetState
+        {
+            WidgetId = widget.Id,
+            WidgetType = MiMoWidgetDescriptors.UsageType,
+            ConnectionId = connection.Id,
+            Severity = Severity.Success,
+            Lifecycle = LifecycleState.Success,
+            Summary = $"{head} · 本机累计 {count.TotalCalls:0} 次{window} · 官方无额度接口（本机计数）",
+            DetailUrl = "https://platform.xiaomimimo.com",
+            Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["total_calls"] = count.TotalCalls.ToString("0", CultureInfo.InvariantCulture),
+                ["window_calls"] = count.WindowCalls?.ToString("0", CultureInfo.InvariantCulture) ?? "",
+                ["window_minutes"] = count.WindowMinutes?.ToString("0", CultureInfo.InvariantCulture) ?? "",
+                ["endpoint"] = endpoint, // 数据源注明：计数来自连接配置的用量端点
+                ["usage_source"] = "local_count",
+            },
+            FetchedAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    /// <summary>本机计数形状（防御键名，纯函数供单测）：total_calls 必有，窗口可选；data 包裹层剥开。</summary>
+    internal static MiMoLocalCount? ParseLocalCount(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var envelope)
+                && envelope.ValueKind == JsonValueKind.Object)
+            {
+                root = envelope; // {"data":{...}} 包裹层
+            }
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+            var total = ReadLong(root, "total_calls", "calls_total", "total_count", "count");
+            if (total is not { } totalCalls)
+            {
+                return null; // 无计数键：不是本计数形状，交回透传
+            }
+            return new MiMoLocalCount(
+                totalCalls,
+                ReadLong(root, "window_calls", "recent_calls"),
+                ReadLong(root, "window_minutes", "window_min"));
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static long? ReadLong(JsonElement element, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (!element.TryGetProperty(key, out var property))
+            {
+                continue;
+            }
+            if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var numeric))
+            {
+                return numeric;
+            }
+            if (property.ValueKind == JsonValueKind.String
+                && long.TryParse(property.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            {
+                return parsed;
+            }
+        }
+        return null;
+    }
+
+    public sealed record MiMoLocalCount(long TotalCalls, long? WindowCalls, long? WindowMinutes);
 
     /// <summary>自定义用量端点命中：原样透传 JSON 顶层（不加工不估价），口径标注自定义。</summary>
     internal static WidgetState ToCustomState(WidgetConfig widget, ConnectionConfig connection, string endpoint, string body)

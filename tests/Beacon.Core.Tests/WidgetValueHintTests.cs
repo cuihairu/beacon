@@ -48,9 +48,12 @@ public sealed class WidgetValueHintTests
         { State("Claude · tokens", new() { ["tokens_in"] = "999", ["tokens_out"] = "1" }), "1K tok" },
         // codex.usage：本机会话累计 token
         { State("Codex · 3 会话", new() { ["tokens_in"] = "1234567" }), "1.2M tok" },
-        // mimo.usage：模型目录
-        { State("MiMo · 模型目录", new() { ["models"] = "12" }), "12 模型" },
-        // 优先级：percent 压过其余
+        // mimo.usage：本机计数（2026-10-10 用户令：额度位给真实口径，模型数不得占额度位）
+        { State("MiMo · 本机累计 128 次", new() { ["total_calls"] = "128" }), "128 次" },
+        { State("MiMo · 大数", new() { ["total_calls"] = "1234567" }), "1.2M 次" },
+        // mimo.usage：无计数源时 provider 显式 value_text（模型数降 Summary 次行）
+        { State("MiMo · 官方无额度接口 · 8 模型可用", new() { ["value_text"] = "无额度口", ["models"] = "8" }), "无额度口" },
+        // 优先级：percent 压过 models
         { State("x", new() { ["percent"] = "50", ["models"] = "9" }), "50%" },
         // stale 优先于 Summary 兜底，但压不过已有数值
         { State("卡住了", stale: true), "stale" },

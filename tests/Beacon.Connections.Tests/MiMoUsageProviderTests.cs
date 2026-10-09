@@ -80,16 +80,54 @@ public sealed class MiMoUsageProviderTests
 
         Assert.NotNull(state);
         Assert.Equal(Severity.Info, state!.Severity);
-        Assert.Contains("2 模型可用", state.Summary);
-        Assert.Contains("官方未开放", state.Summary);
+        Assert.Contains("2 模型可用", state.Summary); // 模型数留次行信息
+        Assert.Contains("官方无额度接口", state.Summary);
         Assert.Equal("unavailable", state.Payload["usage_source"]); // 如实口径：不编数字
-        Assert.Equal("2", state.Payload["models"]);
+        Assert.Equal("无额度口", state.Payload["value_text"]); // 额度位显式文本，模型数不冒充额度
         // 连通性走官方 /models（Bearer 验证：MiMo key 实测 200）
         Assert.NotNull(captured);
         Assert.EndsWith("/models", captured!.RequestUri!.AbsolutePath);
         Assert.Equal("Bearer", captured.Headers.Authorization?.Scheme);
         Assert.Equal("sk-test", captured.Headers.Authorization?.Parameter);
     }
+
+    [Fact]
+    public async Task GetStateAsync_CountShapedUsage_ShowsLocalCalls()
+    {
+        var usageUrl = "https://count.local/mimo/usage";
+        var (provider, http) = Faked(request =>
+            request.RequestUri!.AbsolutePath.EndsWith("/usage")
+                ? new FakeHttpResponse(HttpStatusCode.OK, """{"total_calls":128,"window_calls":6,"window_minutes":60}""")
+                : new FakeHttpResponse(HttpStatusCode.OK, ModelsBody));
+
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["usage_endpoint"] = usageUrl,
+        });
+
+        var state = await provider.GetStateAsync(Widget(), connection, Ctx("sk-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Contains("本机累计 128 次", state!.Summary);
+        Assert.Contains("近60分 6 次", state.Summary);
+        Assert.Contains("官方无额度接口", state.Summary); // 数据源注明
+        Assert.Equal("128", state.Payload["total_calls"]);
+        Assert.Equal("local_count", state.Payload["usage_source"]);
+        Assert.Equal(usageUrl, state.Payload["endpoint"]);
+    }
+
+    [Theory]
+    [InlineData("""{"calls_total": 7}""", 7)] // 防御键名
+    [InlineData("""{"data":{"count":3}}""", 3)] // 包裹层剥开
+    [InlineData("""{"total_calls":"55"}""", 55)] // 字符串数字
+    public void ParseLocalCount_DefensiveKeys(string body, long expected)
+        => Assert.Equal(expected, MiMoUsageProvider.ParseLocalCount(body)!.TotalCalls);
+
+    [Theory]
+    [InlineData("""{"used": 5, "limit": 10}""")] // 非计数形状
+    [InlineData("""not json""")]
+    public void ParseLocalCount_Unrecognized_ReturnsNull(string body)
+        => Assert.Null(MiMoUsageProvider.ParseLocalCount(body));
 
     [Fact]
     public async Task GetStateAsync_CustomUsageEndpoint_PassthroughBody()

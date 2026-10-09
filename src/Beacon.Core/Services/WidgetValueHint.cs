@@ -11,11 +11,19 @@ namespace Beacon.Core.Services;
 /// </summary>
 public static class WidgetValueHint
 {
-    /// <summary>取 provider 主数值：按「计数 → 已用% → 剩余% → 套餐 → 金额 → token → 目录」优先级链。</summary>
+    /// <summary>取 provider 主数值：按「显式文本 → 计数 → 已用% → 剩余% → 套餐 → 金额 → token」优先级链。</summary>
     public static string Of(WidgetState state)
     {
         var payload = state.Payload;
 
+        if (Text(payload, "value_text") is { } explicitValue)
+        {
+            return explicitValue; // provider 显式短文本（如 mimo 无额度口时的「无额度口」——模型数不得冒充额度）
+        }
+        if (Text(payload, "total_calls") is { } calls)
+        {
+            return $"{FormatCount(LongOrZero(calls))} 次"; // mimo.usage 本机计数（2026-10-10 用户令：额度位给真实口径）
+        }
         if (Text(payload, "open_count") is { } open)
         {
             return $"{open} open"; // github.pull_requests
@@ -68,10 +76,8 @@ public static class WidgetValueHint
             // claude/codex：进出 token 合计（K 短格式，tile 数值位宽度预算内）
             return $"{FormatCount(LongOrZero(tokensIn) + LongOrZero(tokensOut))} tok";
         }
-        if (Text(payload, "models") is { } models)
-        {
-            return $"{models} 模型"; // mimo.usage：模型目录（官方未开放用量口）
-        }
+        // models（模型目录数）不再映射数值位：2026-10-10 用户令——模型数不是额度，不得占额度位
+        // （mimo 无计数源时由 provider 显式给 value_text「无额度口」，模型数留在 Summary 次行）
         if (state.IsStale)
         {
             return "stale";

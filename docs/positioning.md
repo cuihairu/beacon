@@ -166,9 +166,11 @@ Codex    71% used   weekly 8h 后重置
   （open.volcengineapi.com，V4 签名火山变体；凭据为控制台 AK/SK 一次粘贴 `AccessKey:SecretKey` 只进 DPAPI——
   推理 ARK_API_KEY 实测被管控面 400 拒绝，不能互推），`Result.QuotaUsage[]` 归一化 5h/周/月三窗口已用百分比
   （接口只给百分比，绝对数不经此口）；空数组=未订阅/已回收，渲染「无套餐」Info 卡非错误；
-- **小米 MiMo 模型目录卡（AI Usage 九家之一）**：组件类型 `mimo.usage`——官方未开放用量接口（推理域
-  /usage 路由实测 404），卡片显示 `/v1/models` 模型目录真数据并如实标注「用量口径官方未开放」（不编数字）；
-  连接 Settings 可填 `usage_endpoint`，官方日后开放即透传显示；
+- **小米 MiMo 用量卡（AI Usage 九家之一）**：组件类型 `mimo.usage`——**官方无额度接口**（2026-10-08 首测、
+  2026-10-10 复核：/usage 等 7 端点全 404，/models 与 /chat/completions 响应均无限流头）。按用户令
+  （2026-10-10）模型数**不得占额度位**：无计数源时额度位显式「无额度口」、模型数降 Summary 次行；
+  连接 Settings 填 `usage_endpoint` 指向本机计数源（防御解析 total_calls/window_calls/window_minutes）
+  即切「本机累计 N 次 · 近M分 K 次」+ 数据源注明本机计数；
 - **OpenAI Codex 本机统计（AI Usage 九家之一）**：组件类型 `codex.usage`——读本机
   `~/.codex/sessions/**/rollout-*.jsonl` 的 token_count 事件（total_token_usage 为会话内累计值，每文件取末条求和），
   零凭据零网络，卡面如实标注「本地统计」（ChatGPT OAuth 官方用量口与「连接+凭据」模型不同构，暂不接）；
@@ -218,8 +220,9 @@ Codex    71% used   weekly 8h 后重置
   只授权模型调用、官方额度查询 REST 口仍未开放，已按「目录真数据 + 自定义用量端点」落 `qwen.usage`
   （见 §8 AI Usage 第十家）；按量计费用户的账户余额仍走阿里云 BSS OpenAPI `QueryAccountBalance`（暂缓不变）。
 - **小米 MiMo**：API 开放平台（platform.xiaomimimo.com）已开放、模型权重 MIT 开源，但**未见公开的余额/用量查询接口**
-  （2026-10-08 实测推理域 /usage 404）——已先落 `mimo.usage` 模型目录卡（见 §8）；真正的用量接口公开后，
-  在连接 Settings 填 `usage_endpoint` 或按 bigmodel/kimi 同构升级。
+  （2026-10-10 复核：/usage /quota /balance 等 7 端点全 404，响应无限流头）——`mimo.usage` 已按「无额度口 +
+  本机计数」落（见 §8）；官方日后开放即按 bigmodel/kimi 同构升级。另注：小米 key 本机（litellm/relay）无调用方，
+  litellm 的 mimo-v2.6-flash-free 走 DeepSeek serverless 中转非小米直连。
 - **Moonshot 开放平台余额**（区别于 Kimi For Coding 套餐）：`GET https://api.moonshot.cn/v1/users/me/balance`
   Bearer 认证，响应 `{code:0, data:{available_balance}}`（dsh-plugin-llm-balance 验证）——端点已确认，后续按 deepseek 同构接入。
 - **OpenAI Codex 用量**：社区走 ChatGPT OAuth（`chatgpt.com/backend-api/wham/usage`，5h/周/月限额+Credits），
@@ -420,7 +423,8 @@ Codex    71% used   weekly 8h 后重置
 `kimi.coding` 摘要形如 `Pro · 5h 剩25% · 周 剩55%`，剩余百分比越低越差。
 `deepseek.balance` 摘要形如 `DeepSeek · ¥110.00（含赠 ¥10.00）`，币种 CNY/USD 自适应。
 `ark.usage` 摘要形如 `方舟 · 5h 42% · 周 8% · 月 3%`（接口只给百分比，级别取各窗口最差者过阈值）；`mimo.usage`
-摘要形如 `MiMo · 3 模型可用 · 用量口径官方未开放`；`codex.usage` 摘要形如 `Codex · 今日 · 8 会话 · 12.3K tok · 本地统计`
+摘要形如 `MiMo · 本机累计 128 次 · 近60分 6 次 · 官方无额度接口（本机计数）`（配计数源）或
+`MiMo · 官方无额度接口 · 8 模型可用`（模型数次行，额度位「无额度口」）；`codex.usage` 摘要形如 `Codex · 今日 · 8 会话 · 12.3K tok · 本地统计`
 （`days` 默认 7，`days=1` 显示「今日」）；`copilot.usage` 摘要形如 `Copilot · Pro $10/月 · 高级 1/1500 · 聊天 ∞ · 补全 ∞ · 11-01 重置`
 （级别取高级请求已用百分比过阈值）；`opencode.usage` 摘要形如 `OpenCode Go $10/月 · $0.00 · 无上限 · 11-01 重置`
 （有上限时 `已用 / 上限` 同段展示）。

@@ -8,7 +8,7 @@
 #     硬断言反馈含「连接正常」→ 展开组件「连接」下拉断言该连接在列→截图；
 #     再 UIA 走一遍保存连接（save-flow），硬断言新连接**立即**出现在下拉（下拉不刷新回归在这里现形）；
 #     组件向导「类型」下拉逐家断言非空且含本家条目（小米类型空回归在这里现形）；预置五张钉选
-#     provider tile——UIA 读 tile 文本硬断言名字（火山方舟/DeepSeek/阿里千问）与数值（42.5/¥420.5），
+#     provider tile——UIA 读 tile 文本硬断言名字（火山方舟/DeepSeek/阿里千问）与数值（42.5/¥420.5/mimo 本机计数 128 次），
 #     字段名（usage/quota）冒充名字在这里现形；设置常规页改「检查频率」→15 秒——config.json 落盘
 #     + 日志「检查频率变更为 15s」双硬断言（轮询节奏可配证据）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
@@ -143,7 +143,7 @@ function Write-ProviderConfig
 [
   { "id": "ark-main", "type": "ark", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ark-main", "enabled": true },
   { "id": "kimi-main", "type": "kimi", "endpoint": "http://127.0.0.1:18081/coding/v1/usages", "credentialRef": "conn:kimi-main", "enabled": true },
-  { "id": "mimo-main", "type": "mimo", "endpoint": "http://127.0.0.1:18081/v1", "credentialRef": "conn:mimo-main", "enabled": true },
+  { "id": "mimo-main", "type": "mimo", "endpoint": "http://127.0.0.1:18081/v1", "credentialRef": "conn:mimo-main", "enabled": true, "settings": { "usage_endpoint": "http://127.0.0.1:18081/mimo/usage" } },
   { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true },
   { "id": "qwen-main", "type": "qwen", "endpoint": "http://127.0.0.1:18081/compatible-mode/v1", "credentialRef": "conn:qwen-main", "enabled": true, "settings": { "usage_endpoint": "http://127.0.0.1:18081/qwen/usage" } }
 ]
@@ -198,6 +198,7 @@ function Start-MockServer
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
         $mimo = '{"data":[{"id":"mimo-v1"},{"id":"mimo-mini"}]}'
+        $mimoUsage = '{"total_calls":128,"window_calls":6,"window_minutes":60}'
         $qwenModels = '{"object":"list","data":[{"id":"qwen3-coder-plus"},{"id":"qwen3-max"}]}'
         $qwenUsage = '{"percent":42.5,"remaining_credits":1150,"total_credits":2000,"reset_at":"2026-10-19T00:00:00+08:00"}'
         while ($listener.IsListening)
@@ -211,6 +212,7 @@ function Start-MockServer
                     "/coding/v1/usages" { $body = $kimi }
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
+                    "/mimo/usage" { $body = $mimoUsage }
                     "/compatible-mode/v1/models" { $body = $qwenModels }
                     "/qwen/usage" { $body = $qwenUsage }
                     default { $body = $ark } # POST /?Action=GetCodingPlanUsage
@@ -557,7 +559,7 @@ try
     Save-FullScreenshot "D-provider-tiles-desktop.png"
     if (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
-        foreach ($expected in @("火山方舟", "DeepSeek", "千问", "42.5", "420.5"))
+        foreach ($expected in @("火山方舟", "DeepSeek", "千问", "42.5", "420.5", "128 次"))
         {
             $hit = $tileTexts | Where-Object { $_ -like "*$expected*" } | Select-Object -First 1
             if (!$hit)

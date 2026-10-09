@@ -444,6 +444,28 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **结论**：DeepSeek 按量计费本无进度（`Progress=null` 从第一天如此，非回归）——进度条代码不动；
   余额渲染链已有（tile 值位 ¥total），CI tile 断言含「¥420.5」佐证不空白。
 
+### 批3-补2 小米额度位（模型数不得冒充额度，2026-10-10）
+- **数据源复核**：官方无额度接口坐实（/usage /quota /balance 等 7 端点全 404；/models 与 /chat/completions
+  响应均无限流头——需求①两路皆空）。
+- **修复**：额度位改真实口径——①连接「用量端点」指本机计数源（防御解析 total_calls/window_calls/window_minutes，
+  data 包裹剥开）→「本机累计 N 次 · 近M分 K 次 · 官方无额度接口（本机计数）」+ payload 注明 endpoint；②无计数源
+  →额度位显式「无额度口」，模型数降 Summary 次行；WidgetValueHint 删 models→「N 模型」映射（不再占数值位），
+  加 total_calls 计数位与 value_text 显式文本位。
+- **本机计数落地注**：小米 key 本机（litellm/relay/工具配置）无调用方——litellm 的 mimo-v2.6-flash-free 走
+  DeepSeek serverless 中转非小米直连；Windows 端点计数源需自行起计数服务（返回上述 JSON 形状即可挂上）。
+- **验收**：CI mock 计数端点 → tile「小米 MiMo | 128 次」UIA 硬断言 + 近景截图；无计数源卡「无额度口」单测。
+
+### 批3-补3 DeepSeek base 端点丢路径（CI 实证根因，2026-10-10）
+- **现象**：连接测试过、tile 永远「Last update」离线——连接端点填 base 时 HttpEndpoint 整串直用丢默认路径，
+  请求落在 / 上，200 假阳性掩盖解析失败。
+- **修复**：HttpEndpoint 加 endpointOverride（provider 归一化最高优先）；DeepSeek ResolveEndpoint 按 base 语义
+  补 /user/balance（已带路径原样）；TestAsync 加强为 body 语义校验（200 无余额数据 → Degraded，关闭假阳性通道）。
+
+### 批3-补4 CI 中文断言编码（PS 5.1 ANSI 误读，2026-10-10）
+- **根因**：app 日志为 UTF-8 无 BOM，PS 5.1 `Get-Content -Raw` 默认按 ANSI 读成乱码——中文断言必失配
+  （config 断言纯 ASCII 照常过，极具迷惑性）。
+- **修复**：日志断言 `-Encoding UTF8`；app 日志随 artifact 归档（断言失败可直读现场，不再盲猜）。
+
 ---
 
 ## 附：MVP 明确不做（评审基线）
