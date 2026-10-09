@@ -245,10 +245,10 @@ public sealed class HttpStatusProviderTests
         var provider = new HttpConnectionProvider(http);
 
         http.Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, "{}");
-        var healthy = await provider.TestAsync(Connection(), Ctx(), CancellationToken.None);
+        var healthy = (await provider.TestAsync(Connection(), Ctx(), CancellationToken.None)).Health;
 
         http.Responder = _ => new FakeHttpResponse(HttpStatusCode.Unauthorized, "{}");
-        var unauthorized = await provider.TestAsync(Connection(), Ctx(), CancellationToken.None);
+        var unauthorized = (await provider.TestAsync(Connection(), Ctx(), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Healthy, healthy);
         Assert.Equal(ConnectionHealthState.Unauthorized, unauthorized);

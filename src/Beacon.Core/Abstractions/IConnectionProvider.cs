@@ -13,7 +13,15 @@ public interface IConnectionProvider
 {
     string ConnectionType { get; }
 
-    Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken);
+    Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken);
+}
+
+/// <summary>连接测试结果：健康态 + 失败原因（Detail 原样透出给设置页反馈——「降级（限流等）」这类
+/// 通用文案吞掉真实原因（凭据格式/4xx 响应体/响应结构），用户无法判断「明明连上了却报降级」到底
+/// 是哪一环。Healthy 时 Detail 为 null）。</summary>
+public readonly record struct ConnectionTestResult(ConnectionHealthState Health, string? Detail)
+{
+    public static ConnectionTestResult Ok() => new(ConnectionHealthState.Healthy, null);
 }
 
 /// <summary>Widget Provider：把外部数据映射为统一 WidgetState（Severity/Lifecycle 唯一口径）。

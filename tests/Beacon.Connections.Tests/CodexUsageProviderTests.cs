@@ -177,9 +177,9 @@ public sealed class CodexUsageProviderTests
         var dir = NewSessionDir();
         try
         {
-            Assert.Equal(ConnectionHealthState.Healthy, await provider.TestAsync(Connection(dir), Ctx(), CancellationToken.None));
-            Assert.Equal(ConnectionHealthState.Degraded, await provider.TestAsync(
-                Connection(Path.Combine(Path.GetTempPath(), "beacon-nope-" + Guid.NewGuid().ToString("N"))), Ctx(), CancellationToken.None));
+            Assert.Equal(ConnectionHealthState.Healthy, (await provider.TestAsync(Connection(dir), Ctx(), CancellationToken.None)).Health);
+            Assert.Equal(ConnectionHealthState.Degraded, (await provider.TestAsync(
+                Connection(Path.Combine(Path.GetTempPath(), "beacon-nope-" + Guid.NewGuid().ToString("N"))), Ctx(), CancellationToken.None)).Health);
         }
         finally
         {

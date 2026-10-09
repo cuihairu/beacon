@@ -147,7 +147,7 @@ public sealed class MiMoUsageProviderTests
         http.Enqueue(HttpStatusCode.OK, ModelsBody);
         var provider = new MiMoConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx("sk-test"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx("sk-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Healthy, health);
     }
@@ -159,7 +159,7 @@ public sealed class MiMoUsageProviderTests
         http.Enqueue(HttpStatusCode.Unauthorized, """{"error":{"message":"invalid key"}}""");
         var provider = new MiMoConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx("sk-test"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx("sk-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
     }

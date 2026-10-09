@@ -1100,14 +1100,18 @@ internal sealed class SettingsWindow : Window
         }
         try
         {
-            var health = await provider.TestAsync(connection, new ConnectionContext { Secrets = _runtime.Secrets }, CancellationToken.None);
+            var result = await provider.TestAsync(connection, new ConnectionContext { Secrets = _runtime.Secrets }, CancellationToken.None);
+            var health = result.Health;
+            // Detail 原样透出：通用文案（「降级（限流等）」）吞掉真实原因（凭据格式/4xx 响应体/响应结构），
+            // 用户无法判断「明明连上了却报降级」是哪一环——真实原因必须可见（2026-10-09 用户实测反馈）
+            var detail = string.IsNullOrEmpty(result.Detail) ? "" : $"：{result.Detail}";
             Feedback(_connFeedback, health switch
             {
                 ConnectionHealthState.Healthy => $"✓ {connection.Id} 连接正常——在下方组件向导选该连接，或用「一键添加」即可上板。",
-                ConnectionHealthState.Degraded => $"△ {connection.Id} 降级（限流等）——仍可添加组件上板。",
-                ConnectionHealthState.Offline => $"✗ {connection.Id} 不可达。",
-                ConnectionHealthState.Unauthorized => $"✗ {connection.Id} 认证失败，检查 token。",
-                _ => $"✗ {connection.Id} 状态未知。",
+                ConnectionHealthState.Degraded => $"△ {connection.Id} 降级{detail}——仍可添加组件上板。",
+                ConnectionHealthState.Offline => $"✗ {connection.Id} 不可达{detail}。",
+                ConnectionHealthState.Unauthorized => $"✗ {connection.Id} 认证失败{detail}，检查 token。",
+                _ => $"✗ {connection.Id} 状态未知{detail}。",
             }, error: health is not ConnectionHealthState.Healthy and not ConnectionHealthState.Degraded);
         }
         catch (Exception exception)

@@ -14,7 +14,7 @@ public sealed class BigModelConnectionProvider : IConnectionProvider
 
     public string ConnectionType => "bigmodel";
 
-    public async Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
+    public async Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
     {
         try
         {
@@ -25,11 +25,11 @@ public sealed class BigModelConnectionProvider : IConnectionProvider
                 cancellationToken,
                 defaultEndpoint: BigModelUsageProvider.DefaultEndpoint,
                 defaultAuthPrefix: "").ConfigureAwait(false);
-            return ConnectionHealthState.Healthy;
+            return ConnectionTestResult.Ok();
         }
         catch (ConnectionException exception)
         {
-            return exception.Health;
+            return new ConnectionTestResult(exception.Health, exception.Message);
         }
     }
 }

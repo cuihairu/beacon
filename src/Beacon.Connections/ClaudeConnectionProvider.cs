@@ -8,8 +8,8 @@ public sealed class ClaudeConnectionProvider : IConnectionProvider
 {
     public string ConnectionType => "claude";
 
-    public Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
+    public Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
         => Task.FromResult(Directory.Exists(ClaudeUsageProvider.ResolveDir(connection))
-            ? ConnectionHealthState.Healthy
-            : ConnectionHealthState.Degraded);
+            ? ConnectionTestResult.Ok()
+            : new ConnectionTestResult(ConnectionHealthState.Degraded, "未找到 Claude 会话目录（Claude Code 未安装或未登录）"));
 }

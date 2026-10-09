@@ -14,16 +14,16 @@ public sealed class HttpConnectionProvider : IConnectionProvider
 
     public string ConnectionType => "http";
 
-    public async Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
+    public async Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
     {
         try
         {
             await HttpEndpoint.FetchAsync(_client, connection, context, cancellationToken).ConfigureAwait(false);
-            return ConnectionHealthState.Healthy;
+            return ConnectionTestResult.Ok();
         }
         catch (ConnectionException exception)
         {
-            return exception.Health; // 与 GitHubConnectionProvider 同口径：测试不抛，返回健康态
+            return new ConnectionTestResult(exception.Health, exception.Message); // 与 GitHubConnectionProvider 同口径：测试不抛，返回健康态
         }
     }
 }

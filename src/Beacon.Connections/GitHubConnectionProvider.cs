@@ -29,7 +29,7 @@ public sealed class GitHubConnectionProvider : IConnectionProvider
 {
     public string ConnectionType => "github";
 
-    public async Task<ConnectionHealthState> TestAsync(
+    public async Task<ConnectionTestResult> TestAsync(
         ConnectionConfig connection,
         ConnectionContext context,
         CancellationToken cancellationToken)
@@ -38,11 +38,11 @@ public sealed class GitHubConnectionProvider : IConnectionProvider
         {
             var client = GitHubClientCache.Get(connection, context);
             await client.GetAsync("/rate_limit", cancellationToken: cancellationToken).ConfigureAwait(false);
-            return ConnectionHealthState.Healthy;
+            return ConnectionTestResult.Ok();
         }
         catch (ConnectionException exception)
         {
-            return exception.Health;
+            return new ConnectionTestResult(exception.Health, exception.Message);
         }
     }
 }

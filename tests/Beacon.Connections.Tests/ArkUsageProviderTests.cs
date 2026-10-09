@@ -231,7 +231,7 @@ public sealed class ArkUsageProviderTests
         http.Enqueue(HttpStatusCode.OK, Body);
         var provider = new ArkConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Healthy, health);
     }
@@ -243,9 +243,36 @@ public sealed class ArkUsageProviderTests
         http.Enqueue(HttpStatusCode.Unauthorized, """{"ResponseMetadata":{"Error":{"Code":"InvalidCredential"}}}""");
         var provider = new ArkConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
+    }
+
+    [Fact]
+    public async Task ConnectionTest_DegradedCarriesRealReason()
+    {
+        // 用户实测「明明连上了却报降级」：通用文案「降级（限流等）」吞掉真实原因——
+        // Detail 必须带出 4xx 响应体/凭据格式/响应结构，设置页才能显示可行动的原因
+        var http = new FakeHttpMessageHandler();
+        http.Enqueue(HttpStatusCode.BadRequest, """{"ResponseMetadata":{"Error":{"Code":"InvalidAuthorization"}}}""");
+        var provider = new ArkConnectionProvider(http);
+
+        var result = await provider.TestAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal(ConnectionHealthState.Degraded, result.Health);
+        Assert.Contains("400", result.Detail);
+        Assert.Contains("InvalidAuthorization", result.Detail);
+    }
+
+    [Fact]
+    public async Task ConnectionTest_MissingCredentialCarriesRealReason()
+    {
+        var provider = new ArkConnectionProvider(new FakeHttpMessageHandler());
+
+        var result = await provider.TestAsync(Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(ConnectionHealthState.Degraded, result.Health);
+        Assert.Contains("AK/SK", result.Detail);
     }
 
     // ---- 响应解析 ----

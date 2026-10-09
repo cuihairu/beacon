@@ -175,8 +175,8 @@ public sealed class ClaudeUsageProviderTests
         try
         {
             Directory.CreateDirectory(temp);
-            var healthy = await provider.TestAsync(Connection(temp), Ctx(), CancellationToken.None);
-            var missing = await provider.TestAsync(Connection(Path.Combine(temp, "nope")), Ctx(), CancellationToken.None);
+            var healthy = (await provider.TestAsync(Connection(temp), Ctx(), CancellationToken.None)).Health;
+            var missing = (await provider.TestAsync(Connection(Path.Combine(temp, "nope")), Ctx(), CancellationToken.None)).Health;
 
             Assert.Equal(ConnectionHealthState.Healthy, healthy);
             Assert.Equal(ConnectionHealthState.Degraded, missing);

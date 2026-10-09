@@ -201,10 +201,10 @@ public sealed class KimiCodingUsageProviderTests
         var provider = new KimiConnectionProvider(http);
 
         http.Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, Body);
-        var healthy = await provider.TestAsync(Connection(), Ctx(), CancellationToken.None);
+        var healthy = (await provider.TestAsync(Connection(), Ctx(), CancellationToken.None)).Health;
 
         http.Responder = _ => new FakeHttpResponse(HttpStatusCode.Unauthorized, "{}");
-        var unauthorized = await provider.TestAsync(Connection(), Ctx(), CancellationToken.None);
+        var unauthorized = (await provider.TestAsync(Connection(), Ctx(), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Healthy, healthy);
         Assert.Equal(ConnectionHealthState.Unauthorized, unauthorized);

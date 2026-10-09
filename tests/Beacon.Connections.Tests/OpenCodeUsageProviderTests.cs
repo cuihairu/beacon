@@ -226,7 +226,7 @@ public sealed class OpenCodeUsageProviderTests
         http.Enqueue(HttpStatusCode.OK, BudgetsBody);
         var provider = new OpenCodeConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx("oc_sk-test"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx("oc_sk-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Healthy, health);
     }
@@ -238,7 +238,7 @@ public sealed class OpenCodeUsageProviderTests
         http.Enqueue(HttpStatusCode.Unauthorized, """{"error":"invalid key"}""");
         var provider = new OpenCodeConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx("oc_sk-test"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx("oc_sk-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
     }

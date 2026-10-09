@@ -199,8 +199,8 @@ public sealed class CodexConnectionProvider : IConnectionProvider
 {
     public string ConnectionType => "codex";
 
-    public Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
+    public Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken)
         => Task.FromResult(Directory.Exists(CodexUsageProvider.ResolveDir(connection))
-            ? ConnectionHealthState.Healthy
-            : ConnectionHealthState.Degraded);
+            ? ConnectionTestResult.Ok()
+            : new ConnectionTestResult(ConnectionHealthState.Degraded, "未找到 Codex 会话目录（Codex 未安装或未登录）"));
 }

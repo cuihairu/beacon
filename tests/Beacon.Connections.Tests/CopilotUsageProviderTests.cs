@@ -246,7 +246,7 @@ public sealed class CopilotUsageProviderTests
         http.Enqueue(HttpStatusCode.OK, UsageBody);
         var provider = new CopilotConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx("ghp-test"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx("ghp-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Healthy, health);
     }
@@ -258,7 +258,7 @@ public sealed class CopilotUsageProviderTests
         http.Enqueue(HttpStatusCode.Unauthorized, """{"message":"Bad credentials"}""");
         var provider = new CopilotConnectionProvider(http);
 
-        var health = await provider.TestAsync(Connection(), Ctx("ghp-test"), CancellationToken.None);
+        var health = (await provider.TestAsync(Connection(), Ctx("ghp-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
     }

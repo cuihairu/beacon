@@ -27,7 +27,7 @@ public sealed class GitHubConnectionProviderTests
         {
             var provider = new GitHubConnectionProvider();
 
-            var health = await provider.TestAsync(Connection, Context(new SecretStoreStub()), CancellationToken.None);
+            var health = (await provider.TestAsync(Connection, Context(new SecretStoreStub()), CancellationToken.None)).Health;
 
             Assert.Equal(ConnectionHealthState.Healthy, health);
             Assert.StartsWith("/rate_limit", handler.Requests[0].RequestUri!.PathAndQuery); // 不占核心配额的端点
@@ -48,7 +48,7 @@ public sealed class GitHubConnectionProviderTests
         {
             var provider = new GitHubConnectionProvider();
 
-            var health = await provider.TestAsync(Connection, Context(new SecretStoreStub()), CancellationToken.None);
+            var health = (await provider.TestAsync(Connection, Context(new SecretStoreStub()), CancellationToken.None)).Health;
 
             Assert.Equal(ConnectionHealthState.Unauthorized, health);
         }
@@ -68,7 +68,7 @@ public sealed class GitHubConnectionProviderTests
         {
             var provider = new GitHubConnectionProvider();
 
-            var health = await provider.TestAsync(Connection, Context(new SecretStoreStub()), CancellationToken.None);
+            var health = (await provider.TestAsync(Connection, Context(new SecretStoreStub()), CancellationToken.None)).Health;
 
             Assert.Equal(ConnectionHealthState.Offline, health);
         }
