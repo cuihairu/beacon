@@ -344,7 +344,24 @@ internal sealed class SettingsWindow : Window
         _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
         page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle } });
         page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认关=桌面零残留，开启即刻生效）。"));
+        page.Children.Add(BuildAboutSection());
         return page;
+    }
+
+    /// <summary>版本信息：nightly exe 盖 0.0.日期+commit（daily-build publish 步），本地构建 0.1.0——
+    /// 装机排障先对构建日期，别再猜装的哪版。</summary>
+    private static UIElement BuildAboutSection()
+    {
+        var informational = System.Reflection.Assembly.GetEntryAssembly()
+            ?.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion;
+        var text = string.IsNullOrEmpty(informational) ? "0.1.0（本地构建）" : informational;
+        return new TextBlock
+        {
+            Text = $"Beacon 版本：{text}",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+        };
     }
 
     // —— 页面：外观 ——
