@@ -814,12 +814,15 @@ internal sealed class SettingsWindow : Window
             _connTypeBox.SelectedIndex = 0;
         }
         _connIdBox = new TextBox { Header = "名称（唯一 Id）", Width = 200, PlaceholderText = ConnectionIdHint(lockType) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connIdBox, "conn-id-box"); // UIA 取证：save-flow 驱动
         _connIdBox.Text = PrefillConnectionId(lockType); // 预填唯一 Id：不改即用，改了以用户为准（不再强制手填）
         _connTypeBox.SelectionChanged += (_, _) => PrefillConnectionIdIfUntouched();
         _connEndpointBox = new TextBox { Header = ConnectionEndpointHeader(lockType), Width = 280, PlaceholderText = ConnectionEndpointHint(lockType) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connEndpointBox, "conn-endpoint-box");
         _connTokenBox = new PasswordBox { Header = ConnectionTokenHeader(lockType), Width = 280 };
 
         _connSaveButton = new Button { Content = "保存连接" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connSaveButton, "conn-save-button");
         _connSaveButton.Click += async (_, _) => await SaveConnectionAsync();
         var cancel = new Button { Content = "取消编辑" };
         cancel.Click += (_, _) => ResetConnectionEditor();
