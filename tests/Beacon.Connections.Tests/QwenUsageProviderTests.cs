@@ -275,4 +275,114 @@ public sealed class QwenUsageProviderTests
         Assert.Equal(ConnectionHealthState.Degraded, result.Health);
         Assert.Contains("401", result.Detail);
     }
+
+    // ---- 配额探针（档③，2026-10-10 网关 429 实证） ----
+
+    private const string ExhaustedBody = """
+        {"code":"Throttling.AllocationQuota","message":"Your token-plan 1-month quota has been exhausted. The quota will reset at 10-19 16:00:00 UTC.","request_id":"x"}
+        """;
+
+    [Fact]
+    public async Task GetStateAsync_QuotaExhausted429_ShowsErrorWithReset()
+    {
+        string? probeBody = null; // 探针请求发完即释放，body 在 Responder 回调里趁活着读
+        var (provider, http) = Faked(request =>
+        {
+            if (!request.RequestUri!.ToString().EndsWith("/models"))
+            {
+                probeBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            }
+            return request.RequestUri!.ToString().EndsWith("/models")
+                ? new FakeHttpResponse(HttpStatusCode.OK, ModelsBody)
+                : new FakeHttpResponse(HttpStatusCode.TooManyRequests, ExhaustedBody);
+        });
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("sk-sp-test"), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Contains("配额已用尽", state.Summary);
+        var resetUtc = QwenUsageProvider.ParseQuotaResetUtc(ExhaustedBody)!;
+        Assert.Contains(resetUtc.Value.LocalDateTime.ToString("MM-dd HH:mm"), state.Summary);
+        Assert.Equal("exhausted", state.Payload["quota_state"]);
+        Assert.Equal("gateway_429", state.Payload["usage_source"]);
+        Assert.Equal(1.0, state.Progress!.Value, 5);
+
+        var probe = Assert.Single(http.Requests, r => !r.RequestUri!.ToString().EndsWith("/models"));
+        Assert.Equal(HttpMethod.Post, probe.Method);
+        Assert.Contains("max_tokens", probeBody);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_Probe404_KeepsCatalogState()
+    {
+        var (provider, _) = Faked(request =>
+            request.RequestUri!.ToString().EndsWith("/models")
+                ? new FakeHttpResponse(HttpStatusCode.OK, ModelsBody)
+                : new FakeHttpResponse(HttpStatusCode.NotFound, """{"error":{"message":"not found"}}"""));
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("sk-sp-test"), CancellationToken.None);
+
+        Assert.Equal(Severity.Info, state!.Severity);
+        Assert.Contains("模型可用", state.Summary);
+        Assert.Equal("unavailable", state.Payload["usage_source"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_Transient429_KeepsCatalogState()
+    {
+        var (provider, _) = Faked(request =>
+            request.RequestUri!.ToString().EndsWith("/models")
+                ? new FakeHttpResponse(HttpStatusCode.OK, ModelsBody)
+                : new FakeHttpResponse(HttpStatusCode.TooManyRequests, """{"code":"Throttling.RateQuota","message":"Requests rate limit exceeded."}"""));
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("sk-sp-test"), CancellationToken.None);
+
+        Assert.Equal(Severity.Info, state!.Severity); // 瞬时限速不翻转 tile
+        Assert.Contains("模型可用", state.Summary);
+    }
+
+    [Fact]
+    public void ParseQuotaExhausted_OpenAIStyleError_UnwrapsAndDetects()
+    {
+        // 日期动态生成（CI 天天跑）：远未来日期 + 跨年边缘（如 12 月 +60 天）都须还原为同一时刻
+        var reset = DateTimeOffset.UtcNow.AddDays(60);
+        var message = $"Your token-plan 1-month quota has been exhausted. The quota will reset at {reset:MM-dd HH:mm:ss} UTC.";
+        var body = "{\"error\":{\"message\":\"" + message + "\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}";
+        var result = QwenUsageProvider.ParseQuotaExhausted(body);
+        Assert.NotNull(result);
+        var expected = new DateTimeOffset(reset.Year, reset.Month, reset.Day, reset.Hour, reset.Minute, reset.Second, TimeSpan.Zero);
+        Assert.Equal(expected, result!.ResetUtc!.Value);
+    }
+
+    [Fact]
+    public void ParseQuotaExhausted_NonExhausted429_ReturnsNull()
+    {
+        Assert.Null(QwenUsageProvider.ParseQuotaExhausted("""{"code":"Throttling.RateQuota","message":"Requests rate limit exceeded."}"""));
+        Assert.Null(QwenUsageProvider.ParseQuotaExhausted("not json at all"));
+    }
+
+    [Fact]
+    public void ParseQuotaResetUtc_PassedReset_RollsToFuture()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var message = $"quota exhausted. The quota will reset at {now.AddYears(-1):MM-dd HH:mm:ss} UTC.";
+        var parsed = QwenUsageProvider.ParseQuotaResetUtc(message);
+        Assert.NotNull(parsed);
+        Assert.True(parsed!.Value > now.AddHours(-1)); // 已过的重置时间顺延，绝不落在过去
+        var source = now.AddYears(-1);
+        Assert.Equal(source.Month, parsed.Value.Month);
+        Assert.Equal(source.Day, parsed.Value.Day);
+    }
+
+    [Fact]
+    public void ParseQuotaResetUtc_FutureReset_RecoversExactMoment()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var future = now.AddDays(10);
+        var message = $"quota exhausted. The quota will reset at {future:MM-dd HH:mm:ss} UTC.";
+        var parsed = QwenUsageProvider.ParseQuotaResetUtc(message);
+        var expected = new DateTimeOffset(future.Year, future.Month, future.Day, future.Hour, future.Minute, future.Second, TimeSpan.Zero);
+        Assert.Equal(expected, parsed);
+    }
 }
