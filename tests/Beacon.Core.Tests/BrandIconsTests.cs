@@ -69,4 +69,21 @@ public sealed class BrandIconsTests
             Assert.True(figures.Count > 0, $"{brand} 的 path 解析不出任何图形");
         }
     }
+
+    [Fact]
+    public void PickerKeys_AllResolve_NoDuplicates_LeadsWithGenericSet()
+    {
+        // 自选图标集（icon 字段下拉）：每个键必须可渲染、不重复；通用集（box/bolt/…）在前——
+        // 打包机等自定义组件第一眼看到的是泛型图标而非品牌标
+        var keys = BrandIcons.PickerKeys;
+        Assert.True(keys.Count >= 16, $"选择器键过少：{keys.Count}");
+        Assert.Equal(keys.Count, keys.Distinct().Count());
+        foreach (var key in keys)
+        {
+            Assert.True(BrandIcons.TryGet(key, out var path), $"选择器键 {key} 无对应 path");
+            Assert.False(string.IsNullOrWhiteSpace(path));
+        }
+        Assert.Equal("box", keys[0]); // 通用集打头
+        Assert.Contains("github", keys); // 品牌标仍可选
+    }
 }

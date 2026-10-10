@@ -253,4 +253,21 @@ public sealed class HttpStatusProviderTests
         Assert.Equal(ConnectionHealthState.Healthy, healthy);
         Assert.Equal(ConnectionHealthState.Unauthorized, unauthorized);
     }
+
+    [Fact]
+    public void Descriptors_IconField_CarriesPickerChoicesAllResolvable()
+    {
+        // 自选图标（用户令 2026-10-10：图标要自带可选）——icon 字段 Choices 全部能渲染
+        foreach (var descriptor in HttpWidgetDescriptors.All)
+        {
+            var icon = Assert.Single(descriptor.Fields, f => f.Key == "icon");
+            Assert.NotNull(icon.Choices);
+            Assert.True(icon.Choices!.Count >= 16);
+            foreach (var choice in icon.Choices)
+            {
+                Assert.True(Beacon.Core.Services.BrandIcons.TryGet(choice, out var path), $"{descriptor.Type} 选择项 {choice} 无 path");
+                Assert.False(string.IsNullOrWhiteSpace(path));
+            }
+        }
+    }
 }

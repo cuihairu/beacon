@@ -13,6 +13,9 @@ public interface IConfigurationStore
 
     PinsConfig Pins { get; }
 
+    /// <summary>自定义动作库（actions.json）：用户在设置里定义的通用动作（HTTP/Webhook/本地命令）。</summary>
+    IReadOnlyList<ActionConfig> Actions { get; }
+
     void LoadAll();
 
     void SaveApp();
@@ -23,6 +26,8 @@ public interface IConfigurationStore
 
     void SavePins();
 
+    void SaveActions();
+
     void UpsertConnection(ConnectionConfig connection);
 
     void RemoveConnection(string connectionId);
@@ -31,7 +36,13 @@ public interface IConfigurationStore
 
     void RemoveWidget(string widgetId);
 
+    void UpsertAction(ActionConfig action);
+
+    void RemoveAction(string actionId);
+
     ConnectionConfig? FindConnection(string? connectionId);
 
     WidgetConfig? FindWidget(string widgetId);
+
+    ActionConfig? FindAction(string actionId);
 }

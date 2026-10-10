@@ -1,6 +1,15 @@
 namespace Beacon.Core.Models;
 
-public sealed record WidgetFieldDescriptor(string Key, string DisplayName, bool Required = false, string? Placeholder = null);
+/// <summary>
+/// 组件字段元数据。Choices 非空 = 下拉选择（固定候选集，如内置图标键）；
+/// 空 = 自由文本。仅 UI 元数据，不落盘。
+/// </summary>
+public sealed record WidgetFieldDescriptor(
+    string Key,
+    string DisplayName,
+    bool Required = false,
+    string? Placeholder = null,
+    IReadOnlyList<string>? Choices = null);
 
 /// <summary>Widget 类型元数据：驱动 Settings 向导与 L0 准入（pinSupported，RFC §6.2.5）。</summary>
 public sealed record WidgetTypeDescriptor

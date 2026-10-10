@@ -242,4 +242,46 @@ public sealed class JsonConfigurationStoreTests
         Assert.Equal(12, tile.Layout.OffsetDips.X);
         Assert.False(tile.Layout.Collapsed);
     }
+
+    [Fact]
+    public void Actions_RoundTrip_UpsertAndRemovePersistAcrossReload()
+    {
+        // 自定义动作库（actions.json）：局域网打包机「触发打包」等用户自建动作跨重启可用
+        using var dir = new TempDir();
+        var first = new JsonConfigurationStore(dir.Path);
+        first.UpsertAction(new ActionConfig
+        {
+            Id = "a-build",
+            Type = "http",
+            Name = "触发打包",
+            RequireConfirmation = true,
+            Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["url"] = "http://192.168.5.9:8080/build",
+                ["method"] = "POST",
+                ["body"] = """{"job":"release"}""",
+                ["widgetType"] = "http.status",
+            },
+        });
+        first.UpsertAction(new ActionConfig { Id = "a-cmd", Type = "local.command", Name = "清理缓存", RequireConfirmation = false });
+
+        var second = new JsonConfigurationStore(dir.Path);
+        second.LoadAll();
+
+        Assert.Equal(2, second.Actions.Count);
+        var build = Assert.Single(second.Actions, a => a.Id == "a-build");
+        Assert.Equal("触发打包", build.Name);
+        Assert.Equal("POST", build.Parameters["method"]);
+        Assert.Equal("http.status", build.Parameters["widgetType"]);
+        Assert.True(build.RequireConfirmation);
+        Assert.False(Assert.Single(second.Actions, a => a.Id == "a-cmd").RequireConfirmation);
+
+        second.RemoveAction("a-cmd");
+        var third = new JsonConfigurationStore(dir.Path);
+        third.LoadAll();
+        Assert.Single(third.Actions);
+        Assert.Equal("a-build", third.Actions[0].Id);
+        Assert.NotNull(third.FindAction("a-build"));
+        Assert.Null(third.FindAction("a-cmd"));
+    }
 }

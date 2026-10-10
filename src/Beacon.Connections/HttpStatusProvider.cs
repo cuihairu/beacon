@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -19,6 +20,7 @@ public static class HttpWidgetDescriptors
         Fields =
         [
             new WidgetFieldDescriptor("label", "显示名", Placeholder: "打包机 A"),
+            new WidgetFieldDescriptor("icon", "图标", Placeholder: "默认按连接品牌", Choices: BrandIcons.PickerKeys),
             new WidgetFieldDescriptor("status_path", "状态字段路径", Required: true, Placeholder: "$.status"),
             new WidgetFieldDescriptor("summary_path", "摘要字段路径", Placeholder: "$.message"),
             new WidgetFieldDescriptor("url_path", "详情链接路径", Placeholder: "$.html_url"),
@@ -38,6 +40,7 @@ public static class HttpWidgetDescriptors
         Fields =
         [
             new WidgetFieldDescriptor("label", "显示名", Placeholder: "GLM 额度"),
+            new WidgetFieldDescriptor("icon", "图标", Placeholder: "默认按连接品牌", Choices: BrandIcons.PickerKeys),
             new WidgetFieldDescriptor("total_path", "总量字段路径", Required: true, Placeholder: "$.data.total"),
             new WidgetFieldDescriptor("used_path", "已用字段路径（与剩余二选一）", Placeholder: "$.data.used"),
             new WidgetFieldDescriptor("remaining_path", "剩余字段路径（与已用二选一）", Placeholder: "$.data.remaining"),

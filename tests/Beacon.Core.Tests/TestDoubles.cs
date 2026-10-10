@@ -120,10 +120,12 @@ internal sealed class InMemoryConfigStore : IConfigurationStore
     public AppConfig App { get; set; } = new();
     public List<ConnectionConfig> ConnectionItems { get; } = [];
     public List<WidgetConfig> WidgetItems { get; } = [];
+    public List<ActionConfig> ActionItems { get; } = [];
     public PinsConfig PinsValue { get; set; } = new();
 
     public IReadOnlyList<ConnectionConfig> Connections => ConnectionItems;
     public IReadOnlyList<WidgetConfig> Widgets => WidgetItems;
+    public IReadOnlyList<ActionConfig> Actions => ActionItems;
     public PinsConfig Pins => PinsValue;
 
     public void LoadAll()
@@ -143,6 +145,10 @@ internal sealed class InMemoryConfigStore : IConfigurationStore
     }
 
     public void SavePins()
+    {
+    }
+
+    public void SaveActions()
     {
     }
 
@@ -176,10 +182,27 @@ internal sealed class InMemoryConfigStore : IConfigurationStore
 
     public void RemoveWidget(string widgetId) => WidgetItems.RemoveAll(w => w.Id == widgetId);
 
+    public void UpsertAction(ActionConfig action)
+    {
+        var index = ActionItems.FindIndex(a => a.Id == action.Id);
+        if (index >= 0)
+        {
+            ActionItems[index] = action;
+        }
+        else
+        {
+            ActionItems.Add(action);
+        }
+    }
+
+    public void RemoveAction(string actionId) => ActionItems.RemoveAll(a => a.Id == actionId);
+
     public ConnectionConfig? FindConnection(string? connectionId)
         => connectionId is null ? null : Connections.FirstOrDefault(c => c.Id == connectionId);
 
     public WidgetConfig? FindWidget(string widgetId) => Widgets.FirstOrDefault(w => w.Id == widgetId);
+
+    public ActionConfig? FindAction(string actionId) => Actions.FirstOrDefault(a => a.Id == actionId);
 }
 
 internal sealed class InMemoryCacheStore : ICacheStore

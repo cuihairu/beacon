@@ -17,6 +17,7 @@ public sealed class JsonConfigurationStore : IConfigurationStore
     private List<ConnectionConfig> _connections = [];
     private List<WidgetConfig> _widgets = [];
     private PinsConfig _pins = new();
+    private List<ActionConfig> _actions = [];
 
     /// <summary>LoadAll 的读取诊断：哪些文件读坏了、恢复走到哪一步（主文件→.bak→默认）。空列表 = 全部健康。</summary>
     public List<string> LoadErrors { get; } = [];
@@ -35,6 +36,8 @@ public sealed class JsonConfigurationStore : IConfigurationStore
 
     public PinsConfig Pins { get { lock (_gate) return _pins; } }
 
+    public IReadOnlyList<ActionConfig> Actions { get { lock (_gate) return [.. _actions]; } }
+
     public void LoadAll()
     {
         lock (_gate)
@@ -52,6 +55,7 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             _connections = LoadFile<List<ConnectionConfig>>("connections.json") ?? [];
             _widgets = LoadFile<List<WidgetConfig>>("widgets.json") ?? [];
             _pins = LoadFile<PinsConfig>("pins.json") ?? new PinsConfig();
+            _actions = LoadFile<List<ActionConfig>>("actions.json") ?? [];
         }
     }
 
@@ -62,6 +66,8 @@ public sealed class JsonConfigurationStore : IConfigurationStore
     public void SaveWidgets() => SaveFile("widgets.json", _widgets);
 
     public void SavePins() => SaveFile("pins.json", _pins);
+
+    public void SaveActions() => SaveFile("actions.json", _actions);
 
     /// <summary>B-802 导入：四份配置整体替换并落盘（secrets 不随包走，credentialRef 原样保留待重录）。</summary>
     public void ReplaceAll(AppConfig app, List<ConnectionConfig> connections, List<WidgetConfig> widgets, PinsConfig pins)
@@ -131,10 +137,38 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         SaveWidgets();
     }
 
+    public void UpsertAction(ActionConfig action)
+    {
+        lock (_gate)
+        {
+            var index = _actions.FindIndex(a => a.Id == action.Id);
+            if (index >= 0)
+            {
+                _actions[index] = action;
+            }
+            else
+            {
+                _actions.Add(action);
+            }
+        }
+        SaveActions();
+    }
+
+    public void RemoveAction(string actionId)
+    {
+        lock (_gate)
+        {
+            _actions.RemoveAll(a => a.Id == actionId);
+        }
+        SaveActions();
+    }
+
     public ConnectionConfig? FindConnection(string? connectionId)
         => connectionId is null ? null : Connections.FirstOrDefault(c => c.Id == connectionId);
 
     public WidgetConfig? FindWidget(string widgetId) => Widgets.FirstOrDefault(w => w.Id == widgetId);
+
+    public ActionConfig? FindAction(string actionId) => Actions.FirstOrDefault(a => a.Id == actionId);
 
     private T? LoadFile<T>(string fileName) where T : class
     {
