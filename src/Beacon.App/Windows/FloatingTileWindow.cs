@@ -323,9 +323,9 @@ internal sealed class FloatingTileHost
             if (x is not { } restoredX || y is not { } restoredY)
             {
                 // 未拖过：主屏右上角起竖向级联（与单宿主默认锚点角一致）
-                var step = (int)(CascadeStepDips * dpi);
-                restoredX = work.Right - appWindow.Size.Width - (int)(PinLayoutMath.DefaultOffset.X * dpi);
-                restoredY = work.Y + (int)(PinLayoutMath.DefaultOffset.Y * dpi) + CascadeIndex * step;
+                var step = DpiLayoutMath.ToPx(CascadeStepDips, dpi);
+                restoredX = work.Right - appWindow.Size.Width - DpiLayoutMath.ToPx(PinLayoutMath.DefaultOffset.X, dpi);
+                restoredY = work.Y + DpiLayoutMath.ToPx(PinLayoutMath.DefaultOffset.Y, dpi) + CascadeIndex * step;
             }
             var clamped = PinLayoutMath.ClampInto(work, new PinRect(restoredX, restoredY, appWindow.Size.Width, appWindow.Size.Height), margin: EdgeMarginPx);
             appWindow.Move(new PointInt32(clamped.X, clamped.Y));
@@ -349,7 +349,8 @@ internal sealed class FloatingTileHost
             NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
             var dpi = GetDpi();
-            _appWindow.Resize(new SizeInt32((int)(TileWidthDips * dpi), (int)(TileHeightDips * dpi)));
+            // DPI 修复单 2026-10-10：DIP 设计值只在 Win32 边界换算一次（四舍五入，截断高缩放欠高）
+            _appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(TileWidthDips, dpi), DpiLayoutMath.ToPx(TileHeightDips, dpi)));
             EnsurePlaced();
         }
 

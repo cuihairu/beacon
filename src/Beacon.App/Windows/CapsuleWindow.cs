@@ -2,6 +2,7 @@ using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
@@ -141,7 +142,7 @@ public sealed partial class CapsuleWindow : Window
         var dpi = GetDpi();
         var widthDips = Math.Clamp(Math.Ceiling(desired.Width), 48, 132);
         var heightDips = Math.Max(32, Math.Ceiling(desired.Height));
-        return ((int)Math.Round(widthDips * dpi), (int)Math.Round(heightDips * dpi));
+        return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
     }
 
     private void ApplySize()
@@ -174,8 +175,8 @@ public sealed partial class CapsuleWindow : Window
         if (layout is null)
         {
             // 默认：主屏工作区右下角（任务书 Level 1）
-            _x = work.Right - widthPx - (int)(24 * dpi);
-            _y = work.Bottom - heightPx - (int)(96 * dpi);
+            _x = work.Right - widthPx - DpiLayoutMath.ToPx(24, dpi);
+            _y = work.Bottom - heightPx - DpiLayoutMath.ToPx(96, dpi);
         }
         else
         {

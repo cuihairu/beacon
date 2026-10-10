@@ -669,6 +669,15 @@ internal sealed class PinnedHostWindow
         _runtime.Config.SavePins();
     }
 
+    /// <summary>面板物理尺寸（ApplyLayout 与 WM_NCHITTEST 唯一口径）：列数随 tile 数切换（双列 336 宽），
+    /// DIP 设计值只在 Win32 边界换算一次；总高一次四舍五入而非逐行（DPI 修复单 2026-10-10）。</summary>
+    private (int Width, int Height) PanelPxSize(double dpi)
+    {
+        var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
+        var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
+        return (DpiLayoutMath.ToPx(columns * PanelWidthDips, dpi), DpiLayoutMath.PanelHeightPx(rows, TileHeightDips, dpi));
+    }
+
     private void ApplyLayout()
     {
         var appWindow = GetAppWindow();
@@ -678,11 +687,9 @@ internal sealed class PinnedHostWindow
         }
         var dpi = GetDpi();
         var work = ToPinRect(ResolveMonitor(_layout.Monitor).WorkPx);
-        // 与 ReloadTiles 同口径：列数随 tile 数切换，高度按行数、宽度按列数算（双列后 336 宽不再溢出单列假设）
-        var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
-        var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
-        var height = rows * (int)(TileHeightDips * dpi);
-        var width = columns * (int)(PanelWidthDips * dpi);
+        // 面板物理尺寸唯一口径 PanelPxSize（ApplyLayout 与 WM_NCHITTEST 共用）：列数随 tile 数切换，
+        // DIP 设计值只在 Win32 边界换算一次——逐行截断（32 DIP×1.3=41）会累计欠高，高缩放裁字
+        var (width, height) = PanelPxSize(dpi);
 
         // 收起态暂停动画循环（B-707 验收：隐藏/收起时无动画循环）；展开/悬停恢复
         var strip = _layout.Collapsed && !_hoverExpanded;
@@ -704,7 +711,7 @@ internal sealed class PinnedHostWindow
             // 光标悬停细条任何位置都在展开面板 footprint 内。旧实现细条贴屏幕边（忽略 offsetX）而面板
             // 内缩 offsetX：悬停展开瞬间光标落在面板外 → PointerExited 立刻坍缩 → 再悬停再展开死循环，
             // 表现为「竖线贴着屏幕边无法恢复」（2026-10-10 用户实测根因）。高度仍取整面板高（细条=面板边条）。
-            var stripWidth = Math.Max(1, (int)(CollapseStripDips * dpi));
+            var stripWidth = Math.Max(1, DpiLayoutMath.ToPx(CollapseStripDips, dpi));
             var stripRect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, stripWidth, height);
             appWindow.Resize(new SizeInt32(stripRect.Width, stripRect.Height));
             appWindow.Move(new PointInt32(stripRect.X, stripRect.Y));
@@ -969,11 +976,10 @@ internal sealed class PinnedHostWindow
                 if (NativeMethods.ScreenToClient(hWnd, ref point))
                 {
                     var dpi = GetDpi();
-                    // UI/UX 审计：双列后行数/列数与 ApplyLayout 同口径（rows×32 高、columns×168 宽）
-                    var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
-                    var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
-                    var insideTile = point.Y >= 0 && point.Y < rows * (int)(TileHeightDips * dpi)
-                        && point.X >= 0 && point.X < (int)(HitWidthDips(columns) * dpi);
+                    // 命中区与 ApplyLayout 同口径（PanelPxSize/HitWidthPx）：DIP 设计值只在 Win32 边界换算一次
+                    var (_, panelHeightPx) = PanelPxSize(dpi);
+                    var insideTile = point.Y >= 0 && point.Y < panelHeightPx
+                        && point.X >= 0 && point.X < HitWidthPx(dpi);
                     return insideTile ? new IntPtr(NativeMethods.HTCLIENT) : new IntPtr(NativeMethods.HTTRANSPARENT);
                 }
                 break;
@@ -998,9 +1004,13 @@ internal sealed class PinnedHostWindow
             : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
     }
 
-    /// <summary>当前 hit-test 宽（DIP）：收起细条窄、展开态全宽（双列翻倍，与 ApplyLayout 同口径）。</summary>
-    private double HitWidthDips(int columns = 1)
-        => _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips * columns;
+    /// <summary>当前 hit-test 宽（物理像素）：收起细条窄、展开态全宽（双列翻倍，与 ApplyLayout 同口径）。</summary>
+    private int HitWidthPx(double dpi)
+    {
+        var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
+        var hitDips = _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips * columns;
+        return DpiLayoutMath.ToPx(hitDips, dpi);
+    }
 
     private AppWindow? GetAppWindow()
     {

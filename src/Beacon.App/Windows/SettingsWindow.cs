@@ -107,8 +107,8 @@ internal sealed class SettingsWindow : Window
         var height = _runtime.Config.App.SettingsWindowHeight is double h && h >= 400 ? h : 640;
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32
         {
-            Width = (int)Math.Round(width * dpi),
-            Height = (int)Math.Round(height * dpi),
+            Width = DpiLayoutMath.ToPx(width, dpi),
+            Height = DpiLayoutMath.ToPx(height, dpi),
         });
         Services.AppIcon.Apply(AppWindow, _runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
     }

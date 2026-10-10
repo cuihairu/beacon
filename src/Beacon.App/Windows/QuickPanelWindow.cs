@@ -90,9 +90,12 @@ public sealed partial class QuickPanelWindow : Window
         _appWindow.IsShownInSwitchers = false;
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW);
 
-        // 设计值是 DIP，AppWindow.Resize 收物理像素——按 DPI 换算，否则高缩放下内容被裁
+        // 设计值是 DIP，AppWindow.Resize 收物理像素——只在 Win32 边界经 DpiLayoutMath 换算一次，
+        // 否则高缩放下内容被裁（DPI 修复单 2026-10-10）
         var dpi = GetDpi();
-        _appWindow.Resize(new SizeInt32((int)Math.Round(PanelWidth * dpi), (int)Math.Round(PanelHeight * dpi)));
+        _appWindow.Resize(new SizeInt32(
+            DpiLayoutMath.ToPx(PanelWidth, dpi),
+            DpiLayoutMath.ToPx(PanelHeight, dpi)));
         _appWindow.Hide();
         _visible = false;
 
@@ -151,8 +154,8 @@ public sealed partial class QuickPanelWindow : Window
     {
         var work = MonitorService.Primary()?.WorkPx ?? _fallbackWorkArea;
         var dpi = GetDpi(); // work 是物理像素，偏移设计值是 DIP——同单位换算
-        var x = work.Right - (int)Math.Round(PanelWidth * dpi) - (int)Math.Round(24 * dpi);
-        var y = work.Bottom - (int)Math.Round(PanelHeight * dpi) - (int)Math.Round(140 * dpi); // 胶囊（右下角）上方
+        var x = work.Right - DpiLayoutMath.ToPx(PanelWidth, dpi) - DpiLayoutMath.ToPx(24, dpi);
+        var y = work.Bottom - DpiLayoutMath.ToPx(PanelHeight, dpi) - DpiLayoutMath.ToPx(140, dpi); // 胶囊（右下角）上方
         _appWindow.Move(new PointInt32(x, y));
     }
 

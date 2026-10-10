@@ -1,5 +1,7 @@
+using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -15,6 +17,13 @@ namespace Beacon.App.Windows;
 /// </summary>
 internal sealed class DetailWindow : Window
 {
+    // DPI 修复单 2026-10-10：设计值一律 DIP，窗尺寸在 Loaded 后按内容实测（DpiLayoutMath 换算）。
+    // 本窗此前从未 Resize——WinUI 默认窗尺寸是固定物理像素，200%/250% 下客户区装不下 DIP 内容 →
+    // 5K 裁字的直接落点；150%（公司 4K）勉强容下所以「正常」。
+    private const double DetailWidthDips = 520;
+    private const double DetailMinHeightDips = 320;
+    private const double DetailMaxHeightDips = 560;
+
     private readonly WidgetState _state;
     private readonly BeaconRuntime _runtime;
     private readonly UiPalette _palette;
@@ -33,8 +42,23 @@ internal sealed class DetailWindow : Window
 
         Title = $"Beacon · {state.Summary}";
         Content = BuildContent();
+        ((FrameworkElement)Content).Loaded += OnContentLoaded; // 量内容需视觉树就绪（Activate 前触发，无闪跳）
         Closed += (_, _) => closed?.Invoke();
         Services.AppIcon.Apply(AppWindow, runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
+    }
+
+    /// <summary>窗尺寸：宽 = DIP 设计值 × DPI，高 = 内容自然高 clamp 到 [min,max]（超出走 ScrollViewer）。
+    /// 与胶囊/快捷面板同口径：DIP 只在 Win32 边界经 DpiLayoutMath 换算一次。</summary>
+    private void OnContentLoaded(object sender, RoutedEventArgs e)
+    {
+        var dpi = NativeMethods.GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        var content = (FrameworkElement)Content;
+        content.Measure(new global::Windows.Foundation.Size(DetailWidthDips, double.PositiveInfinity));
+        AppWindow.Resize(new global::Windows.Graphics.SizeInt32
+        {
+            Width = DpiLayoutMath.ToPx(DetailWidthDips, dpi),
+            Height = DpiLayoutMath.ClampedHeightPx(content.DesiredSize.Height, DetailMinHeightDips, DetailMaxHeightDips, dpi),
+        });
     }
 
     private UIElement BuildContent()
