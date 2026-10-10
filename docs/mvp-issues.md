@@ -436,6 +436,10 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   现双宿主各自兜异常即是补丁），一次失误 = tile 消失到重启；⑤与本仓拍板记录保守取向一致
   （胶囊默认关维持/直推不设 check/数量悬浮窗默认关）。要推翻：直接改本条，实现入口 =
   App.ApplySettingsEffects + ThemeColors 色源 + SettingsWindow 标签去「重启生效」。
+- **evidence-before 分支处置**：`git branch -D` 删除（2026-10-10 用户令）。该分支为 2026-10-09 晚的
+  rebase 前安全快照（3 commit：visual-evidence 扩展/BOM/automation ids），`git cherry origin/main
+  evidence-before` 全 `-` 证实补丁内容已全部等价存在于 main，无未合并工作；删除前已逐 commit 核对
+  （daily-build.yml 场景 C/D 描述、ps1 BOM、automation ids 均在 main）。
 
 ## 2026-10-09 实测回执批（小米类型空 / 千问接入 / 检查频率 / 方舟 5h 口径 / tile 名字）
 
