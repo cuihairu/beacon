@@ -934,7 +934,7 @@ internal sealed class SettingsWindow : Window
         }
     }
 
-    // —— 导入导出（B-802）：四份配置单文件；secrets 绝不入包，导入后按 credentialRef 提示重录 ——
+    // —— 导入导出（B-802）：五份配置单文件（含自定义动作）；secrets 绝不入包，导入后按 credentialRef 提示重录 ——
 
     private UIElement BuildImportExportSection()
     {
@@ -948,7 +948,7 @@ internal sealed class SettingsWindow : Window
         {
             FontSize = 11,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
-            Text = "导出包含 config/connections/widgets/pins 四份配置；密钥绝不入包（JSON 只存 credentialRef），导入后按提示在连接里重录。",
+            Text = "导出包含 config/connections/widgets/pins/actions 五份配置（含自定义动作库）；密钥绝不入包（JSON 只存 credentialRef），导入后按提示在连接里重录。",
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(_importFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
@@ -993,10 +993,11 @@ internal sealed class SettingsWindow : Window
             RebuildConnections();
             RebuildWidgets();
             RefreshWidgetConnectionOptions();
+            RebuildActionList(); // 动作库随包替换（null 守卫：高级页未构建则跳过）
             var reentry = result.CredentialRefs.Count > 0
                 ? $"；请在「连接」里重录密钥：{string.Join("、", result.CredentialRefs)}"
                 : "";
-            Feedback(_importFeedback, $"✓ 已导入 {result.Connections} 连接 / {result.Widgets} 组件 / {result.Pins} 钉选{reentry}。", error: false);
+            Feedback(_importFeedback, $"✓ 已导入 {result.Connections} 连接 / {result.Widgets} 组件 / {result.Pins} 钉选 / {result.Actions} 动作{reentry}。", error: false);
             PinsChanged?.Invoke(); // 组件集变化 → L0 重建
             SettingsApplied?.Invoke(); // 通用设置也随包变了 → 热键/自启/胶囊对齐
         }

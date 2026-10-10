@@ -5,7 +5,7 @@ using Beacon.Core.Models;
 namespace Beacon.Storage;
 
 /// <summary>
-/// 本地配置存储（B-201，RFC §9.1）：config/connections/widgets/pins 四文件，
+/// 本地配置存储（B-201，RFC §9.1）：config/connections/widgets/pins/actions 五文件，
 /// 临时文件 + 原子替换 + .bak 备份；读取失败回退备份，再失败用默认值。
 /// Upsert/Remove 自动保存。
 /// </summary>
@@ -69,8 +69,8 @@ public sealed class JsonConfigurationStore : IConfigurationStore
 
     public void SaveActions() => SaveFile("actions.json", _actions);
 
-    /// <summary>B-802 导入：四份配置整体替换并落盘（secrets 不随包走，credentialRef 原样保留待重录）。</summary>
-    public void ReplaceAll(AppConfig app, List<ConnectionConfig> connections, List<WidgetConfig> widgets, PinsConfig pins)
+    /// <summary>B-802 导入：五份配置整体替换并落盘（secrets 不随包走，credentialRef 原样保留待重录）。</summary>
+    public void ReplaceAll(AppConfig app, List<ConnectionConfig> connections, List<WidgetConfig> widgets, PinsConfig pins, List<ActionConfig> actions)
     {
         lock (_gate)
         {
@@ -78,11 +78,13 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             _connections = connections;
             _widgets = widgets;
             _pins = pins;
+            _actions = actions;
         }
         SaveApp();
         SaveConnections();
         SaveWidgets();
         SavePins();
+        SaveActions();
     }
 
     public void UpsertConnection(ConnectionConfig connection)

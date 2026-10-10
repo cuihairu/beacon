@@ -3,7 +3,7 @@ using Beacon.Core.Models;
 
 namespace Beacon.Storage.Tests;
 
-/// <summary>B-802 验收：四份配置打包往返一致；导出全文无 token（仅 credentialRef）；版本不符拒收。</summary>
+/// <summary>B-802 验收：五份配置打包往返一致；导出全文无 token（仅 credentialRef）；版本不符拒收。</summary>
 public sealed class ImportExportTests
 {
     private static JsonConfigurationStore PopulatedStore(string path)
@@ -29,11 +29,19 @@ public sealed class ImportExportTests
         });
         store.Pins.Tiles.Add(new PinTile { WidgetId = "github.pull_requests:beacon", Layout = new PinLayout { Monitor = "DISPLAY1", Anchor = PinAnchor.TopRight, OffsetDips = new PinOffset(24, 24), Collapsed = true } });
         store.SavePins();
+        store.UpsertAction(new ActionConfig
+        {
+            Id = "action:deploy",
+            Type = "http",
+            Name = "Deploy",
+            RequireConfirmation = true,
+            Parameters = new Dictionary<string, string> { ["url"] = "https://example.invalid/deploy" },
+        });
         return store;
     }
 
     [Fact]
-    public void ExportImport_RoundTripsAllFourFiles()
+    public void ExportImport_RoundTripsAllFiveFiles()
     {
         var sourceDir = new TempDir();
         var source = PopulatedStore(sourceDir.Path);
@@ -49,7 +57,8 @@ public sealed class ImportExportTests
         Assert.Equal(1, result.Connections);
         Assert.Equal(1, result.Widgets);
         Assert.Equal(1, result.Pins);
-        // 全量保真：导入后的四份配置与原机逐字节一致
+        Assert.Equal(1, result.Actions);
+        // 全量保真：导入后的五份配置与原机逐字节一致
         Assert.Equal(ReadStore(source), ReadStore(target));
     }
 
@@ -65,11 +74,38 @@ public sealed class ImportExportTests
         new ImportExport(source).Export(bundlePath);
 
         var targetDir = new TempDir();
-        var target = PopulatedStore(targetDir.Path); // 已有 1 连接 + 1 组件
+        var target = PopulatedStore(targetDir.Path); // 已有 1 连接 + 1 组件 + 1 动作
         new ImportExport(target).Import(bundlePath);
 
         Assert.Empty(target.Connections);
         Assert.Equal(2, target.Widgets.Count);
+        Assert.Empty(target.Actions); // 动作库同样整体替换，不合并
+    }
+
+    [Fact]
+    public void Import_LegacyBundleWithoutActionsField_ImportsWithEmptyActions()
+    {
+        // 向后兼容：Actions 字段后加（2026-10-10），旧包无此字段——反序列化得空列表，不升版本号不拒收
+        using var sourceDir = new TempDir();
+        var source = PopulatedStore(sourceDir.Path);
+        var bundlePath = Path.Combine(sourceDir.Path, "bundle.json");
+        var legacy = BeaconJson.Serialize(new
+        {
+            version = 1,
+            exportedAt = DateTimeOffset.Now,
+            app = source.App,
+            connections = source.Connections,
+            widgets = source.Widgets,
+            pins = source.Pins,
+        });
+        File.WriteAllText(bundlePath, legacy);
+
+        using var targetDir = new TempDir();
+        var target = new JsonConfigurationStore(targetDir.Path);
+        var result = new ImportExport(target).Import(bundlePath);
+
+        Assert.Equal(1, result.Connections);
+        Assert.Empty(target.Actions);
     }
 
     [Fact]
@@ -124,5 +160,6 @@ public sealed class ImportExportTests
         connections = store.Connections,
         widgets = store.Widgets,
         pins = store.Pins,
+        actions = store.Actions,
     });
 }
