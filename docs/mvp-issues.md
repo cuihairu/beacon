@@ -574,7 +574,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   MotionEngine Flash/SlideIn 直接动画 tile 根 Opacity，同元素双写互相覆盖）+快捷面板
   QuickPanelWindow.ApplyOpacity。启动初始化+设置变更实时生效双路接线（App.xaml.cs）。持久化本就落
   config.json（重启保持）。**同类病排查**：主题/悬浮形态均有「重启生效」标注（诚实 UI 非静默失效），
-  其余设置项（热键/自启/胶囊/数量悬浮窗/检查频率/外观色/动效/通知规则）全部实时接线；字号设置不存在。
+  其余设置项（热键/自启/胶囊/数量悬浮窗/检查频率/外观色/动效）全部实时接线；字号设置不存在。
+  （更正：本条初稿写「通知规则全部实时接线」不成立——NotificationEngine 实际未接 rulesProvider，
+  详见批3-补12。）
 - **CI 告警清零（告警清理令）**：①CS8604（SettingsWindow:529 TagOf(_actionTypeBox)）——TagOf 签名改
   `ComboBox?` 空条件兜底（页面未构建/无选中返回 null，调用方本就 `??` 兜底），全调用点一次覆盖；
   ②CS0414 ×3（_githubEnabled/_httpEnabled/_bigmodelEnabled）——**实证非未接线**：每类连接整体开关功能
@@ -607,6 +609,17 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：测试 15 个新增（尽窗优先/双窗最早重置命名/100 边界/429 耗尽解析窗名+秒毫秒 ISO 重置/
   纯文本正则兜底/未知窗兜底/纯限流保持 Degraded/健康路径回归+kimi/qwen 措辞）四项目全绿；
   装机截图（方舟额度尽卡片显示已尽+重置时间）待装机走查——接口佐证已由 429 mock 测试夹具承担。
+
+### 批3-补12 通知规则接线（2026-10-10 文档盘点发现）
+- **config.App.NotificationRules 从不被读**：BeaconRuntime 装配 NotificationEngine 时未传 rulesProvider，
+  引擎恒用 DefaultNotificationRules.All——设置页「规则经 config.json 自定义」的提示是空头支票
+  （批3-补10 同病排查时误报为「已接线」，写配置文档逐项核对时抓出）。修法一行：装配处传
+  `rulesProvider: () => config.App.NotificationRules.Count > 0 ? config.App.NotificationRules
+  : DefaultNotificationRules.All`（空列表回退内置默认，与 AppConfig 字段注释口径一致）。
+  引擎每次评估事件都调 provider（lambda 闭包实时读 config）——导入配置包路径即时生效；
+  手改 config.json 磁盘文件需重启（Store 不热加载磁盘）。
+- **验收**：Beacon.App 本地不可编译，CI windows-latest 为准；规则生效实测（自定义规则触发 Toast）
+  待装机走查。
 
 ---
 

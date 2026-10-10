@@ -100,7 +100,13 @@ public sealed class BeaconRuntime : IAsyncDisposable
         var scheduler = new RefreshScheduler(logger: logger);
         var host = new WidgetHost(bus, clock, scheduler, cache, config, secrets, resolver, logger);
         var aggregator = new StatusAggregator(bus);
-        var notifications = new NotificationEngine(bus, sink, clock, logger: logger);
+        // 通知规则接 config（批9 后补接线 2026-10-10：此前恒用内置默认，config.App.NotificationRules 从不被读）；
+        // 空列表回退内置默认（AppConfig 字段注释口径）。引擎每次评估都调 provider——导入配置即时生效
+        var notifications = new NotificationEngine(bus, sink, clock,
+            rulesProvider: () => config.App.NotificationRules.Count > 0
+                ? config.App.NotificationRules
+                : DefaultNotificationRules.All,
+            logger: logger);
         // 通知记录跨重启（RFC §8）：启动水合 notifications.json，变化即落盘（fire-and-forget，失败只记日志）
         var notificationRecords = new JsonNotificationRecordStore();
         notifications.Hydrate(notificationRecords.LoadAsync().GetAwaiter().GetResult());
