@@ -47,18 +47,33 @@ internal sealed class DetailWindow : Window
         Services.AppIcon.Apply(AppWindow, runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
     }
 
-    /// <summary>窗尺寸：宽 = DIP 设计值 × DPI，高 = 内容自然高 clamp 到 [min,max]（超出走 ScrollViewer）。
-    /// 与胶囊/快捷面板同口径：DIP 只在 Win32 边界经 DpiLayoutMath 换算一次。</summary>
+    /// <summary>窗尺寸：客户区 = 宽 DIP 设计值 × DPI、高 = 内容自然高 clamp 到 [min,max]（超出走 ScrollViewer）。
+    /// 与胶囊/快捷面板同口径：DIP 只在 Win32 边界经 DpiLayoutMath 换算一次。
+    /// AppWindow.Resize 设的是窗口外框（含标题栏/边框），量出来的是客户区需求——必须补回非客户区差值，
+    /// 否则 200% 下标题栏物理高度翻倍，客户区比内容矮一截、底部照旧裁字（2026-10-11 装机「没有修复」根因）。</summary>
     private void OnContentLoaded(object sender, RoutedEventArgs e)
     {
-        var dpi = NativeMethods.GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dpi = NativeMethods.GetDpiForWindow(hwnd) / 96.0;
         var content = (FrameworkElement)Content;
         content.Measure(new global::Windows.Foundation.Size(DetailWidthDips, double.PositiveInfinity));
+        var (chromeWidth, chromeHeight) = ChromeSizePx(hwnd);
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32
         {
-            Width = DpiLayoutMath.ToPx(DetailWidthDips, dpi),
-            Height = DpiLayoutMath.ClampedHeightPx(content.DesiredSize.Height, DetailMinHeightDips, DetailMaxHeightDips, dpi),
+            Width = DpiLayoutMath.ToPx(DetailWidthDips, dpi) + chromeWidth,
+            Height = DpiLayoutMath.ClampedHeightPx(content.DesiredSize.Height, DetailMinHeightDips, DetailMaxHeightDips, dpi) + chromeHeight,
         });
+    }
+
+    /// <summary>窗口外框与客户区的物理差（标题栏+边框）；取不到按 0 兜底（无边框窗差值本就为 0）。</summary>
+    private static (int Width, int Height) ChromeSizePx(IntPtr hwnd)
+    {
+        if (!NativeMethods.GetWindowRect(hwnd, out var window) || !NativeMethods.GetClientRect(hwnd, out var client))
+        {
+            return (0, 0);
+        }
+        return (Math.Max(0, window.Right - window.Left - (client.Right - client.Left)),
+            Math.Max(0, window.Bottom - window.Top - (client.Bottom - client.Top)));
     }
 
     private UIElement BuildContent()
