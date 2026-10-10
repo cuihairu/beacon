@@ -513,6 +513,43 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   窗口 2、last_seen 落值。附：日志另有 452 行 `CLI model=… rc=1`（CLI 包装器失败记录，非 relay 请求行，
   不计入）。
 
+### 批3-补7 内置图标可选 + 自定义动作库（2026-10-10 用户三连：「怎么没有自定义的选项」「icon 需要自带可以让我选择」「一个 action 都没有」）
+- **自定义监控自查**：http 模块/连接/Provider 全部已注册（097c6a1，2026-10-08）——用户 nightly 可能旧；
+  真缺口在图标不可选与动作无自定义面。
+- **图标可选**：WidgetFieldDescriptor 加 `Choices`（非空=UI 下拉，仅元数据不落盘）；BrandIcons 加 10 个
+  自绘通用图标（box/bolt/terminal/git/server/cloud/database/robot/shield/chart，纯实心复合 subpath）+
+  `PickerKeys`（通用集打头、品牌标随后，26 键）；http.status/http.quota 加 icon 字段（默认按连接品牌）；
+  BrandIconFactory 加 `iconOverride`（widget.Config["icon"] 优先 → 连接品牌 → 字形兜底）；Settings 向导
+  Choices 字段渲染成 ComboBox。
+- **自定义动作库**：actions.json 第五文件（.tmp 原子+.bak+.corrupt，镜像 connections）；IConfigurationStore
+  新成员 Actions/SaveActions/UpsertAction/RemoveAction/FindAction；高级页动作编辑器（类型下拉
+  http/webhook/local.command/open.url + 按类型参数字段 + 限定组件类型 + 执行前确认开关 + 列表删除）；
+  DetailWindow ACTIONS 区追加动作库按钮（Parameters.widgetType 过滤，RequireConfirmation 窗内
+  ContentDialog 完成后摘标记提交）。**顺手修**：Open/Retry/Cancel 内联动作此前未摘 RequireConfirmation
+  （默认 true）而全局无确认通道——Runner 必拒（「需要确认但无确认通道」），按窗内确认后提交的文档口径
+  补 RequireConfirmation=false。
+- **todo**：B-802 导入导出纳入 actions.json（未并入 ReplaceAll，避免涟漪，挂账）。
+
+### 批3-补8 小米套餐用量换控制台口径 + GLM 5h 窗口主位（2026-10-10 用户批6）
+- **小米（用户实测口径：124,801,805,513 / 132,000,000,000 ≈ 95%）**：plan-manage 页接口=前端 bundle 实证
+  `GET https://platform.xiaomimimo.com/api/v1/tokenPlan/usage`（base /api/v1 前缀 + SPA 兜底 HTML 干扰排查；
+  认证=登录 cookie **api-platform_ph**）。真 Key 三形态（Bearer / api-platform_ph 头 / 裸 Authorization）
+  实测全 401+loginUrl——**API Key 只授权模型调用，控制台要小米账号会话**（与千问 Token Plan 同构）。
+  落地=MiMo provider 三档改四层：①控制台套餐用量（连接录控制台 Cookie 进 DPAPI，ref 默认 mimo:console；
+  Settings console_usage_url/console_credential_ref 可覆盖；防御键名解析 used/total/percentage，
+  百分比缺失时自算；已用/总量亿级中文口径 + Progress + ≥90 Warning / ≥100 Error）；②本机计数（原
+  usage_endpoint 档不动）；③目录档摘要给「套餐用量见控制台 plan-manage（需登录）」指引，DetailUrl 全档
+  指向 plan-manage 页。**限制如实报**：控制台响应真身无会话验证不了（拿不到真数据），解析走防御键名、
+  认不出显式 Degraded 带原文——装机录入 cookie 后若字段不符按诊断日志修。
+- **GLM（用户令：现在显示月用量是错的，z.ai GLM 是 5 小时滚动窗口）**：quota/limit 真 Key 实测——5h 窗
+  （TOKENS_LIMIT unit=3 number=5）**只有 percentage+nextResetTime 无绝对 token 数**；月度 TIME_LIMIT
+  (unit=5) 才带 usage/currentValue/remaining（MCP 调用数口径）；1302 限流响应实测只有
+  「您的账户已达到速率限制」一句、**无窗口数字**（用户猜测不成立），监控接口是唯一数据源。改法：主位
+  =rolling→weekly→monthly 优先级（原 WorstPercent 三窗取最差会让月度占主）——Progress/percent 主数值/
+  级别判定全部取主位窗口，payload 加 percent_window/monthly_reset_ms，摘要改「5h 窗口已用 N% · MM-dd
+  HH:mm 重置 · 周 X% · 月 Y%」。真 Key 原样响应（整数百分比+usageDetails 数组）锁进回归夹具。
+- **验收**： Connections 318 绿（+19）；组件截图待装机走查（小米需先录控制台 Cookie；GLM 直接生效）。
+
 ---
 
 ## 附：MVP 明确不做（评审基线）

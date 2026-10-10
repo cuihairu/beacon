@@ -14,11 +14,14 @@ namespace Beacon.App.Windows;
 internal static class BrandIconFactory
 {
     /// <summary>品牌图标元素；connectionType 未收录或渲染异常 → null。size 为显示 DIP（24×24 原生 path 等比缩入）。
+    /// iconOverride = 组件级自选图标（widget.Config["icon"]，用户令 2026-10-10：图标要自带可选）——
+    /// 非空时优先于连接品牌；未配/未收录仍退连接品牌 → 调用方兜底。
     /// 返回类型 FrameworkElement：WinUI 3 的 Grid.SetColumn 只收 FrameworkElement（UIElement 过不了，CI 实证），
     /// 调用方（PinTile 图标列）要直接进 Grid 布局。</summary>
-    public static FrameworkElement? TryCreate(string? connectionType, double size, global::Windows.UI.Color foreground, ILogger? logger = null)
+    public static FrameworkElement? TryCreate(string? connectionType, double size, global::Windows.UI.Color foreground, ILogger? logger = null, string? iconOverride = null)
     {
-        if (connectionType is null || !BrandIcons.TryGet(connectionType, out var pathData))
+        var brand = iconOverride is { Length: > 0 } ? iconOverride : connectionType;
+        if (brand is null || !BrandIcons.TryGet(brand, out var pathData))
         {
             return null;
         }
@@ -45,7 +48,7 @@ internal static class BrandIconFactory
         }
         catch (Exception exception)
         {
-            logger?.LogError(exception, "品牌图标渲染失败，退回调用方兜底：{Type}", connectionType);
+            logger?.LogError(exception, "品牌图标渲染失败，退回调用方兜底：{Type}", brand);
             return null;
         }
     }

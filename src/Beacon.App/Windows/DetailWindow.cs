@@ -102,6 +102,7 @@ internal sealed class DetailWindow : Window
             {
                 Id = $"{_state.WidgetId}.open",
                 Type = "open.url",
+                RequireConfirmation = false, // 打开详情链接无需确认；全局无确认通道，默认 true 会被 Runner 保守拒绝
                 Parameters = new Dictionary<string, string> { ["url"] = _state.DetailUrl! },
             })));
         }
@@ -114,6 +115,19 @@ internal sealed class DetailWindow : Window
             {
                 actions.Children.Add(ActionButton("Cancel Run", () => CancelAsync(widget, runId)));
             }
+        }
+
+        // 自定义动作库（actions.json，用户令 2026-10-10「局域网打包机就是典型可以触发的」）：
+        // Parameters.widgetType 留空 = 全组件显示；填了则精确匹配当前组件类型
+        foreach (var candidate in _runtime.Config.Actions)
+        {
+            if (candidate.Parameters.TryGetValue("widgetType", out var scope) && scope.Length > 0
+                && !string.Equals(scope, _state.WidgetType, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            var custom = candidate;
+            actions.Children.Add(ActionButton(custom.Name ?? custom.Id, () => RunCustomAsync(custom)));
         }
         if (actions.Children.Count > 0)
         {
@@ -150,6 +164,7 @@ internal sealed class DetailWindow : Window
         {
             Id = $"{_state.WidgetId}.rerun",
             Type = "gh.workflow_rerun",
+            RequireConfirmation = false, // 确认已在窗内完成（ContentDialog）；全局无确认通道
             Parameters = CloneWidgetParams(widget),
         });
     }
@@ -164,7 +179,26 @@ internal sealed class DetailWindow : Window
         {
             Id = $"{_state.WidgetId}.cancel",
             Type = "gh.workflow_cancel",
+            RequireConfirmation = false, // 确认已在窗内完成（ContentDialog）；全局无确认通道
             Parameters = CloneWidgetParams(widget),
+        });
+    }
+
+    /// <summary>动作库动作执行：确认（如需）在窗内 ContentDialog 完成，落 Runner 前摘除确认标记。</summary>
+    private async Task RunCustomAsync(ActionConfig action)
+    {
+        if (action.RequireConfirmation
+            && !await ConfirmAsync($"执行「{action.Name ?? action.Id}」（{action.Type}）？"))
+        {
+            return;
+        }
+        await RunActionAsync(new ActionConfig
+        {
+            Id = action.Id,
+            Type = action.Type,
+            Name = action.Name,
+            RequireConfirmation = false, // 确认已在窗内完成
+            Parameters = new Dictionary<string, string>(action.Parameters, StringComparer.OrdinalIgnoreCase),
         });
     }
 

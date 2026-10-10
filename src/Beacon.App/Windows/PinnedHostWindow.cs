@@ -89,9 +89,9 @@ internal sealed class PinTile
         _value.Text = "加载中…"; // 空白即 bug：首态也要有信息（首个状态事件到达即被覆盖）
 
         // 数据源品牌图标（用户令：悬浮框必须带对应 icon，不然分不清哪个悬浮框是哪个源）：
-        // BrandIcons 命中 → 品牌 path（智谱 z/claude/jenkins…）；未收录/渲染失败 → 通用 globe 字形兜底
+        // 组件级自选图标（widget.Config["icon"]）优先 → BrandIcons 连接品牌命中 → 通用 globe 字形兜底
         // 前景主题感知（浅底深字/深底亮字，≥4.5:1）——近白 icon 在浅底上不可辨（用户实测「根本看不清」）
-        var icon = BrandIconFactory.TryCreate(connectionType, 14, ThemeColors.Label())
+        var icon = BrandIconFactory.TryCreate(connectionType, 14, ThemeColors.Label(), iconOverride: widget.Config.GetValueOrDefault("icon"))
             ?? new FontIcon
             {
                 Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底

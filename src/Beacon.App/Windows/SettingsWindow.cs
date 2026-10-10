@@ -47,7 +47,22 @@ internal sealed class SettingsWindow : Window
     private string _lastPrefilledConnectionId = "";
     private TextBox _connEndpointBox = null!;
     private TextBox? _connUsageBox; // qwen 专属：自定义用量端点（官方额度口未开放，网关/代理口可填）
+    private PasswordBox? _connConsoleBox; // mimo 专属：控制台登录 cookie（api-platform_ph，录了才显示套餐用量）
     private PasswordBox _connTokenBox = null!;
+
+    // 自定义动作库编辑器（actions.json，高级页）：局域网打包机「触发打包」等用户自建动作
+    private ComboBox? _actionTypeBox;
+    private TextBox? _actionNameBox;
+    private ToggleSwitch? _actionConfirmBox;
+    private TextBox? _actionScopeBox;
+    private TextBox? _actionUrlBox;
+    private TextBox? _actionMethodBox;
+    private TextBox? _actionBodyBox;
+    private TextBox? _actionCommandBox;
+    private TextBox? _actionArgsBox;
+    private TextBox? _actionWorkDirBox;
+    private StackPanel? _actionList;
+    private TextBlock _actionFeedback = null!; // 与 _connFeedback 同风格：页面构建时赋值
     private Button _connSaveButton = null!;
     private TextBlock _connFeedback = null!;
     private string? _editingConnectionId;
@@ -399,6 +414,8 @@ internal sealed class SettingsWindow : Window
     private UIElement BuildAdvancedPage()
     {
         var page = PageShell();
+        page.Children.Add(SectionTitle("自定义动作"));
+        page.Children.Add(BuildActionEditorSection());
         page.Children.Add(SectionTitle("诊断"));
         page.Children.Add(Hint($"逐跳诊断日志：%APPDATA%\\Beacon\\logs\\beacon-*.log（每跳一行：一键添加→拉取→字段映射→渲染；组件不出数先看这里最新一份）。"));
         page.Children.Add(SectionTitle("导入导出"));
@@ -419,6 +436,201 @@ internal sealed class SettingsWindow : Window
             TextWrapping = TextWrapping.Wrap,
         });
         return page;
+    }
+
+    // —— 高级页：自定义动作库（actions.json；详情窗 ACTIONS 区按 widgetType 过滤出现） ——
+
+    private UIElement BuildActionEditorSection()
+    {
+        _actionTypeBox = new ComboBox { Header = "类型", Width = 220 };
+        foreach (var (type, label) in new[]
+        {
+            ("http", "HTTP 请求（触发打包 / 部署）"),
+            ("webhook", "Webhook（带签名 / 凭据）"),
+            ("local.command", "本机命令"),
+            ("open.url", "打开链接"),
+        })
+        {
+            _actionTypeBox.Items.Add(new ComboBoxItem { Content = label, Tag = type });
+        }
+        _actionTypeBox.SelectedIndex = 0;
+        _actionTypeBox.SelectionChanged += (_, _) => SyncActionFields();
+
+        _actionNameBox = new TextBox { Header = "按钮名", Width = 160, PlaceholderText = "触发打包" };
+        _actionConfirmBox = new ToggleSwitch { Header = "执行前确认", IsOn = true, OnContent = "", OffContent = "", Margin = new Thickness(0, 0, 8, 0) };
+        _actionScopeBox = new TextBox
+        {
+            Header = "限定组件类型（可空 = 全部组件可见）",
+            Width = 240,
+            PlaceholderText = "http.status / github.actions.runs …",
+        };
+
+        _actionUrlBox = new TextBox { Header = "URL", Width = 300, PlaceholderText = "http://192.168.5.9:8080/build" };
+        _actionMethodBox = new TextBox { Header = "Method（默认 GET）", Width = 160, PlaceholderText = "POST" };
+        _actionBodyBox = new TextBox { Header = "Body（可空）", Width = 300, PlaceholderText = "{\"job\":\"release\"}" };
+        _actionCommandBox = new TextBox { Header = "命令", Width = 300, PlaceholderText = "C:\\build\\trigger.cmd" };
+        _actionArgsBox = new TextBox { Header = "参数（可空）", Width = 300, PlaceholderText = "--job release" };
+        _actionWorkDirBox = new TextBox { Header = "工作目录（可空）", Width = 300 };
+
+        var save = new Button { Content = "保存动作" };
+        save.Click += (_, _) => SaveAction();
+
+        _actionFeedback = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        _actionList = new StackPanel { Spacing = 4 };
+
+        var form = new StackPanel { Spacing = 8 };
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _actionTypeBox, _actionNameBox } });
+        form.Children.Add(_actionUrlBox);
+        form.Children.Add(_actionMethodBox);
+        form.Children.Add(_actionBodyBox);
+        form.Children.Add(_actionCommandBox);
+        form.Children.Add(_actionArgsBox);
+        form.Children.Add(_actionWorkDirBox);
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _actionScopeBox, _actionConfirmBox, save } });
+        form.Children.Add(_actionFeedback);
+        form.Children.Add(_actionList);
+        SyncActionFields();
+        RebuildActionList();
+        return new Border
+        {
+            Padding = new Thickness(10),
+            CornerRadius = new CornerRadius(6),
+            Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
+            Child = form,
+        };
+    }
+
+    /// <summary>参数字段按类型显隐：http=URL/Method/Body；webhook=URL/Body；local.command=命令/参数/目录；open.url=URL。</summary>
+    private void SyncActionFields()
+    {
+        if (_actionTypeBox is null || _actionUrlBox is null)
+        {
+            return;
+        }
+        var type = TagOf(_actionTypeBox) ?? "http";
+        SetVisible(_actionUrlBox, type is "http" or "webhook" or "open.url");
+        SetVisible(_actionMethodBox, type == "http");
+        SetVisible(_actionBodyBox, type is "http" or "webhook");
+        SetVisible(_actionCommandBox, type == "local.command");
+        SetVisible(_actionArgsBox, type == "local.command");
+        SetVisible(_actionWorkDirBox, type == "local.command");
+    }
+
+    private static void SetVisible(FrameworkElement? element, bool visible)
+    {
+        if (element is { } box)
+        {
+            box.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void SaveAction()
+    {
+        var type = TagOf(_actionTypeBox) ?? "http";
+        var name = _actionNameBox?.Text.Trim() ?? "";
+        if (name.Length == 0)
+        {
+            Feedback(_actionFeedback, "✗ 请填写按钮名。", error: true);
+            return;
+        }
+        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var url = _actionUrlBox?.Text.Trim() ?? "";
+        switch (type)
+        {
+            case "http" or "webhook" or "open.url" when url.Length == 0:
+                Feedback(_actionFeedback, "✗ 请填写 URL。", error: true);
+                return;
+            case "http":
+                parameters["url"] = url;
+                parameters["method"] = _actionMethodBox?.Text.Trim() is { Length: > 0 } method ? method.ToUpperInvariant() : "GET";
+                if (_actionBodyBox?.Text.Trim() is { Length: > 0 } body)
+                {
+                    parameters["body"] = body;
+                }
+                break;
+            case "webhook":
+                parameters["url"] = url;
+                if (_actionBodyBox?.Text.Trim() is { Length: > 0 } hookBody)
+                {
+                    parameters["body"] = hookBody;
+                }
+                break;
+            case "open.url":
+                parameters["url"] = url;
+                break;
+            case "local.command":
+                var command = _actionCommandBox?.Text.Trim() ?? "";
+                if (command.Length == 0)
+                {
+                    Feedback(_actionFeedback, "✗ 请填写命令。", error: true);
+                    return;
+                }
+                parameters["command"] = command;
+                if (_actionArgsBox?.Text.Trim() is { Length: > 0 } args)
+                {
+                    parameters["args"] = args;
+                }
+                if (_actionWorkDirBox?.Text.Trim() is { Length: > 0 } workDir)
+                {
+                    parameters["workingDirectory"] = workDir;
+                }
+                break;
+        }
+        if (_actionScopeBox?.Text.Trim() is { Length: > 0 } scope)
+        {
+            parameters["widgetType"] = scope; // 详情窗按组件类型过滤（空=全部组件可见）
+        }
+
+        // 同名覆盖（再保存一次 = 编辑），Id 稳定可复现
+        var id = $"action:{name.ToLowerInvariant().Replace(' ', '-')}";
+        _runtime.Config.UpsertAction(new ActionConfig
+        {
+            Id = id,
+            Type = type,
+            Name = name,
+            RequireConfirmation = _actionConfirmBox?.IsOn ?? true,
+            Parameters = parameters,
+        });
+        _runtime.Config.SaveActions();
+        Feedback(_actionFeedback, $"✓ 动作「{name}」已保存——点悬浮 tile 打开详情窗即可看到按钮。", error: false);
+        RebuildActionList();
+    }
+
+    /// <summary>动作库列表（高级页）：名称 · 类型 · 确认标记 · 作用域，行内删除即落盘。</summary>
+    private void RebuildActionList()
+    {
+        if (_actionList is null)
+        {
+            return; // 页面未构建（其他页切走）
+        }
+        _actionList.Children.Clear();
+        foreach (var action in _runtime.Config.Actions)
+        {
+            var scope = action.Parameters.TryGetValue("widgetType", out var widgetType) && widgetType.Length > 0
+                ? $" · 仅 {widgetType}"
+                : "";
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            row.Children.Add(new TextBlock
+            {
+                Text = $"{action.Name ?? action.Id} · {action.Type}{(action.RequireConfirmation ? " · 需确认" : "")}{scope}",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            var delete = new Button { Content = "删除", Padding = new Thickness(8, 2, 8, 2) };
+            var captured = action;
+            delete.Click += (_, _) =>
+            {
+                _runtime.Config.RemoveAction(captured.Id);
+                _runtime.Config.SaveActions();
+                RebuildActionList();
+            };
+            row.Children.Add(delete);
+            _actionList.Children.Add(row);
+        }
+        if (_runtime.Config.Actions.Count == 0)
+        {
+            _actionList.Children.Add(Hint("尚无自定义动作。保存后出现在组件详情窗（点悬浮 tile）的 ACTIONS 区。"));
+        }
     }
 
     // —— 页面：Provider 模块（GitHub / 智谱 GLM / 自定义 HTTP） ——
@@ -846,6 +1058,13 @@ internal sealed class SettingsWindow : Window
             Visibility = Visibility.Collapsed,
         };
         _connTokenBox = new PasswordBox { Header = ConnectionTokenHeader(lockType), Width = 280 };
+        _connConsoleBox = new PasswordBox
+        {
+            Header = "控制台 Cookie（可选，录了组件才显示套餐用量）",
+            Width = 280,
+            PlaceholderText = "浏览器 F12 → 应用 → Cookies → api-platform_ph 的值",
+            Visibility = Visibility.Collapsed,
+        };
 
         _connSaveButton = new Button { Content = "保存连接" };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connSaveButton, "conn-save-button");
@@ -858,6 +1077,7 @@ internal sealed class SettingsWindow : Window
         form.Children.Add(_connEndpointBox);
         form.Children.Add(_connUsageBox);
         form.Children.Add(_connTokenBox);
+        form.Children.Add(_connConsoleBox);
         SyncUsageBoxVisibility();
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _connSaveButton, cancel } });
         return new Border
@@ -909,6 +1129,19 @@ internal sealed class SettingsWindow : Window
             Enabled = existing?.Enabled ?? true, // 编辑保留启停状态
             Settings = MergeConnectionSettings(existing, _connUsageBox?.Text.Trim()), // 保留 auth_header 等高级项 + usage_endpoint
         };
+        if (_connConsoleBox is { } console && console.Password.Trim().Length > 0)
+        {
+            // 控制台 Cookie 是登录态凭据：只进 DPAPI（ref 默认 mimo:console，与推理 Key 分开两格）
+            try
+            {
+                await _runtime.Secrets.SetAsync(MiMoUsageProvider.DefaultConsoleCredentialRef, console.Password.Trim());
+            }
+            catch (Exception exception)
+            {
+                Feedback(_connFeedback, $"✗ 控制台 Cookie 写入失败：{exception.Message}", error: true);
+                return;
+            }
+        }
         _runtime.Config.UpsertConnection(connection);
         ResetConnectionEditor();
         RebuildConnections();
@@ -1021,16 +1254,26 @@ internal sealed class SettingsWindow : Window
         {
             usage.Text = "";
         }
+        if (_connConsoleBox is { } console)
+        {
+            console.Password = "";
+            console.PlaceholderText = "浏览器 F12 → 应用 → Cookies → api-platform_ph 的值";
+        }
         _connTokenBox.Password = "";
         _connTokenBox.PlaceholderText = "";
     }
 
-    /// <summary>用量端点框仅 qwen 显示（官方额度口未开放——自定义网关/代理口填这里）。</summary>
+    /// <summary>连接表单辅助框显隐：用量端点框仅 qwen（官方额度口未开放）；控制台 Cookie 框仅 mimo（plan-manage 套餐用量）。</summary>
     private void SyncUsageBoxVisibility()
     {
+        var type = SelectedString(_connTypeBox);
         if (_connUsageBox is { } box)
         {
-            box.Visibility = SelectedString(_connTypeBox) == "qwen" ? Visibility.Visible : Visibility.Collapsed;
+            box.Visibility = type == "qwen" ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (_connConsoleBox is { } console)
+        {
+            console.Visibility = type == "mimo" ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -1162,6 +1405,11 @@ internal sealed class SettingsWindow : Window
             {
                 usage.Text = connection.Settings.GetValueOrDefault("usage_endpoint") ?? "";
             }
+            if (_connConsoleBox is { } console && connection.Type == "mimo")
+            {
+                console.Password = "";
+                console.PlaceholderText = "已保存（留空保持不变）"; // cookie 在 DPAPI，读不回明文——只提示不变
+            }
             _connTokenBox.Password = "";
             _connTokenBox.PlaceholderText = "已保存（留空保持不变）";
         };
@@ -1280,6 +1528,25 @@ internal sealed class SettingsWindow : Window
         }
         foreach (var field in descriptor.Fields)
         {
+            if (field.Choices is { } choices)
+            {
+                // 选择字段（icon 自选，用户令 2026-10-10）：下拉而非自由文本；首项=默认（按连接品牌）
+                var picker = new ComboBox
+                {
+                    Header = field.DisplayName,
+                    Tag = field.Key,
+                    Width = 280,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                };
+                picker.Items.Add(new ComboBoxItem { Content = field.Placeholder ?? "默认", Tag = "" });
+                foreach (var choice in choices)
+                {
+                    picker.Items.Add(new ComboBoxItem { Content = choice, Tag = choice });
+                }
+                picker.SelectedIndex = 0;
+                _widgetFields.Children.Add(picker);
+                continue;
+            }
             _widgetFields.Children.Add(new TextBox
             {
                 Header = field.DisplayName + (field.Required ? "（必填）" : ""),
@@ -1334,6 +1601,13 @@ internal sealed class SettingsWindow : Window
             if (child.Text.Trim().Length > 0)
             {
                 config[key] = child.Text.Trim();
+            }
+        }
+        foreach (var child in _widgetFields.Children.OfType<ComboBox>())
+        {
+            if (TagOf(child) is { Length: > 0 } choice) // 选择字段：未选（默认项）不落盘
+            {
+                config[child.Tag?.ToString() ?? ""] = choice;
             }
         }
         foreach (var field in descriptor.Fields.Where(f => f.Required))
