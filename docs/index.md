@@ -18,6 +18,7 @@
 | [Solution 与项目目录](solution-structure.md) | Solution / 项目结构 / 依赖规则 / NuGet 清单 |
 | [MVP Issue 列表](mvp-issues.md) | 43 个 MVP Issue（P0–P8，含验收标准与依赖关系） |
 | [故障排查](troubleshooting.md) | 安装/启动 FAQ：日志位置、SmartScreen、SHA256 校验 |
+| [配置项参考](configuration.md) | 全部配置逐项说明：文件与生效时机、全局设置、外观与动效、通知规则、12 类连接的端点/凭据/额度口径、组件字段、钉选布局、动作库、导入导出 |
 | [文档一致性审计](审计-文档一致性.md) | 文档与源码差异台账（三类 34 条，P0 清单） |
 | [装机走查引导清单](acceptance-checklist.md) | 44 项验收一页走查（装 nightly → 逐项验 → 回执） |
 | [B-705 L0 行为审计](acceptance-B705-L0-behavior.md) · [B-803 端到端走查](acceptance-B803-e2e-walkthrough.md) | 验收记录与真机清单 |

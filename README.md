@@ -54,6 +54,7 @@ On first launch the app settles into the system tray and shows the status capsul
 | [docs/rfc/RFC-001-technical-design.md](docs/rfc/RFC-001-technical-design.md) | Technical design: architecture / domain model / **display-layer architecture (L0 floating widgets + four interaction layers)** / refresh / notifications / storage / risks |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / project structure / dependency rules / scaffold commands (runnable on Windows machines) |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 MVP issues (P0–P8, with acceptance criteria and dependencies) |
+| [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 12 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
 
 ## Roadmap
 
