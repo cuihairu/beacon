@@ -177,7 +177,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   - [ ] 夹具单测：计数/映射正确；真实仓库手动验证
     - 状态（2026-10-09）：夹具单测已过（GitHubPullRequestsProviderTests 6 例：计数/Severity 映射）；真实仓库手动验证——待 Windows 装机。
     - 状态（2026-10-10）：夹具补至 10 例（单数摘要「1 open PR · 1 review needed」/草稿带 reviewer 不豁免/缺 requested_reviewers 字段按 0/坏 JSON→Degraded 带解析原因）。
-    - 挂起（红 CI 判据）：规格的「红 CI 的 PR → Warning」需按 PR head sha 逐个打 combined status 口（每 PR 一请求）；该口 304 时无上次状态可续（provider 拿不到前态），要做须按 PR 记忆上次结果的有状态设计——挂起待派工，先以 review-requested 判据运行。
+    - 挂起（红 CI 判据）：规格的「红 CI 的 PR → Warning」需按 PR head sha 逐个打 combined status 口（每 PR 一请求）；该口 304 时无上次状态可续（provider 拿不到前态），要做须按 PR 记忆上次结果的有状态设计——挂起待派工，先以 review-requested 判据运行。零成本备选已证死路（2026-10-10 官方文档核实）：list /pulls 响应项不含 mergeable_state（仅单 PR 口带），无状态读不出 CI 红。
 
 ### B-303 Actions(CI) Widget Provider
 - **依赖**：B-301
