@@ -8,8 +8,8 @@
 
 用法：mimo-counter [--port 18082] [--models mimo-v2.6-flash-free] [--window 60] [--relay-log /tmp/relay_req.log]
 挂法：Windows Beacon 设置 → 连接 → 小米 MiMo → 用量端点 = http://192.168.5.188:18082/usage
-注意：本机 relay_req.log 现无 mimo 行（1710 行全 space-bunny-free）——计数如实为 0；
- MiMo 调用经 litellm→relay 后即被计入。窗口=计数器观测到的近 N 分钟（relay 日志无时间戳）。
+注意：relay 日志无时间戳，窗口=计数器观测到的近 N 分钟；total=计数器存活期观测到的调用
+（日志 rotate/截断不回退 total——历史行是真实发生过的调用，只是源日志不再持有）。
 """
 from __future__ import annotations
 
@@ -53,14 +53,21 @@ class Counter:
         model = model.lower()
         return any(model == m or model.startswith(m) or m in model for m in self.models)
 
-    def bootstrap(self) -> None:
-        """启动全量扫 relay_req.log 得累计（唯一带模型名的请求日志——litellm.log 访问行无模型名，实测）。"""
+    def bootstrap(self) -> tuple[int, int] | None:
+        """启动全量扫 relay_req.log 得累计；返回 (inode, 偏移) 供 _tail 续读——
+        否则 _tail 首扫会重复计同一文件（2026-10-10 实证：456 行计成 912）。"""
         if self.relay_log and self.relay_log.is_file():
+            try:
+                inode = self.relay_log.stat().st_ino
+            except FileNotFoundError:
+                return None
             with self.relay_log.open("r", encoding="utf-8", errors="replace") as handle:
                 for line in handle:
                     match = _MODEL_RE.search(line)
                     if match and self._matches(match.group(1)):
                         self._total += 1
+                return inode, handle.tell()
+        return None
 
     def _observe(self, line: str) -> None:
         match = _MODEL_RE.search(line)
@@ -95,29 +102,41 @@ class Counter:
             }
 
 
-def _tail(path: Path, counter: Counter) -> None:
-    """文件新出现/rotate 时从头部读全量再续 tail（inode 检测防读旧文件丢新行）。"""
-    inode = None
+def _tail(path: Path, counter: Counter, resume: tuple[int, int] | None) -> None:
+    """新文件/rotate/truncate 均从头全量重读，续读用已跟踪偏移。
+
+    截断检测（2026-10-10 实证 bug）：relay 日志被原 truncate（inode 不变）时，旧实现
+    seek(0,2) 停在旧 EOF，偏移永远大于文件大小，新行全部漏计（计数恒 0）。现按
+    「inode 变化或 size < 已跟踪偏移」判定重来；截断前已计数的历史行保留在 total
+    （它们是真实发生过的调用），不因日志丢失而回退。
+    resume=bootstrap 的 (inode, 偏移)：启动全量只计一次，_tail 从该位置续读。
+    """
+    inode, offset = resume if resume is not None else (None, 0)
     while True:
         try:
             stat = path.stat()
         except FileNotFoundError:
             time.sleep(1)
             continue
-        if stat.st_ino != inode:  # 首次出现或 rotate：从头部读全量
+        if stat.st_ino != inode or stat.st_size < offset:  # 首次出现/rotate/截断：从头部读全量
             inode = stat.st_ino
             with path.open("r", encoding="utf-8", errors="replace") as handle:
                 for line in handle:
                     counter._observe(line)
-        else:  # 同一文件增量 tail
+                offset = handle.tell()
+        else:  # 同一文件增量续读
             with path.open("r", encoding="utf-8", errors="replace") as handle:
-                handle.seek(0, 2)
-                while path.stat().st_ino == inode:
+                handle.seek(offset)
+                while True:
+                    current = path.stat()
+                    if current.st_ino != inode or current.st_size < offset:
+                        break  # rotate/截断：回外层从头全量重读
                     line = handle.readline()
-                    if line:
-                        counter._observe(line)
-                    else:
+                    if not line:
                         time.sleep(0.5)
+                        continue
+                    offset = handle.tell()
+                    counter._observe(line)
 
 
 def main() -> int:
@@ -133,7 +152,6 @@ def main() -> int:
         args.window,
         Path(args.relay_log),
     )
-    counter.bootstrap()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
@@ -153,9 +171,11 @@ def main() -> int:
 
     threading.Thread(target=counter._tick, daemon=True).start()
     if counter.relay_log:
-        threading.Thread(target=_tail, args=(counter.relay_log, counter), daemon=True).start()
+        resume = counter.bootstrap()
+        threading.Thread(target=_tail, args=(counter.relay_log, counter, resume), daemon=True).start()
         source = counter.relay_log
     else:
+        resume = None
         source = None
 
     print(f"mimo-counter :{args.port} 模型={counter.models} 窗口={args.window}分 源={source} 累计={counter._total}")
