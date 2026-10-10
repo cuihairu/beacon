@@ -124,6 +124,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("ark", "火山方舟", "Coding Plan Pro 额度", "\uE7C3", "ark"),
             new ModuleDef("claude", "Claude Code", "本机用量 · 零凭据", "\ue8bd", "claude"),
             new ModuleDef("kimi", "Kimi For Coding", "套餐余量 · 5h/周", "\ue823", "kimi"),
+            new ModuleDef("moonshot", "Moonshot 开放平台", "开放平台余额 · 与 Kimi 不通用", "\ue8c7", "moonshot"),
             new ModuleDef("deepseek", "DeepSeek", "开放平台余额", "\ue7bf", "deepseek"),
             new ModuleDef("mimo", "小米 MiMo", "模型目录 · 用量待官方开放", "\uE7F8", "mimo"),
             new ModuleDef("codex", "OpenAI Codex", "本机会话统计 · 零凭据", "\uE99A", "codex"),
@@ -448,6 +449,7 @@ internal sealed class SettingsWindow : Window
             "ark" => SeverityPalette.Rgb(255, 41, 112, 255), // 火山引擎蓝
             "claude" => SeverityPalette.Rgb(255, 217, 119, 87), // Claude 赭橙 #D97757
             "kimi" => SeverityPalette.Rgb(255, 37, 99, 235), // Moonshot 蓝 #2563EB
+            "moonshot" => SeverityPalette.Rgb(255, 79, 70, 229), // Moonshot 靛蓝 #4F46E5：与 kimi 行区分（同司共用品牌标，凭据不通用）
             "deepseek" => SeverityPalette.Rgb(255, 77, 107, 254), // DeepSeek 蓝 #4D6BFE
             "mimo" => SeverityPalette.Rgb(255, 255, 105, 0), // 小米橙 #FF6900
             "qwen" => SeverityPalette.Rgb(255, 255, 106, 0), // 阿里橙 #FF6A00（Simple Icons qwen）
@@ -969,6 +971,7 @@ internal sealed class SettingsWindow : Window
         "ark" => "尚无连接——火山控制台「API 访问密钥」创建 AK/SK（ArkReadOnlyAccess 权限即可），Token 框一次粘贴 AccessKey:SecretKey；推理用 ARK_API_KEY 调不了额度口（管控面实测 400 拒绝）。",
         "claude" => "无需连接配置——直接读本机 ~/.claude/projects 会话记录；名称随意填（如 claude-local），Endpoint 可空。",
         "kimi" => "尚无连接——填 Kimi Code 控制台 Key（sk-kimi-*，与 Moonshot 开放平台不通用；用量接口自动带默认端点）。",
+        "moonshot" => "尚无连接——填 Moonshot 开放平台 Key（platform.moonshot.cn → API Key 管理）。与 Kimi For Coding 套餐是两套账号体系（Key 不通用）；余额接口自动带默认端点。",
         "deepseek" => "尚无连接——填 DeepSeek 开放平台 API Key（platform.deepseek.com；余额接口自动带默认端点）。",
         "mimo" => "尚无连接——填小米开放平台 API Key（platform.xiaomimimo.com，实测推理域可用）。官方未开放用量接口（推理域 /usage 实测 404），卡片显示模型目录真数据；日后开放可在连接 Settings 填 usage_endpoint。",
         "codex" => "无需连接配置——直接读本机 ~/.codex/sessions 会话记录；名称随意填（如 codex-local），Endpoint 可空。官方用量口需 ChatGPT OAuth（不同凭据体系），卡片为本地统计口径。",
@@ -1419,6 +1422,7 @@ internal sealed class SettingsWindow : Window
         "ark" => "ark-main",
         "claude" => "claude-local",
         "kimi" => "kimi",
+        "moonshot" => "moonshot-main",
         "deepseek" => "deepseek",
         "mimo" => "mimo-main",
         "qwen" => "qwen-main",
@@ -1435,6 +1439,7 @@ internal sealed class SettingsWindow : Window
         "ark" => "Endpoint（可空 = 官方网关 open.volcengineapi.com，一般不用改）",
         "claude" => "会话目录（可空 = 默认 ~/.claude/projects）",
         "kimi" => "Endpoint（可空 = 官方用量接口）",
+        "moonshot" => "Endpoint（可空 = 官方余额接口 api.moonshot.cn/v1/users/me/balance）",
         "deepseek" => "Endpoint（可空 = 官方余额接口）",
         "mimo" => "Endpoint（可空 = 推理域 token-plan-cn.xiaomimimo.com/v1）",
         "qwen" => "Endpoint（可空 = 百炼兼容口 token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1）",
@@ -1451,6 +1456,7 @@ internal sealed class SettingsWindow : Window
         "ark" => "https://open.volcengineapi.com/",
         "claude" => "C:\\Users\\me\\.claude\\projects",
         "kimi" => "https://api.kimi.com/coding/v1/usages",
+        "moonshot" => "https://api.moonshot.cn/v1/users/me/balance",
         "deepseek" => "https://api.deepseek.com/user/balance",
         "mimo" => "https://token-plan-cn.xiaomimimo.com/v1",
         "qwen" => "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
@@ -1468,6 +1474,7 @@ internal sealed class SettingsWindow : Window
         "ark" => "AccessKey:SecretKey（冒号分隔一次粘贴，只进 DPAPI；控制台「API 访问密钥」创建）",
         "claude" => "无需凭据（留空）",
         "kimi" => "API Key（sk-kimi-*，只写 DPAPI）",
+        "moonshot" => "API Key（开放平台 Key，只写 DPAPI；Bearer 直传）",
         "deepseek" => "API Key（只写 DPAPI）",
         "mimo" => "API Key（只写 DPAPI；Bearer 直传）",
         "qwen" => "API Key（sk-sp- 专属 Key，只写 DPAPI；Bearer 直传）",
