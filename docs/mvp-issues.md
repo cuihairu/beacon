@@ -143,6 +143,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] 无网启动：界面有数据且标注 Last update，随后自动刷新
     - 状态（2026-10-09）：存储/宿主层单测已过（JsonCacheStoreTests：SaveThenLoad_RoundTripsAcrossInstances / CorruptCacheFile_TreatedAsEmpty；WidgetHostTests 缓存优先水合）；「界面有数据」为运行时表现——待 Windows 装机。
+    - 状态（2026-10-10）：断网→标注→恢复全周期单测收口——WidgetHostTests.OfflineThenRecovery_StaleAnnotationPreserved_FreshReplaces：断网后陈旧态重发布且 FetchedAt 保持原值（Last update 不刷新成失败时刻）/Summary 保留旧数据；恢复后自动刷新 IsStale=false、缓存同步替换。
 
 ### B-207 连接健康与离线模型
 - **依赖**：B-204
@@ -166,7 +167,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   - [x] 假 Handler 单测：ETag/401/403/限流分支全覆盖
     - 证据（2026-10-09）：`GitHubApiClientTests`——FirstGet_ReturnsBody_AndStoresEtag_SecondGetSendsIfNoneMatch（ETag/304）/ Unauthorized401_ThrowsUnauthorized / Forbidden403_WithQuotaExhausted_ThrowsOffline / RateLimitHeader_IsParsed_AndLowQuotaFlagged；`GitHubConnectionProviderTests`——MapsExceptionHealth / NetworkDown_Offline。
   - [ ] 真实 PAT 手动验证连接测试成功/失败路径
-    - 待 Windows 装机。
+    - 状态（2026-10-10）：假 Handler 全分支单测收口——GitHubConnectionProviderTests 8 例（200→Healthy 走 /rate_limit、401→Unauthorized、网络断→Offline、缺 PAT 短路→Unauthorized 带录入指引、403 限流耗尽→Offline、403 权限→Unauthorized、超时→Offline、缓存键随 token 换客户端）；真实 PAT 手动验证——待 Windows 装机。
+    - 修复（2026-10-10）两处真 bug：①缓存键只用连接 Id——重录 PAT/改端点后连接测试与刷新永远拿旧客户端（旧 Authorization/ETag 表），不重启不生效；键改含 endpoint+token 后自然失效。②缺凭据不短路——/rate_limit 匿名也 200，空 PAT 误报「连接正常」；现先查 Secrets 空则 Unauthorized+指引，请求不发。
 
 ### B-302 PR Widget Provider
 - **依赖**：B-301
@@ -174,6 +176,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] 夹具单测：计数/映射正确；真实仓库手动验证
     - 状态（2026-10-09）：夹具单测已过（GitHubPullRequestsProviderTests 6 例：计数/Severity 映射）；真实仓库手动验证——待 Windows 装机。
+    - 状态（2026-10-10）：夹具补至 10 例（单数摘要「1 open PR · 1 review needed」/草稿带 reviewer 不豁免/缺 requested_reviewers 字段按 0/坏 JSON→Degraded 带解析原因）。
+    - 挂起（红 CI 判据）：规格的「红 CI 的 PR → Warning」需按 PR head sha 逐个打 combined status 口（每 PR 一请求）；该口 304 时无上次状态可续（provider 拿不到前态），要做须按 PR 记忆上次结果的有状态设计——挂起待派工，先以 review-requested 判据运行。
 
 ### B-303 Actions(CI) Widget Provider
 - **依赖**：B-301
@@ -181,6 +185,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] 状态映射表驱动单测；真实 workflow 手动验证（成功/失败/运行中）
     - 状态（2026-10-09）：表驱动单测已过（GitHubActionsProviderTests：Lifecycle/Severity 映射含 Failed→Error、Running→进度、超 15min→Warning）；真实 workflow 手动验证——待 Windows 装机。
+    - 状态（2026-10-10）：端到端补至 8 例（运行中→Running/Info 且 Summary 不拼时长、16min 疑似卡住→Warning、success→Success 且时长「2m00s」格式、坏 JSON→Degraded 带解析原因）；真实 workflow 手动验证——待 Windows 装机。
 
 ### B-304 Widget 注册与类型元数据
 - **依赖**：B-302、B-303
@@ -634,6 +639,18 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   同口径按行列数算）。
 - **验收**：四测试项目全绿（211/332/27/31）；Beacon.App 仅 CI windows-latest 可编译；
   设置页默认窗口尺寸下各模块完整可见的截图待装机走查。
+
+### 批3-补14 巡检点火：B-301/302/303/206 代码层收口（2026-10-10 用户令）
+- **范围**：挑纯代码层可验收的未完项推进，装机走查类 42 项与 WinUI 截图项维持挂起。
+- **B-301**（连接测试成功/失败路径）：修两处真 bug（缓存键只用 Id 导致重录 PAT 后仍验旧 token；
+  空 PAT 走 /rate_limit 匿名 200 误报连接正常），缺凭据短路带录入指引；假 Handler 分支补至 8 例
+  （含 403 限流/权限两分支、超时、token 变更换客户端）。
+- **B-302**（PR 计数夹具）：夹具 6→10 例（单数摘要/草稿不豁免/缺字段按 0/坏 JSON→Degraded）；
+  红 CI 判据挂起（combined status 口 304 无前态可续，需按 PR 有状态设计，待派工）。
+- **B-303**（workflow 映射）：表驱动 12 例不动，端到端 3→8 例（运行中/16min 卡住/成功时长格式/坏 JSON）。
+- **B-206**（离线标注 Last update 后自动刷新）：全周期单测——断网重发布陈旧态 FetchedAt 保原值，
+  恢复自动刷新清 IsStale 且缓存替换。
+- **验收**：四测试项目全绿（212/345/27/31，+14 例）；真实 PAT/真实仓库/真实 workflow 手动路径随装机走查。
 
 ---
 

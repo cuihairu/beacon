@@ -105,6 +105,37 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task OfflineThenRecovery_StaleAnnotationPreserved_FreshReplaces()
+    {
+        // B-206 全周期：断网 → 陈旧态重发布（Last update = 原 FetchedAt 不丢）→ 恢复 → 自动刷新清标注
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        var cached = TestData.State(severity: Severity.Info, summary: "cached"); // FetchedAt=2026-01-01T00:00:00Z
+        fixture.Cache.SaveState("conn-1", cached);
+        fixture.Provider.Handler = (_, _, _, _) =>
+            throw new ConnectionException("network down", ConnectionHealthState.Offline);
+
+        await host.RefreshWidgetAsync("w-1");
+
+        var stale = Assert.Single(fixture.States).State;
+        Assert.True(stale.IsStale);
+        Assert.False(stale.ConnectionHealthy);
+        Assert.Equal(cached.FetchedAt, stale.FetchedAt); // 标注 Last update 用原值，不刷新成失败时刻
+        Assert.Equal("cached", stale.Summary);
+
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(TestData.State(summary: "fresh"));
+        var ok = await host.RefreshWidgetAsync("w-1");
+
+        Assert.True(ok);
+        var fresh = fixture.States[^1].State;
+        Assert.False(fresh.IsStale);
+        Assert.True(fresh.ConnectionHealthy);
+        Assert.Equal("fresh", fresh.Summary);
+        Assert.Equal("fresh", fixture.Cache.LoadStates("conn-1")["w-1"].Summary); // 缓存同步替换
+    }
+
+    [Fact]
     public async Task ConnectionException_NoCache_PublishesSyntheticWarning()
     {
         var fixture = new HostFixture();

@@ -108,6 +108,84 @@ public sealed class GitHubActionsProviderTests
     }
 
     [Fact]
+    public async Task LatestRun_Running_MapsInfo_NoDuration()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, RunsBody(111, "in_progress", null, DateTimeOffset.UtcNow.AddMinutes(-5), null));
+
+        var state = await GetStateAsync(handler);
+
+        Assert.NotNull(state);
+        Assert.Equal(LifecycleState.Running, state.Lifecycle);
+        Assert.Equal(Severity.Info, state.Severity);
+        Assert.Equal("ci.yml · in_progress", state.Summary); // 运行中不拼时长，进度由 UI 按 Lifecycle 画不确定条
+        Assert.Equal("111", state.Payload["run_id"]);
+    }
+
+    [Fact]
+    public async Task LatestRun_StuckRunning_MapsWarning()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, RunsBody(112, "in_progress", null, DateTimeOffset.UtcNow.AddMinutes(-16), null));
+
+        var state = await GetStateAsync(handler);
+
+        Assert.NotNull(state);
+        Assert.Equal(LifecycleState.Running, state.Lifecycle);
+        Assert.Equal(Severity.Warning, state.Severity); // 超 15 分钟疑似卡住
+    }
+
+    [Fact]
+    public async Task LatestRun_Success_DurationFormatted()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, RunsBody(
+            113, "completed", "success",
+            new DateTimeOffset(2026, 1, 1, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 1, 1, 10, 2, 0, TimeSpan.Zero)));
+
+        var state = await GetStateAsync(handler);
+
+        Assert.NotNull(state);
+        Assert.Equal(LifecycleState.Success, state.Lifecycle);
+        Assert.Equal(Severity.Success, state.Severity);
+        Assert.Equal("ci.yml · success · 2m00s", state.Summary);
+        Assert.Equal("success", state.Payload["conclusion"]);
+    }
+
+    [Fact]
+    public async Task LatestRun_MalformedJson_ThrowsDegraded()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, "not json at all");
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(() => GetStateAsync(handler));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("Actions 响应解析失败", exception.Message);
+    }
+
+    /// <summary>以 JSON 序列化构造 runs 响应体（时间戳 ISO 8601，TryGetTime 可解析）。</summary>
+    private static string RunsBody(long id, string status, string? conclusion, DateTimeOffset? startedAt, DateTimeOffset? updatedAt)
+        => System.Text.Json.JsonSerializer.Serialize(new
+        {
+            total_count = 1,
+            workflow_runs = new[]
+            {
+                new
+                {
+                    id,
+                    status,
+                    conclusion,
+                    head_branch = "main",
+                    html_url = $"https://github.com/owner/repo/actions/runs/{id}",
+                    run_started_at = startedAt,
+                    updated_at = updatedAt,
+                },
+            },
+        });
+
+    [Fact]
     public async Task NotModified_ReturnsNull()
     {
         var handler = new FakeHttpMessageHandler();

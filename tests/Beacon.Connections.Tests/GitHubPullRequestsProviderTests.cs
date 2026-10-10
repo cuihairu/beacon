@@ -110,6 +110,61 @@ public sealed class GitHubPullRequestsProviderTests
     }
 
     [Fact]
+    public async Task SinglePull_Flagged_SingularSummary()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, """[{"number": 9, "draft": false, "requested_reviewers": [{ "login": "bob" }]}]""");
+
+        var state = await GetStateAsync(handler, Widget());
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Warning, state.Severity);
+        Assert.Equal("1 open PR · 1 review needed", state.Summary); // 单数分支（复数文案覆盖在 Count_And_WarningMapping）
+        Assert.Equal("1", state.Payload["flagged_count"]);
+        Assert.Equal("9", state.Payload["flagged_numbers"]);
+    }
+
+    [Fact]
+    public async Task DraftWithRequestedReviewer_Flagged()
+    {
+        // 草稿不豁免：规格只有「有 review-requested → Warning」一条判据
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, """[{"number": 5, "draft": true, "requested_reviewers": [{ "login": "carol" }]}]""");
+
+        var state = await GetStateAsync(handler, Widget());
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Warning, state.Severity);
+        Assert.Equal("5", state.Payload["flagged_numbers"]);
+    }
+
+    [Fact]
+    public async Task MissingReviewerField_CountsZero()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, """[{"number": 3, "draft": false}]""");
+
+        var state = await GetStateAsync(handler, Widget());
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Info, state.Severity);
+        Assert.Equal("1 open PR", state.Summary);
+        Assert.Equal("0", state.Payload["flagged_count"]);
+    }
+
+    [Fact]
+    public async Task MalformedJson_ThrowsDegraded()
+    {
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, "<html>gateway error page</html>");
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(() => GetStateAsync(handler, Widget()));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("PR 响应解析失败", exception.Message);
+    }
+
+    [Fact]
     public async Task MissingRepoConfig_ThrowsDegraded()
     {
         var handler = new FakeHttpMessageHandler();
