@@ -64,8 +64,17 @@ internal sealed class PinTile
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Right,
     };
-    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 2px 细条，按已用比例填色
-    private readonly Grid _barRow = new() { Height = 2, Visibility = Visibility.Collapsed };
+    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 2px 细条，按已用比例填色。
+    // 叠放（贴底覆盖在主行之上）而非「1* + Auto」双行：双行在 32 DIP 窗口里给 2px 条留零余量，
+    // Auto 行/RowSpacing/客户区亚像素取整任一吃掉 1-2px 条就整个不可见（2026-10-10 用户实测独立悬浮框进度条消失）；
+    // 叠放总高恒 32 不随条显隐变化，条抬离底边 1 DIP——裁切余量吃 Margin 不吃条。
+    private readonly Grid _barRow = new()
+    {
+        Height = 2,
+        VerticalAlignment = VerticalAlignment.Bottom,
+        Margin = new Thickness(0, 0, 0, 1),
+        Visibility = Visibility.Collapsed,
+    };
     private readonly Border _barFill = new()
     {
         CornerRadius = new CornerRadius(1),
@@ -114,18 +123,16 @@ internal sealed class PinTile
         grid.Children.Add(_label);
         grid.Children.Add(_value);
 
-        var rows = new Grid { RowSpacing = 2 };
-        rows.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        rows.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        Grid.SetRow(grid, 0);
-        rows.Children.Add(grid);
+        // 主行 + 底部进度条叠放（见 _barRow 注释）：单 Grid 双子，后加者在上层；
+        // 主内容竖直居中（12px 文本居 32 DIP，下部留白 ≥6 DIP），与 2px 条互不碰撞
         _barRow.ColumnDefinitions.Add(_barUsed);
         _barRow.ColumnDefinitions.Add(_barFree);
         Grid.SetColumn(_barFill, 0);
         _barRow.Children.Add(_barFill);
-        Grid.SetRow(_barRow, 1);
-        rows.Children.Add(_barRow);
-        _root.Child = rows;
+        var container = new Grid();
+        container.Children.Add(grid);
+        container.Children.Add(_barRow);
+        _root.Child = container;
     }
 
     /// <summary>

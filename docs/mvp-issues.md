@@ -550,6 +550,21 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   HH:mm 重置 · 周 X% · 月 Y%」。真 Key 原样响应（整数百分比+usageDetails 数组）锁进回归夹具。
 - **验收**： Connections 318 绿（+19）；组件截图待装机走查（小米需先录控制台 Cookie；GLM 直接生效）。
 
+### 批3-补9 独立悬浮框进度条消失 + 快捷面板底部裁切修复（2026-10-10 用户批7）
+- **独立悬浮框进度条完全不显示（用户批7①，疑截断）**：FloatingTileWindow 窗口写死 32 DIP 高，
+  PinTile 进度条走「1* 主行 + RowSpacing 2 + Auto 条行」双行布局——32 DIP 里给 2px 条留零余量，
+  Auto 行/间距/客户区亚像素取整任一吃掉 1-2px 条即整个不可见。改**叠放**：单 Grid 双子（主行 +
+  贴底 bar，后加者上层），总高恒 32 不随条显隐变化；条抬离底边 1 DIP，裁切余量吃 Margin 不吃条；
+  主内容竖直居中与 2px 条互不碰撞。单宿主面板与独立悬浮框共用 PinTile，一处修两形态同生效。
+- **快捷面板右下角内容被切（用户批7②，菜单底部显示不全）**：QuickPanel RECENT EVENTS 区是
+  StackPanel（Grid * 行内）套 ListView——纵向 StackPanel 以**无限高**量测子元素，ListView 撑到全部
+  内容高（50 条事件）、溢出窗底被窗口裁掉，且 ListView 自认为全可见、**滚动条永不出现**，底部条目
+  够不着。对照组：通知列表有 MaxHeight=118 封顶故无恙。改纵向 Grid（Auto 标签 + * 列表 + RowSpacing 6），
+  列表压进剩余高度走内部滚动，底部 14 DIP Border Padding 完整可见。托盘菜单为 Win32 TrackPopupMenu
+  （系统绘制自动翻边）已排除。
+- **验收**：修复均为 App 层布局（本地不可编译，CI windows-latest 为准）；截图验收（悬浮框进度条可见 +
+  面板右下完整）待装机走查。
+
 ---
 
 ## 附：MVP 明确不做（评审基线）

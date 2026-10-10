@@ -66,15 +66,23 @@
                 <StackPanel x:Name="SourceCounts" Orientation="Horizontal" Spacing="6" />
             </StackPanel>
 
-            <!-- B-602：Recent Events（状态变化流，与通知同源）；单击进 L3，右键 Pin -->
-            <StackPanel Grid.Row="3" Margin="0,12,0,0" Spacing="6">
-                <TextBlock Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+            <!-- B-602：Recent Events（状态变化流，与通知同源）；单击进 L3，右键 Pin。
+                 纵向 Grid（Auto 标签 + * 列表）而非 StackPanel：StackPanel 以无限高度量测子元素，
+                 ListView 撑到全部内容高、溢出窗底被裁且滚动条永不出现（2026-10-10 用户实测右下角内容被切根因）；
+                 * 行把列表压进剩余高度走内部滚动，底部 14 DIP Padding 完整可见。 -->
+            <Grid Grid.Row="3" Margin="0,12,0,0" RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <ListView
+                    Grid.Row="1"
                     x:Name="RecentList"
                     SelectionMode="Single"
                     IsItemClickEnabled="True"
                     ItemClick="OnRecentItemClick" />
-            </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>
