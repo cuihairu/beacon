@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Events;
@@ -29,8 +30,11 @@ public sealed partial class CapsuleWindow : Window
     private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
     private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
     private bool _dragging;
+    private bool _dpiChangedDuringDrag; // 拖动中跨了 DPI：落点后补排尺寸（拖动中跳过是为不与 Move 互抢）
     private (int X, int Y) _dragStartCursor; // 按下时光标屏幕物理像素（GetCursorPos，与 AppWindow.Position 同单位）
     private (int X, int Y) _dragOrigin; // 按下时的窗口位置：拖动目标 = 起点 + 光标位移
+    private NativeMethods.WndProcDelegate? _wndProc; // 字段持有防 GC 回收子类化回调
+    private IntPtr _prevWndProc;
     private int _x;
     private int _y;
     private DateTimeOffset _lastFetchedAt;
@@ -66,12 +70,41 @@ public sealed partial class CapsuleWindow : Window
         // 常驻悬浮物：不进任务栏/Alt-Tab、点击不抢焦点（RFC §6.2.7）
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
+        SubclassForDpiChange();
         ApplySize(); // 按内容实测定尺寸（DIP×DPI 转物理像素，宽随内容=§6.2.2）
         RestorePosition();
         if (!_startVisible)
         {
             _appWindow.Hide(); // showCapsule=false：注册(hwnd/AppWindow 就绪)但不显示
         }
+    }
+
+    /// <summary>子类化挂 WM_DPICHANGED（同单宿主 PinnedHostWindow 口径）：跨缩放屏后立即按新 DPI 重排，
+    /// 不再等下一次数据刷新才自愈。</summary>
+    private void SubclassForDpiChange()
+    {
+        _wndProc = WndProc;
+        _prevWndProc = NativeMethods.SetWindowLongPtr(
+            _hwnd, NativeMethods.GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_wndProc));
+    }
+
+    private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == NativeMethods.WM_DPICHANGED)
+        {
+            // 拖动中跳过——重排的 Move 会和拖拽 Move 互抢窗口位置（跨屏闪烁），落点后在 released 补排
+            if (_dragging)
+            {
+                _dpiChangedDuringDrag = true;
+            }
+            else
+            {
+                ApplySize(); // GetDpiForWindow 此时已返回新 DPI，MeasureSizePx 实测内容宽随新缩放
+            }
+        }
+        return _prevWndProc == IntPtr.Zero
+            ? NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam)
+            : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
     }
 
     /// <summary>启动前声明「隐藏启动」（B-801 showCapsule=false；避免先显示后隐藏的闪烁）。</summary>
@@ -134,6 +167,11 @@ public sealed partial class CapsuleWindow : Window
             OpenPanelRequested?.Invoke();
         }
         SavePosition();
+        if (_dpiChangedDuringDrag)
+        {
+            _dpiChangedDuringDrag = false;
+            ApplySize(); // 拖动中跨了 DPI 的消息被跳过：落点后按新 DPI 补排尺寸
+        }
     }
 
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;

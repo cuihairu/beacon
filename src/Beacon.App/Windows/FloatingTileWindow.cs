@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Abstractions;
@@ -248,6 +249,9 @@ internal sealed class FloatingTileHost
         private AppWindow? _appWindow;
         private DragSession? _drag;
         private bool _dragMoved;
+        private bool _dpiChangedDuringDrag; // 拖动中跨了 DPI：落点后补排尺寸（拖动中跳过是为不与 Move 互抢）
+        private NativeMethods.WndProcDelegate? _wndProc; // 字段持有防 GC 回收子类化回调
+        private IntPtr _prevWndProc;
 
         /// <summary>未拖过组件的级联序号（ReloadTiles 时随 pin 集变化更新）。</summary>
         public int CascadeIndex { get; set; }
@@ -348,9 +352,48 @@ internal sealed class FloatingTileHost
             _appWindow.IsShownInSwitchers = false;
             NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
 
-            var dpi = GetDpi();
+            SubclassForDpiChange();
             // DPI 修复单 2026-10-10：DIP 设计值只在 Win32 边界换算一次（四舍五入，截断高缩放欠高）
-            _appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(TileWidthDips, dpi), DpiLayoutMath.ToPx(TileHeightDips, dpi)));
+            ApplyDesignSize();
+        }
+
+        /// <summary>子类化挂 WM_DPICHANGED（同单宿主 PinnedHostWindow 口径）。</summary>
+        private void SubclassForDpiChange()
+        {
+            _wndProc = WndProc;
+            _prevWndProc = NativeMethods.SetWindowLongPtr(
+                _hwnd, NativeMethods.GWLP_WNDPROC, Marshal.GetFunctionPointerForDelegate(_wndProc));
+        }
+
+        private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            if (msg == NativeMethods.WM_DPICHANGED)
+            {
+                // 跨缩放屏：尺寸按 DIP 设计值×新 DPI 重排（GetDpiForWindow 此时已返回新值）。
+                // 拖动中跳过——Resize 与拖拽 Move 互抢窗口位置就是跨屏闪烁，落点后在 released 补排
+                if (_drag is null)
+                {
+                    ApplyDesignSize();
+                }
+                else
+                {
+                    _dpiChangedDuringDrag = true;
+                }
+            }
+            return _prevWndProc == IntPtr.Zero
+                ? NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam)
+                : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
+        }
+
+        /// <summary>按 DIP 设计值×当前 DPI 重排尺寸并收回工作区（Loaded / WM_DPICHANGED / 拖动跨 DPI 补排共用）。</summary>
+        private void ApplyDesignSize()
+        {
+            if (GetAppWindow() is not { } appWindow)
+            {
+                return;
+            }
+            var dpi = GetDpi();
+            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(TileWidthDips, dpi), DpiLayoutMath.ToPx(TileHeightDips, dpi)));
             EnsurePlaced();
         }
 
@@ -402,6 +445,11 @@ internal sealed class FloatingTileHost
             if (_dragMoved && GetAppWindow() is { } appWindow)
             {
                 _host.PersistPosition(_widget.Id, appWindow.Position.X, appWindow.Position.Y);
+                if (_dpiChangedDuringDrag)
+                {
+                    _dpiChangedDuringDrag = false;
+                    ApplyDesignSize(); // 拖动中跨了 DPI 的消息被跳过：落点后按新 DPI 补排尺寸与位置
+                }
             }
             e.Handled = true;
         }
