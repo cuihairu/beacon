@@ -63,7 +63,24 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(1770000000000, usage.Rolling.ResetMs);
         Assert.Equal(8, usage.Weekly!.Percent);
         Assert.Equal(3, usage.Monthly!.Percent);
-        Assert.Equal(42.5, usage.WorstPercent);
+        Assert.Equal(42.5, usage.Primary!.Percent); // 主位 = 5h 窗（用户令 2026-10-10）
+    }
+
+    [Fact]
+    public void PrimaryWindow_FallsBackWeeklyThenMonthly_NeverJumpsAhead()
+    {
+        // 主位优先级 rolling → weekly → monthly：5h 缺失才降级，月度不抢主位
+        var rollingOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":10}]}""")!;
+        Assert.Equal(10, rollingOnly.Primary!.Percent);
+
+        var weeklyOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20}]}""")!;
+        Assert.Equal(20, weeklyOnly.Primary!.Percent);
+
+        var monthlyOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TIME_LIMIT","percentage":30}]}""")!;
+        Assert.Equal(30, monthlyOnly.Primary!.Percent);
+
+        var all = BigModelUsageProvider.ParseUsage(Body)!;
+        Assert.Same(all.Rolling, all.Primary);
     }
 
     [Fact]
@@ -118,13 +135,14 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(Severity.Success, state!.Severity);
         Assert.Equal(LifecycleState.Success, state.Lifecycle);
         var expectedReset = DateTimeOffset.FromUnixTimeMilliseconds(1770000000000).ToLocalTime()
-            .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture); // 5h 窗 nextResetTime 最近优先
-        Assert.Equal($"GLM Coding Pro · 5h 42.5% · 周 8% · 月 3% · {expectedReset} 重置", state.Summary);
+            .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture); // 主位 5h 窗的重置时间
+        Assert.Equal($"GLM Coding Pro · 5h 窗口已用 42.5% · {expectedReset} 重置 · 周 8% · 月 3%", state.Summary);
         Assert.Equal("GLM Coding Pro", state.Payload["level"]);
         Assert.Equal("42.5", state.Payload["rolling_percent"]);
+        Assert.Equal("5h", state.Payload["percent_window"]);
         Assert.Equal(expectedReset, state.Payload["reset_iso"]);
         Assert.Equal("https://open.bigmodel.cn/usage", state.DetailUrl);
-        // 数值卡：进度条取最差窗口（5h 42.5%），tile 主数值 percent（验收：额度组件不再只出摘要纯文本）
+        // 数值卡：进度条取主位窗口（5h 42.5%），tile 主数值 percent（用户令 2026-10-10：月维度不占主）
         Assert.Equal(0.425, state.Progress!.Value, 5);
         Assert.Equal("42.5", state.Payload["percent"]);
 
@@ -147,6 +165,46 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(LifecycleState.Running, state.Lifecycle);
         Assert.Equal("42.5", state.Payload["rolling_percent"]);
         Assert.Equal(BigModelUsageProvider.ZaiEndpoint, http.Requests[0].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetStateAsync_MonthlyOnly_MainSlotTakesMonthlyNotWorst()
+    {
+        // 只有月度窗口时主位才落到月度（现有实现曾取三窗最差，用户令：月维度不占主位）
+        var body = """{"data":{"level":"Lite","limits":[{"type":"TIME_LIMIT","percentage":3,"nextResetTime":1771000000000}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal("3", state!.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["percent_window"]);
+        Assert.Equal(0.03, state.Progress!.Value, 5);
+        var expectedReset = DateTimeOffset.FromUnixTimeMilliseconds(1771000000000).ToLocalTime()
+            .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Contains($"月 3%", state.Summary);
+        Assert.Contains($"{expectedReset} 重置", state.Summary);
+    }
+
+    [Fact]
+    public void ParseUsage_RealKeySample_IntegerPercentAndTimeLimitUnit()
+    {
+        // 2026-10-10 真 Key 实测原样响应（open.bigmodel.cn 与 api.z.ai 同构）：百分比是整数、
+        // TIME_LIMIT 带 unit=5/number=1 与 usageDetails 数组、5h 窗只给 percentage+nextResetTime 无绝对数
+        const string realSample = """
+            {"code":200,"msg":"操作成功","data":{"limits":[
+              {"type":"TIME_LIMIT","unit":5,"number":1,"usage":1000,"currentValue":326,"remaining":674,
+               "percentage":32,"nextResetTime":1793875587984,
+               "usageDetails":[{"modelCode":"search-prime","usage":309},{"modelCode":"web-reader","usage":17}]},
+              {"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":59,"nextResetTime":1791604507943}],
+              "level":"pro"},"success":true}
+            """;
+        var usage = BigModelUsageProvider.ParseUsage(realSample)!;
+
+        Assert.Equal("pro", usage.Level);
+        Assert.Equal(59, usage.Rolling!.Percent); // 5h 窗主位
+        Assert.Equal(1791604507943, usage.Rolling.ResetMs);
+        Assert.Equal(32, usage.Monthly!.Percent); // MCP 月度口径，降次行
+        Assert.Same(usage.Rolling, usage.Primary);
     }
 
     [Fact]

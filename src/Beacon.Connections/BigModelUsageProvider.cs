@@ -31,9 +31,11 @@ public static class BigModelWidgetDescriptors
 /// <summary>
 /// bigmodel.usage（positioning P0 #5）：智谱 GLM Coding Plan 额度监控（国际站 Z.AI 同构，换 Endpoint 即用）。
 /// 监控接口：GET {Endpoint}/api/monitor/usage/quota/limit，Authorization 头携带 API Key（无 Bearer 前缀）。
-/// 响应 data.limits[]：TOKENS_LIMIT(unit=3,number=5) → 5 小时窗口、(6,1) → 周限、TIME_LIMIT → 月度（MCP），
-/// 每项含 percentage（0-100）与 nextResetTime（epoch ms）；level = 套餐等级。
-/// 级别取各窗口最差者：≥error_percent → Error，≥warn_percent → Warning，否则 Success。
+/// 响应 data.limits[]：TOKENS_LIMIT(unit=3,number=5) → 5 小时窗口、(6,1) → 周限、TIME_LIMIT(unit=5) → 月度（MCP
+/// 调用数口径，含 usage/currentValue/remaining），每项含 percentage（0-100）与 nextResetTime（epoch ms）。
+/// 2026-10-10 用户令+真 Key 实证：**5h 滚动窗口占主位，月维度不占主**——主数值/进度条/级别取
+/// rolling → weekly → monthly 优先级（不再是三窗最差）；窗口上限无绝对 token 口（监控接口只给百分比，
+/// 1302 限流消息实测无窗口数字），窗口规格以「5h 窗口已用 N%」+ 重置时间呈现。
 /// </summary>
 public sealed class BigModelUsageProvider : IWidgetProvider
 {
@@ -74,7 +76,9 @@ public sealed class BigModelUsageProvider : IWidgetProvider
 
         var warnPercent = widget.Config.TryGetValue("warn_percent", out var warnRaw) && double.TryParse(warnRaw, CultureInfo.InvariantCulture, out var warn) ? warn : 60;
         var errorPercent = widget.Config.TryGetValue("error_percent", out var errorRaw) && double.TryParse(errorRaw, CultureInfo.InvariantCulture, out var error) ? error : 90;
-        var severity = MapSeverity(usage.WorstPercent, warnPercent, errorPercent);
+        var primary = usage.Primary;
+        var primaryPercent = primary?.Percent;
+        var severity = MapSeverity(primaryPercent, warnPercent, errorPercent);
         var head = widget.Config.GetValueOrDefault("label") ?? usage.Level ?? "GLM";
         var summary = head + Summarize(usage);
 
@@ -87,20 +91,22 @@ public sealed class BigModelUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
-            // 数值卡进度条：取最差窗口用量（与级别判定同源）；无数据 → null（tile 不画条）
-            Progress = usage.WorstPercent is { } worst ? Math.Clamp(worst, 0, 100) / 100.0 : null,
+            // 数值卡进度条：主位窗口用量（5h 窗优先，用户令 2026-10-10）；无数据 → null（tile 不画条）
+            Progress = primaryPercent is { } value ? Math.Clamp(value, 0, 100) / 100.0 : null,
             Summary = summary,
             DetailUrl = "https://open.bigmodel.cn/usage",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["percent"] = usage.WorstPercent is { } worstPercent ? Format(worstPercent) : "", // tile 主数值（最差窗口已用 %）
+                ["percent"] = primaryPercent is { } percent ? Format(percent) : "", // tile 主数值（主位窗口已用 %）
+                ["percent_window"] = usage.Rolling is not null ? "5h" : usage.Weekly is not null ? "weekly" : usage.Monthly is not null ? "monthly" : "",
                 ["level"] = usage.Level ?? "",
                 ["rolling_percent"] = usage.Rolling?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_percent"] = usage.Weekly?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["monthly_percent"] = usage.Monthly?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["rolling_reset_ms"] = usage.Rolling?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
                 ["weekly_reset_ms"] = usage.Weekly?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
-                ["reset_iso"] = NearestResetMs(usage) is { } nearest ? FormatReset(nearest) : "", // 最近一次重置（5h 窗优先，本地时区 MM-dd HH:mm）
+                ["monthly_reset_ms"] = usage.Monthly?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
+                ["reset_iso"] = primary?.ResetMs is { } reset ? FormatReset(reset) : "", // 主位窗口重置时间（本地时区 MM-dd HH:mm）
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
@@ -112,22 +118,8 @@ public sealed class BigModelUsageProvider : IWidgetProvider
     /// <summary>归一化后的套餐用量：三窗口 + 套餐等级。</summary>
     public sealed record PlanUsage(string? Level, UsageWindow? Rolling, UsageWindow? Weekly, UsageWindow? Monthly)
     {
-        /// <summary>各窗口最差用量（级别判定依据）；全部缺失 → null。0% 是合法值，不折叠。</summary>
-        public double? WorstPercent
-        {
-            get
-            {
-                double? worst = null;
-                foreach (var candidate in new[] { Rolling?.Percent, Weekly?.Percent, Monthly?.Percent })
-                {
-                    if (candidate is { } value && (worst is not { } current || value > current))
-                    {
-                        worst = value;
-                    }
-                }
-                return worst;
-            }
-        }
+        /// <summary>主位窗口（用户令 2026-10-10：5h 滚动窗 → 周 → 月，月度只在无人可用时垫底）；全缺 → null。</summary>
+        public UsageWindow? Primary => Rolling ?? Weekly ?? Monthly;
     }
 
     /// <summary>解析 quota/limit 响应（纯函数供单测）。结构对齐社区口径：data 包装可选，窗口按 type/unit/number 归类。</summary>
@@ -202,14 +194,18 @@ public sealed class BigModelUsageProvider : IWidgetProvider
             : worst >= warnPercent ? Severity.Warning
             : Severity.Success;
 
-    /// <summary>摘要尾巴：有数据才出现的紧凑窗口列表（“ · 5h 42% · 周 8% · 02-09 18:00 重置”）。
-    /// 重置时间取监控接口原生 nextResetTime（epoch ms，最近窗口优先）——源自带字段，不做窗口文案推算。</summary>
+    /// <summary>摘要尾巴：5h 滚动窗口打头（已用 % + 重置时间），周/月窗口随后（用户令 2026-10-10）。
+    /// 重置时间取监控接口原生 nextResetTime（epoch ms）——源自带字段，不做窗口文案推算。</summary>
     internal static string Summarize(PlanUsage usage)
     {
         var parts = new List<string>();
         if (usage.Rolling?.Percent is { } rolling)
         {
-            parts.Add($"5h {Format(rolling)}%");
+            parts.Add($"5h 窗口已用 {Format(rolling)}%");
+        }
+        if (usage.Rolling?.ResetMs is { } rollingReset)
+        {
+            parts.Add($"{FormatReset(rollingReset)} 重置");
         }
         if (usage.Weekly?.Percent is { } weekly)
         {
@@ -219,15 +215,12 @@ public sealed class BigModelUsageProvider : IWidgetProvider
         {
             parts.Add($"月 {Format(monthly)}%");
         }
-        if (NearestResetMs(usage) is { } reset)
+        if (usage.Rolling is null && (usage.Weekly ?? usage.Monthly) is { } fallback)
         {
-            parts.Add($"{FormatReset(reset)} 重置");
+            parts.Add(fallback.ResetMs is { } fallbackReset ? $"{FormatReset(fallbackReset)} 重置" : "窗口数据");
         }
         return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
     }
-
-    /// <summary>最近一次重置（5h 滚动窗 → 周 → 月，第一个有值的）。</summary>
-    internal static long? NearestResetMs(PlanUsage usage) => usage.Rolling?.ResetMs ?? usage.Weekly?.ResetMs ?? usage.Monthly?.ResetMs;
 
     /// <summary>epoch ms → 本地时区「MM-dd HH:mm」。</summary>
     internal static string FormatReset(long resetMs)
