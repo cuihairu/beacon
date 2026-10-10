@@ -234,7 +234,10 @@ internal sealed class SettingsWindow : Window
             }
         };
         splitter.PointerReleased += (sender, e) => ((Border)sender).ReleasePointerCapture(e.Pointer);
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(splitter, "settings-left-splitter"); // UIA 取证入口
+        // UIA 取证入口：Border 非 Control 无自带 peer，只设 AutomationId 不进 UIA 树（CI 38043812483 实证
+        // 「未找到 settings-left-splitter」）——Name 强制创建 FrameworkElementAutomationPeer
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(splitter, "左栏宽度分隔条");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(splitter, "settings-left-splitter");
         return splitter;
     }
 
