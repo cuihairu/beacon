@@ -1,6 +1,7 @@
 ﻿# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
 #   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
-#     波纹双帧（相隔 700ms，动画在跑的目检证据）+「NN%」UIA 文本断言（bar 已降级可选路径）。
+#     波纹双帧（相隔 700ms，动画在跑的目检证据）+「NN%」UIA 文本硬断言（zhipu 连接指 mock
+#     /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据；bar 已降级可选路径）。
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
 #   场景 C 浅色主题 icon 可辨度：白桌面 + theme=light，tile 近景暗像素硬断言——
 #     近白 icon/文字叠浅底不可辨（用户实测「根本看不清」）在这里现形（修复=实色底+深前景）。
@@ -154,9 +155,11 @@ function Write-ScenarioConfig([bool] $numericFloating, [string] $theme = "dark")
     Set-Content -Path (Join-Path $configDir "config.json") -Value $config -Encoding UTF8
     @'
 [
-  { "id": "zhipu", "type": "bigmodel", "enabled": true }
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true }
 ]
 '@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    # zhipu 指 mock（连接 Endpoint 是全 URL 语义）：GLM tile 确定性健康——此前无凭据真端点时好时坏
+    # （38048738860 离线态、38044411443 健康），波纹+NN% 断言不能赌公网
     @'
 [
   {
@@ -258,6 +261,8 @@ function Start-MockServer
         $listener.Prefixes.Add("http://127.0.0.1:18081/")
         $listener.Start()
         $ark = '{"ResponseMetadata":{"RequestId":"mock-1","Action":"GetCodingPlanUsage"},"Result":{"Status":"Running","QuotaUsage":[{"Level":"session","Percent":42.5,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":8,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":"92","ResetTimestamp":0}]}}'
+        # bigmodel 监控响应（quota/limit 结构：limits[] 按 type/unit/number 归类——5h 滚动窗 unit=3/number=5）
+        $bigmodel = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":38,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":61,"nextResetTime":0}]}}'
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
         $mimo = '{"data":[{"id":"mimo-v1"},{"id":"mimo-mini"}]}'
@@ -273,6 +278,7 @@ function Start-MockServer
                 switch ($path)
                 {
                     "/coding/v1/usages" { $body = $kimi }
+                    "/api/monitor/usage/quota/limit" { $body = $bigmodel } # 场景 A GLM tile 健康链（38% → 波纹+NN%）
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
                     "/mimo/usage" { $body = $mimoUsage }
@@ -487,6 +493,7 @@ function Assert-DropdownHasItem([System.Windows.Automation.AutomationElement] $s
 }
 
 # —— 场景 A：数量悬浮窗开 ——悬浮框必须在桌面，icon 近景留证
+Start-MockServer # 提前到 A 前：GLM tile 走 mock 健康链（38%），D 场景复用同一实例（二次启动会同端口冲突）
 try
 {
     Write-ScenarioConfig $true
@@ -508,11 +515,15 @@ try
     $aPercent = $aTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
     if ($aPercent)
     {
-        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（波纹双帧已存）"
+        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（mock 38% 健康链，波纹双帧已存）"
+    }
+    elseif (($aTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
+    {
+        throw "断言失败（场景 A）：GLM tile 文本可读但无百分比（N% 常驻静态量缺失）——水波纹改造回归；实际文本：$($aTexts -join ' | ')"
     }
     else
     {
-        # UIA 对 NOACTIVATE 悬浮窗读不出文本时：6x 近景截图即数字状态证据（转人工目检），不拦绿
+        # UIA 对 NOACTIVATE 悬浮窗读不出任何文本时：6x 近景截图即数字状态证据（转人工目检），不拦绿
         Write-Host "::warning::场景 A UIA 文本不可读（$($aTexts.Count) 条）——「NN%」断言转 A-numeric-on-tile-closeup.png 人工目检"
     }
     Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏/近景/波纹第二帧截图已存"
@@ -581,7 +592,7 @@ catch
 try
 {
     Write-ProviderConfig
-    Start-MockServer
+    # mock 已在场景 A 前启动（同端口二次启动会冲突），此处直接复用
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow
     if (!$settings)
@@ -659,14 +670,22 @@ try
     Start-Sleep -Seconds 1
     Save-FullScreenshot "D-settings-splitter-after.png"
     $widthAfter = [int]$leftHost.Current.BoundingRectangle.Width
-    if ($widthAfter -lt $widthBefore + 40)
+    # 期望宽 = min(起点+40, 钳位上限 420)：38048738860 实证拖拽生效但 400+60 撞上限钳到 420，
+    # 旧断言要求 +40（=440）在数学上不可能——钳位感知后 400→420 即硬通过
+    $widthExpected = [Math]::Min($widthBefore + 40, 420)
+    if ($widthAfter -lt $widthExpected)
     {
-        Write-Host "::warning::分隔条合成拖拽在 CI 会话未生效（${widthBefore}→${widthAfter}px，SendInput 已试）——可拖数据链由 config 400→${widthBefore}px 恢复断言+落盘代码证明，拖拽手势转装机手验（截图 before/after 已存 artifact）"
+        Write-Host "::warning::分隔条合成拖拽在 CI 会话未生效（${widthBefore}→${widthAfter}px，期望 ≥${widthExpected}，SendInput 已试）——可拖数据链由 config 400→${widthBefore}px 恢复断言+落盘代码证明，拖拽手势转装机手验（截图 before/after 已存 artifact）"
     }
     else
     {
+        Start-Sleep -Milliseconds 500 # PointerReleased 落盘防抖留时间
         $appConfigNow = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
-        Write-Host "分隔条拖拽断言通过：左栏 $widthBefore → $widthAfter px；config settingsSidebarWidth=$($appConfigNow.settingsSidebarWidth)（拖完落盘）"
+        if ("$($appConfigNow.settingsSidebarWidth)" -ne "$widthAfter")
+        {
+            throw "断言失败（场景 D）：拖拽后左栏 ${widthBefore}→${widthAfter}px 但 config settingsSidebarWidth=$($appConfigNow.settingsSidebarWidth)（期望 $widthAfter）——拖完落盘回归"
+        }
+        Write-Host "分隔条拖拽断言通过：左栏 $widthBefore → $widthAfter px（钳位感知，期望 ≥${widthExpected}）；config 落盘 $($appConfigNow.settingsSidebarWidth)（拖完即存，启动恢复闭环）"
     }
 
     foreach ($provider in @(

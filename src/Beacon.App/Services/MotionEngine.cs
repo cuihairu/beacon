@@ -130,11 +130,12 @@ internal sealed class MotionEngine
             var visual = ElementCompositionPreview.GetElementVisual(element);
             visual.CenterPoint = new System.Numerics.Vector3((float)(baseSizeDips / 2), (float)(baseSizeDips / 2), 0);
             var compositor = visual.Compositor;
-            var pulse = compositor.CreateScalarKeyFrameAnimation();
+            // 同 StartWave：Scale 是 Vector3 属性，scalar 动画类型不匹配会 throw——必须 Vector3 关键帧
+            var pulse = compositor.CreateVector3KeyFrameAnimation();
             var peak = (float)(1.0 + 0.35 * Intensity);
-            pulse.InsertKeyFrame(0.0f, 1f);
-            pulse.InsertKeyFrame(0.5f, peak);
-            pulse.InsertKeyFrame(1.0f, 1f, compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.4f, 0f), new System.Numerics.Vector2(0.6f, 1f)));
+            pulse.InsertKeyFrame(0.0f, new System.Numerics.Vector3(1f));
+            pulse.InsertKeyFrame(0.5f, new System.Numerics.Vector3(peak, peak, 1f));
+            pulse.InsertKeyFrame(1.0f, new System.Numerics.Vector3(1f), compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.4f, 0f), new System.Numerics.Vector2(0.6f, 1f)));
             pulse.IterationBehavior = AnimationIterationBehavior.Forever;
             pulse.Duration = TimeSpan.FromMilliseconds(1000 * Math.Max(1.0, Intensity)); // ≤1Hz 铁律
             visual.StartAnimation("Scale", pulse);
@@ -183,13 +184,15 @@ internal sealed class MotionEngine
             var compositor = visual.Compositor;
             var easing = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.2f, 0.6f), new System.Numerics.Vector2(0.4f, 1f));
 
-            var scale = compositor.CreateScalarKeyFrameAnimation();
-            scale.InsertKeyFrame(0.0f, 0.4f);
+            // Scale 是 Vector3 属性——scalar 动画挂 Vector3 属性类型不匹配直接 throw（被外层吞成静止环，
+            // 38048738860 双帧完全相同实证），必须 Vector3KeyFrameAnimation
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.InsertKeyFrame(0.0f, new System.Numerics.Vector3(0.4f, 0.4f, 1f));
             if (phase > 0.01)
             {
-                scale.InsertKeyFrame((float)phase, 0.4f); // 相位空闲段：保持收拢不可见
+                scale.InsertKeyFrame((float)phase, new System.Numerics.Vector3(0.4f, 0.4f, 1f)); // 相位空闲段：保持收拢不可见
             }
-            scale.InsertKeyFrame(1.0f, 1.8f, easing);
+            scale.InsertKeyFrame(1.0f, new System.Numerics.Vector3(1.8f, 1.8f, 1f), easing);
             scale.IterationBehavior = AnimationIterationBehavior.Forever;
 
             var opacity = compositor.CreateScalarKeyFrameAnimation();
