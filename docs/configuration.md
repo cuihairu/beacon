@@ -27,6 +27,8 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | pinDisplayMode | `panel` / `floating` | `panel` | L0 悬浮形态：`panel` 单窗多 tile 面板；`floating` 每个钉选组件一个独立窗，可拖到桌面任意位置（2026-10-10 拍板维持重启生效） | 重启 |
 | numericFloatingEnabled | 布尔 | `false` | 数值/额度类组件（AI 额度卡等）能否上独立悬浮窗。默认关 = 桌面零残留；关的时候这类钉选仍在宿主面板显示 | 即时 |
 | pollIntervalSeconds | 整数（秒） | `0` | 全局检查频率，`0` = 按各组件刷新档的默认周期。设置页选项 15 秒/30 秒/1 分/5 分。组件单独设了「检测间隔」的以组件为准 | 即时（重建刷新调度） |
+| settingsSidebarWidth | 数值（DIP） | `264` | 设置窗口左栏宽度。拖拽左右栏之间的分隔条（悬停变蓝）自动落盘，启动恢复；钳位 [200, 420] | 重启恢复（拖完即存） |
+| settingsWindowWidth / settingsWindowHeight | 数值（DIP） | `0` | 设置窗口尺寸记忆，`0` = 用默认 880×640。拖动窗口边缘改大小、静止 0.8 秒后落盘，启动恢复 | 重启恢复 |
 | notificationRules | 规则数组 | `[]` | 自定义通知规则，空数组用内置默认四条。见下节 | 即时（导入包路径）；手改文件重启 |
 | appearance | 对象 | 见下节 | 级别色覆盖与动效 | 即时 |
 | configVersion | 整数 | `1` | 配置结构版本号，程序迁移用，不要手改 | 程序维护 |
@@ -149,7 +151,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | id | 字符串 | 必填 | 组件实例唯一名 |
 | type | 字符串 | 必填 | 组件类型，如 `ark.usage`（见上表组件类型列，另有 `github.pull_requests` 等） |
 | connectionId | 字符串 | `""` | 绑定的连接 id |
-| config | 对象 | `{}` | 类型专属字段，见下节 |
+| config | 对象 | `{}` | 类型专属字段，见下节；通用键：`label`（tile 显示名）、`icon`（覆盖品牌图）、`progressStyle`（`bar` = 额度进度改用旧 3px 条；缺省 = 水波纹涟漪 + 常驻「NN%」文本，2026-10-10 起） |
 | refreshTier | 字符串 | `default` | 刷新档，见档位表 |
 | refreshIntervalSeconds | 整数 | `null` | 检测间隔覆盖（秒）。`null` = 按刷新档周期；设置页选项 30 秒/1/2/5/15 分钟/1 小时 |
 | pinned | 布尔 | `false` | 是否钉到桌面（L0）。右键菜单、设置页、快捷面板三处入口共写此字段 |

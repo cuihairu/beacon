@@ -166,6 +166,54 @@ internal sealed class MotionEngine
         }
     }
 
+    /// <summary>⑥ 水波纹（2026-10-10 用户令：进度条反复修不显，换形态）：单环缩放+淡出 forever 循环，
+    /// phase ∈ [0,1) 把波形在周期内平移（双环错相即成扩散涟漪）。Composition 线程驱动（60fps 不占 UI 线程）；
+    /// off 档不启动（全静止铁律），reduced/full 均可用（状态指示动效，同 Critical 脉冲档位口径）。
+    /// 动画失败静默——动效故障不影响静态百分比可读。</summary>
+    public void StartWave(UIElement element, double sizeDips, double phase, double periodMs)
+    {
+        if (Mode == MotionMode.Off)
+        {
+            return;
+        }
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.CenterPoint = new System.Numerics.Vector3((float)(sizeDips / 2), (float)(sizeDips / 2), 0);
+            var compositor = visual.Compositor;
+            var easing = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.2f, 0.6f), new System.Numerics.Vector2(0.4f, 1f));
+
+            var scale = compositor.CreateScalarKeyFrameAnimation();
+            scale.InsertKeyFrame(0.0f, 0.4f);
+            if (phase > 0.01)
+            {
+                scale.InsertKeyFrame((float)phase, 0.4f); // 相位空闲段：保持收拢不可见
+            }
+            scale.InsertKeyFrame(1.0f, 1.8f, easing);
+            scale.IterationBehavior = AnimationIterationBehavior.Forever;
+
+            var opacity = compositor.CreateScalarKeyFrameAnimation();
+            opacity.InsertKeyFrame(0.0f, 0f);
+            if (phase > 0.01)
+            {
+                opacity.InsertKeyFrame((float)phase, 0f);
+            }
+            var peak = phase + (1.0 - phase) * 0.35;
+            opacity.InsertKeyFrame((float)peak, 0.9f);
+            opacity.InsertKeyFrame(1.0f, 0f, easing);
+            opacity.IterationBehavior = AnimationIterationBehavior.Forever;
+
+            var duration = TimeSpan.FromMilliseconds(Math.Clamp(periodMs, 600, 3000));
+            scale.Duration = duration;
+            opacity.Duration = duration;
+            visual.StartAnimation("Scale", scale);
+            visual.StartAnimation("Opacity", opacity);
+        }
+        catch
+        {
+        }
+    }
+
     /// <summary>停掉某元素上的全部循环（收起态暂停/降级复位用）；一次性过渡自然结束。</summary>
     public void StopLoops(UIElement element)
     {

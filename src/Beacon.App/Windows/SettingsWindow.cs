@@ -97,13 +97,17 @@ internal sealed class SettingsWindow : Window
         _motion = new MotionEngine(runtime.Config); // 预览与运行时同引擎：设置改档即刻反映到预览
         Title = "Beacon 设置";
         Content = BuildRoot();
-        // 两栏目录形态需要比默认更宽：WinUI Window 没有 Width/Height，走 AppWindow（物理像素 × DPI）
+        // 两栏目录形态需要比默认更宽：WinUI Window 没有 Width/Height，走 AppWindow（物理像素 × DPI）。
+        // 2026-10-10 用户令「窗口本身可调整大小并记住尺寸」：config 记忆上次的窗口 DIP 尺寸，
+        // 0/非法值落默认 880×640；新值由 root.SizeChanged + 800ms 防抖落盘（ScheduleWindowSizeSave）
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = Infrastructure.NativeMethods.GetDpiForWindow(hwnd) / 96.0;
+        var width = _runtime.Config.App.SettingsWindowWidth is double w && w >= 600 ? w : 880;
+        var height = _runtime.Config.App.SettingsWindowHeight is double h && h >= 400 ? h : 640;
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32
         {
-            Width = (int)Math.Round(880 * dpi),
-            Height = (int)Math.Round(640 * dpi),
+            Width = (int)Math.Round(width * dpi),
+            Height = (int)Math.Round(height * dpi),
         });
         Services.AppIcon.Apply(AppWindow, _runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
     }
@@ -131,7 +135,7 @@ internal sealed class SettingsWindow : Window
         ];
 
         // 2026-10-10 修：模块列表包 ScrollViewer（16 项在 640 高窗口必溢出，此前直接被裁掉看不见）
-        _leftPanel = new StackPanel { Spacing = 2, MinWidth = 232 };
+        _leftPanel = new StackPanel { Spacing = 2 };
         var leftHost = new ScrollViewer
         {
             // 常驻 Visible：底部还有模块这件事必须一眼可见，禁止靠拖窗口发现
@@ -142,6 +146,35 @@ internal sealed class SettingsWindow : Window
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(leftHost, "settings-left-host"); // UIA 取证/自动化入口
         leftHost.Content = _leftPanel;
 
+        // 2026-10-10 用户令「设置搜索框」：输入过滤模块+字段（DisplayName/Subtitle），回车跳第一个命中。
+        // 过滤改行 Visibility（不重建），计数标题同步「N/M」；左栏纵向堆叠 = 搜索框(自适高) + 列表(撑满)
+        _searchBox = new TextBox
+        {
+            PlaceholderText = "搜索设置（模块/字段），回车跳转",
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_searchBox, "settings-search");
+        _searchBox.TextChanged += (_, _) => ApplyModuleFilter();
+        _searchBox.KeyDown += (sender, e) =>
+        {
+            if (e.Key is global::Windows.System.VirtualKey.Enter && _firstFilterHit is { } hit)
+            {
+                SelectModule(hit);
+                if (sender is TextBox box)
+                {
+                    box.Focus(Microsoft.UI.Xaml.FocusState.Keyboard); // 跳转后焦点留在搜索框，可继续改词
+                }
+            }
+        };
+        var leftColumn = new Grid();
+        leftColumn.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) });
+        leftColumn.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(_searchBox, 0);
+        Grid.SetRow(leftHost, 1);
+        leftColumn.Children.Add(_searchBox);
+        leftColumn.Children.Add(leftHost);
+
         _rightHost = new ScrollViewer
         {
             // UI/UX 审计：Auto 档在内容略溢出时只出细滚动条，底部还有内容这件事无提示——常驻 Visible
@@ -151,31 +184,37 @@ internal sealed class SettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Stretch,
         };
 
-        // 2026-10-10 修：左栏可拖拽调宽（原 Auto 固定 232 不可调）。列宽像素化，钳位 [260, 420]——
-        // 下限 = 旧内容宽 232 + 常驻滚动条/内边距 ~28，保证最长模块名+开关不截断；
-        // 拖拽手柄居中 3px 高亮条提供可视抓握点。
-        _leftColumn = new ColumnDefinition { Width = new GridLength(264) };
+        // 2026-10-10 用户令三段式：左导航(可拖宽) | GridSplitter | 右内容。列宽钳位 [200, 420]
+        // （用户规格「固定起始 200」/右 min 420），初值读 config.SettingsSidebarWidth（拖动落盘、启动恢复）
+        _leftColumn = new ColumnDefinition
+        {
+            Width = new GridLength(Math.Clamp(
+                _runtime.Config.App.SettingsSidebarWidth is double saved && saved > 0 ? saved : 264,
+                LeftColumnMin, LeftColumnMax)),
+        };
         var splitter = BuildColumnSplitter();
 
         var grid = new Grid();
         grid.ColumnDefinitions.Add(_leftColumn);
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(leftHost, 0);
+        Grid.SetColumn(leftColumn, 0);
         Grid.SetColumn(splitter, 1);
         Grid.SetColumn(_rightHost, 2);
-        grid.Children.Add(leftHost);
+        grid.Children.Add(leftColumn);
         grid.Children.Add(splitter);
         grid.Children.Add(_rightHost);
 
         RebuildModuleRows();
         SelectModule(_modules[0]);
 
-        return new Grid
+        var root = new Grid
         {
             Padding = new Thickness(16, 14, 16, 14),
             Children = { grid },
         };
+        root.SizeChanged += (_, _) => ScheduleWindowSizeSave(); // 拖窗/初始布局都进防抖，800ms 静止才落盘
+        return root;
     }
 
     // —— PowerToys 形态：模块目录（左）与页面路由（右） ——
@@ -186,13 +225,19 @@ internal sealed class SettingsWindow : Window
     private StackPanel _leftPanel = null!;
     private ScrollViewer _rightHost = null!;
     private ColumnDefinition _leftColumn = null!;
+    private TextBox _searchBox = null!;
+    private TextBlock _moduleHeader = null!;
+    private ModuleDef? _firstFilterHit;
     private double _splitterStartX;
     private double _splitterStartWidth;
     private string _selectedKey = "";
     private bool _syncingToggles;
+    // 窗口尺寸记忆防抖（用户令「记住尺寸」）：连续 SizeChanged 只在静止 800ms 后写一次 config
+    private DispatcherTimer? _windowSizeSave;
 
-    /// <summary>左栏宽度钳位：下限 = 旧内容宽 232 + 滚动条/内边距，保证最长模块名+开关完整可见；上限给右栏留空间。</summary>
-    private const double LeftColumnMin = 260;
+    /// <summary>左栏宽度钳位（2026-10-10 用户规格「固定起始 200」/右 min 420）：下限 200 保证
+    /// 模块名（自动省略号）+开关不挤烂；上限 420 时 880 默认窗宽右栏仍 ≥420。</summary>
+    private const double LeftColumnMin = 200;
     private const double LeftColumnMax = 420;
 
     /// <summary>拖拽分隔条：6px 命中区 + 居中 3px 高亮线，按指针位移重设左栏列宽（DIP 同单位，无需 DPI 换算）。</summary>
@@ -215,7 +260,8 @@ internal sealed class SettingsWindow : Window
             Child = grip,
         };
         ToolTipService.SetToolTip(splitter, "拖拽调整左栏宽度"); // 附加属性不能进对象初始化器（C# 语法）
-        splitter.PointerEntered += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184));
+        // 用户令：悬停变品牌色（#60A5FA 蓝），3px 抓握点一眼可辨
+        splitter.PointerEntered += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 96, 165, 250));
         splitter.PointerExited += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139));
         splitter.PointerPressed += (sender, e) =>
         {
@@ -233,7 +279,13 @@ internal sealed class SettingsWindow : Window
                 SetLeftColumnWidth(_splitterStartWidth + x - _splitterStartX);
             }
         };
-        splitter.PointerReleased += (sender, e) => ((Border)sender).ReleasePointerCapture(e.Pointer);
+        // 松手落盘（用户令「拖动宽度写进 config，启动恢复」——「可以拖动」的本体是持久化）
+        splitter.PointerReleased += (sender, e) =>
+        {
+            ((Border)sender).ReleasePointerCapture(e.Pointer);
+            _runtime.Config.App.SettingsSidebarWidth = _leftColumn.Width.Value;
+            _runtime.Config.SaveApp();
+        };
         // UIA 取证入口：Border 非 Control 无自带 peer，只设 AutomationId 不进 UIA 树（CI 38043812483 实证
         // 「未找到 settings-left-splitter」）——Name 强制创建 FrameworkElementAutomationPeer
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(splitter, "左栏宽度分隔条");
@@ -244,6 +296,57 @@ internal sealed class SettingsWindow : Window
     private void SetLeftColumnWidth(double width)
         => _leftColumn.Width = new GridLength(Math.Clamp(width, LeftColumnMin, LeftColumnMax));
 
+    /// <summary>窗口尺寸记忆：连续 SizeChanged 防抖 800ms 后按 Bounds（DIP）落盘，构造器启动恢复。</summary>
+    private void ScheduleWindowSizeSave()
+    {
+        _windowSizeSave ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+        _windowSizeSave.Stop();
+        _windowSizeSave.Tick -= SaveWindowSizeNow; // 成对 -=/+=：多次进入也只挂一个 handler
+        _windowSizeSave.Tick += SaveWindowSizeNow;
+        _windowSizeSave.Start();
+    }
+
+    private void SaveWindowSizeNow(object? sender, object e)
+    {
+        _windowSizeSave!.Stop();
+        _windowSizeSave.Tick -= SaveWindowSizeNow;
+        var b = Bounds;
+        if (b.Width >= 600 && b.Height >= 400)
+        {
+            _runtime.Config.App.SettingsWindowWidth = Math.Round(b.Width);
+            _runtime.Config.App.SettingsWindowHeight = Math.Round(b.Height);
+            _runtime.Config.SaveApp();
+        }
+    }
+
+    /// <summary>设置搜索（用户令兜底③）：词命中模块 DisplayName/Subtitle/Key 任一即留行，其余收起；
+    /// 标题计数改「N/M 个模块」，首个命中记 _firstFilterHit 供回车跳转；空词全显复位。</summary>
+    private void ApplyModuleFilter()
+    {
+        var query = _searchBox.Text.Trim();
+        var hits = 0;
+        _firstFilterHit = null;
+        foreach (var module in _modules)
+        {
+            var match = query.Length == 0
+                || module.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || module.Subtitle.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || module.Key.Contains(query, StringComparison.OrdinalIgnoreCase);
+            if (_moduleRows.TryGetValue(module.Key, out var row))
+            {
+                row.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (match)
+            {
+                hits++;
+                _firstFilterHit ??= module;
+            }
+        }
+        _moduleHeader.Text = query.Length == 0
+            ? $"配置中心 · {_modules.Count} 个模块"
+            : $"配置中心 · {hits}/{_modules.Count} 个模块匹配「{query}」";
+    }
+
     /// <summary>当前页作用域：Provider 页锁定连接类型与组件描述符；常规/外观/高级页为 null（全量）。</summary>
     private string? _scopeType;
     private IReadOnlyList<WidgetTypeDescriptor>? _scopeDescriptors;
@@ -253,7 +356,7 @@ internal sealed class SettingsWindow : Window
         _leftPanel.Children.Clear();
         _moduleRows.Clear();
         _moduleToggles.Clear();
-        _leftPanel.Children.Add(new TextBlock
+        _leftPanel.Children.Add(_moduleHeader = new TextBlock
         {
             // 2026-10-10 修：可见计数——用户要求列表条数一眼可见，不靠滚动到底确认
             Text = $"配置中心 · {_modules.Count} 个模块",
@@ -267,7 +370,7 @@ internal sealed class SettingsWindow : Window
             var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             content.Children.Add(MakeModuleIcon(module));
             var nameStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
-            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = 13 });
+            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis }); // 200 窄列不挤烂（用户规格 min 200）
             nameStack.Children.Add(new TextBlock
             {
                 Text = module.Subtitle,
@@ -318,6 +421,11 @@ internal sealed class SettingsWindow : Window
             row.Click += (_, _) => SelectModule(captured);
             _moduleRows[module.Key] = row;
             _leftPanel.Children.Add(row);
+        }
+
+        if (_searchBox.Text.Trim().Length > 0)
+        {
+            ApplyModuleFilter(); // 重建（切开关等）后重放当前过滤词，行数与计数一致
         }
     }
 
@@ -372,8 +480,14 @@ internal sealed class SettingsWindow : Window
         _scopeDescriptors = module.ConnectionType is { } type ? ModuleDescriptors(type) : null;
         foreach (var (key, row) in _moduleRows)
         {
-            row.Background = new SolidColorBrush(key == module.Key
+            // 用户令选中态：品牌色左缘 3px 条（与 rail 同款语言），底色保留灰底可辨
+            var selected = key == module.Key;
+            row.Background = new SolidColorBrush(selected
                 ? SeverityPalette.Rgb(60, 127, 127, 127)
+                : Microsoft.UI.Colors.Transparent);
+            row.BorderThickness = new Thickness(3, 0, 0, 0);
+            row.BorderBrush = new SolidColorBrush(selected
+                ? SeverityPalette.Rgb(255, 96, 165, 250)
                 : Microsoft.UI.Colors.Transparent);
         }
         _rightHost.Content = module.Key switch

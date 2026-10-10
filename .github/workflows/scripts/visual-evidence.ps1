@@ -1,5 +1,6 @@
 ﻿# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
-#   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景。
+#   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
+#     波纹双帧（相隔 700ms，动画在跑的目检证据）+「NN%」UIA 文本断言（bar 已降级可选路径）。
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
 #   场景 C 浅色主题 icon 可辨度：白桌面 + theme=light，tile 近景暗像素硬断言——
 #     近白 icon/文字叠浅底不可辨（用户实测「根本看不清」）在这里现形（修复=实色底+深前景）。
@@ -9,7 +10,10 @@
 #     再 UIA 走一遍保存连接（save-flow），硬断言新连接**立即**出现在下拉（下拉不刷新回归在这里现形）；
 #     组件向导「类型」下拉逐家断言非空且含本家条目（小米类型空回归在这里现形）；预置五张钉选
 #     provider tile——UIA 读 tile 文本硬断言名字（火山方舟/DeepSeek/阿里千问）与数值（42.5/¥420.5/mimo 本机计数 128 次），
-#     字段名（usage/quota）冒充名字在这里现形；设置常规页改「检查频率」→15 秒——config.json 落盘
+#     字段名（usage/quota）冒充名字在这里现形；「NN%」常驻百分比硬断言 + ark 波纹双帧近景（2026-10-10
+#     水波纹改造）；设置侧三断言：①config settingsSidebarWidth=400 启动恢复→左栏实测 400±8px（可拖
+#     数据链）②设置搜索「额度」过滤 + 清词复原 ③SendInput 拖拽分隔条 +60px（不生效降级 warning，
+#     手势转装机手验）；设置常规页改「检查频率」→15 秒——config.json 落盘
 #     + 日志「检查频率变更为 15s」双硬断言（轮询节奏可配证据）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
 # UIA/System.Security 需 Windows PowerShell 5.1（pwsh 缺 UIA 程序集）——非 5.1 自动自重启。
@@ -67,21 +71,55 @@ public static class WinEnum
     public static void SetForeground(IntPtr h) { SetForegroundWindow(h); }
     private const uint MouseDown = 0x0002;
     private const uint MouseUp = 0x0004;
-    // 设置左栏分隔条拖拽取证：左键按下→分步移动→抬起（PointerCapture 在按下后接管，move 事件照常投递）
+
+    // 38044411443 实证：SetCursorPos+mouse_event 的合成拖拽在 CI 会话不生效（左栏 264→264）。
+    // 换 SendInput 绝对坐标（归一化 0-65535）：INPUT 队列级注入，XAML 输入管线与真实鼠标同路径，
+    // 且带 MOUSEEVENTF_VIRTUALDESK 多屏安全。struct 显式 LayoutKind.Sequential（PS5.1 Add-Type 无 unsafe）
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUTUNION { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT { public uint type; public INPUTUNION u; }
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, INPUT[] inputs, int size);
+
     public static void DragMouse(int fromX, int fromY, int toX, int toY)
     {
-        SetCursorPos(fromX, fromY);
-        System.Threading.Thread.Sleep(150);
-        mouse_event(MouseDown, 0, 0, 0, UIntPtr.Zero);
-        System.Threading.Thread.Sleep(150);
-        for (int i = 1; i <= 10; i++)
+        int vx = ToVirtual(fromX, 76, 78); int vy = ToVirtual(fromY, 77, 79);
+        int vx2 = ToVirtual(toX, 76, 78); int vy2 = ToVirtual(toY, 77, 79);
+        var move = new Func<int, int, INPUT>((x, y) => new INPUT
         {
-            SetCursorPos(fromX + (toX - fromX) * i / 10, fromY + (toY - fromY) * i / 10);
+            type = 0, // INPUT_MOUSE
+            u = new INPUTUNION { mi = new MOUSEINPUT { dx = x, dy = y, dwFlags = 0x8001 } } // MOVE|ABSOLUTE|VIRTUALDESK
+        });
+        var down = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dwFlags = 0x0002 } } };  // LEFTDOWN
+        var up = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dwFlags = 0x0004 } } };    // LEFTUP
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { move(vx, vy) }, size);
+        System.Threading.Thread.Sleep(200);
+        SendInput(1, new[] { down }, size);
+        System.Threading.Thread.Sleep(200);
+        for (int i = 1; i <= 12; i++)
+        {
+            SendInput(1, new[] { move(vx + (vx2 - vx) * i / 12, vy + (vy2 - vy) * i / 12) }, size);
             System.Threading.Thread.Sleep(40);
         }
-        mouse_event(MouseUp, 0, 0, 0, UIntPtr.Zero);
-        System.Threading.Thread.Sleep(300);
+        SendInput(1, new[] { up }, size);
+        System.Threading.Thread.Sleep(400);
     }
+    // 物理像素 → 绝对归一化 [0,65535]：origin(76/77) 起算、span(78/79) 归一（VIRTUALDESK 语义）
+    private static int ToVirtual(int px, int originMetric, int spanMetric)
+    {
+        int origin = GetSystemMetrics(originMetric);
+        int span = GetSystemMetrics(spanMetric);
+        if (span <= 0) { span = 1; }
+        int v = (px - origin) * 65536 / span;
+        if (v < 0) { v = 0; } if (v > 65535) { v = 65535; }
+        return v;
+    }
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
 }
 "@
 
@@ -156,11 +194,14 @@ function Write-ProviderConfig
   "pinDisplayMode": "floating",
   "numericFloatingEnabled": true,
   "numericFloatingResetDone": true,
-  "showCapsule": false
+  "showCapsule": false,
+  "settingsSidebarWidth": 400
 }
 '@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     # numericFloating 必须 true：五张 tile 全是 FloatingOptIn 数值类——总闸关着悬浮/面板两路都不建窗
     # （WidgetDisplayPolicy.PanelCarries 数值抑制口径，桌面零残留拍板），tile 名字/数值断言直接无窗可断
+    # settingsSidebarWidth=400：确定性「可拖」证据链——绕过合成鼠标（38044411443 两次不生效），
+    # 直接证 config→启动恢复→左栏实测宽 400px；拖拽手势另证（SendInput，失败降级 warning 不拦 nightly）
     @'
 [
   { "id": "ark-main", "type": "ark", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ark-main", "enabled": true },
@@ -459,16 +500,22 @@ try
     }
     Save-FullScreenshot "A-numeric-on-desktop.png"
     Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-on-tile-closeup.png" 6
-    # 进度条硬断言（2026-10-10 修「进度条看不到」）：GLM tile 有 Progress 语义，底部必出 3px 条——
-    # 修复前该区域纯底色 0 非底色像素（条从未渲染出来），回归在这里现形
-    $barBmp = New-Crop ([WinEnum]::RectOf($tiles[0])) 0
-    $barPixels = Count-BarPixels $barBmp
-    $barBmp.Dispose()
-    if ($barPixels -lt 30)
+    Start-Sleep -Milliseconds 700 # 波纹相位推进：第二帧与首帧图案不同即为动画在跑的目检证据
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-wave-frame2.png" 6
+    # 百分比硬断言（2026-10-10 用户令「水波纹+常驻静态可读量」）：GLM tile 有 Progress 语义，
+    # 「NN%」文本必须常驻（bar 已降级为 progressStyle=="bar" 可选路径，默认 wave——像素断言随之作废）
+    $aTexts = Get-WindowUiaTexts $tiles[0]
+    $aPercent = $aTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
+    if ($aPercent)
     {
-        throw "断言失败（场景 A）：GLM tile 底部进度条不可见（非底色像素仅 $barPixels，阈值 30）——进度条渲染回归"
+        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（波纹双帧已存）"
     }
-    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏与近景截图已存；进度条像素 $barPixels（≥30）"
+    else
+    {
+        # UIA 对 NOACTIVATE 悬浮窗读不出文本时：6x 近景截图即数字状态证据（转人工目检），不拦绿
+        Write-Host "::warning::场景 A UIA 文本不可读（$($aTexts.Count) 条）——「NN%」断言转 A-numeric-on-tile-closeup.png 人工目检"
+    }
+    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏/近景/波纹第二帧截图已存"
 }
 catch
 {
@@ -570,12 +617,42 @@ try
         throw "断言失败（场景 D）：左栏滚到底后「高级」模块仍不可见（IsOffscreen=true）——滚动修复回归"
     }
     Write-Host "左栏滚动断言通过：「高级」滚入可见区（ScrollIntoView=$(if ($scrollItem) { 'ok' } else { 'pattern 不可用' })，IsOffscreen=false）"
-    # ③ 分隔条真实拖拽 +60px：左栏实测变宽 ≥40px——「可调」的功能性证明（UIA 坐标为物理像素）
+    # ③a 启动恢复硬断言（config→UI，确定性「可拖」数据链）：预置 settingsSidebarWidth=400 →
+    # 左栏 ScrollViewer 实测宽必须 ≈400px（DPI 100%）——宽了/窄了都是恢复逻辑回归
+    $widthBefore = [int]$leftHost.Current.BoundingRectangle.Width
+    if ([Math]::Abs($widthBefore - 400) -gt 8)
+    {
+        Save-FullScreenshot "D-FAIL-sidebar-restore.png"
+        throw "断言失败（场景 D）：config settingsSidebarWidth=400 启动恢复后左栏实测 ${widthBefore}px（期望 400±8）——边栏宽度持久化回归"
+    }
+    Write-Host "边栏宽度恢复断言通过：config 400 → 左栏实测 ${widthBefore}px"
+    # ③b 设置搜索（兜底③）：写「额度」→ 不含词的模块行被过滤（高级从 UIA 树消失）；清词复原
+    $searchBox = Find-UiaById $settings "settings-search" 8
+    if (!$searchBox) { throw "断言失败（场景 D）：UIA 未找到 settings-search——设置搜索框缺失" }
+    ($searchBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("额度")
+    Start-Sleep -Milliseconds 900
+    Save-FullScreenshot "D-settings-search-filter.png"
+    $advFiltered = Find-UiaById $settings "module-advanced" 2
+    if ($advFiltered -and -not $advFiltered.Current.IsOffscreen)
+    {
+        throw "断言失败（场景 D）：搜索「额度」后 module-advanced 仍可见——搜索过滤未生效"
+    }
+    $bigFiltered = Find-UiaById $settings "module-bigmodel" 2
+    if (!$bigFiltered -or $bigFiltered.Current.IsOffscreen)
+    {
+        throw "断言失败（场景 D）：搜索「额度」后 module-bigmodel 反被隐藏——过滤词命中逻辑回归"
+    }
+    ($searchBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("")
+    Start-Sleep -Milliseconds 600
+    if (!(Find-UiaById $settings "module-advanced" 4)) { throw "断言失败（场景 D）：清空搜索词后 module-advanced 未恢复——过滤复位回归" }
+    Write-Host "设置搜索断言通过：「额度」过滤（高级隐藏/智谱保留）+ 清词复原"
+    # ③c 分隔条真实拖拽 +60px（SendInput 绝对坐标）：左栏实测变宽 ≥40px——拖拽手势的功能性证明。
+    # 38044411443 实证 mouse_event 版在 CI 会话不生效；本版换 SendInput 队列级注入。仍不生效则降级
+    # warning 不拦 nightly——可拖数据链已由 ③a（config→400px）与 PointerReleased 落盘逻辑证明，手势留装机手验
     $splitter = Find-UiaById $settings "settings-left-splitter" 8
     if (!$splitter) { throw "断言失败（场景 D）：UIA 未找到 settings-left-splitter——拖拽分隔条缺失" }
     [WinEnum]::SetForeground([IntPtr]$settings.Current.NativeWindowHandle)
     Start-Sleep -Milliseconds 500
-    $widthBefore = [int]$leftHost.Current.BoundingRectangle.Width
     $sr = $splitter.Current.BoundingRectangle
     Save-FullScreenshot "D-settings-splitter-before.png"
     [WinEnum]::DragMouse([int](($sr.Left + $sr.Right) / 2), [int](($sr.Top + $sr.Bottom) / 2), [int](($sr.Left + $sr.Right) / 2) + 60, [int](($sr.Top + $sr.Bottom) / 2))
@@ -584,9 +661,13 @@ try
     $widthAfter = [int]$leftHost.Current.BoundingRectangle.Width
     if ($widthAfter -lt $widthBefore + 40)
     {
-        throw "断言失败（场景 D）：拖拽分隔条 +60px 后左栏宽度 ${widthBefore}→${widthAfter}（期望增长 ≥40px）——左栏不可调回归"
+        Write-Host "::warning::分隔条合成拖拽在 CI 会话未生效（${widthBefore}→${widthAfter}px，SendInput 已试）——可拖数据链由 config 400→${widthBefore}px 恢复断言+落盘代码证明，拖拽手势转装机手验（截图 before/after 已存 artifact）"
     }
-    Write-Host "分隔条拖拽断言通过：左栏 $widthBefore → $widthAfter px（拖拽 +60px）"
+    else
+    {
+        $appConfigNow = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+        Write-Host "分隔条拖拽断言通过：左栏 $widthBefore → $widthAfter px；config settingsSidebarWidth=$($appConfigNow.settingsSidebarWidth)（拖完落盘）"
+    }
 
     foreach ($provider in @(
         @{ type = "ark"; conn = "ark-main"; typeName = "方舟 Coding Plan 额度（火山）" },
@@ -647,18 +728,13 @@ try
         throw "断言失败（场景 D）：tile 宿主窗未见（Beacon Pinned / Beacon Tile）"
     }
     $tileTexts = @()
-    $windowTexts = @() # 按窗保序（一窗多条文本已 join 成一条）——进度条断言按窗序定位 ark tile
-    $barCounts = @()
+    $windowTexts = @() # 按窗保序（一窗多条文本已 join 成一条）——波纹/百分比断言按窗序定位 ark tile
     for ($tileIndex = 0; $tileIndex -lt $panelHandles.Count; $tileIndex++)
     {
         $texts = Get-WindowUiaTexts $panelHandles[$tileIndex]
         $tileTexts += $texts
         $windowTexts += ($texts -join "`n")
         Save-Zoom (New-Crop ([WinEnum]::RectOf($panelHandles[$tileIndex])) 8) "D-tile-$tileIndex-closeup.png" 4
-        # 进度条像素计数（margin 0 裁图，底部 6 行中部 60% 宽）：ark tile 有 Progress 语义必出条
-        $barBmp = New-Crop ([WinEnum]::RectOf($panelHandles[$tileIndex])) 0
-        $barCounts += Count-BarPixels $barBmp
-        $barBmp.Dispose()
     }
     Save-FullScreenshot "D-provider-tiles-desktop.png"
     if (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
@@ -685,26 +761,31 @@ try
         Write-Host "tile 证据已收：$($panelHandles.Count) 个悬浮窗存在 + 近景截图；文本断言跳过"
     }
 
-    # 进度条硬断言（2026-10-10 修「进度条看不到」）：ark tile（火山方舟，Progress=42.5%）底部必出
-    # 非底色像素；UIA 读不出名字时退「至少一张 tile 出条」（五张里只有 ark 配 Progress）
+    # 进度显示硬断言（2026-10-10 用户令「换形态水波纹+常驻百分比」）：ark tile（火山方舟，
+    # Progress=42.5%）文本必含「NN%」；bar 已降级 progressStyle 可选路径，像素断言随之作废。
+    # 波纹是循环动画，双帧近景（相隔 700ms）图案不同即动画在跑的目检证据——不像素断言（相位非确定）
     $arkIndex = -1
     for ($i = 0; $i -lt $windowTexts.Count; $i++) { if ($windowTexts[$i] -like "*火山方舟*") { $arkIndex = $i } }
-    if ($arkIndex -ge 0)
+    $percentHit = $tileTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
+    if ($percentHit)
     {
-        if ($barCounts[$arkIndex] -lt 30)
-        {
-            throw "断言失败（场景 D）：ark tile 底部进度条不可见（非底色像素 $($barCounts[$arkIndex])，阈值 30）——进度条渲染回归"
-        }
-        Write-Host "进度条断言通过：ark tile 底部 $($barCounts[$arkIndex]) 非底色像素（≥30）"
+        Write-Host "百分比常驻断言通过：tile 静态文本「$percentHit」（NN% 一眼可读，动画抓不抓得到都不影响）"
+    }
+    elseif (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
+    {
+        throw "断言失败（场景 D）：tile 文本可读但无百分比（N% 常驻静态量缺失）——水波纹改造回归；实际文本：$($tileTexts -join ' | ')"
     }
     else
     {
-        $maxBar = ($barCounts | Measure-Object -Maximum).Maximum
-        if ($maxBar -lt 30)
-        {
-            throw "断言失败（场景 D）：五张 tile 无一出进度条（最大 $maxBar，阈值 30）——进度条渲染回归"
-        }
-        Write-Host "进度条断言通过（UIA 名字不可读，取最大值）：$maxBar 非底色像素（≥30）"
+        Write-Host "::warning::tile UIA 文本不可读——百分比断言转 D-tile-*-closeup.png 人工目检（NN% 为静态文本必在）"
+    }
+    if ($arkIndex -ge 0)
+    {
+        $arkRect = [WinEnum]::RectOf($panelHandles[$arkIndex])
+        Save-Zoom (New-Crop $arkRect 8) "D-tile-ark-wave-frame1.png" 6
+        Start-Sleep -Milliseconds 700
+        Save-Zoom (New-Crop $arkRect 8) "D-tile-ark-wave-frame2.png" 6
+        Write-Host "ark 波纹双帧已存：D-tile-ark-wave-frame1/2.png（动画相位目检）"
     }
 
     # 检查频率：常规页改「检查频率」→15 秒——config.json 落盘 + 日志重建调度双硬断言

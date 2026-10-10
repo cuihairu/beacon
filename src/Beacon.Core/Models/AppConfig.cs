@@ -21,6 +21,12 @@ public sealed class AppConfig
     /// <summary>全局检查频率（秒，0=按各组件刷新档策略表，默认）。设置「检查频率」落点：
     /// 组件级检测间隔优先，未设组件级的按此值走（2026-10-09 用户令：轮询节奏可配）。</summary>
     public int PollIntervalSeconds { get; set; } = 0;
+    /// <summary>设置窗口左栏宽度（DIP）。拖拽分隔条落点，启动恢复（2026-10-10 用户令「能拖」）；
+    /// 运行时钳位 [200, 420]，0/非法=默认 264。</summary>
+    public double SettingsSidebarWidth { get; set; } = 264;
+    /// <summary>设置窗口尺寸记忆（DIP）。0=未记忆用默认 880×640；拖窗结束防抖落盘（2026-10-10 用户令）。</summary>
+    public double SettingsWindowWidth { get; set; }
+    public double SettingsWindowHeight { get; set; }
     /// <summary>升级迁移标记：NumericFloatingEnabled 强制置关是一次性动作（老包开关 ON 的配置升级即回干净桌面），已执行不再动用户选择。</summary>
     public bool NumericFloatingResetDone { get; set; }
     /// <summary>用户通知规则；空列表时使用 DefaultNotificationRules（RFC §8）。</summary>

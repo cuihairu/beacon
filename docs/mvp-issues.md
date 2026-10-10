@@ -706,6 +706,37 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   新截图 D-settings-window.png / D-settings-splitter-{before,after}.png；既有 C/D 场景近景覆盖双主题 icon。
   四测试项目全绿（212/353/27/31）。
 
+### 批3-补17 悬浮框进度换形态水波纹 + 设置边栏真可拖（2026-10-10 用户令双批，进行中）
+- **背景（诚实口径）**：86ac00e 三修复进不了 nightly——38043008092/38043812483/38044411443 三次
+  daily-build 全在视觉取证步红（PS 5.1 SetScrollPercent 重载 → UIA peer 缺失 → 合成拖拽 264→264），
+  Pack/Installer/Publish 三步被跳过，**用户装的 nightly 仍是 2e530ed 旧版**；「装了还是看不见」由此而来。
+- **改① 悬浮框进度条→水波纹**（用户令「不许再调那根条的像素，直接换形态」；86ac00e 的 bar 改法降级保留）：
+  ①MotionEngine.StartWave（MotionEngine.cs :173）——Composition 双关键帧（Scale 0.4→1.8 + Opacity
+  0→0.9→0）forever 循环，合成线程 60fps 不占 UI 线程；phase ∈ [0,1) 平移波形（双环错相 0/0.5 成扩散涟漪）；
+  周期 1800/(0.5+progress) 钳 [600,2400]ms；off 档不启动（全静止铁律）。②PinTile（PinnedHostWindow.cs
+  :91-177）：六列布局 [灯][icon][label*][value][wave 16][percent auto]；双环 Stroke=ThemeColors.Label()
+  （主题令牌对比度最高的前景，暗亮双主题 ≥4.5:1）；**「NN%」常驻静态文本 FontSize 12**（加载中显示
+  「加载中」状态字，离线全收；动画抓不到截图也不影响数字可读）；bar 降级为 config-only 可选路径
+  `widgets.json config.progressStyle=="bar"`（不加设置 UI）；加载中波纹转；离线/收起全停（StopWaves+
+  ResumeMotion 重放，修「StopWaves 清 _waveOn 后永不复播」状态机 bug）。
+- **改② 设置边栏真可拖**（用户令「左边加一个可以拖动的边栏……不要不修」，PowerToys 范式）：
+  ①列宽钳位 [260,420]→**[200,420]**（用户规格「固定起始 200」/右 min 420），初值读 config
+  `settingsSidebarWidth`；②**拖完落盘**（PointerReleased → SettingsSidebarWidth → SaveApp，
+  SettingsWindow.cs :282）+ **启动恢复**（BuildRoot :189，钳位后上列）——「可以拖动」本体是持久化；
+  ③分隔条悬停变品牌色 #60A5FA（:264）；④模块行选中态加品牌色左缘 3px 条（SelectModule，
+  BorderThickness(3,0,0,0)+BorderBrush #60A5FA）；⑤**设置搜索框**（settings-search，输入过滤
+  DisplayName/Subtitle/Key，标题计数「N/M 个模块匹配」，回车跳第一个命中，清词复原）；⑥**窗口尺寸
+  记忆** settingsWindowWidth/Height（root.SizeChanged + 800ms DispatcherTimer 防抖落盘，构造器恢复）；
+  ⑦模块名 TextTrimming（200 窄列不挤烂）。
+- **验收（CI 硬断言，visual-evidence.ps1 同批改）**：场景 A——「NN%」UIA 文本断言 + 波纹双帧近景
+  （相隔 700ms，图案不同=动画在跑的目检证据；bar 像素断言随降级作废）；场景 D——
+  **config settingsSidebarWidth=400 启动恢复→左栏实测 400±8px（确定性「可拖」证据链，绕过合成鼠标）**、
+  搜索「额度」过滤断言（高级隐藏/智谱保留+清词复原）、tile「NN%」常驻断言 + ark 波纹双帧、
+  SendInput 绝对坐标拖拽 +60px（38044411443 mouse_event 版不生效，本版换 INPUT 队列级注入；
+  仍不生效降级 warning 不拦 nightly，手势转装机手验）。四测试项目全绿（212/353/27/31，
+  +SettingsSidebarWidth/WindowWidth/Height 往返断言）。
+- **证据**：daily-build run `__RUN__`（绿后回填 artifact 截图链接）；装机对照清单「悬浮框进度条」行同步。
+
 ## 2026-10-10 装机对照清单（49 条三类，2026-10-10 整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」44 条（B-* 验收行）+「待装机走查」5 条
@@ -726,7 +757,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 真实 workflow 手动验证 | B-303 | 端到端 8 例（批3-补14：Running/16min 卡住/时长格式/坏 JSON） |
 | 真实 workflow 映射复核 | B-303 | 同上第二行口径 |
 | 小米控制台口径 + GLM 5h 主位 | 批3-补8 | 小米需先录控制台 Cookie；GLM 直接生效（真 Key 夹具回归） |
-| 悬浮框进度条 + 快捷面板底部 | 批3-补9 | 进度条本批重构（86ac00e，CI 像素硬断言 A/D 场景）；面板 RECENT EVENTS 改 Grid 内滚 |
+| 悬浮框进度条 + 快捷面板底部 | 批3-补9/17 | 进度显示**换形态**：水波纹涟漪 + 常驻「NN%」文本（批3-补17，bar 降级为 progressStyle 可选）；面板 RECENT EVENTS 改 Grid 内滚 |
 | 方舟额度用尽显示 | 批3-补11 | 尽窗优先级+429 耗尽特判；装后看卡片「额度用尽（窗名，重置时间）」 |
 | 通知规则接线 | 批3-补12 | rulesProvider 一行接线（此前 config 自定义规则是空头支票）；自定义规则触发 Toast |
 | UI/UX 审计 6 组可发现性修复 | 批3-补13 | 动作独立页/滚动区常驻/表单压缩/档位中文标签/双列 tile（⑤透明度已验）；设置页截图待看 |

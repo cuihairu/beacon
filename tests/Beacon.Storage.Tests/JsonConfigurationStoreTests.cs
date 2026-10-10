@@ -180,6 +180,9 @@ public sealed class JsonConfigurationStoreTests
         store.App.NumericFloatingEnabled = true;
         store.App.NumericFloatingResetDone = true;
         store.App.PollIntervalSeconds = 30;
+        store.App.SettingsSidebarWidth = 336; // 2026-10-10 拖拽边栏/窗口记忆三字段往返
+        store.App.SettingsWindowWidth = 1024;
+        store.App.SettingsWindowHeight = 768;
         store.App.NotificationRules =
         [
             new NotificationRule { Id = "r1", WidgetType = "github.actions.runs", SeverityAtLeast = Severity.Error, Toast = true, Cooldown = TimeSpan.FromMinutes(10) },
@@ -205,6 +208,9 @@ public sealed class JsonConfigurationStoreTests
         Assert.True(reloaded.App.NumericFloatingEnabled);
         Assert.True(reloaded.App.NumericFloatingResetDone);
         Assert.Equal(30, reloaded.App.PollIntervalSeconds);
+        Assert.Equal(336, reloaded.App.SettingsSidebarWidth);
+        Assert.Equal(1024, reloaded.App.SettingsWindowWidth);
+        Assert.Equal(768, reloaded.App.SettingsWindowHeight);
         var rule = Assert.Single(reloaded.App.NotificationRules);
         Assert.Equal("r1", rule.Id);
         Assert.Equal(Severity.Error, rule.SeverityAtLeast);
