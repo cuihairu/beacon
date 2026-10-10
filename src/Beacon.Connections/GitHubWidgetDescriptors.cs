@@ -19,6 +19,7 @@ public static class GitHubWidgetDescriptors
         [
             new WidgetFieldDescriptor("repo", "仓库", Required: true, Placeholder: "owner/repo"),
             new WidgetFieldDescriptor("warnOnReviewRequested", "有待你 review 时告警", Placeholder: "true/false"),
+            new WidgetFieldDescriptor("warnOnRedCi", "PR 的 CI 红灯时计入告警", Placeholder: "true/false（默认关：每 PR 一请求）"),
         ],
     };
 

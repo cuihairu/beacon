@@ -177,7 +177,13 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   - [ ] 夹具单测：计数/映射正确；真实仓库手动验证
     - 状态（2026-10-09）：夹具单测已过（GitHubPullRequestsProviderTests 6 例：计数/Severity 映射）；真实仓库手动验证——待 Windows 装机。
     - 状态（2026-10-10）：夹具补至 10 例（单数摘要「1 open PR · 1 review needed」/草稿带 reviewer 不豁免/缺 requested_reviewers 字段按 0/坏 JSON→Degraded 带解析原因）。
-    - 挂起（红 CI 判据）：规格的「红 CI 的 PR → Warning」需按 PR head sha 逐个打 combined status 口（每 PR 一请求）；该口 304 时无上次状态可续（provider 拿不到前态），要做须按 PR 记忆上次结果的有状态设计——挂起待派工，先以 review-requested 判据运行。零成本备选已证死路（2026-10-10 官方文档核实）：list /pulls 响应项不含 mergeable_state（仅单 PR 口带），无状态读不出 CI 红。
+    - 状态（2026-10-10 晚）：红 CI 判据收口——有状态设计落地（`warnOnRedCi`，默认关）：按 PR 记忆
+      (head sha → combined status state)，终态跨刷新复用（稳态零额外请求），仅探测 sha 变化或非终态
+      （pending）的 PR；pulls 口 304 期间 pending→failure 翻转按记忆续探仍可回报，全终态才返回 null；
+      默认关因首刷每 PR 一请求（大仓库代价高），描述符字段注明。夹具 10→18 例
+      （默认关零额外请求/新 sha 探测红→Warning/终态复用/pending 翻红/304 期间翻转可回报/304 全终态 null/sha 换重查/坏 status JSON→Degraded）。
+      零成本备选已证死路（2026-10-10 官方文档核实）：list /pulls 响应项不含 mergeable_state（仅单 PR 口带）。
+      真实仓库手动验证——待 Windows 装机。
 
 ### B-303 Actions(CI) Widget Provider
 - **依赖**：B-301
@@ -646,11 +652,24 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   空 PAT 走 /rate_limit 匿名 200 误报连接正常），缺凭据短路带录入指引；假 Handler 分支补至 8 例
   （含 403 限流/权限两分支、超时、token 变更换客户端）。
 - **B-302**（PR 计数夹具）：夹具 6→10 例（单数摘要/草稿不豁免/缺字段按 0/坏 JSON→Degraded）；
-  红 CI 判据挂起（combined status 口 304 无前态可续，需按 PR 有状态设计，待派工）。
+  红 CI 判据当晚收口（见 B-302 状态行：有状态设计，`warnOnRedCi` 默认关）。
 - **B-303**（workflow 映射）：表驱动 12 例不动，端到端 3→8 例（运行中/16min 卡住/成功时长格式/坏 JSON）。
 - **B-206**（离线标注 Last update 后自动刷新）：全周期单测——断网重发布陈旧态 FetchedAt 保原值，
   恢复自动刷新清 IsStale 且缓存替换。
 - **验收**：四测试项目全绿（212/345/27/31，+14 例）；真实 PAT/真实仓库/真实 workflow 手动路径随装机走查。
+
+### 批3-补15 B-302 红 CI 判据收口：有状态 combined status（2026-10-10 用户令「推进到全清或卡点」）
+- **背景**：批3-补14 后非装机未完项只剩红 CI 判据一条；零成本备选（list /pulls 自带 mergeable_state）
+  经官方文档核实为死路（该字段仅单 PR 口带），按规格走有状态设计。
+- **实现**（`GitHubPullRequestsProvider`）：`warnOnRedCi` 配置（默认关，描述符字段注明「每 PR 一请求」代价）；
+  provider 单例按 widget.Id 记忆 PR 号 → (head sha, combined state)：
+  - 终态（success/failure）且 sha 不变 → 跨刷新复用，稳态零额外请求；
+  - sha 变化或非终态（pending 等）→ 打 `/repos/{repo}/commits/{sha}/status`（ETag 304 = 与上次一致，沿用记忆态）；
+  - pulls 口 304 → 仅当记忆中存在非终态 PR 才续探，有翻转则按记忆计数重建状态（含 payload/摘要），全终态返回 null；
+  - severity：review-flagged ∪ 红 CI 任一非空 → Warning；摘要追加「N red ci」段；payload 增 red_ci_count/red_ci_numbers。
+- **测试**：夹具 10→18 例（默认关零额外请求、新 sha 探测红、终态复用、pending 翻红、304 期间翻转可回报、
+  304 全终态 null、sha 换重查、坏 status JSON→Degraded）。
+- **验收**：四测试项目全绿（212/353/27/31，+8 例）；真实仓库红 PR 手动验证随装机走查。
 
 ---
 
