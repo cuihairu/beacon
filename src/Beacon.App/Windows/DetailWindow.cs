@@ -136,7 +136,8 @@ internal sealed class DetailWindow : Window
         }
 
         root.Children.Add(_resultText);
-        return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        // UI/UX 审计：Auto 档滚动条不显眼，底部还有 ACTIONS/结果反馈这件事无提示——常驻 Visible
+        return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Visible };
     }
 
     private static TextBlock SectionLabel(string text) => new()

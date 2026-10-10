@@ -285,6 +285,7 @@ internal sealed class PinnedHostWindow
 {
     private const int PanelWidthDips = 168;
     private const int TileHeightDips = 32;
+    private const int TwoColumnThreshold = 18; // UI/UX 审计：tile 超此数改双列——单列在超工作区高时底部裁切且无提示（18×32=576 DIP）
     private const int CollapseStripDips = 12; // 收起细条宽（DIP）
     private const int SnapDips = 16;          // 拖动吸边判定距离（DIP）
 
@@ -297,7 +298,7 @@ internal sealed class PinnedHostWindow
     private readonly List<IDisposable> _subscriptions = [];
 
     private Window _window = null!;
-    private StackPanel _tilePanel = null!;
+    private Grid _tilePanel = null!; // 单列/双列随 tile 数切换（ReloadTiles 重建行列定义）
     private AppWindow _appWindow = null!;
     private IntPtr _hwnd;
     private DispatcherQueue _dispatcherQueue = null!; // 事件回调 marshal 回 UI 线程（Initialize 在 UI 线程取）
@@ -326,7 +327,7 @@ internal sealed class PinnedHostWindow
     public void Initialize()
     {
         _window = new Window { Title = "Beacon Pinned" };
-        _tilePanel = new StackPanel { Orientation = Orientation.Vertical };
+        _tilePanel = new Grid();
         _tilePanel.PointerEntered += OnPanelPointerEntered;
         _tilePanel.PointerExited += OnPanelPointerExited;
         _window.Content = _tilePanel;
@@ -359,7 +360,10 @@ internal sealed class PinnedHostWindow
     public void ReloadTiles()
     {
         _tilePanel.Children.Clear();
+        _tilePanel.RowDefinitions.Clear();
+        _tilePanel.ColumnDefinitions.Clear();
         _tiles.Clear();
+        var placed = new List<PinTile>();
         foreach (var widget in _runtime.Config.Widgets)
         {
             if (!widget.Pinned || !IsPinSupported(widget.Type))
@@ -386,7 +390,25 @@ internal sealed class PinnedHostWindow
                 _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type);
             AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;
-            _tilePanel.Children.Add(tile.Root);
+            placed.Add(tile);
+        }
+        // UI/UX 审计：单列竖排在 tile 超工作区高时底部被裁且无任何提示——超阈值改双列
+        // （18×32=576 DIP 起切），面板宽随列数翻倍，行高仍 32 不挤压 tile。
+        var columns = placed.Count > TwoColumnThreshold ? 2 : 1;
+        var rows = Math.Max(1, (placed.Count + columns - 1) / columns);
+        for (var i = 0; i < columns; i++)
+        {
+            _tilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(PanelWidthDips) });
+        }
+        for (var i = 0; i < rows; i++)
+        {
+            _tilePanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TileHeightDips) });
+        }
+        for (var i = 0; i < placed.Count; i++)
+        {
+            Grid.SetColumn(placed[i].Root, i % columns);
+            Grid.SetRow(placed[i].Root, i / columns);
+            _tilePanel.Children.Add(placed[i].Root);
         }
         // 重放最近状态，tile 不空等下一轮刷新
         foreach (var tile in _tiles.Values)
@@ -499,7 +521,11 @@ internal sealed class PinnedHostWindow
         }
         var dpi = GetDpi();
         var work = ToPinRect(ResolveMonitor(_layout.Monitor).WorkPx);
-        var height = Math.Max(1, _tiles.Count) * (int)(TileHeightDips * dpi);
+        // 与 ReloadTiles 同口径：列数随 tile 数切换，高度按行数、宽度按列数算（双列后 336 宽不再溢出单列假设）
+        var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
+        var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
+        var height = rows * (int)(TileHeightDips * dpi);
+        var width = columns * (int)(PanelWidthDips * dpi);
 
         // 收起态暂停动画循环（B-707 验收：隐藏/收起时无动画循环）；展开/悬停恢复
         var strip = _layout.Collapsed && !_hoverExpanded;
@@ -527,7 +553,7 @@ internal sealed class PinnedHostWindow
             return;
         }
 
-        var rect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, (int)(PanelWidthDips * dpi), height);
+        var rect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, width, height);
         appWindow.Resize(new SizeInt32(rect.Width, rect.Height));
         appWindow.Move(new PointInt32(rect.X, rect.Y));
     }
@@ -785,8 +811,11 @@ internal sealed class PinnedHostWindow
                 if (NativeMethods.ScreenToClient(hWnd, ref point))
                 {
                     var dpi = GetDpi();
-                    var insideTile = point.Y >= 0 && point.Y < Math.Max(1, _tiles.Count) * (int)(TileHeightDips * dpi)
-                        && point.X >= 0 && point.X < (int)(HitWidthDips() * dpi);
+                    // UI/UX 审计：双列后行数/列数与 ApplyLayout 同口径（rows×32 高、columns×168 宽）
+                    var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
+                    var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
+                    var insideTile = point.Y >= 0 && point.Y < rows * (int)(TileHeightDips * dpi)
+                        && point.X >= 0 && point.X < (int)(HitWidthDips(columns) * dpi);
                     return insideTile ? new IntPtr(NativeMethods.HTCLIENT) : new IntPtr(NativeMethods.HTTRANSPARENT);
                 }
                 break;
@@ -811,9 +840,9 @@ internal sealed class PinnedHostWindow
             : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
     }
 
-    /// <summary>当前 hit-test 宽（DIP）：收起细条窄、展开态全宽。</summary>
-    private double HitWidthDips()
-        => _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips;
+    /// <summary>当前 hit-test 宽（DIP）：收起细条窄、展开态全宽（双列翻倍，与 ApplyLayout 同口径）。</summary>
+    private double HitWidthDips(int columns = 1)
+        => _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips * columns;
 
     private AppWindow? GetAppWindow()
     {

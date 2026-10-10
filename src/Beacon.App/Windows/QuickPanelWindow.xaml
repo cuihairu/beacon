@@ -57,6 +57,7 @@
                     MaxHeight="118"
                     SelectionMode="Single"
                     IsItemClickEnabled="True"
+                    ScrollViewer.VerticalScrollBarVisibility="Visible"
                     ItemClick="OnNotificationItemClick" />
             </StackPanel>
 
@@ -81,6 +82,7 @@
                     x:Name="RecentList"
                     SelectionMode="Single"
                     IsItemClickEnabled="True"
+                    ScrollViewer.VerticalScrollBarVisibility="Visible"
                     ItemClick="OnRecentItemClick" />
             </Grid>
         </Grid>

@@ -126,13 +126,15 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("opencode", "OpenCode Go", "Console Budgets · 月度用量", "\uEA8F", "opencode"),
             new ModuleDef("qwen", "阿里千问", "百炼 Token Plan · 额度/重置", "\uE753", "qwen"),
             new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
-            new ModuleDef("advanced", "高级", "导入导出 · 通知规则", "\ue90f", null),
+            new ModuleDef("actions", "自定义动作", "HTTP · Webhook · 本机命令", "\ue945", null), // UI/UX 审计：原与诊断/导入导出/通知规则堆一页，动作编辑器占首屏把后半压到视口外
+            new ModuleDef("advanced", "高级", "诊断 · 导入导出 · 通知规则", "\ue90f", null),
         ];
 
         _leftPanel = new StackPanel { Spacing = 2, MinWidth = 232, Margin = new Thickness(0, 0, 14, 0) };
         _rightHost = new ScrollViewer
         {
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            // UI/UX 审计：Auto 档在内容略溢出时只出细滚动条，底部还有内容这件事无提示——常驻 Visible
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
@@ -300,6 +302,7 @@ internal sealed class SettingsWindow : Window
         {
             "general" => BuildGeneralPage(),
             "appearance" => BuildAppearancePage(),
+            "actions" => BuildActionsPage(),
             "advanced" => BuildAdvancedPage(),
             _ => BuildProviderPage(module),
         };
@@ -342,10 +345,10 @@ internal sealed class SettingsWindow : Window
         _opacitySlider = new Slider
         {
             Header = "界面透明度",
-            Minimum = 0.4,
+            Minimum = 0.2, // UI/UX 审计：滑杆下限 0.4 与运行时 clamp(0.2,1.0) 不一致——配了 0.2 的用户滑杆一碰就跳回 0.4
             Maximum = 1.0,
             StepFrequency = 0.05,
-            Value = Math.Clamp(_runtime.Config.App.UiOpacity, 0.4, 1.0),
+            Value = Math.Clamp(_runtime.Config.App.UiOpacity, 0.2, 1.0),
             Width = 240,
         };
         _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
@@ -404,13 +407,22 @@ internal sealed class SettingsWindow : Window
         return page;
     }
 
-    // —— 页面：高级（导入导出 + 通知规则） ——
+    // —— 页面：自定义动作（独占一页，UI/UX 审计：编辑器 8+ 字段与诊断/导入导出/通知规则混排一页时，
+    // 动作表单占满首屏，把后半分组压出视口且无提示——一屏一模块） ——
 
-    private UIElement BuildAdvancedPage()
+    private UIElement BuildActionsPage()
     {
         var page = PageShell();
         page.Children.Add(SectionTitle("自定义动作"));
         page.Children.Add(BuildActionEditorSection());
+        return page;
+    }
+
+    // —— 页面：高级（诊断 + 导入导出 + 通知规则） ——
+
+    private UIElement BuildAdvancedPage()
+    {
+        var page = PageShell();
         page.Children.Add(SectionTitle("诊断"));
         page.Children.Add(Hint($"逐跳诊断日志：%APPDATA%\\Beacon\\logs\\beacon-*.log（每跳一行：一键添加→拉取→字段映射→渲染；组件不出数先看这里最新一份）。"));
         page.Children.Add(SectionTitle("导入导出"));
@@ -475,11 +487,11 @@ internal sealed class SettingsWindow : Window
 
         var form = new StackPanel { Spacing = 8 };
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _actionTypeBox, _actionNameBox } });
-        form.Children.Add(_actionUrlBox);
-        form.Children.Add(_actionMethodBox);
+        // UI/UX 审计：URL+Method、命令+参数各并一行——原 9 行纵向表单按类型显隐后可视 5 行，
+        // 压缩到 6 行容器（可视 4 行），动作列表不再被推出首屏
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _actionUrlBox, _actionMethodBox } });
         form.Children.Add(_actionBodyBox);
-        form.Children.Add(_actionCommandBox);
-        form.Children.Add(_actionArgsBox);
+        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _actionCommandBox, _actionArgsBox } });
         form.Children.Add(_actionWorkDirBox);
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _actionScopeBox, _actionConfirmBox, save } });
         form.Children.Add(_actionFeedback);
@@ -1474,10 +1486,20 @@ internal sealed class SettingsWindow : Window
         _widgetTypeBox.SelectionChanged += (_, _) => RebuildWidgetFields();
         _widgetConnectionBox = new ComboBox { Header = "连接", Width = 200 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_widgetConnectionBox, "widget-connection-box"); // UIA 取证：展开截可选项
-        _widgetTierBox = new ComboBox { Header = "刷新档", Width = 140 };
-        foreach (var tier in new[] { RefreshTiers.Pr, RefreshTiers.Ci, RefreshTiers.Machine, RefreshTiers.Agent, RefreshTiers.Workflow, RefreshTiers.Static, RefreshTiers.Default })
+        _widgetTierBox = new ComboBox { Header = "刷新档", Width = 180 };
+        // UI/UX 审计：下拉里是原始英文 tag（pr/ci/…），含义与频率要用户猜——中文标签带刷新秒数，Tag 仍存档位名
+        foreach (var (tier, label) in new[]
         {
-            _widgetTierBox.Items.Add(tier);
+            (RefreshTiers.Pr, "pr · 60 秒（PR 轮询）"),
+            (RefreshTiers.Ci, "ci · 15 秒（CI 检查）"),
+            (RefreshTiers.Machine, "machine · 15 秒（机器状态）"),
+            (RefreshTiers.Agent, "agent · 10 秒（Agent 会话）"),
+            (RefreshTiers.Workflow, "workflow · 10 秒（工作流）"),
+            (RefreshTiers.Static, "static · 手动刷新"),
+            (RefreshTiers.Default, "default · 60 秒（通用默认）"),
+        })
+        {
+            _widgetTierBox.Items.Add(new ComboBoxItem { Content = label, Tag = tier });
         }
         // 检测间隔覆盖（拍板：频率要可设）——不选=按刷新档默认；秒数落 WidgetConfig.RefreshIntervalSeconds
         _widgetIntervalBox = new ComboBox { Header = "检测间隔（可选）", Width = 150 };
@@ -1554,7 +1576,8 @@ internal sealed class SettingsWindow : Window
         }
         _widgetColorBox.Text = "";
         var tier = descriptor.SuggestedTier;
-        _widgetTierBox.SelectedIndex = _widgetTierBox.Items.IndexOf(tier) is var index && index >= 0 ? index : _widgetTierBox.Items.Count - 1;
+        var tierIndex = IndexOfTag(_widgetTierBox, tier);
+        _widgetTierBox.SelectedIndex = tierIndex >= 0 ? tierIndex : _widgetTierBox.Items.Count - 1;
     }
 
     private void RefreshWidgetConnectionOptions()
@@ -1641,7 +1664,7 @@ internal sealed class SettingsWindow : Window
             Type = descriptor.Type,
             ConnectionId = TagOf(_widgetConnectionBox) ?? "",
             Config = config,
-            RefreshTier = SelectedString(_widgetTierBox) ?? descriptor.SuggestedTier,
+            RefreshTier = TagOf(_widgetTierBox) ?? descriptor.SuggestedTier,
             RefreshIntervalSeconds = TagOf(_widgetIntervalBox) is { } tag && int.TryParse(tag, out var seconds) && seconds > 0
                 ? seconds
                 : null,
