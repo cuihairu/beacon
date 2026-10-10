@@ -706,7 +706,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   新截图 D-settings-window.png / D-settings-splitter-{before,after}.png；既有 C/D 场景近景覆盖双主题 icon。
   四测试项目全绿（212/353/27/31）。
 
-### 批3-补17 悬浮框进度换形态水波纹 + 设置边栏真可拖（2026-10-10 用户令双批，进行中）
+### 批3-补17 悬浮框进度换形态水波纹 + 设置边栏真可拖（2026-10-10 用户令双批，已完成）
 - **背景（诚实口径）**：86ac00e 三修复进不了 nightly——38043008092/38043812483/38044411443 三次
   daily-build 全在视觉取证步红（PS 5.1 SetScrollPercent 重载 → UIA peer 缺失 → 合成拖拽 264→264），
   Pack/Installer/Publish 三步被跳过，**用户装的 nightly 仍是 2e530ed 旧版**；「装了还是看不见」由此而来。
@@ -735,7 +735,22 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   SendInput 绝对坐标拖拽 +60px（38044411443 mouse_event 版不生效，本版换 INPUT 队列级注入；
   仍不生效降级 warning 不拦 nightly，手势转装机手验）。四测试项目全绿（212/353/27/31，
   +SettingsSidebarWidth/WindowWidth/Height 往返断言）。
-- **证据**：daily-build run `__RUN__`（绿后回填 artifact 截图链接）；装机对照清单「悬浮框进度条」行同步。
+- **证据（全部落地，run 38050851807 全绿零 warning）**：
+  run 链接 https://github.com/cuihairu/beacon/actions/runs/38050851807 ；artifact `visual-evidence`：
+  `A-numeric-on-tile-closeup.png`（GLM tile：绿灯+icon+「GLM」+「38%」×2+波纹环同框）/
+  `A-numeric-wave-frame2.png` + `D-tile-ark-wave-frame{1,2}.png`（**双帧相位不同=动画在跑**：frame1 环
+  近隐、frame2 环扩散中——首版 scalar 动画挂 Vector3 属性 throw 被吞成静止环，38048738860 双帧全同
+  实证，commit 55aa306 修 Vector3KeyFrameAnimation）/ `D-settings-window.png`（搜索框+计数+16 模块+
+  选中态左缘条）/ `D-settings-splitter-{before,after}.png`（拖后右栏内容整体右移）。
+  CI 日志硬断言：**「分隔条拖拽断言通过：左栏 400 → 420 px（钳位感知，期望 ≥420）；config 落盘 420
+  （拖完即存，启动恢复闭环）」**（38048738860 已证 SendInput 生效、只是旧断言没算钳位上限数学不可能）+
+  「场景 A 百分比断言通过：GLM tile 常驻静态文本『38%』」+「百分比常驻断言通过：tile 静态文本『剩70%』」+
+  「边栏宽度恢复断言通过：config 400 → 左栏实测 400px」+「设置搜索断言通过：『额度』过滤+清词复原」。
+  **可装版本**：nightly 资产 `beacon-nightly-windows-x86_64-setup.exe`（SHA256
+  c2bf4e035cf878c113b6722a20d3d7f597da0dc08589a619d92ad7417b1dd48f）/ `beacon-nightly-windows-x86_64.zip`
+  （9ad54dc344d33db2d8dfdbd805a08cf24f8aae92abf2504a01162c566c52c6e2），publishedAt 2026-10-10T12:15:19Z
+  ——**86ac00e 三修复 + 本批全部首次进 nightly**（此前三次取证红导致 Pack/Publish 跳过，用户装机一直是
+  2e530ed 旧版）。场景 A 连接指 mock `/api/monitor/usage/quota/limit`（38% 健康链，不再赌公网）。
 
 ## 2026-10-10 装机对照清单（49 条三类，2026-10-10 整理）
 
