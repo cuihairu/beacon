@@ -518,7 +518,7 @@ internal sealed class SettingsWindow : Window
         => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
 
     private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
-        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
+        => [.. GitHubWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MoonshotWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
 
     private static TextBlock Hint(string text) => new()
     {

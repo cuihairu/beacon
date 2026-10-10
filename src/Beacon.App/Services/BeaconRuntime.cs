@@ -95,6 +95,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [CopilotWidgetDescriptors.UsageType] = new CopilotUsageProvider(), // AI Usage 第八家：GitHub Copilot（官方扩展同款配额端点直连）
             [OpenCodeWidgetDescriptors.UsageType] = new OpenCodeUsageProvider(), // AI Usage 第九家：OpenCode Go（官方 Console Budgets API 直连）
             [QwenWidgetDescriptors.UsageType] = new QwenUsageProvider(), // AI Usage 第十家：阿里千问（百炼 Token Plan，用量口未开放→目录真数据+自定义端点）
+            [MoonshotWidgetDescriptors.BalanceType] = new MoonshotBalanceProvider(), // AI Usage 第十一家：Moonshot 开放平台余额（区别于 Kimi For Coding 套餐）
         });
 
         var scheduler = new RefreshScheduler(logger: logger);
@@ -146,6 +147,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["claude"] = new ClaudeConnectionProvider(),
             ["deepseek"] = new DeepSeekConnectionProvider(),
             ["kimi"] = new KimiConnectionProvider(),
+            ["moonshot"] = new MoonshotConnectionProvider(),
             ["mimo"] = new MiMoConnectionProvider(),
             ["qwen"] = new QwenConnectionProvider(),
             ["codex"] = new CodexConnectionProvider(),

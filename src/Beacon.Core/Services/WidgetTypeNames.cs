@@ -20,6 +20,7 @@ public static class WidgetTypeNames
             "claude" => "Claude",
             "deepseek" => "DeepSeek",
             "kimi" => "Kimi",
+            "moonshot" => "Moonshot",
             "mimo" => "小米 MiMo",
             "qwen" => "阿里千问",
             "codex" => "Codex",

@@ -81,6 +81,7 @@ public static class BrandIcons
         ["mimo"] = "xiaomi",            // 小米 MiMo 平台用小米品牌标
         ["codex"] = "openai",           // Codex 属 OpenAI 品牌
         ["copilot"] = "githubcopilot",  // Simple Icons slug 无连字符
+        ["moonshot"] = "kimi",          // Moonshot 开放平台与 Kimi 同司（月之暗面），共用品牌标
     };
 
     /// <summary>
