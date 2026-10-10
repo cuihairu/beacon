@@ -556,19 +556,20 @@ try
     if (!$leftHost) { throw "断言失败（场景 D）：UIA 未找到 settings-left-host——左栏 ScrollViewer 缺失" }
     $advanced = Find-UiaById $settings "module-advanced" 8
     if (!$advanced) { throw "断言失败（场景 D）：UIA 未找到 module-advanced" }
-    $scroll = $null
-    try { $scroll = $leftHost.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern) } catch { }
-    if ($scroll -and $scroll.Current.VerticallyScrollable)
+    # ScrollItemPattern.ScrollIntoView()（无参，与 Invoke 同族绑定可靠）——SetScrollPercent(int) 在
+    # PS 5.1 对 UIA COM 包装重载解析失败（38043008092 实证），弃用
+    $scrollItem = $null
+    try { $scrollItem = $advanced.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern) } catch { }
+    if ($scrollItem)
     {
-        $scroll.SetScrollPercent(100)
+        $scrollItem.ScrollIntoView()
         Start-Sleep -Milliseconds 800
     }
     if ($advanced.Current.IsOffscreen)
     {
         throw "断言失败（场景 D）：左栏滚到底后「高级」模块仍不可见（IsOffscreen=true）——滚动修复回归"
     }
-    if ($scroll -and $scroll.Current.VerticallyScrollable) { $scroll.SetScrollPercent(0) }
-    Write-Host "左栏滚动断言通过：滚到底「高级」进入可见区（VerticallyScrollable=$([bool]($scroll -and $scroll.Current.VerticallyScrollable))）"
+    Write-Host "左栏滚动断言通过：「高级」滚入可见区（ScrollIntoView=$(if ($scrollItem) { 'ok' } else { 'pattern 不可用' })，IsOffscreen=false）"
     # ③ 分隔条真实拖拽 +60px：左栏实测变宽 ≥40px——「可调」的功能性证明（UIA 坐标为物理像素）
     $splitter = Find-UiaById $settings "settings-left-splitter" 8
     if (!$splitter) { throw "断言失败（场景 D）：UIA 未找到 settings-left-splitter——拖拽分隔条缺失" }
