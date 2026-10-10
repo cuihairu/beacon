@@ -552,7 +552,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   ContentDialog 完成后摘标记提交）。**顺手修**：Open/Retry/Cancel 内联动作此前未摘 RequireConfirmation
   （默认 true）而全局无确认通道——Runner 必拒（「需要确认但无确认通道」），按窗内确认后提交的文档口径
   补 RequireConfirmation=false。
-- **todo**：B-802 导入导出纳入 actions.json（未并入 ReplaceAll，避免涟漪，挂账）。
+- **todo（已销账）**：B-802 导入导出纳入 actions.json——已由 1e0efc0 收口（Export/Import 带 Actions、ReplaceAll 收 actions 参数、ImportExportTests 往返+旧包兼容+整体替换语义）。
 
 ### 批3-补8 小米套餐用量换控制台口径 + GLM 5h 窗口主位（2026-10-10 用户批6）
 - **小米（用户实测口径：124,801,805,513 / 132,000,000,000 ≈ 95%）**：plan-manage 页接口=前端 bundle 实证
