@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
 
@@ -94,6 +95,16 @@ public sealed class ArkUsageProvider : IWidgetProvider
         var client = _client ?? HttpEndpoint.Shared;
         using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            // bug 批9 2026-10-10：429 携带配额耗尽码（AccountQuotaExceeded 等，实测周额度尽即此形态）
+            // = 窗口额度用尽的权威信号——按该窗已尽返回（带重置时间），连接保持健康；
+            // 纯限流型 429（无配额码，如 RPM 限速）不翻转——瞬时限速≠用尽（同千问探针口径），走下方通用异常按 4xx=Degraded。
+            if (ParseExhaustedResponse(body) is { } exhausted)
+            {
+                return exhausted;
+            }
+        }
         if (!response.IsSuccessStatusCode)
         {
             // 未订阅/凭证无效都在这里显式失败（不静默吞）——连接健康交给异常携带。
@@ -135,11 +146,69 @@ public sealed class ArkUsageProvider : IWidgetProvider
             };
         }
 
+        var head = widget.Config.GetValueOrDefault("label") ?? "方舟";
+
+        // bug 批9 2026-10-10：429 耗尽但窗口名解析不出（无任何窗口用量数据）——通用「已尽」卡，
+        // 绝不显示剩余可用（连剩余数字都没有，谈何剩余）
+        if (usage.ExhaustedNote is { } note && usage.Session is null && usage.Weekly is null && usage.Monthly is null)
+        {
+            return new WidgetState
+            {
+                WidgetId = widget.Id,
+                WidgetType = DescriptorType,
+                ConnectionId = connection.Id,
+                Severity = Severity.Error,
+                Lifecycle = LifecycleState.Failed,
+                Summary = $"{head} · 额度用尽（服务端返回 {note}，重置时间未知）",
+                DetailUrl = ConsoleUrl,
+                Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["exhausted"] = "1",
+                    ["exhausted_note"] = note,
+                },
+                FetchedAt = DateTimeOffset.UtcNow,
+            };
+        }
+
+        // bug 批9 2026-10-10：任一窗已用 ≥100% 即按「已尽」展示，明确标哪个窗、何时重置——
+        // 周/月尽不得被新 5h 窗的低用量掩盖（用户实测：周/月尽、新 5h 窗刚重置，旧码显示健康）。
+        // 多窗尽按重置时间最早取首窗命名，全部尽窗列 payload["exhausted_windows"]。
+        var exhausted = ExhaustedWindows(usage);
+        if (exhausted.Count > 0)
+        {
+            var (exhaustedName, exhaustedWindow) = exhausted[0];
+            var exhaustedResetText = exhaustedWindow.ResetSeconds is { } exhaustedReset ? FormatReset(exhaustedReset) : null;
+            return new WidgetState
+            {
+                WidgetId = widget.Id,
+                WidgetType = DescriptorType,
+                ConnectionId = connection.Id,
+                Severity = Severity.Error, // 已尽恒错误级，不受阈值配置降级
+                Lifecycle = LifecycleState.Failed,
+                Progress = 1.0, // 数值卡进度条：已尽=满格
+                Summary = exhaustedResetText is { } text
+                    ? $"{head} · 额度用尽（{exhaustedName}，{text} 重置）"
+                    : $"{head} · 额度用尽（{exhaustedName}，待重置）",
+                DetailUrl = ConsoleUrl,
+                Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["percent"] = Format(exhaustedWindow.Percent), // tile 主数值（已尽窗已用 %）
+                    ["exhausted"] = "1",
+                    ["exhausted_window"] = exhaustedName,
+                    ["exhausted_windows"] = string.Join(",", exhausted.Select(entry => entry.Name)),
+                    ["rolling_percent"] = usage.Session is { } sessionWindow ? Format(sessionWindow.Percent) : "",
+                    ["weekly_percent"] = usage.Weekly is { } weeklyWindow ? Format(weeklyWindow.Percent) : "",
+                    ["monthly_percent"] = usage.Monthly is { } monthlyWindow ? Format(monthlyWindow.Percent) : "",
+                    ["reset_iso"] = exhaustedResetText ?? "",
+                },
+                FetchedAt = DateTimeOffset.UtcNow,
+            };
+        }
+
         // 5h session 窗口为主口径（2026-10-09 bug 批3：方舟 coding 是 5 小时窗口额度——
         // 旧码主数值取最差窗口，周/月数字冒充了当前窗口；周/月仍留 payload 供 L3 详情查）
         var primary = usage.Session ?? new ArkUsageWindow(usage.WorstPercent, null);
         var severity = MapSeverity(primary.Percent, warnPercent, errorPercent);
-        var head = widget.Config.GetValueOrDefault("label") ?? "方舟";
         var resetText = primary.ResetSeconds is { } reset ? FormatReset(reset) : "待重置";
         return new WidgetState
         {
@@ -191,10 +260,13 @@ public sealed class ArkUsageProvider : IWidgetProvider
     /// <summary>单窗口用量（Percent 已用 %；ResetSeconds = 重置时刻秒级 epoch，null = 暂无重置）。</summary>
     public sealed record ArkUsageWindow(double Percent, long? ResetSeconds);
 
-    /// <summary>三窗口套餐用量；HasPlan=false = 无套餐/已回收（QuotaUsage 空且非 Running）。</summary>
-    public sealed record ArkPlanUsage(string? Status, ArkUsageWindow? Session, ArkUsageWindow? Weekly, ArkUsageWindow? Monthly)
+    /// <summary>
+    /// 三窗口套餐用量；HasPlan=false = 无套餐/已回收（QuotaUsage 空且非 Running）。
+    /// ExhaustedNote：429 耗尽码但窗口名解析不出时的兜底口径（bug 批9）——记服务端错误码，HasPlan 含之。
+    /// </summary>
+    public sealed record ArkPlanUsage(string? Status, ArkUsageWindow? Session, ArkUsageWindow? Weekly, ArkUsageWindow? Monthly, string? ExhaustedNote = null)
     {
-        public bool HasPlan => Session is not null || Weekly is not null || Monthly is not null;
+        public bool HasPlan => Session is not null || Weekly is not null || Monthly is not null || ExhaustedNote is not null;
 
         public double WorstPercent
         {
@@ -289,6 +361,174 @@ public sealed class ArkUsageProvider : IWidgetProvider
             JsonValueKind.String => double.TryParse(percentElement.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out percent),
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// 429 配额耗尽响应解析（bug 批9 2026-10-10）：body 含配额耗尽码（AccountQuotaExceeded/QuotaExceeded/
+    /// AllocationQuota/insufficient_quota，忽略大小写）才判「用尽」，返回对应窗 100% 的用量（重置时间尽力解析）；
+    /// 窗口名按 weekly/monthly/session 关键字（含中文 周/月/5小时），认不出 → ExhaustedNote 兜底（通用已尽卡）。
+    /// 纯限流型 429（无配额码）返回 null 不翻转——瞬时限速≠用尽（同千问探针口径）。
+    /// </summary>
+    internal static ArkPlanUsage? ParseExhaustedResponse(string body)
+    {
+        if (body.Length == 0)
+        {
+            return null;
+        }
+        var lower = body.ToLowerInvariant();
+        var quotaExhausted = lower.Contains("accountquotaexceeded") || lower.Contains("quotaexceeded")
+            || lower.Contains("allocationquota") || lower.Contains("insufficient_quota");
+        if (!quotaExhausted)
+        {
+            return null;
+        }
+        var windowName = lower.Contains("weekly") || lower.Contains("周") ? "weekly"
+            : lower.Contains("monthly") || lower.Contains("月") ? "monthly"
+            : lower.Contains("session") || lower.Contains("5h") || lower.Contains("5小时") ? "session"
+            : null;
+        var reset = TryParseResetSeconds(body);
+        if (windowName is null)
+        {
+            return new ArkPlanUsage("AccountQuotaExceeded", null, null, null, ExhaustedNote: "AccountQuotaExceeded");
+        }
+        var exhaustedWindow = new ArkUsageWindow(100, reset);
+        return windowName switch
+        {
+            "weekly" => new ArkPlanUsage("AccountQuotaExceeded", null, exhaustedWindow, null),
+            "monthly" => new ArkPlanUsage("AccountQuotaExceeded", null, null, exhaustedWindow),
+            _ => new ArkPlanUsage("AccountQuotaExceeded", exhaustedWindow, null, null),
+        };
+    }
+
+    /// <summary>
+    /// 从耗尽响应正文防御性解析重置时刻（秒级 epoch）：JSON 键直取（ResetTimestamp/reset_timestamp/
+    /// resetTime/reset_time/nextResetTime/next_reset_time/ResetAt/reset_at，嵌套对象内递归），
+    /// 数值归一（&gt;1e12 按毫秒、&gt;1e9 按秒）或 ISO 字符串；非 JSON 正文（纯文本错误消息）才走正则兜底
+    /// （ISO 时间 → 毫秒 epoch → 秒 epoch）。JSON 有效但无重置键 → null——不拿正文其他时间戳凑数（防误取 RequestTime）。
+    /// </summary>
+    internal static long? TryParseResetSeconds(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            foreach (var node in DescendantElements(document.RootElement))
+            {
+                if (node.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+                foreach (var name in ResetJsonKeys)
+                {
+                    if (!node.TryGetProperty(name, out var element))
+                    {
+                        continue;
+                    }
+                    if (element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out var epoch)
+                        && NormalizeEpoch(epoch) is { } seconds)
+                    {
+                        return seconds;
+                    }
+                    if (element.ValueKind == JsonValueKind.String && element.GetString() is { } text)
+                    {
+                        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var raw)
+                            && NormalizeEpoch(raw) is { } fromRaw)
+                        {
+                            return fromRaw;
+                        }
+                        if (DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var moment))
+                        {
+                            return moment.ToUnixTimeSeconds();
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+        catch (JsonException)
+        {
+            return RegexReset(body);
+        }
+    }
+
+    private static readonly string[] ResetJsonKeys =
+        ["ResetTimestamp", "reset_timestamp", "resetTime", "reset_time", "nextResetTime", "next_reset_time", "ResetAt", "reset_at"];
+
+    /// <summary>自身 + 全部后代元素（深度 4 封顶：429 错误体嵌套浅，防深树全扫）。</summary>
+    private static IEnumerable<JsonElement> DescendantElements(JsonElement element, int depth = 0)
+    {
+        if (depth > 4)
+        {
+            yield break;
+        }
+        yield return element;
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                foreach (var child in DescendantElements(property.Value, depth + 1))
+                {
+                    yield return child;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                foreach (var child in DescendantElements(item, depth + 1))
+                {
+                    yield return child;
+                }
+            }
+        }
+    }
+
+    /// <summary>epoch 数值归一：&gt;1e12 按毫秒、&gt;1e9 按秒，其余 null（0/-1 哨兵等非时间戳数字不误判）。</summary>
+    private static long? NormalizeEpoch(long value)
+        => value > 1_000_000_000_000 ? value / 1000
+        : value > 1_000_000_000 ? value
+        : null;
+
+    private static long? RegexReset(string body)
+    {
+        // ISO 时间（2026-10-12T00:00Z / 2026-10-12 00:00）
+        var iso = Regex.Match(body, @"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?");
+        if (iso.Success && DateTimeOffset.TryParse(iso.Value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var moment))
+        {
+            return moment.ToUnixTimeSeconds();
+        }
+        // 毫秒 epoch（当前年代 13 位）
+        var milliseconds = Regex.Match(body, @"\b1[5-9]\d{11}\b");
+        if (milliseconds.Success && long.TryParse(milliseconds.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var msValue))
+        {
+            return msValue / 1000;
+        }
+        // 秒 epoch（当前年代 10 位）
+        var secondsMatch = Regex.Match(body, @"\b1[5-9]\d{8}\b");
+        if (secondsMatch.Success && long.TryParse(secondsMatch.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var secValue))
+        {
+            return secValue;
+        }
+        return null;
+    }
+
+    /// <summary>已用尽窗口（Percent ≥ 100），按重置时间升序（无重置的排末）——主摘要取首窗（最早恢复）。</summary>
+    private static List<(string Name, ArkUsageWindow Window)> ExhaustedWindows(ArkPlanUsage usage)
+    {
+        var windows = new List<(string Name, ArkUsageWindow Window)>();
+        if (usage.Session is { } session && session.Percent >= 100)
+        {
+            windows.Add(("5h 窗", session));
+        }
+        if (usage.Weekly is { } weekly && weekly.Percent >= 100)
+        {
+            windows.Add(("周", weekly));
+        }
+        if (usage.Monthly is { } monthly && monthly.Percent >= 100)
+        {
+            windows.Add(("月", monthly));
+        }
+        return windows.OrderBy(entry => entry.Window.ResetSeconds ?? long.MaxValue).ToList();
     }
 
     /// <summary>级别阈值：最差窗口 ≥error_percent → Error，≥warn_percent → Warning，否则 Success。</summary>

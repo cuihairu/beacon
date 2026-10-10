@@ -229,17 +229,17 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
             : worst <= warnPercent ? Severity.Warning
             : Severity.Success;
 
-    /// <summary>摘要尾巴：紧凑窗口余量列表（“ · 5h 剩74% · 周 剩55%”）。</summary>
+    /// <summary>摘要尾巴：紧凑窗口余量列表（“ · 5h 剩74% · 周 剩55%”）；余 0% 显示「已用尽」（bug 批9 措辞对齐）。</summary>
     internal static string Summarize(KimiUsage usage)
     {
         var parts = new List<string>();
         if (usage.Rolling?.RemainingPercent is { } rolling)
         {
-            parts.Add($"5h 剩{Format(rolling)}%");
+            parts.Add(rolling <= 0 ? "5h 已用尽" : $"5h 剩{Format(rolling)}%");
         }
         if (usage.Weekly?.RemainingPercent is { } weekly)
         {
-            parts.Add($"周 剩{Format(weekly)}%");
+            parts.Add(weekly <= 0 ? "周 已用尽" : $"周 剩{Format(weekly)}%");
         }
         return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
     }

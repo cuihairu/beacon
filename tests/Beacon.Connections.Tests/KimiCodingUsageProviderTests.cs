@@ -145,6 +145,28 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal(expected, KimiCodingUsageProvider.MapSeverity(worstRemaining, warn, error));
     }
 
+    // ---- 措辞对齐（bug 批9：余 0% 显示「已用尽」而非「剩0%」） ----
+
+    [Fact]
+    public void Summarize_ZeroRemaining_SaysExhausted()
+    {
+        var both = KimiCodingUsageProvider.Summarize(new KimiCodingUsageProvider.KimiUsage(
+            "pro",
+            new KimiCodingUsageProvider.QuotaWindow(0, 100, 0, "2026-10-13"),
+            new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20")));
+
+        Assert.Contains("5h 已用尽", both);
+        Assert.Contains("周 已用尽", both);
+
+        var mixed = KimiCodingUsageProvider.Summarize(new KimiCodingUsageProvider.KimiUsage(
+            "pro",
+            new KimiCodingUsageProvider.QuotaWindow(74, 100, 74, null),
+            new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20")));
+
+        Assert.Contains("5h 剩74%", mixed); // 有余量的窗维持原口径
+        Assert.Contains("周 已用尽", mixed);
+    }
+
     // ---- 端到端 ----
 
     [Fact]

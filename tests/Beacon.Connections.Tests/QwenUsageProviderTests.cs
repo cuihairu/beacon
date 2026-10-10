@@ -216,6 +216,16 @@ public sealed class QwenUsageProviderTests
     }
 
     [Fact]
+    public void ToUsageState_Percent100_SaysExhausted()
+    {
+        // bug 批9 措辞对齐：用尽显示「已用尽」而非「已用 100%」
+        var state = QwenUsageProvider.ToUsageState(Widget(), Connection(), new QwenUsageProvider.QwenPlanUsage(100, "10-13", null, null));
+
+        Assert.Contains("本期已用尽", state.Summary);
+        Assert.DoesNotContain("已用 100%", state.Summary);
+    }
+
+    [Fact]
     public void ToCatalogState_RendersInfoCardWithHonestLabel()
     {
         var catalog = QwenUsageProvider.ParseCatalog(ModelsBody);

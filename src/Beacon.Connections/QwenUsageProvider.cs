@@ -358,7 +358,10 @@ public sealed class QwenUsageProvider : IWidgetProvider
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
             Progress = percent / 100.0, // 数值卡进度条：本期已用%（与级别判定同源）
-            Summary = $"{head} · 本期已用 {Format(percent)}% · 重置 {resetText}",
+            // 用尽显示「已用尽」而非「已用 100%」（bug 批9 措辞对齐——已尽不是普通用量读数）
+            Summary = percent >= 100
+                ? $"{head} · 本期已用尽 · 重置 {resetText}"
+                : $"{head} · 本期已用 {Format(percent)}% · 重置 {resetText}",
             DetailUrl = ConsoleUrl,
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {

@@ -438,8 +438,186 @@ public sealed class ArkUsageProviderTests
     public void MapSeverity_ThresholdBoundaries(double worst, double warn, double error, Severity expected)
         => Assert.Equal(expected, ArkUsageProvider.MapSeverity(worst, warn, error));
 
+    // ---- 额度用尽口径（bug 批9 2026-10-10：周/月尽不得被新 5h 窗的低用量掩盖） ----
+
+    [Fact]
+    public void ToState_WeeklyExhaustedWhileSessionFresh_ShowsExhaustedNotHealthy()
+    {
+        // 用户实测形态：周额度尽（100%），新 5h 窗刚重置（3%）——旧码显示健康，修复后必须显示已尽
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"session","Percent":3,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":100,"ResetTimestamp":1772000000}]}}
+            """)!;
+
+        var state = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["label"] = "方舟",
+        }), Connection(), usage);
+
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(1.0, state.Progress!.Value, 5); // 已尽=满格，不显示新窗的低进度
+        Assert.Equal($"方舟 · 额度用尽（周，{WeeklyResetDisplay} 重置）", state.Summary);
+        Assert.Equal("100", state.Payload["percent"]);
+        Assert.Equal("周", state.Payload["exhausted_window"]);
+        Assert.Equal("周", state.Payload["exhausted_windows"]);
+        Assert.Equal("3", state.Payload["rolling_percent"]); // 各窗余量仍留 payload 供 L3 详情
+    }
+
+    [Fact]
+    public void ToState_MonthlyExhausted_NamesMonthlyWindow()
+    {
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"session","Percent":10},{"Level":"monthly","Percent":100}]}}
+            """)!;
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal("方舟 · 额度用尽（月，待重置）", state.Summary); // 无重置时间不硬造
+        Assert.Equal("月", state.Payload["exhausted_window"]);
+        Assert.Equal("", state.Payload["reset_iso"]);
+    }
+
+    [Fact]
+    public void ToState_TwoWindowsExhausted_NamesEarliestReset()
+    {
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"weekly","Percent":100,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":100,"ResetTimestamp":1771500000}]}}
+            """)!;
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal("月", state.Payload["exhausted_window"]); // 多窗尽按最早重置命名主摘要
+        Assert.Equal("月,周", state.Payload["exhausted_windows"]);
+    }
+
+    [Theory]
+    [InlineData("99.9", "10")] // 未到 100：正常路径（5h session 主口径）
+    [InlineData("100", "100")] // 恰 100：判尽
+    public void ToState_ExhaustionBoundaryAt100(string weeklyPercentText, string expectedPercent)
+    {
+        var json = """{"Result":{"QuotaUsage":[{"Level":"session","Percent":10,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":"PERCENT"}]}}"""
+            .Replace("PERCENT", weeklyPercentText);
+        var usage = ArkUsageProvider.ParseUsage(json)!;
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(expectedPercent, state.Payload["percent"]);
+    }
+
+    [Fact]
+    public void ToState_ExhaustedNoteWithoutWindows_RendersGenericExhausted()
+    {
+        var usage = new ArkUsageProvider.ArkPlanUsage("AccountQuotaExceeded", null, null, null, ExhaustedNote: "AccountQuotaExceeded");
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Null(state.Progress); // 无窗无重置，没有可显示的进度数字
+        Assert.Contains("额度用尽", state.Summary);
+        Assert.Contains("AccountQuotaExceeded", state.Summary);
+        Assert.Equal("1", state.Payload["exhausted"]);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429QuotaExceededWeekly_ReturnsExhaustedWeeklyWithReset()
+    {
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"ResponseMetadata":{"RequestId":"req-9","Error":{"Code":"AccountQuotaExceeded","Message":"Weekly quota of the plan is exhausted","ResetTimestamp":1771900000}}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.True(usage.HasPlan); // 已尽是有效套餐状态，不落 Degraded
+        Assert.Equal(100, usage.Weekly!.Percent);
+        Assert.Equal(1771900000, usage.Weekly.ResetSeconds);
+        Assert.Null(usage.Session);
+
+        // 全链路：额度卡显示「已尽 + 重置时间」，绝不显示剩余可用
+        var state = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["label"] = "方舟",
+        }), Connection(), usage);
+        Assert.Equal($"方舟 · 额度用尽（周，{ExhaustedResetDisplay} 重置）", state.Summary);
+        Assert.Equal(Severity.Error, state.Severity);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429QuotaExceededMillisecondsReset_NormalizesToSeconds()
+    {
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"ResponseMetadata":{"Error":{"Code":"QuotaExceeded","Message":"monthly quota exhausted","resetTime":1771900000000}}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal(100, usage.Monthly!.Percent);
+        Assert.Equal(1771900000, usage.Monthly.ResetSeconds);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429QuotaExceededIsoResetString_ParsesIso()
+    {
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"Error":{"Code":"AccountQuotaExceeded","Message":"weekly exhausted","reset_at":"2026-10-13T08:30:00Z"}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal(100, usage.Weekly!.Percent);
+        Assert.Equal(new DateTimeOffset(2026, 10, 13, 8, 30, 0, TimeSpan.Zero).ToUnixTimeSeconds(), usage.Weekly.ResetSeconds);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429QuotaExceededPlainText_ResetViaRegex()
+    {
+        // 非 JSON 正文（网关/代理透传的纯文本错误）也要认出已尽 + ISO 时间
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            "AccountQuotaExceeded: weekly quota exhausted, resets at 2026-10-13 08:30 UTC");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal(100, usage.Weekly!.Percent);
+        Assert.Equal(new DateTimeOffset(2026, 10, 13, 8, 30, 0, TimeSpan.Zero).ToUnixTimeSeconds(), usage.Weekly.ResetSeconds);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429QuotaExceededUnknownWindow_FallsBackToExhaustedNote()
+    {
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"ResponseMetadata":{"Error":{"Code":"AccountQuotaExceeded","Message":"plan quota exhausted"}}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.True(usage.HasPlan);
+        Assert.Null(usage.Session);
+        Assert.Null(usage.Weekly);
+        Assert.Null(usage.Monthly);
+        Assert.Equal("AccountQuotaExceeded", usage.ExhaustedNote);
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+        Assert.Contains("额度用尽", state.Summary);
+        Assert.Equal(Severity.Error, state.Severity);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429RateLimitOnly_ThrowsDegraded()
+    {
+        // 纯限流（无配额耗尽码）≠用尽——保持既有 4xx=Degraded 口径（同千问探针「瞬时限速不翻转」先例）
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"ResponseMetadata":{"Error":{"Code":"FlowLimitExceeded","Message":"Too many requests"}}}""");
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+    }
+
     private static string ResetDisplay
         => DateTimeOffset.FromUnixTimeSeconds(1771000000).LocalDateTime.ToString("MM-dd HH:mm");
+
+    private static string WeeklyResetDisplay
+        => DateTimeOffset.FromUnixTimeSeconds(1772000000).LocalDateTime.ToString("MM-dd HH:mm");
+
+    private static string ExhaustedResetDisplay
+        => DateTimeOffset.FromUnixTimeSeconds(1771900000).LocalDateTime.ToString("MM-dd HH:mm");
 
     // —— 测试内独立 HMAC/SHA 工具（不引用被测代码的 helper） ——
 

@@ -584,6 +584,30 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：告警归零编译日志=CI windows-latest（本地不可编译）；透明度截图（肉眼可见变化）+重启保持
   =装机走查（保存链 config.json 已有，四窗同值代码已接线）。
 
+### 批3-补11 方舟额度用尽显示修复 + 三家措辞对齐（2026-10-10 用户批9）
+- **病灶（用户实测：月/周额度尽，卡片却显示有额度）**：ArkUsageProvider.ToState 主位恒 5h session 窗
+  （bug 批3 修复的副作用）——周/月窗 100% 尽、新 5h 窗刚重置（低%）时，主数值/级别全按新 5h 窗算，
+  卡片显示健康。修法：ToState 加**尽窗优先级**——任一窗已用 ≥100% 即整卡按「已尽」展示：
+  Error + Lifecycle.Failed + 进度条满格 + 摘要「{head} · 额度用尽（{窗名}，MM-dd HH:mm 重置）」
+  （窗名 5h 窗/周/月；多窗尽按重置时间最早取首窗命名，全部尽窗列 payload["exhausted_windows"]）；
+  无重置时间显示「待重置」。各窗余量仍留 payload 供 L3 详情。已尽恒 Error 不受阈值配置降级。
+- **429 耗尽型特判（数据源接真实错误码）**：FetchUsageAsync 对 429 检查响应体——含配额耗尽码
+  （AccountQuotaExceeded/QuotaExceeded/AllocationQuota/insufficient_quota，忽略大小写）即按该窗已尽
+  返回（窗 100% + 重置时间），连接保持健康不落 Degraded；窗名按 weekly/monthly/session 关键字
+  （含中文 周/月/5小时）解析，认不出 → ArkPlanUsage.ExhaustedNote 兜底（通用「额度用尽（服务端返回
+  {码}，重置时间未知）」卡）。重置时间防御解析 TryParseResetSeconds：JSON 键嵌套递归
+  （ResetTimestamp/resetTime/nextResetTime/ResetAt 等 8 键，毫秒/秒归一+ISO 字符串），
+  非 JSON 正文才走正则（ISO → 毫秒 epoch → 秒 epoch；JSON 有效但无键 → null 防误取 RequestTime）。
+  **纯限流型 429（无耗尽码，如 RPM 限速）不翻转**——瞬时限速≠用尽（同千问 ParseQuotaExhausted 先例），
+  维持 4xx=Degraded。④恢复口径：每轮刷新重推——重置后用量接口回 <100% 或 429 停止即自动恢复，无状态机。
+- **⑤两家核对（结论：不同病，只差措辞）**：kimi.coding 以 WorstRemainingPercent=min(滚动,周) 最差剩余
+  主判，周尽（剩 0%）不可能被新 5h 窗掩盖——Summarize 余 0% 从「剩0%」改「已用尽」；
+  千问 token-plan 单窗+429 探针已有耗尽判别——ToUsageState percent≥100 摘要从「本期已用 100%」
+  改「本期已用尽」。方舟周/月尽被新窗掩盖的问题为方舟独有（三窗结构+5h 主位口径）。
+- **验收**：测试 15 个新增（尽窗优先/双窗最早重置命名/100 边界/429 耗尽解析窗名+秒毫秒 ISO 重置/
+  纯文本正则兜底/未知窗兜底/纯限流保持 Degraded/健康路径回归+kimi/qwen 措辞）四项目全绿；
+  装机截图（方舟额度尽卡片显示已尽+重置时间）待装机走查——接口佐证已由 429 mock 测试夹具承担。
+
 ---
 
 ## 附：MVP 明确不做（评审基线）
