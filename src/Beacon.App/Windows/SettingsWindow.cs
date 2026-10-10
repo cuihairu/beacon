@@ -130,7 +130,18 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("advanced", "高级", "诊断 · 导入导出 · 通知规则", "\ue90f", null),
         ];
 
-        _leftPanel = new StackPanel { Spacing = 2, MinWidth = 232, Margin = new Thickness(0, 0, 14, 0) };
+        // 2026-10-10 修：模块列表包 ScrollViewer（16 项在 640 高窗口必溢出，此前直接被裁掉看不见）
+        _leftPanel = new StackPanel { Spacing = 2, MinWidth = 232 };
+        var leftHost = new ScrollViewer
+        {
+            // 常驻 Visible：底部还有模块这件事必须一眼可见，禁止靠拖窗口发现
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 10, 0),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(leftHost, "settings-left-host"); // UIA 取证/自动化入口
+        leftHost.Content = _leftPanel;
+
         _rightHost = new ScrollViewer
         {
             // UI/UX 审计：Auto 档在内容略溢出时只出细滚动条，底部还有内容这件事无提示——常驻 Visible
@@ -140,11 +151,21 @@ internal sealed class SettingsWindow : Window
             VerticalAlignment = VerticalAlignment.Stretch,
         };
 
+        // 2026-10-10 修：左栏可拖拽调宽（原 Auto 固定 232 不可调）。列宽像素化，钳位 [260, 420]——
+        // 下限 = 旧内容宽 232 + 常驻滚动条/内边距 ~28，保证最长模块名+开关不截断；
+        // 拖拽手柄居中 3px 高亮条提供可视抓握点。
+        _leftColumn = new ColumnDefinition { Width = new GridLength(264) };
+        var splitter = BuildColumnSplitter();
+
         var grid = new Grid();
+        grid.ColumnDefinitions.Add(_leftColumn);
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(_rightHost, 1);
-        grid.Children.Add(_leftPanel);
+        Grid.SetColumn(leftHost, 0);
+        Grid.SetColumn(splitter, 1);
+        Grid.SetColumn(_rightHost, 2);
+        grid.Children.Add(leftHost);
+        grid.Children.Add(splitter);
         grid.Children.Add(_rightHost);
 
         RebuildModuleRows();
@@ -164,8 +185,61 @@ internal sealed class SettingsWindow : Window
     private readonly Dictionary<string, ToggleSwitch> _moduleToggles = [];
     private StackPanel _leftPanel = null!;
     private ScrollViewer _rightHost = null!;
+    private ColumnDefinition _leftColumn = null!;
+    private double _splitterStartX;
+    private double _splitterStartWidth;
     private string _selectedKey = "";
     private bool _syncingToggles;
+
+    /// <summary>左栏宽度钳位：下限 = 旧内容宽 232 + 滚动条/内边距，保证最长模块名+开关完整可见；上限给右栏留空间。</summary>
+    private const double LeftColumnMin = 260;
+    private const double LeftColumnMax = 420;
+
+    /// <summary>拖拽分隔条：6px 命中区 + 居中 3px 高亮线，按指针位移重设左栏列宽（DIP 同单位，无需 DPI 换算）。</summary>
+    private Border BuildColumnSplitter()
+    {
+        var grip = new Rectangle
+        {
+            Width = 3,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Margin = new Thickness(0, 24, 0, 24),
+            RadiusX = 1.5,
+            RadiusY = 1.5,
+            Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+        };
+        var splitter = new Border
+        {
+            Width = 7,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), // 扩大命中区
+            Child = grip,
+        };
+        ToolTipService.SetToolTip(splitter, "拖拽调整左栏宽度"); // 附加属性不能进对象初始化器（C# 语法）
+        splitter.PointerEntered += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184));
+        splitter.PointerExited += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139));
+        splitter.PointerPressed += (sender, e) =>
+        {
+            if (sender is Border border && border.CapturePointer(e.Pointer))
+            {
+                _splitterStartX = e.GetCurrentPoint(border).Position.X;
+                _splitterStartWidth = _leftColumn.Width.Value;
+            }
+        };
+        splitter.PointerMoved += (sender, e) =>
+        {
+            if (sender is Border border && border.PointerCaptures?.Count > 0)
+            {
+                var x = e.GetCurrentPoint(border).Position.X;
+                SetLeftColumnWidth(_splitterStartWidth + x - _splitterStartX);
+            }
+        };
+        splitter.PointerReleased += (sender, e) => ((Border)sender).ReleasePointerCapture(e.Pointer);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(splitter, "settings-left-splitter"); // UIA 取证入口
+        return splitter;
+    }
+
+    private void SetLeftColumnWidth(double width)
+        => _leftColumn.Width = new GridLength(Math.Clamp(width, LeftColumnMin, LeftColumnMax));
 
     /// <summary>当前页作用域：Provider 页锁定连接类型与组件描述符；常规/外观/高级页为 null（全量）。</summary>
     private string? _scopeType;
@@ -178,7 +252,8 @@ internal sealed class SettingsWindow : Window
         _moduleToggles.Clear();
         _leftPanel.Children.Add(new TextBlock
         {
-            Text = "配置中心",
+            // 2026-10-10 修：可见计数——用户要求列表条数一眼可见，不靠滚动到底确认
+            Text = $"配置中心 · {_modules.Count} 个模块",
             FontSize = 12,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),

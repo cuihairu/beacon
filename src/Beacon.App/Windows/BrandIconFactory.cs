@@ -16,9 +16,11 @@ internal static class BrandIconFactory
     /// <summary>品牌图标元素；connectionType 未收录或渲染异常 → null。size 为显示 DIP（24×24 原生 path 等比缩入）。
     /// iconOverride = 组件级自选图标（widget.Config["icon"]，用户令 2026-10-10：图标要自带可选）——
     /// 非空时优先于连接品牌；未配/未收录仍退连接品牌 → 调用方兜底。
+    /// strokeWidth > 0 时加同色描边（2026-10-10 修「icon 太浅看不清」：像素实证填色/对比度一直正确，
+    /// 真因是 Simple Icons 细线几何缩到 14 DIP 后前景覆盖率仅 7-22%——同色 Stroke 是等效增重的唯一正解）。
     /// 返回类型 FrameworkElement：WinUI 3 的 Grid.SetColumn 只收 FrameworkElement（UIElement 过不了，CI 实证），
     /// 调用方（PinTile 图标列）要直接进 Grid 布局。</summary>
-    public static FrameworkElement? TryCreate(string? connectionType, double size, global::Windows.UI.Color foreground, ILogger? logger = null, string? iconOverride = null)
+    public static FrameworkElement? TryCreate(string? connectionType, double size, global::Windows.UI.Color foreground, ILogger? logger = null, string? iconOverride = null, double strokeWidth = 0)
     {
         var brand = iconOverride is { Length: > 0 } ? iconOverride : connectionType;
         if (brand is null || !BrandIcons.TryGet(brand, out var pathData))
@@ -35,10 +37,13 @@ internal static class BrandIconFactory
             // Shape 直接渲染（2026-10-09 三修）：此前 Viewbox(PathIcon) 的组合在 WinUI 3 量测为空
             // （IconElement 无固有尺寸），实际渲染一片空白且非 null 返回挡掉兜底字形——用户三次实测
             // 「icon 不显示」的根因。Path 有几何固有 bounds，Stretch.Uniform 按显示尺寸可靠 fit。
+            var brush = new SolidColorBrush(foreground);
             return new global::Microsoft.UI.Xaml.Shapes.Path
             {
                 Data = geometry,
-                Fill = new SolidColorBrush(foreground),
+                Fill = brush,
+                Stroke = strokeWidth > 0 ? brush : null,
+                StrokeThickness = strokeWidth,
                 Stretch = Stretch.Uniform,
                 Width = size,
                 Height = size,

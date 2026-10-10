@@ -60,6 +60,28 @@ public static class WinEnum
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SystemParametersInfo(uint action, uint param, string value, uint init);
     public static void SetWallpaper(string path) { SystemParametersInfo(20, 0, path, 3); }
+
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
+    public static void SetForeground(IntPtr h) { SetForegroundWindow(h); }
+    private const uint MouseDown = 0x0002;
+    private const uint MouseUp = 0x0004;
+    // 设置左栏分隔条拖拽取证：左键按下→分步移动→抬起（PointerCapture 在按下后接管，move 事件照常投递）
+    public static void DragMouse(int fromX, int fromY, int toX, int toY)
+    {
+        SetCursorPos(fromX, fromY);
+        System.Threading.Thread.Sleep(150);
+        mouse_event(MouseDown, 0, 0, 0, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(150);
+        for (int i = 1; i <= 10; i++)
+        {
+            SetCursorPos(fromX + (toX - fromX) * i / 10, fromY + (toY - fromY) * i / 10);
+            System.Threading.Thread.Sleep(40);
+        }
+        mouse_event(MouseUp, 0, 0, 0, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(300);
+    }
 }
 "@
 
@@ -298,6 +320,26 @@ function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow)
     return $count
 }
 
+# 进度条像素硬断言助手（2026-10-10 修「进度条看不到」配套）：扫 tile 截图底部 6 物理像素行、
+# 中部 60% 宽（避开圆角处桌面色与左右 padding），统计与底色 (15,23,42) 任一通道差 >25 的像素。
+# 修复前该区域纯底色（CI 截图实证：条从未渲染出像素）→ 0；修复后 track(≈63,74,90)+fill(severity 色) 覆盖整带 → 数百。
+# 只对 dark 主题（A/D 场景）成立；浅主题底色不同不适用（C 场景走暗像素断言）。
+function Count-BarPixels([System.Drawing.Bitmap] $bmp)
+{
+    $count = 0
+    $xStart = [int]($bmp.Width * 0.2)
+    $xEnd = [int]($bmp.Width * 0.8)
+    for ($y = [Math]::Max(0, $bmp.Height - 6); $y -lt $bmp.Height; $y++)
+    {
+        for ($x = $xStart; $x -lt $xEnd; $x++)
+        {
+            $p = $bmp.GetPixel($x, $y)
+            if ([Math]::Abs($p.R - 15) -gt 25 -or [Math]::Abs($p.G - 23) -gt 25 -or [Math]::Abs($p.B - 42) -gt 25) { $count++ }
+        }
+    }
+    return $count
+}
+
 # —— UIA 助手（Windows PowerShell 5.1 程序集） ——
 function Find-UiaById([System.Windows.Automation.AutomationElement] $root, [string] $automationId, [int] $timeoutSec = 12)
 {
@@ -417,7 +459,16 @@ try
     }
     Save-FullScreenshot "A-numeric-on-desktop.png"
     Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-on-tile-closeup.png" 6
-    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏与近景截图已存"
+    # 进度条硬断言（2026-10-10 修「进度条看不到」）：GLM tile 有 Progress 语义，底部必出 3px 条——
+    # 修复前该区域纯底色 0 非底色像素（条从未渲染出来），回归在这里现形
+    $barBmp = New-Crop ([WinEnum]::RectOf($tiles[0])) 0
+    $barPixels = Count-BarPixels $barBmp
+    $barBmp.Dispose()
+    if ($barPixels -lt 30)
+    {
+        throw "断言失败（场景 A）：GLM tile 底部进度条不可见（非底色像素仅 $barPixels，阈值 30）——进度条渲染回归"
+    }
+    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏与近景截图已存；进度条像素 $barPixels（≥30）"
 }
 catch
 {
@@ -492,6 +543,50 @@ try
         throw "断言失败（场景 D）：--settings 启动 30s 内未见「Beacon 设置」窗口"
     }
 
+    # —— 2026-10-10 修「设置左侧不可调、很多项目看不到」三断言 ——
+    Save-FullScreenshot "D-settings-window.png"
+    # ① 16 个模块行 UIA 全部存在（此前 16 项超出视口被整体裁掉）
+    foreach ($key in @("general","appearance","github","bigmodel","ark","claude","kimi","deepseek","mimo","codex","copilot","opencode","qwen","http","actions","advanced"))
+    {
+        if (!(Find-UiaById $settings "module-$key" 8)) { throw "断言失败（场景 D）：UIA 未找到模块行 module-$key——左栏模块列表缺失" }
+    }
+    Write-Host "模块行断言通过：16 个模块 UIA 全部可达"
+    # ② 左栏可滚到底：最后一个模块「高级」进入可见区（IsOffscreen=false）——常驻滚动条功能性证明
+    $leftHost = Find-UiaById $settings "settings-left-host" 8
+    if (!$leftHost) { throw "断言失败（场景 D）：UIA 未找到 settings-left-host——左栏 ScrollViewer 缺失" }
+    $advanced = Find-UiaById $settings "module-advanced" 8
+    if (!$advanced) { throw "断言失败（场景 D）：UIA 未找到 module-advanced" }
+    $scroll = $null
+    try { $scroll = $leftHost.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern) } catch { }
+    if ($scroll -and $scroll.Current.VerticallyScrollable)
+    {
+        $scroll.SetScrollPercent(100)
+        Start-Sleep -Milliseconds 800
+    }
+    if ($advanced.Current.IsOffscreen)
+    {
+        throw "断言失败（场景 D）：左栏滚到底后「高级」模块仍不可见（IsOffscreen=true）——滚动修复回归"
+    }
+    if ($scroll -and $scroll.Current.VerticallyScrollable) { $scroll.SetScrollPercent(0) }
+    Write-Host "左栏滚动断言通过：滚到底「高级」进入可见区（VerticallyScrollable=$([bool]($scroll -and $scroll.Current.VerticallyScrollable))）"
+    # ③ 分隔条真实拖拽 +60px：左栏实测变宽 ≥40px——「可调」的功能性证明（UIA 坐标为物理像素）
+    $splitter = Find-UiaById $settings "settings-left-splitter" 8
+    if (!$splitter) { throw "断言失败（场景 D）：UIA 未找到 settings-left-splitter——拖拽分隔条缺失" }
+    [WinEnum]::SetForeground([IntPtr]$settings.Current.NativeWindowHandle)
+    Start-Sleep -Milliseconds 500
+    $widthBefore = [int]$leftHost.Current.BoundingRectangle.Width
+    $sr = $splitter.Current.BoundingRectangle
+    Save-FullScreenshot "D-settings-splitter-before.png"
+    [WinEnum]::DragMouse([int](($sr.Left + $sr.Right) / 2), [int](($sr.Top + $sr.Bottom) / 2), [int](($sr.Left + $sr.Right) / 2) + 60, [int](($sr.Top + $sr.Bottom) / 2))
+    Start-Sleep -Seconds 1
+    Save-FullScreenshot "D-settings-splitter-after.png"
+    $widthAfter = [int]$leftHost.Current.BoundingRectangle.Width
+    if ($widthAfter -lt $widthBefore + 40)
+    {
+        throw "断言失败（场景 D）：拖拽分隔条 +60px 后左栏宽度 ${widthBefore}→${widthAfter}（期望增长 ≥40px）——左栏不可调回归"
+    }
+    Write-Host "分隔条拖拽断言通过：左栏 $widthBefore → $widthAfter px（拖拽 +60px）"
+
     foreach ($provider in @(
         @{ type = "ark"; conn = "ark-main"; typeName = "方舟 Coding Plan 额度（火山）" },
         @{ type = "kimi"; conn = "kimi-main"; typeName = "Kimi For Coding 套餐余量" },
@@ -551,10 +646,18 @@ try
         throw "断言失败（场景 D）：tile 宿主窗未见（Beacon Pinned / Beacon Tile）"
     }
     $tileTexts = @()
+    $windowTexts = @() # 按窗保序（一窗多条文本已 join 成一条）——进度条断言按窗序定位 ark tile
+    $barCounts = @()
     for ($tileIndex = 0; $tileIndex -lt $panelHandles.Count; $tileIndex++)
     {
-        $tileTexts += Get-WindowUiaTexts $panelHandles[$tileIndex]
+        $texts = Get-WindowUiaTexts $panelHandles[$tileIndex]
+        $tileTexts += $texts
+        $windowTexts += ($texts -join "`n")
         Save-Zoom (New-Crop ([WinEnum]::RectOf($panelHandles[$tileIndex])) 8) "D-tile-$tileIndex-closeup.png" 4
+        # 进度条像素计数（margin 0 裁图，底部 6 行中部 60% 宽）：ark tile 有 Progress 语义必出条
+        $barBmp = New-Crop ([WinEnum]::RectOf($panelHandles[$tileIndex])) 0
+        $barCounts += Count-BarPixels $barBmp
+        $barBmp.Dispose()
     }
     Save-FullScreenshot "D-provider-tiles-desktop.png"
     if (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
@@ -579,6 +682,28 @@ try
         # UIA 对 NOACTIVATE 悬浮窗读不出文本时显式降级：窗存在+近景截图照收，文本断言转人工目检
         Write-Host "::warning::tile UIA 文本不可读（$($panelHandles.Count) 窗）——名字/数值断言转近景截图人工目检"
         Write-Host "tile 证据已收：$($panelHandles.Count) 个悬浮窗存在 + 近景截图；文本断言跳过"
+    }
+
+    # 进度条硬断言（2026-10-10 修「进度条看不到」）：ark tile（火山方舟，Progress=42.5%）底部必出
+    # 非底色像素；UIA 读不出名字时退「至少一张 tile 出条」（五张里只有 ark 配 Progress）
+    $arkIndex = -1
+    for ($i = 0; $i -lt $windowTexts.Count; $i++) { if ($windowTexts[$i] -like "*火山方舟*") { $arkIndex = $i } }
+    if ($arkIndex -ge 0)
+    {
+        if ($barCounts[$arkIndex] -lt 30)
+        {
+            throw "断言失败（场景 D）：ark tile 底部进度条不可见（非底色像素 $($barCounts[$arkIndex])，阈值 30）——进度条渲染回归"
+        }
+        Write-Host "进度条断言通过：ark tile 底部 $($barCounts[$arkIndex]) 非底色像素（≥30）"
+    }
+    else
+    {
+        $maxBar = ($barCounts | Measure-Object -Maximum).Maximum
+        if ($maxBar -lt 30)
+        {
+            throw "断言失败（场景 D）：五张 tile 无一出进度条（最大 $maxBar，阈值 30）——进度条渲染回归"
+        }
+        Write-Host "进度条断言通过（UIA 名字不可读，取最大值）：$maxBar 非底色像素（≥30）"
     }
 
     # 检查频率：常规页改「检查频率」→15 秒——config.json 落盘 + 日志重建调度双硬断言

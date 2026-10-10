@@ -64,24 +64,29 @@ internal sealed class PinTile
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Right,
     };
-    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 2px 细条，按已用比例填色。
-    // 叠放（贴底覆盖在主行之上）而非「1* + Auto」双行：双行在 32 DIP 窗口里给 2px 条留零余量，
-    // Auto 行/RowSpacing/客户区亚像素取整任一吃掉 1-2px 条就整个不可见（2026-10-10 用户实测独立悬浮框进度条消失）；
-    // 叠放总高恒 32 不随条显隐变化，条抬离底边 1 DIP——裁切余量吃 Margin 不吃条。
-    private readonly Grid _barRow = new()
+    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 3px 条，按已用比例填色。
+    // 2026-10-10 重构（用户实测「进度条看不到」，CI 截图证实前代 Star 列设计从未渲染出任何像素）：
+    // 弃嵌套 Star 列 Grid，改两枚显式 Rectangle——Height 3、贴底 margin 0、宽度由 container.SizeChanged
+    // 按实测像素设置，结构上不存在「布局余量被吃掉整条消失」路径；track=Value 色 35% 透明（双主题
+    // 都可辨的底轨），fill=severity 色。比例缓存进 _barFraction，SizeChanged 到达即重放（首次
+    // Update 时 ActualWidth 可能还是 0，不丢）。
+    private readonly Rectangle _barTrack = new()
     {
-        Height = 2,
+        Height = 3,
         VerticalAlignment = VerticalAlignment.Bottom,
-        Margin = new Thickness(0, 0, 0, 1),
+        Fill = new SolidColorBrush(ThemeColors.Value()) { Opacity = 0.35 },
         Visibility = Visibility.Collapsed,
     };
-    private readonly Border _barFill = new()
+    private readonly Rectangle _barFill = new()
     {
-        CornerRadius = new CornerRadius(1),
-        Background = new SolidColorBrush(SeverityPalette.Rgb(255, 63, 185, 80)),
+        Height = 3,
+        VerticalAlignment = VerticalAlignment.Bottom,
+        HorizontalAlignment = HorizontalAlignment.Left,
+        RadiusX = 1.5,
+        RadiusY = 1.5,
+        Visibility = Visibility.Collapsed,
     };
-    private readonly ColumnDefinition _barUsed = new() { Width = new GridLength(0, GridUnitType.Star) };
-    private readonly ColumnDefinition _barFree = new() { Width = new GridLength(1, GridUnitType.Star) };
+    private double _barFraction;
 
     /// <summary>宿主面板挂载与输入挂接的根元素。</summary>
     public Border Root => _root;
@@ -100,13 +105,15 @@ internal sealed class PinTile
         // 数据源品牌图标（用户令：悬浮框必须带对应 icon，不然分不清哪个悬浮框是哪个源）：
         // 组件级自选图标（widget.Config["icon"]）优先 → BrandIcons 连接品牌命中 → 通用 globe 字形兜底
         // 前景主题感知（浅底深字/深底亮字，≥4.5:1）——近白 icon 在浅底上不可辨（用户实测「根本看不清」）
-        var icon = BrandIconFactory.TryCreate(connectionType, 14, ThemeColors.Label(), iconOverride: widget.Config.GetValueOrDefault("icon"))
+        // 2026-10-10 修「icon 太浅看不清」：14→16 DIP + 同色 1px 描边增重（细线几何覆盖率 7-22% 是根因，非填色）；
+        // 兜底字形同步提到 Label() 前景 + 14px，与品牌图同档可读
+        var icon = BrandIconFactory.TryCreate(connectionType, 16, ThemeColors.Label(), iconOverride: widget.Config.GetValueOrDefault("icon"), strokeWidth: 1)
             ?? new FontIcon
             {
                 Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底
-                FontSize = 12,
+                FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center,
-                Foreground = new SolidColorBrush(ThemeColors.Value()),
+                Foreground = new SolidColorBrush(ThemeColors.Label()),
             };
 
         var grid = new Grid { ColumnSpacing = 6 };
@@ -123,15 +130,13 @@ internal sealed class PinTile
         grid.Children.Add(_label);
         grid.Children.Add(_value);
 
-        // 主行 + 底部进度条叠放（见 _barRow 注释）：单 Grid 双子，后加者在上层；
-        // 主内容竖直居中（12px 文本居 32 DIP，下部留白 ≥6 DIP），与 2px 条互不碰撞
-        _barRow.ColumnDefinitions.Add(_barUsed);
-        _barRow.ColumnDefinitions.Add(_barFree);
-        Grid.SetColumn(_barFill, 0);
-        _barRow.Children.Add(_barFill);
+        // 主行 + 底部进度条叠放（见 _barTrack/_barFill 注释）：单 Grid 三子，后加者在上层；
+        // 主内容竖直居中（12px 文本居 32 DIP，下部留白 ≥6 DIP），与 3px 条互不碰撞
         var container = new Grid();
         container.Children.Add(grid);
-        container.Children.Add(_barRow);
+        container.Children.Add(_barTrack);
+        container.Children.Add(_barFill);
+        container.SizeChanged += (_, e) => ApplyBarGeometry(e.NewSize.Width); // 布局实测后重放比例
         _root.Child = container;
     }
 
@@ -184,7 +189,9 @@ internal sealed class PinTile
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
-            _barRow.Visibility = Visibility.Collapsed;
+            _barFraction = 0;
+            _barTrack.Visibility = Visibility.Collapsed;
+            _barFill.Visibility = Visibility.Collapsed;
             ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
             _motion.StopLoops(_light);
             _motion.StopLoops(_root);
@@ -205,19 +212,36 @@ internal sealed class PinTile
         }
     }
 
-    /// <summary>额度进度条：Progress（0-1）→ 底部细条比例填色；无进度语义的类型保持隐藏。</summary>
+    /// <summary>额度进度条：Progress（0-1）→ 底部 3px 条比例填色（fill=severity 色，track=Value 35%）；
+    /// 无进度语义的类型保持隐藏。</summary>
     private void UpdateBar(WidgetState state, global::Windows.UI.Color color)
     {
         if (state.Progress is not { } progress)
         {
-            _barRow.Visibility = Visibility.Collapsed;
+            _barFraction = 0;
+            _barTrack.Visibility = Visibility.Collapsed;
+            _barFill.Visibility = Visibility.Collapsed;
             return;
         }
-        var fraction = Math.Clamp(progress, 0, 1);
-        _barUsed.Width = new GridLength(fraction, GridUnitType.Star);
-        _barFree.Width = new GridLength(1.0 - fraction, GridUnitType.Star);
-        _barFill.Background = new SolidColorBrush(color);
-        _barRow.Visibility = Visibility.Visible;
+
+        _barFraction = Math.Clamp(progress, 0, 1);
+        _barFill.Fill = new SolidColorBrush(color);
+        _barTrack.Visibility = Visibility.Visible;
+        _barFill.Visibility = Visibility.Visible;
+        ApplyBarGeometry(_root.ActualWidth - _root.Padding.Left - _root.Padding.Right);
+    }
+
+    /// <summary>按容器实测宽设条几何：track 全宽、fill=比例宽（≥2 DIP 保底可辨）；
+    /// 未布局（宽 0）或已隐藏时跳过——SizeChanged 会带着实测宽再进来。</summary>
+    private void ApplyBarGeometry(double innerWidth)
+    {
+        if (_barTrack.Visibility != Visibility.Visible || double.IsNaN(innerWidth) || innerWidth < 8)
+        {
+            return;
+        }
+
+        _barTrack.Width = Math.Floor(innerWidth);
+        _barFill.Width = Math.Max(2, Math.Floor(innerWidth * _barFraction));
     }
 
     /// <summary>收起为细条（宿主 ApplyLayout 判定）：暂停全部动画循环省电；展开复位。</summary>
