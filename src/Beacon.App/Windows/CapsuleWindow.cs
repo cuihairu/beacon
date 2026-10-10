@@ -29,8 +29,8 @@ public sealed partial class CapsuleWindow : Window
     private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
     private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
     private bool _dragging;
-    private global::Windows.Foundation.Point _dragStart;
-    private (int X, int Y) _dragOrigin; // 按下时的窗口位置：拖动目标 = 起点 + 总位移（起点绝对定位）
+    private (int X, int Y) _dragStartCursor; // 按下时光标屏幕物理像素（GetCursorPos，与 AppWindow.Position 同单位）
+    private (int X, int Y) _dragOrigin; // 按下时的窗口位置：拖动目标 = 起点 + 光标位移
     private int _x;
     private int _y;
     private DateTimeOffset _lastFetchedAt;
@@ -93,7 +93,7 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         _dragging = true;
-        _dragStart = e.GetCurrentPoint(Root).Position;
+        _dragStartCursor = CursorPx();
         _dragOrigin = (_x, _y);
         Root.CapturePointer(e.Pointer);
     }
@@ -104,16 +104,15 @@ public sealed partial class CapsuleWindow : Window
         {
             return;
         }
-        var dpi = GetDpi();
-        var position = e.GetCurrentPoint(Root).Position;
-        // 起点绝对定位而非逐事件累加：高回报率鼠标的单事件增量常 <0.5px，累加路径逐次四舍五入
-        // 把增量舍成 0——窗口爬着走、快甩才动（2026-10-10 用户实测「拖不动」）。
-        // 目标含滞后自纠偏：上一帧窗口没跟上时，相对位移变大，目标一次补齐。
-        var x = _dragOrigin.X + (int)Math.Round((position.X - _dragStart.X) * dpi);
-        var y = _dragOrigin.Y + (int)Math.Round((position.Y - _dragStart.Y) * dpi);
+        // 光标屏幕物理像素锚定：目标 = 按下窗口位 + 光标位移，与 AppWindow.Position 同一坐标系——
+        // 跨缩放屏拖动不换算不混算（旧实现每帧重读 GetDpi 与按下时 DIP 空间相减，跨屏比例错乱）；
+        // 高频事件下目标没变不重发 Move（SetWindowPos 抖动是跨屏闪烁放大器）
+        var (cursorX, cursorY) = CursorPx();
+        var x = _dragOrigin.X + cursorX - _dragStartCursor.X;
+        var y = _dragOrigin.Y + cursorY - _dragStartCursor.Y;
         if (x == _x && y == _y)
         {
-            return; // 目标没变不重发 Move：高频事件下减少 SetWindowPos 抖动（跨屏闪烁放大器）
+            return;
         }
         _x = x;
         _y = y;
@@ -138,6 +137,13 @@ public sealed partial class CapsuleWindow : Window
     }
 
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
+
+    /// <summary>光标屏幕物理像素（GetCursorPos；与 AppWindow.Position/Move 同一坐标系）。</summary>
+    private static (int X, int Y) CursorPx()
+    {
+        NativeMethods.GetCursorPos(out var point);
+        return (point.X, point.Y);
+    }
 
     /// <summary>
     /// 宽随内容实测（RFC §6.2.2：常态 48–120 DIP，离线横幅放宽到 132），高最小 32 DIP；

@@ -361,7 +361,7 @@ internal sealed class FloatingTileHost
                 return;
             }
             _dragMoved = false;
-            _drag = new DragSession(_tile.Root, e.GetCurrentPoint(null).Position, appWindow.Position.X, appWindow.Position.Y);
+            _drag = new DragSession(_tile.Root, CursorPx(), appWindow.Position.X, appWindow.Position.Y);
             _tile.Root.CapturePointer(e.Pointer);
             e.Handled = true;
         }
@@ -372,10 +372,11 @@ internal sealed class FloatingTileHost
             {
                 return;
             }
-            var dpi = GetDpi();
-            var position = e.GetCurrentPoint(null).Position;
-            var dx = (int)Math.Round((position.X - _drag.StartDip.X) * dpi);
-            var dy = (int)Math.Round((position.Y - _drag.StartDip.Y) * dpi);
+            // 光标屏幕物理像素锚定（与单宿主同口径）：与 AppWindow.Position/Move 同一坐标系，
+            // 跨缩放屏拖动不换算不混算（旧实现每帧重读 GetDpi 与按下时 DIP 空间相减，跨屏比例错乱）
+            var (cursorX, cursorY) = CursorPx();
+            var dx = cursorX - _drag.StartCursor.X;
+            var dy = cursorY - _drag.StartCursor.Y;
             if (!_dragMoved && Math.Abs(dx) < 3 && Math.Abs(dy) < 3)
             {
                 return; // 死区，区分点击与拖动（同单宿主口径）
@@ -414,6 +415,13 @@ internal sealed class FloatingTileHost
             }
             _host.OnTileActivated(); // 点击下钻 L2（RFC §6.2.7）
             e.Handled = true;
+        }
+
+        /// <summary>光标屏幕物理像素（GetCursorPos；与 AppWindow.Position/Move 同一坐标系）。</summary>
+        private static (int X, int Y) CursorPx()
+        {
+            NativeMethods.GetCursorPos(out var point);
+            return (point.X, point.Y);
         }
 
         private PinRect WorkArea()

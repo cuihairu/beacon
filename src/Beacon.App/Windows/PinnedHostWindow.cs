@@ -424,8 +424,10 @@ internal sealed class PinTile
     private static string ValueOf(WidgetState state) => WidgetValueHint.Of(state);
 }
 
-/// <summary>一次拖动会话（左键按住 tile 起手）；FreeX/FreeY = 吸附前的自由落点（收起判定用，防 snap 假贴边）。</summary>
-internal sealed record DragSession(UIElement Element, global::Windows.Foundation.Point StartDip, int StartX, int StartY)
+/// <summary>一次拖动会话（左键按住 tile 起手）；StartCursor = 按下时光标屏幕物理像素——
+/// 目标 = 起点窗口位 + 光标位移，全程物理像素一个单位，跨缩放屏拖动不再混算两套 DIP 空间；
+/// FreeX/FreeY = 吸附前的自由落点（收起判定用，防 snap 假贴边）。</summary>
+internal sealed record DragSession(UIElement Element, (int X, int Y) StartCursor, int StartX, int StartY)
 {
     public int LastFreeX { get; set; }
     public int LastFreeY { get; set; }
@@ -767,7 +769,7 @@ internal sealed class PinnedHostWindow
             appWindow = GetAppWindow() ?? appWindow;
         }
         _dragMoved = false;
-        _drag = new DragSession(tile, e.GetCurrentPoint(null).Position, appWindow.Position.X, appWindow.Position.Y);
+        _drag = new DragSession(tile, CursorPx(), appWindow.Position.X, appWindow.Position.Y);
         tile.CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -778,10 +780,11 @@ internal sealed class PinnedHostWindow
         {
             return;
         }
-        var dpi = GetDpi();
-        var position = e.GetCurrentPoint(null).Position;
-        var dx = (int)Math.Round((position.X - _drag.StartDip.X) * dpi);
-        var dy = (int)Math.Round((position.Y - _drag.StartDip.Y) * dpi);
+        // 光标屏幕物理像素锚定：与 AppWindow.Position/Move 同一坐标系，跨缩放屏拖动不换算不混算
+        // （旧实现每帧重读 GetDpi 与按下时的 DIP 空间相减，跨到不同缩放的屏位移比例就错乱——拖不动/跳变）
+        var (cursorX, cursorY) = CursorPx();
+        var dx = cursorX - _drag.StartCursor.X;
+        var dy = cursorY - _drag.StartCursor.Y;
         if (!_dragMoved && Math.Abs(dx) < 3 && Math.Abs(dy) < 3)
         {
             return; // 死区，区分点击与拖动
@@ -1007,6 +1010,13 @@ internal sealed class PinnedHostWindow
         return _prevWndProc == IntPtr.Zero
             ? NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam)
             : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
+    }
+
+    /// <summary>光标屏幕物理像素（GetCursorPos；与 AppWindow.Position/Move 同一坐标系）。</summary>
+    private static (int X, int Y) CursorPx()
+    {
+        NativeMethods.GetCursorPos(out var point);
+        return (point.X, point.Y);
     }
 
     /// <summary>当前 hit-test 宽（物理像素）：收起细条窄、展开态全宽（双列翻倍，与 ApplyLayout 同口径）。</summary>
