@@ -67,11 +67,6 @@ internal sealed class SettingsWindow : Window
     private TextBlock _connFeedback = null!;
     private string? _editingConnectionId;
 
-    // PowerToys 形态：每类连接的整体开关
-    private ToggleSwitch _githubEnabled = null!;
-    private ToggleSwitch _httpEnabled = null!;
-    private ToggleSwitch _bigmodelEnabled = null!;
-
     private StackPanel _widgetList = null!;
     private ComboBox _widgetTypeBox = null!;
     private ComboBox _widgetConnectionBox = null!;
@@ -1777,6 +1772,7 @@ internal sealed class SettingsWindow : Window
         return -1;
     }
 
-    private static string? TagOf(ComboBox box)
-        => box.SelectedItem is ComboBoxItem { Tag: { } tag } ? tag.ToString() : null;
+    /// <summary>ComboBox 选中项 Tag（可为 null：页面未构建/无选中时调用方以 ?? 兜底——CS8604 防运行时 NRE）。</summary>
+    private static string? TagOf(ComboBox? box)
+        => box?.SelectedItem is ComboBoxItem { Tag: { } tag } ? tag.ToString() : null;
 }
