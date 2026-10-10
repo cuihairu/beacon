@@ -760,18 +760,41 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   ——**86ac00e 三修复 + 本批全部首次进 nightly**（此前三次取证红导致 Pack/Publish 跳过，用户装机一直是
   2e530ed 旧版）。场景 A 连接指 mock `/api/monitor/usage/quota/limit`（38% 健康链，不再赌公网）。
 
-## 2026-10-10 装机对照清单（49 条三类，2026-10-10 整理）
+### 批3-补19 吸边细条无法恢复修复 + 池水圆弓形 + CI Path 二义收口（2026-10-10 用户令「坍缩成竖线无法恢复」，commit 994753e）
+- **根因（用户实测）**：细条 x = work.Right - stripWidth 忽略 offsetX，而展开面板 x 内缩 offsetX——悬停展开瞬间光标落在面板 footprint 外 → PointerExited 立刻坍缩 → 再悬停再展开死循环。
+- **修**：细条改用同一 `PinLayoutMath.Place` 数学（宽度换细条宽），条缘与面板缘重合，悬停细条任意位置都在展开面板内；回归 `PinLayoutMathTests.Place_CollapsedStrip_StaysWithinExpandedPanelFootprint`（4 锚点 × 3 偏移断言 strip ⊆ panel，含 clamp 分支）。
+- **连带 CI 红（两轮实证）**：CS0246（WinUI 3 无 `Microsoft.UI.Xaml.Point` 投影 → `global::Windows.Foundation.Point`）；CS0104（`Path` 在 Shapes 与 System.IO 间二义 → `global::Microsoft.UI.Xaml.Shapes.Path`，同 BrandIconFactory 模式）。
+- **池水几何**：`UIElement.Clip` 只收 RectangleGeometry → 圆水位改 `Path.Data` 14 段 LineSegment 圆弓形（不碰 Clip）。
+- **首次进 nightly**：daily-build run 38060109090（994753e）；visual-evidence.zip SHA256 `7689ef64a902e0dc08ea33a7d1dcf2f0b558b13e12887566f35a9b3745903e67`。
+
+### 批3-补20 DPI 修复单（5K 裁字）+ 拖动跟手/跨屏闪烁（2026-10-10 用户装机报障，commits 5879b60 / 78d0592）
+- **根因①（5K 裁字）**：DetailWindow 从未 `AppWindow.Resize` → 落 WinUI 默认固定物理像素窗尺寸，200%/250% 客户区装不下 DIP 内容 → 裁字；150%（公司 4K）勉强容下所以「正常」。另 10 处 `(int)(dips * dpi)` 截断换算在小数 dpi（如自定义 130%）下按行/按边累计欠高。
+- **修（5879b60）**：`Beacon.Core.Services.DpiLayoutMath` 唯一换算口径（四舍五入非截断；`PanelHeightPx` 总高一次换算防逐行累计；`ClampedHeightPx` 内容封顶走滚动）。DetailWindow Loaded 后按内容自然高实测定尺寸（520/320/560 DIP）；PinnedHost 新增 `PanelPxSize`（ApplyLayout 与 WndProc 命中共用）+ 细条宽 + 命中判定、QuickPanel Resize/贴胶囊定位、SettingsWindow 构造器、Capsule 实测尺寸/默认位、FloatingTile 级联/OnLoaded 共 10 处收口，窗口类不再出现裸 `(int)(dips * dpi)`。
+- **回归（④自动化）**：`tests/Beacon.Core.Tests/DpiLayoutMathTests.cs` 四档 dpi（1.0/1.5/2.0/2.5）真断言——舍入界（误差 ≤0.5px）、判别线（`ToPx(32,1.3)=42`、`ToPx(96,1.3)=125`）、裁字反例（`TextFits(14,12,dpi)` 必须假）、逐行累计损失、Capsule/Detail/QuickPanel bounds 精确值。CI 是 100% DPI，此测试是唯一防回归物。
+- **修②（78d0592，拖动「拖不动」）**：胶囊逐事件 `_x += Math.Round(delta×dpi)` 在高回报率鼠标下单事件增量 <0.5px 被舍成 0 → 窗口爬行。改起点绝对定位（origin + round(总位移×dpi)，滞后自纠偏）；单击判定改净位移（抖动抵消）。
+- **修③（78d0592，跨屏闪烁）**：WM_DPICHANGED 里 ApplyLayout 的 Resize+Move 与拖动 Move 互抢窗口位置 → 拖动中跳过重排（落点 FinalizeDrag 兜底）；两个拖动窗目标没变不重发 Move（压 SetWindowPos 洪水）。**残留**：三屏异 DPI 时窗口横跨两个 DPI 区，DWM 重采样闪属系统行为，App 侧不可消除。
+- **验收**：4 项目 246/353(+Moonshot 后 371)/27/31 全绿；ci 38062889229 绿。
+- **限制（诚实口径）**：CI windows-latest 恒 100% DPI 单显示器，per-monitor 缩放不可程序化伪造——200%/250% 实效只能装机验（对应 B-102/B-703 装机行）。
+
+### 批3-补21 Moonshot 开放平台余额接入（2026-10-10 用户令，commit 4c3ecb2 + 设置行/单测）
+- **接口**：moonshot.balance = GET `https://api.moonshot.cn/v1/users/me/balance`（整串端点无补路径，Bearer）；响应 `{code,data.available_balance}`，`ParseBalance` 纯函数兼容数字/字符串金额；阈值 `warn_below=20`/`error_below=5`（≤error→Error、≤warn→Warning）；连接测试 200 但结构不对 → Degraded（代理假阳性不算连通）。与 Kimi For Coding 是两套账号体系（Key 不通用），品牌标共用月之暗面（`BrandIcons["moonshot"]="kimi"` 别名）。
+- **Settings**：模块行「Moonshot 开放平台 · 开放平台余额 · 与 Kimi 不通用」（靛蓝 #4F46E5 区分 kimi 行 #2563EB）、空连接提示、连接表单 4 处文案（Id 预填 moonshot-main）；类型下拉走 `ConnectionProviders.Keys` 自动出现。
+- **单测**：`MoonshotBalanceProviderTests` 18 例（解析 5 / 阈值 7 / 摘要 1 / 端到端 5 含 Bearer 与整串端点断言 / 连接测试 3 含 401→Unauthorized）。4 项目 246/371/27/31 全绿。
+
+
+
+## 2026-10-10 装机对照清单（53 条三类，2026-10-10 二次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」44 条（B-* 验收行）+「待装机走查」5 条
-（批3-补8/9/11/12/13 验收行）= **49 条**。另有 1 条关联项（批3-补10 透明度）用户已确认修好，列「已验」。
-装 nightly 后按此清单对照回执；带 CI 证据的项已注证据文件。
+（批3-补8/9/11/12/13 验收行）+ 补19/20/21 新增 4 条 = **53 条**。另有 1 条关联项（批3-补10 透明度）
+用户已确认修好，列「已验」。装 nightly 后按此清单对照回执；带 CI 证据的项已注证据文件。
 
 ### ✅ 已验（1 条，无需再看）
 | 项 | 位置 | 结论 |
 |---|---|---|
 | 悬浮透明度下限 0.4→0.2 | 批3-补10/批3-补13⑤ | 用户 2026-10-10 装机确认修好，保持别动 |
 
-### 🔧 已修待验（10 条，装最新 nightly 重点看这些）
+### 🔧 已修待验（14 条，装最新 nightly 重点看这些）
 | 项 | 位置 | 修了什么 / 证据 |
 |---|---|---|
 | 真实 PAT 连接测试成功/失败路径 | B-301 | 批3-补14 修 2 真 bug（缓存键只用 Id 换 token 不生效；空 PAT 匿名 200 误报「连接正常」）；假 Handler 8 例 |
@@ -784,6 +807,10 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 方舟额度用尽显示 | 批3-补11 | 尽窗优先级+429 耗尽特判；装后看卡片「额度用尽（窗名，重置时间）」 |
 | 通知规则接线 | 批3-补12 | rulesProvider 一行接线（此前 config 自定义规则是空头支票）；自定义规则触发 Toast |
 | UI/UX 审计 6 组可发现性修复 | 批3-补13 | 动作独立页/滚动区常驻/表单压缩/档位中文标签/双列 tile（⑤透明度已验）；设置页截图待看 |
+| 吸边细条无法恢复 | 批3-补19 | 细条与展开面板同一 Place 数学（strip ⊆ panel 几何不变量+回归测试）；装后拖面板到屏边收起，悬停细条应展开不再死循环 |
+| 5K/高缩放裁字（DPI） | 批3-补20 | DetailWindow 按内容定尺寸 + 10 处 DpiLayoutMath 唯一口径 + 四档 dpi 回归测试；装 200%/250% 看详情窗/悬浮框/胶囊字完整（CI 恒 100% 无法代验） |
+| 拖动跟手 + 跨屏闪烁 | 批3-补20 | 胶囊改起点绝对定位（高回报率鼠标不再爬行）；拖动中跳过 WM_DPICHANGED 重排；装后慢拖胶囊并跨三屏看跟手与闪烁 |
+| Moonshot 余额卡片 | 批3-补21 | 开放平台 Key（platform.moonshot.cn，与 Kimi 不通用）录入后看余额/阈值告警；设置模块行与连接表单就位；18 例单测 |
 
 ### ⬜ 未修（39 条：无已知缺陷，代码就位，待装机首验）
 | 项 | 条数 | 说明 |
