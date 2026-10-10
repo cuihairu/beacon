@@ -48,6 +48,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | appearance.severityColors.offline | `#RRGGBB` | `#8b949e` | 连接离线颜色 |
 | appearance.motion.mode | `full` / `reduced` / `off` | `reduced` | 动效档位：完全 / 适度 / 关闭。off 档全部动画静止 |
 | appearance.motion.intensity | 数值 0.5–2.0 | `1.0` | 动效时长与幅度缩放。设置页滑杆步进 0.1 |
+| appearance.progressStyle | `"pool"` / `"bar"` | `"pool"` | tile 额度显示方式：**池子注水**（水位=进度，满格 Error 红；默认）/**旧式进度条**。实时生效，无需重启 |
 
 改色即时生效（托盘/胶囊/L0 按新色表重渲染），格式支持 `#RRGGBB` 和 `#AARRGGBB`，非法值报错不落盘。组件可以用 widgets.json 的 colorOverride 单独再覆盖某盏灯。
 
@@ -151,7 +152,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | id | 字符串 | 必填 | 组件实例唯一名 |
 | type | 字符串 | 必填 | 组件类型，如 `ark.usage`（见上表组件类型列，另有 `github.pull_requests` 等） |
 | connectionId | 字符串 | `""` | 绑定的连接 id |
-| config | 对象 | `{}` | 类型专属字段，见下节；通用键：`label`（tile 显示名）、`icon`（覆盖品牌图）、`progressStyle`（`bar` = 额度进度改用旧 3px 条；缺省 = 水波纹涟漪 + 常驻「NN%」文本，2026-10-10 起） |
+| config | 对象 | `{}` | 类型专属字段，见下节；通用键：`label`（tile 显示名）、`icon`（覆盖品牌图）、`progressStyle`（`bar` = 额度进度改用旧 3px 条；缺省 = 遵循外观设置里的「额度显示方式」） |
 | refreshTier | 字符串 | `default` | 刷新档，见档位表 |
 | refreshIntervalSeconds | 整数 | `null` | 检测间隔覆盖（秒）。`null` = 按刷新档周期；设置页选项 30 秒/1/2/5/15 分钟/1 小时 |
 | pinned | 布尔 | `false` | 是否钉到桌面（L0）。右键菜单、设置页、快捷面板三处入口共写此字段 |

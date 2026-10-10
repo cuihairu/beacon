@@ -193,6 +193,7 @@ public sealed class JsonConfigurationStoreTests
             ["offline"] = "#808080",
         };
         store.App.Appearance.Motion = new MotionConfig { Mode = "full", Intensity = 1.5 };
+        store.App.Appearance.ProgressStyle = "bar"; // 2026-10-10 额度显示方式（池水/进度条）往返
         store.SaveApp();
 
         var reloaded = new JsonConfigurationStore(dir.Path);
@@ -219,6 +220,7 @@ public sealed class JsonConfigurationStoreTests
         Assert.Equal("#808080", reloaded.App.Appearance.SeverityColors["offline"]);
         Assert.Equal("full", reloaded.App.Appearance.Motion.Mode);
         Assert.Equal(1.5, reloaded.App.Appearance.Motion.Intensity);
+        Assert.Equal("bar", reloaded.App.Appearance.ProgressStyle);
     }
 
     [Fact]

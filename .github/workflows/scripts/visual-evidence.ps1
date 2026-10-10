@@ -1,6 +1,6 @@
 ﻿# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
 #   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
-#     波纹双帧（相隔 700ms，动画在跑的目检证据）+「NN%」UIA 文本硬断言（zhipu 连接指 mock
+#     池水近景（水位=进度静态可读）+「NN%」UIA 文本硬断言（zhipu 连接指 mock
 #     /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据；bar 已降级可选路径）。
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
 #   场景 C 浅色主题 icon 可辨度：白桌面 + theme=light，tile 近景暗像素硬断言——
@@ -12,7 +12,7 @@
 #     组件向导「类型」下拉逐家断言非空且含本家条目（小米类型空回归在这里现形）；预置五张钉选
 #     provider tile——UIA 读 tile 文本硬断言名字（火山方舟/DeepSeek/阿里千问）与数值（42.5/¥420.5/mimo 本机计数 128 次），
 #     字段名（usage/quota）冒充名字在这里现形；「NN%」常驻百分比硬断言 + ark 波纹双帧近景（2026-10-10
-#     水波纹改造）；设置侧三断言：①config settingsSidebarWidth=400 启动恢复→左栏实测 400±8px（可拖
+#     池子注水改造）；设置侧三断言：①config settingsSidebarWidth=400 启动恢复→左栏实测 400±8px（可拖
 #     数据链）②设置搜索「额度」过滤 + 清词复原 ③SendInput 拖拽分隔条 +60px（不生效降级 warning，
 #     手势转装机手验）；设置常规页改「检查频率」→15 秒——config.json 落盘
 #     + 日志「检查频率变更为 15s」双硬断言（轮询节奏可配证据）。
@@ -507,26 +507,24 @@ try
     }
     Save-FullScreenshot "A-numeric-on-desktop.png"
     Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-on-tile-closeup.png" 6
-    Start-Sleep -Milliseconds 700 # 波纹相位推进：第二帧与首帧图案不同即为动画在跑的目检证据
-    Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-wave-frame2.png" 6
-    # 百分比硬断言（2026-10-10 用户令「水波纹+常驻静态可读量」）：GLM tile 有 Progress 语义，
-    # 「NN%」文本必须常驻（bar 已降级为 progressStyle=="bar" 可选路径，默认 wave——像素断言随之作废）
+    # 百分比硬断言（2026-10-10 用户令「池子注水+常驻静态可读量」）：GLM tile 有 Progress 语义，
+    # 「NN%」文本必须常驻（bar 已降级为 progressStyle=="bar" 可选路径，默认 pool）
     $aTexts = Get-WindowUiaTexts $tiles[0]
     $aPercent = $aTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
     if ($aPercent)
     {
-        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（mock 38% 健康链，波纹双帧已存）"
+        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（mock 38% 健康链，池水近景已存）"
     }
     elseif (($aTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
-        throw "断言失败（场景 A）：GLM tile 文本可读但无百分比（N% 常驻静态量缺失）——水波纹改造回归；实际文本：$($aTexts -join ' | ')"
+        throw "断言失败（场景 A）：GLM tile 文本可读但无百分比（N% 常驻静态量缺失）——池子注水改造回归；实际文本：$($aTexts -join ' | ')"
     }
     else
     {
         # UIA 对 NOACTIVATE 悬浮窗读不出任何文本时：6x 近景截图即数字状态证据（转人工目检），不拦绿
         Write-Host "::warning::场景 A UIA 文本不可读（$($aTexts.Count) 条）——「NN%」断言转 A-numeric-on-tile-closeup.png 人工目检"
     }
-    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏/近景/波纹第二帧截图已存"
+    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏/近景/池水截图已存"
 }
 catch
 {
@@ -780,19 +778,19 @@ try
         Write-Host "tile 证据已收：$($panelHandles.Count) 个悬浮窗存在 + 近景截图；文本断言跳过"
     }
 
-    # 进度显示硬断言（2026-10-10 用户令「换形态水波纹+常驻百分比」）：ark tile（火山方舟，
-    # Progress=42.5%）文本必含「NN%」；bar 已降级 progressStyle 可选路径，像素断言随之作废。
-    # 波纹是循环动画，双帧近景（相隔 700ms）图案不同即动画在跑的目检证据——不像素断言（相位非确定）
+    # 进度显示硬断言（2026-10-10 用户令「换形态水波纹+常驻百分比」三轮定稿→池子注水）：ark tile
+    # （火山方舟，Progress=42.5%）文本必含「NN%」；bar 已降级 progressStyle 可选路径，像素断言随之作废。
+    # 池水是静态水位（水位=进度），近景截图即可目检（不再有循环动画，无相位差）
     $arkIndex = -1
     for ($i = 0; $i -lt $windowTexts.Count; $i++) { if ($windowTexts[$i] -like "*火山方舟*") { $arkIndex = $i } }
     $percentHit = $tileTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
     if ($percentHit)
     {
-        Write-Host "百分比常驻断言通过：tile 静态文本「$percentHit」（NN% 一眼可读，动画抓不抓得到都不影响）"
+        Write-Host "百分比常驻断言通过：tile 静态文本「$percentHit」（NN% 一眼可读，静态池水不依赖动画）"
     }
     elseif (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
-        throw "断言失败（场景 D）：tile 文本可读但无百分比（N% 常驻静态量缺失）——水波纹改造回归；实际文本：$($tileTexts -join ' | ')"
+        throw "断言失败（场景 D）：tile 文本可读但无百分比（N% 常驻静态量缺失）——池子注水改造回归；实际文本：$($tileTexts -join ' | ')"
     }
     else
     {
@@ -801,10 +799,8 @@ try
     if ($arkIndex -ge 0)
     {
         $arkRect = [WinEnum]::RectOf($panelHandles[$arkIndex])
-        Save-Zoom (New-Crop $arkRect 8) "D-tile-ark-wave-frame1.png" 6
-        Start-Sleep -Milliseconds 700
-        Save-Zoom (New-Crop $arkRect 8) "D-tile-ark-wave-frame2.png" 6
-        Write-Host "ark 波纹双帧已存：D-tile-ark-wave-frame1/2.png（动画相位目检）"
+        Save-Zoom (New-Crop $arkRect 8) "D-tile-ark-pool-closeup.png" 6
+        Write-Host "ark 池水近景已存：D-tile-ark-pool-closeup.png（水位=进度目检）"
     }
 
     # 检查频率：常规页改「检查频率」→15 秒——config.json 落盘 + 日志重建调度双硬断言

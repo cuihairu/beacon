@@ -44,6 +44,12 @@ internal sealed class MotionEngine
         ? Math.Clamp(_config.App.Appearance.Motion.Intensity, 0.5, 2.0)
         : 1.0;
 
+    /// <summary>tile 额度显示方式（config appearance.progressStyle）："pool"=圆池水位（默认）；
+    /// "bar"=旧 3px 进度条。实时读，设置改即刻生效。</summary>
+    public string ProgressStyle => string.Equals(_config.App.Appearance.ProgressStyle, "bar", StringComparison.OrdinalIgnoreCase)
+        ? "bar"
+        : "pool";
+
     /// <summary>① 变色过渡：换色后亮度渐入（8px 灯上视觉等价交叉淡变）。off 档瞬时。</summary>
     public void TransitionFill(Shape shape, global::Windows.UI.Color to)
     {
@@ -130,7 +136,7 @@ internal sealed class MotionEngine
             var visual = ElementCompositionPreview.GetElementVisual(element);
             visual.CenterPoint = new System.Numerics.Vector3((float)(baseSizeDips / 2), (float)(baseSizeDips / 2), 0);
             var compositor = visual.Compositor;
-            // 同 StartWave：Scale 是 Vector3 属性，scalar 动画类型不匹配会 throw——必须 Vector3 关键帧
+            // Scale 是 Vector3 属性——scalar 动画挂 Vector3 属性类型不匹配会 throw（被外层吞成静止），必须 Vector3 关键帧
             var pulse = compositor.CreateVector3KeyFrameAnimation();
             var peak = (float)(1.0 + 0.35 * Intensity);
             pulse.InsertKeyFrame(0.0f, new System.Numerics.Vector3(1f));
@@ -161,56 +167,6 @@ internal sealed class MotionEngine
             slide.InsertKeyFrame(1f, System.Numerics.Vector3.Zero, compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.1f, 0.9f), new System.Numerics.Vector2(0.2f, 1f)));
             slide.Duration = TimeSpan.FromMilliseconds(220 * Intensity);
             visual.StartAnimation("Offset", slide);
-        }
-        catch
-        {
-        }
-    }
-
-    /// <summary>⑥ 水波纹（2026-10-10 用户令：进度条反复修不显，换形态）：单环缩放+淡出 forever 循环，
-    /// phase ∈ [0,1) 把波形在周期内平移（双环错相即成扩散涟漪）。Composition 线程驱动（60fps 不占 UI 线程）；
-    /// off 档不启动（全静止铁律），reduced/full 均可用（状态指示动效，同 Critical 脉冲档位口径）。
-    /// 动画失败静默——动效故障不影响静态百分比可读。</summary>
-    public void StartWave(UIElement element, double sizeDips, double phase, double periodMs)
-    {
-        if (Mode == MotionMode.Off)
-        {
-            return;
-        }
-        try
-        {
-            var visual = ElementCompositionPreview.GetElementVisual(element);
-            visual.CenterPoint = new System.Numerics.Vector3((float)(sizeDips / 2), (float)(sizeDips / 2), 0);
-            var compositor = visual.Compositor;
-            var easing = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.2f, 0.6f), new System.Numerics.Vector2(0.4f, 1f));
-
-            // Scale 是 Vector3 属性——scalar 动画挂 Vector3 属性类型不匹配直接 throw（被外层吞成静止环，
-            // 38048738860 双帧完全相同实证），必须 Vector3KeyFrameAnimation
-            var scale = compositor.CreateVector3KeyFrameAnimation();
-            scale.InsertKeyFrame(0.0f, new System.Numerics.Vector3(0.4f, 0.4f, 1f));
-            if (phase > 0.01)
-            {
-                scale.InsertKeyFrame((float)phase, new System.Numerics.Vector3(0.4f, 0.4f, 1f)); // 相位空闲段：保持收拢不可见
-            }
-            scale.InsertKeyFrame(1.0f, new System.Numerics.Vector3(1.8f, 1.8f, 1f), easing);
-            scale.IterationBehavior = AnimationIterationBehavior.Forever;
-
-            var opacity = compositor.CreateScalarKeyFrameAnimation();
-            opacity.InsertKeyFrame(0.0f, 0f);
-            if (phase > 0.01)
-            {
-                opacity.InsertKeyFrame((float)phase, 0f);
-            }
-            var peak = phase + (1.0 - phase) * 0.35;
-            opacity.InsertKeyFrame((float)peak, 0.9f);
-            opacity.InsertKeyFrame(1.0f, 0f, easing);
-            opacity.IterationBehavior = AnimationIterationBehavior.Forever;
-
-            var duration = TimeSpan.FromMilliseconds(Math.Clamp(periodMs, 600, 3000));
-            scale.Duration = duration;
-            opacity.Duration = duration;
-            visual.StartAnimation("Scale", scale);
-            visual.StartAnimation("Opacity", opacity);
         }
         catch
         {

@@ -746,6 +746,14 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   （拖完即存，启动恢复闭环）」**（38048738860 已证 SendInput 生效、只是旧断言没算钳位上限数学不可能）+
   「场景 A 百分比断言通过：GLM tile 常驻静态文本『38%』」+「百分比常驻断言通过：tile 静态文本『剩70%』」+
   「边栏宽度恢复断言通过：config 400 → 左栏实测 400px」+「设置搜索断言通过：『额度』过滤+清词复原」。
+
+### 批3-补18 池子注水最终稿 + 设置自选显示方式 + 图标配色 + 右栏间距（2026-10-10 用户令三轮纠偏，已完成）
+- **背景**：令C/D mid-turn 用户连续纠偏：①常规页内容贴分隔条黑线 → 要留距离；②GLM 100% 后圆圈不停闪 → 涟漪动画至少可配置，默认关；③"我说的是池子注水不是这种效果" → 水位=进度，满格变 severity 色；④"为啥有的图标有颜色，有的黑灰" → 全模块品牌色。用户最终令：涟漪动画去掉，设置里让用户自己选显示方式（如一开始的进度条）。
+- **改① 池子注水去涟漪**：PinTile 移除双环涟漪动画、保留 16DIP 圆池（_poolRing 池边描边 + _poolFill 底部填充，Clip 成圆）；水位=progress×16，满格 Error 红；加载中=空池环+「加载中」；离线/无进度全收；收起/恢复不复播动画。
+- **改② 设置自选显示方式**：`appearance.progressStyle`（"pool"/"bar"）默认 "pool"；SettingsWindow 外观页新增「额度显示方式」下拉（池子注水 / 进度条）；PinTile 构造时读 MotionEngine.ProgressStyle（实时），widgets.json config.progressStyle 仍可覆盖（向后兼容）。
+- **改③ 配置中心右栏内边距**：`_rightHost.Padding = new Thickness(16,0,0,0)`，常规页内容不再贴分隔条黑线。
+- **改④ 模块图标全品牌色**：MakeModuleIcon 按 module.Key 分 16 色（general 蓝 #3B82F6、appearance 紫 #A855F7、github 墨黑 #24292F、claude 赭橙 #D97757、kimi 蓝 #2563EB、deepseek 蓝 #4D6BFE、actions 琥珀 #F59E0B、advanced 玫红 #F43F5E 等），不再落灰兜底。
+- **验收**：4 测试项目全绿（212/353/27/31）；daily-build run 待填。证据：静态池水近景、设置页「额度显示方式」下拉、右栏间距、全彩模块图标。
   **可装版本**：nightly 资产 `beacon-nightly-windows-x86_64-setup.exe`（SHA256
   c2bf4e035cf878c113b6722a20d3d7f597da0dc08589a619d92ad7417b1dd48f）/ `beacon-nightly-windows-x86_64.zip`
   （9ad54dc344d33db2d8dfdbd805a08cf24f8aae92abf2504a01162c566c52c6e2），publishedAt 2026-10-10T12:15:19Z
@@ -772,7 +780,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 真实 workflow 手动验证 | B-303 | 端到端 8 例（批3-补14：Running/16min 卡住/时长格式/坏 JSON） |
 | 真实 workflow 映射复核 | B-303 | 同上第二行口径 |
 | 小米控制台口径 + GLM 5h 主位 | 批3-补8 | 小米需先录控制台 Cookie；GLM 直接生效（真 Key 夹具回归） |
-| 悬浮框进度条 + 快捷面板底部 | 批3-补9/17 | 进度显示**换形态**：水波纹涟漪 + 常驻「NN%」文本（批3-补17，bar 降级为 progressStyle 可选）；面板 RECENT EVENTS 改 Grid 内滚 |
+| 悬浮框进度条 + 快捷面板底部 | 批3-补9/17/18 | 进度显示**换形态**：静态池子注水（水位=进度，满格变红）+ 常驻「NN%」文本；bar 降级为可选，设置里用户自选；面板 RECENT EVENTS 改 Grid 内滚 |
 | 方舟额度用尽显示 | 批3-补11 | 尽窗优先级+429 耗尽特判；装后看卡片「额度用尽（窗名，重置时间）」 |
 | 通知规则接线 | 批3-补12 | rulesProvider 一行接线（此前 config 自定义规则是空头支票）；自定义规则触发 Toast |
 | UI/UX 审计 6 组可发现性修复 | 批3-补13 | 动作独立页/滚动区常驻/表单压缩/档位中文标签/双列 tile（⑤透明度已验）；设置页截图待看 |

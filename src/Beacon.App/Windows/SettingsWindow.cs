@@ -81,6 +81,7 @@ internal sealed class SettingsWindow : Window
     private TextBlock _appearanceFeedback = null!;
     private ComboBox _motionModeBox = null!;
     private Slider _motionIntensitySlider = null!;
+    private ComboBox _progressStyleBox = null!;
     private Border _previewHost = null!;
     private Ellipse _previewLight = null!;
     private TextBlock _importFeedback = null!;
@@ -177,6 +178,9 @@ internal sealed class SettingsWindow : Window
 
         _rightHost = new ScrollViewer
         {
+            // 左内边距 16：右栏内容不贴分隔条黑线（2026-10-10 用户令「常规不要贴着黑线，保持一点距离」）；
+            // 与左栏 ScrollViewer 右侧 10 的滚动条留白对称，两栏各自离中线有呼吸位
+            Padding = new Thickness(16, 0, 0, 0),
             // UI/UX 审计：Auto 档在内容略溢出时只出细滚动条，底部还有内容这件事无提示——常驻 Visible
             VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -433,17 +437,26 @@ internal sealed class SettingsWindow : Window
     /// 未收录品牌退色块 + Segoe Fluent 字形兜底；品牌渲染失败同样退字形并落日志（单块失败不拖死整页）。</summary>
     private Border MakeModuleIcon(ModuleDef module)
     {
-        var tint = module.ConnectionType switch
+        // 2026-10-10 用户令「配置中心为啥有的图标有颜色，有的图标就黑灰色的呢」：全模块品牌色，
+        // 不再有灰色兜底。无连接类型的四个本地模块（常规/外观/动作/高级）各给辨识色。
+        var tint = module.Key switch
         {
-            "github" => SeverityPalette.Rgb(255, 110, 118, 129),
-            "bigmodel" => SeverityPalette.Rgb(255, 56, 89, 255),
+            "general" => SeverityPalette.Rgb(255, 59, 130, 246), // 常规蓝 #3B82F6
+            "appearance" => SeverityPalette.Rgb(255, 168, 85, 247), // 外观紫 #A855F7
+            "github" => SeverityPalette.Rgb(255, 36, 41, 47), // GitHub 墨黑 #24292F
+            "bigmodel" => SeverityPalette.Rgb(255, 56, 89, 255), // 智谱蓝 #3859FF
             "ark" => SeverityPalette.Rgb(255, 41, 112, 255), // 火山引擎蓝
+            "claude" => SeverityPalette.Rgb(255, 217, 119, 87), // Claude 赭橙 #D97757
+            "kimi" => SeverityPalette.Rgb(255, 37, 99, 235), // Moonshot 蓝 #2563EB
+            "deepseek" => SeverityPalette.Rgb(255, 77, 107, 254), // DeepSeek 蓝 #4D6BFE
             "mimo" => SeverityPalette.Rgb(255, 255, 105, 0), // 小米橙 #FF6900
             "qwen" => SeverityPalette.Rgb(255, 255, 106, 0), // 阿里橙 #FF6A00（Simple Icons qwen）
             "codex" => SeverityPalette.Rgb(255, 16, 22, 34), // OpenAI 黑（近墨）
             "copilot" => SeverityPalette.Rgb(255, 142, 78, 198), // Copilot 紫渐变主色 #8E4EC6
             "opencode" => SeverityPalette.Rgb(255, 13, 148, 136), // OpenCode 青 #0D9488
-            "http" => SeverityPalette.Rgb(255, 63, 185, 80),
+            "http" => SeverityPalette.Rgb(255, 63, 185, 80), // HTTP 绿 #3FB950
+            "actions" => SeverityPalette.Rgb(255, 245, 158, 11), // 动作琥珀 #F59E0B
+            "advanced" => SeverityPalette.Rgb(255, 244, 63, 94), // 高级玫红 #F43F5E
             _ => SeverityPalette.Rgb(255, 148, 163, 184),
         };
         // icon 前景按 tint 亮度选白/黑（≥4.5:1）：mimo 橙/http 绿/opencode 青等亮底白字仅 ≈2.9:1，必须用黑
@@ -1022,6 +1035,19 @@ internal sealed class SettingsWindow : Window
         };
         _motionIntensitySlider.ValueChanged += (_, _) => SaveMotion();
 
+        // 2026-10-10 用户令「设置里让用户自己选表现方式，比如一开始的进度条」：额度显示方式全局可选
+        _progressStyleBox = new ComboBox { Header = "额度显示方式", Width = 260 };
+        foreach (var (value, label) in new[]
+        {
+            ("pool", "池子注水（水位=进度，满格变红）"),
+            ("bar", "进度条（旧式 3px 条）"),
+        })
+        {
+            _progressStyleBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        _progressStyleBox.SelectedIndex = Math.Max(0, IndexOfTag(_progressStyleBox, _runtime.Config.App.Appearance.ProgressStyle));
+        _progressStyleBox.SelectionChanged += (_, _) => SaveProgressStyle();
+
         _previewLight = new Ellipse { Width = 24, Height = 24, Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 63, 185, 80)) };
         _previewHost = new Border
         {
@@ -1043,6 +1069,7 @@ internal sealed class SettingsWindow : Window
         form.Children.Add(palette);
         form.Children.Add(reset);
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _motionModeBox, _motionIntensitySlider } });
+        form.Children.Add(_progressStyleBox);
         form.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -1104,6 +1131,14 @@ internal sealed class SettingsWindow : Window
         motion.Mode = TagOf(_motionModeBox) ?? "reduced";
         motion.Intensity = _motionIntensitySlider.Value;
         _runtime.Config.SaveApp(); // MotionEngine 每次调用实时读配置——无需重渲染
+    }
+
+    /// <summary>额度显示方式（2026-10-10 用户令「设置里让用户自己选表现方式」）：pool=圆池水位（默认），
+    /// bar=旧 3px 进度条。PinTile 构造时读 MotionEngine.ProgressStyle（实时读配置，无需重渲染）。</summary>
+    private void SaveProgressStyle()
+    {
+        _runtime.Config.App.Appearance.ProgressStyle = TagOf(_progressStyleBox) ?? "pool";
+        _runtime.Config.SaveApp();
     }
 
     /// <summary>逐族预览（B-805）：与 L0 同一引擎，off 档内部即静止。</summary>

@@ -41,6 +41,10 @@ public sealed class AppearanceConfig
     /// <summary>级别色覆盖：info/success/warning/error/critical/offline → #RRGGBB（缺省键用默认色表）。</summary>
     public Dictionary<string, string> SeverityColors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public MotionConfig Motion { get; set; } = new();
+    /// <summary>tile 额度显示方式（2026-10-10 用户令「设置里让用户自己选表现方式」）：
+    /// "pool"=圆池水位（默认，水位=进度、满格变 severity 色）；"bar"=旧 3px 进度条。
+    /// 组件级 widgets.json config.progressStyle 可覆盖（向后兼容）。</summary>
+    public string ProgressStyle { get; set; } = "pool";
 }
 
 /// <summary>动效配置（B-707 承载行为；RFC §6.2.8：默认适度动效、可调可关）。</summary>

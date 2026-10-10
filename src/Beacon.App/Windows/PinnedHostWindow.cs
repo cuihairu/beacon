@@ -88,13 +88,14 @@ internal sealed class PinTile
     };
     private double _barFraction;
 
-    // —— 水波纹 + 百分比（2026-10-10 用户令「进度条反反复复修不好，直接换形态」）——
-    // 三显示路径并存：① wave=16DIP 双环错相扩散涟漪（Composition forever，默认路径）
+    // —— 额度显示（2026-10-10 用户令三轮定稿：进度条→水波纹→「池子注水」→涟漪去掉）——
+    // 两显示路径并存：① pool=16DIP 圆池，水位=进度（圆环内底部填充），满格变 severity 色
+    //   （Error 红——用户「满了就变成另一颜色」）；静态默认可读，不依赖动画
     // ② _progressText「NN%」常驻静态可读量（截图永远抓得到，用户硬口径）
-    // ③ 旧 3px bar 降级为可选：widget.Config["progressStyle"]=="bar" 时启用（config-only，不加设置 UI）
-    // 配色统一 ThemeColors.Label()（主题令牌对比度最高的前景色，暗亮双主题均 ≥4.5:1）。
-    private readonly Ellipse _waveA;
-    private readonly Ellipse _waveB;
+    // ③ 旧 3px bar 可选：appearance.progressStyle=="bar"（设置里用户自选，见 SettingsWindow 外观页）
+    // 池边描边与百分比统一 ThemeColors.Label()（主题令牌对比度最高的前景色，暗亮双主题均 ≥4.5:1）。
+    private readonly Ellipse _poolRing;
+    private readonly Rectangle _poolFill;
     private readonly Grid _waveHost;
     private readonly TextBlock _progressText = new()
     {
@@ -104,8 +105,6 @@ internal sealed class PinTile
         Visibility = Visibility.Collapsed,
     };
     private readonly bool _barMode;
-    private bool _waveOn;
-    private double _waveFraction; // 最近一次进度（0-1）；波纹周期随其加快，Loaded/Resume 重放用
 
     /// <summary>宿主面板挂载与输入挂接的根元素。</summary>
     public Border Root => _root;
@@ -135,13 +134,26 @@ internal sealed class PinTile
                 Foreground = new SolidColorBrush(ThemeColors.Label()),
             };
 
-        // ① wave 路径（默认）：双同心环 16×16、Label 前景描边，错相 0/0.5 成扩散涟漪。
-        // bar 模式（progressStyle=="bar"）不播动画。Loaded 起播——GetElementVisual 需元素
-        // 已进可视树，构造期启动会被静默吞掉；首态即「加载中」+波纹转（用户令：加载中波纹转+状态字）
-        _barMode = string.Equals(widget.Config.GetValueOrDefault("progressStyle"), "bar", StringComparison.OrdinalIgnoreCase);
-        var waveBrush = new SolidColorBrush(ThemeColors.Label());
-        _waveA = new Ellipse { Width = 16, Height = 16, Stroke = waveBrush, StrokeThickness = 1.5 };
-        _waveB = new Ellipse { Width = 16, Height = 16, Stroke = waveBrush, StrokeThickness = 1.5 };
+        // ① pool 路径（默认）：16DIP 圆池，池边描边 + 底部水位矩形 Clip 成圆（水位=进度），满格变 severity 色。
+        // 静态呈现不依赖动画（用户令：涟漪动画去掉，圆圈不停闪不是正常人能看的）；加载中=空池环+「加载中」
+        // bar 模式（progressStyle=="bar"）不建池。池形态由 appearance.progressStyle 决定（设置里用户自选），
+        // 组件级 widgets.json config.progressStyle 可覆盖（向后兼容）
+        var style = widget.Config.GetValueOrDefault("progressStyle");
+        if (string.IsNullOrEmpty(style))
+        {
+            style = _motion.ProgressStyle;
+        }
+        _barMode = string.Equals(style, "bar", StringComparison.OrdinalIgnoreCase);
+        var labelBrush = new SolidColorBrush(ThemeColors.Label());
+        _poolRing = new Ellipse { Width = 16, Height = 16, Stroke = labelBrush, StrokeThickness = 1.5 };
+        // 池水填充：16DIP 宽矩形从池底长高，Clip 成圆即水位面；Fill 由 UpdateProgress 按 severity 色给
+        _poolFill = new Rectangle
+        {
+            Width = 16,
+            Height = 0,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Fill = labelBrush,
+        };
         _waveHost = new Grid
         {
             Width = 16,
@@ -149,10 +161,9 @@ internal sealed class PinTile
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = _barMode ? Visibility.Collapsed : Visibility.Visible,
         };
-        _waveHost.Children.Add(_waveA);
-        _waveHost.Children.Add(_waveB);
-        _waveHost.Loaded += (_, _) => StartWaves();
-        _waveOn = !_barMode;
+        _waveHost.Clip = new EllipseGeometry { Center = new Point(8, 8), RadiusX = 8, RadiusY = 8 };
+        _waveHost.Children.Add(_poolFill);
+        _waveHost.Children.Add(_poolRing);
         _progressText.Text = "加载中"; // 首态静态可读量：首个状态事件到达即被 NN% 覆盖
         _progressText.Visibility = Visibility.Visible;
 
@@ -235,7 +246,6 @@ internal sealed class PinTile
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
-            StopWaves();
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
             _barFraction = 0;
@@ -261,16 +271,15 @@ internal sealed class PinTile
         }
     }
 
-    /// <summary>进度三显示路径（2026-10-10 用户令：bar 反复修不显，换形态水波纹）：
-    /// ① wave（默认）——16DIP 双环涟漪，周期随进度加快（1800/(0.5+p) 钳 [600,2400]ms）；
+    /// <summary>进度两显示路径（2026-10-10 用户令三轮定稿：进度条→水波纹→「池子注水」→涟漪去掉）：
+    /// ① pool（默认）——16DIP 圆池水位=进度（底部填充 Clip 成圆），满格变 severity 色，静态可读；
     /// ② percent——「NN%」静态文本常驻（截图/肉眼硬口径，永远可读）；
-    /// ③ bar（可选）——widget.Config["progressStyle"]=="bar" 启用旧 3px 条。
-    /// 无进度语义的类型三路全收（value 已带可读量）。</summary>
+    /// ③ bar（可选）——appearance.progressStyle=="bar" 启用旧 3px 条。
+    /// 无进度语义的类型全收（value 已带可读量）。</summary>
     private void UpdateProgress(WidgetState state, global::Windows.UI.Color color)
     {
         if (state.Progress is not { } progress)
         {
-            StopWaves();
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
             _barFraction = 0;
@@ -279,53 +288,31 @@ internal sealed class PinTile
             return;
         }
 
-        _waveFraction = Math.Clamp(progress, 0, 1);
-        _progressText.Text = $"{Math.Round(_waveFraction * 100)}%";
+        var fraction = Math.Clamp(progress, 0, 1);
+        _progressText.Text = $"{Math.Round(fraction * 100)}%";
         _progressText.Visibility = Visibility.Visible;
 
         if (_barMode)
         {
-            // ③ 旧 bar 可选路径：显式像素矩形（CI 已证渲染），wave 收
-            StopWaves();
+            // ③ 旧 bar 可选路径：显式像素矩形（CI 已证渲染），池收
             _waveHost.Visibility = Visibility.Collapsed;
             _barFill.Fill = new SolidColorBrush(color);
             _barTrack.Visibility = Visibility.Visible;
             _barFill.Visibility = Visibility.Visible;
+            _barFraction = fraction;
             ApplyBarGeometry(_root.ActualWidth - _root.Padding.Left - _root.Padding.Right);
         }
         else
         {
-            // ① wave 默认路径：涟漪转起来，bar 收。_waveOn 必须回置——离线/无进度分支 StopWaves
-            // 清了标志，恢复时否则被 StartWaves 的门挡住永远不再起播（离线→健康转换回归点）
-            _waveOn = true;
+            // ① pool 默认路径：水位=进度（≥2 DIP 保底可辨），Fill=severity 色（满格 Error 红
+            // 即用户「满了就变成另一颜色」）；bar 收
+            _barFraction = 0;
             _barTrack.Visibility = Visibility.Collapsed;
             _barFill.Visibility = Visibility.Collapsed;
             _waveHost.Visibility = Visibility.Visible;
-            StartWaves();
+            _poolFill.Height = fraction > 0 ? Math.Max(2, fraction * 16) : 0;
+            _poolFill.Fill = new SolidColorBrush(color);
         }
-    }
-
-    /// <summary>双环涟漪起播（相位 0/0.5 错相成扩散）；bar 模式/收起态不起。
-    /// 已在转时也重起——状态更新重进相位即「新鲜感」脉冲，代价一次合成帧。</summary>
-    private void StartWaves()
-    {
-        if (_barMode || _suspended || !_waveOn)
-        {
-            return;
-        }
-
-        _waveOn = true;
-        var period = Math.Clamp(1800.0 / (0.5 + _waveFraction), 600, 2400);
-        _motion.StartWave(_waveA, 16, 0.0, period);
-        _motion.StartWave(_waveB, 16, 0.5, period);
-    }
-
-    /// <summary>涟漪全停并复位（StopLoops 会把透明度拉回 1，宿主随之收起不可见）。</summary>
-    private void StopWaves()
-    {
-        _waveOn = false;
-        _motion.StopLoops(_waveA);
-        _motion.StopLoops(_waveB);
     }
 
     /// <summary>按容器实测宽设条几何：track 全宽、fill=比例宽（≥2 DIP 保底可辨）；
@@ -351,7 +338,6 @@ internal sealed class PinTile
         _suspended = true;
         _motion.StopLoops(_light);
         _motion.StopLoops(_root);
-        StopWaves();
     }
 
     public void ResumeMotion()
@@ -365,12 +351,7 @@ internal sealed class PinTile
         {
             var color = _palette.SeverityColor(state.Severity, widgetOverride: _widget.ColorOverride);
             ApplyLoops(state.Severity);
-            UpdateProgress(state, color); // 涟漪/bar 按最近进度重放（波纹周期随进度）
-        }
-        else if (_waveHost.Visibility == Visibility.Visible)
-        {
-            _waveOn = true; // 加载中首态：StopWaves 已清标志，按宿主可见性恢复波纹转
-            StartWaves();
+            UpdateProgress(state, color); // 池水/bar 按最近进度重放
         }
     }
 
