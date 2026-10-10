@@ -30,6 +30,7 @@ internal sealed class FloatingTileHost
     private readonly Dictionary<string, WidgetState> _latest = [];
     private readonly List<IDisposable> _subscriptions = [];
     private bool _migrationNoticeShown;
+    private double _uiOpacity = 1.0; // 最近一次 ApplyOpacity 值：窗集动态（Pin/Unpin 重建），新窗创建即补挂
 
     /// <summary>tile 点击：下钻 L2（RFC §6.2.7，与单宿主同义）。</summary>
     public event Action? TileActivated;
@@ -99,6 +100,17 @@ internal sealed class FloatingTileHost
         _subscriptions.Clear();
     }
 
+    /// <summary>config.uiOpacity（B-801 界面透明度）：统一来源——胶囊/宿主面板/独立悬浮框/快捷面板同值
+    /// （批8 2026-10-10）。存值广播：悬浮窗集动态（Pin/Unpin 重建），ReloadTiles 新建的窗补挂同值。</summary>
+    public void ApplyOpacity(double opacity)
+    {
+        _uiOpacity = Math.Clamp(opacity, 0.2, 1.0);
+        foreach (var window in _windows.Values)
+        {
+            window.ApplyOpacity(_uiOpacity);
+        }
+    }
+
     /// <summary>按 widgets.json 的 Pinned + PinSupported 重建窗集（Pin/Unpin/停用后调用，位置记忆不丢）。</summary>
     public void ReloadTiles()
     {
@@ -161,6 +173,7 @@ internal sealed class FloatingTileHost
                     _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type);
                 _windows[widget.Id] = window;
                 window.Initialize();
+                window.ApplyOpacity(_uiOpacity); // 新建窗补挂当前透明度（批8：新窗不重置为 1.0）
                 if (_latest.TryGetValue(widget.Id, out var state))
                 {
                     window.Update(state); // 重放最近状态，tile 不空等下一轮刷新
@@ -229,6 +242,7 @@ internal sealed class FloatingTileHost
         private readonly PinTile _tile;
 
         private Window _window = null!;
+        private Grid? _opacityHost; // uiOpacity 承载层（Initialize 同步建；宿主 ReloadTiles 建窗后立即补挂）
         private IntPtr _hwnd;
         private AppWindow? _appWindow;
         private DragSession? _drag;
@@ -256,9 +270,22 @@ internal sealed class FloatingTileHost
         public void Initialize()
         {
             _window = new Window { Title = "Beacon Tile" };
-            _window.Content = _tile.Root;
+            // 透明度挂包装层而非 tile 根（批8 2026-10-10）：MotionEngine Flash/SlideIn 直接动画 tile 根的
+            // Opacity，同元素两处写会互相覆盖（动画回写冲掉 uiOpacity）——包装层只承载 uiOpacity，互不干扰
+            _opacityHost = new Grid();
+            _opacityHost.Children.Add(_tile.Root);
+            _window.Content = _opacityHost;
             ((FrameworkElement)_window.Content).Loaded += OnLoaded;
             _window.Activate();
+        }
+
+        /// <summary>config.uiOpacity（B-801 界面透明度）：挂包装层（见 Initialize 注释）。</summary>
+        public void ApplyOpacity(double opacity)
+        {
+            if (_opacityHost is { } host)
+            {
+                host.Opacity = Math.Clamp(opacity, 0.2, 1.0);
+            }
         }
 
         public void Close()

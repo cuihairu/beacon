@@ -138,6 +138,10 @@ public sealed partial class QuickPanelWindow : Window
         _visible = false;
     }
 
+    /// <summary>config.uiOpacity（B-801 界面透明度）：挂面板内容层（批8 2026-10-10：与胶囊/宿主面板/独立悬浮框统一同一来源）。</summary>
+    public void ApplyOpacity(double opacity)
+        => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
+
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
 
     /// <summary>运行时主题——动态构建的行/胶囊配色随之切换（静态部分走 XAML ThemeResource）。</summary>

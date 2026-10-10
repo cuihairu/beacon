@@ -565,6 +565,25 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：修复均为 App 层布局（本地不可编译，CI windows-latest 为准）；截图验收（悬浮框进度条可见 +
   面板右下完整）待装机走查。
 
+### 批3-补10 界面透明度统一来源 + CI 告警清零（2026-10-10 用户批8/告警清理令）
+- **透明度调整没有生效（批8，写入/读取链排查）**：写入链正常（slider ValueChanged→SaveGeneral→
+  SaveApp→SettingsApplied→App.ApplySettingsEffects），断点在**应用链只到胶囊**——`capsule.ApplyOpacity`
+  是唯一消费者，而胶囊默认关（2026-10-09 拍板）=调透明度肉眼零变化。修法：uiOpacity 统一来源四类悬浮面
+  同值——胶囊（原有）+宿主面板 PinnedHostWindow.ApplyOpacity（挂 _tilePanel）+独立悬浮框
+  FloatingTileHost.ApplyOpacity（存值广播+ReloadTiles 新窗补挂；**挂包装 Grid 而非 tile 根**——
+  MotionEngine Flash/SlideIn 直接动画 tile 根 Opacity，同元素双写互相覆盖）+快捷面板
+  QuickPanelWindow.ApplyOpacity。启动初始化+设置变更实时生效双路接线（App.xaml.cs）。持久化本就落
+  config.json（重启保持）。**同类病排查**：主题/悬浮形态均有「重启生效」标注（诚实 UI 非静默失效），
+  其余设置项（热键/自启/胶囊/数量悬浮窗/检查频率/外观色/动效/通知规则）全部实时接线；字号设置不存在。
+- **CI 告警清零（告警清理令）**：①CS8604（SettingsWindow:529 TagOf(_actionTypeBox)）——TagOf 签名改
+  `ComboBox?` 空条件兜底（页面未构建/无选中返回 null，调用方本就 `??` 兜底），全调用点一次覆盖；
+  ②CS0414 ×3（_githubEnabled/_httpEnabled/_bigmodelEnabled）——**实证非未接线**：每类连接整体开关功能
+  已由局部 toggle + `_moduleToggles` 字典 + `SetConnectionTypeEnabled`（BeaconRuntime:183）完整承载，
+  三字段是早期 per-类型三字段设计的残留死声明（连赋值都没有，`= null!` 初始器触发 CS0414），删除；
+  与透明度 bug 不同病（透明度=值只到一个消费者；这三个=字段被通用机制取代）。
+- **验收**：告警归零编译日志=CI windows-latest（本地不可编译）；透明度截图（肉眼可见变化）+重启保持
+  =装机走查（保存链 config.json 已有，四窗同值代码已接线）。
+
 ---
 
 ## 附：MVP 明确不做（评审基线）

@@ -215,6 +215,12 @@ public partial class App : Application
             }
         }
 
+        // 批8 2026-10-10：uiOpacity 统一来源——L0 两形态宿主与 L2 面板与胶囊同值
+        // （胶囊上方已应用；此前只应用胶囊而胶囊默认关=调透明度肉眼零变化的根因）
+        _pinnedHost?.ApplyOpacity(runtime.Config.App.UiOpacity);
+        _floatingHost?.ApplyOpacity(runtime.Config.App.UiOpacity);
+        quickPanel.ApplyOpacity(runtime.Config.App.UiOpacity);
+
         // 置顶哨兵：右键菜单/开始菜单/任意应用抢前台会重排 topmost 带，NOACTIVATE 悬浮窗
         // （胶囊/L0 宿主）会被盖住或挤出——前台与菜单事件后自动钉回（尊重 showCapsule 门控）
         _topmostGuard = new TopmostGuard();
@@ -257,6 +263,10 @@ public partial class App : Application
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
             capsule.SetVisible(appConfig.ShowCapsule);
             capsule.ApplyOpacity(appConfig.UiOpacity);
+            // 批8 2026-10-10：透明度实时生效——四类悬浮面统一读 config.uiOpacity（此前只应用胶囊）
+            _pinnedHost?.ApplyOpacity(appConfig.UiOpacity);
+            _floatingHost?.ApplyOpacity(appConfig.UiOpacity);
+            quickPanel.ApplyOpacity(appConfig.UiOpacity);
             // 检查频率变更 → 重建调度注册（新间隔立即生效；未变不动——避免设置页随便一改就全量重拉）
             if (appConfig.PollIntervalSeconds != _activePollInterval)
             {

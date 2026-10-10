@@ -350,6 +350,11 @@ internal sealed class PinnedHostWindow
         _window?.Close();
     }
 
+    /// <summary>config.uiOpacity（B-801 界面透明度）：挂宿主面板整窗——MotionEngine Flash/SlideIn 动的是
+    /// tile 根（子元素），互不覆盖（批8 2026-10-10：透明度与胶囊/独立悬浮框/快捷面板统一同一来源）。</summary>
+    public void ApplyOpacity(double opacity)
+        => ((FrameworkElement)_window.Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
+
     /// <summary>按 widgets.json 的 Pinned + PinSupported 重建 tile 集（B-702 入口一致性：右键/设置开关后调用）。</summary>
     public void ReloadTiles()
     {
