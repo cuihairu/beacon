@@ -494,6 +494,25 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **取证通道教训**：WebSearch/WebFetch 本会话降级（域验证拦截）、mcp web_reader 5xx——Bash curl 直取官方
   文档 + 假 key 行为探针是最可靠路径（401 错误信息变化即端点存在性与 key 格式解析的证据）。
 
+### 批3-补6 千问配额探针 + MiMo 计数器修复（2026-10-10 用户报「千问还是没有」）
+- **用户现象**：qwen.usage tile 恒「N 模型可用 · 额度口径官方未开放」——配额实际已耗尽，tile 毫无感知。
+- **根因（真 key 实证）**：Token Plan 网关把 /compatible-mode 下**所有 POST 拦在配额门后**：配额耗尽时任意
+  POST（含无效路径 /xyzzy 对照实验同响应）即 429 Throttling.AllocationQuota，消息携带重置时间
+  「reset at 10-19 16:00:00 UTC」；而 GET /models 不受门控（耗尽仍 200）——旧实现只调 GET /models，
+  永远看不见「已用尽」。本机 Token Plan 月度配额已耗尽，重置 10-20 00:00（北京时间）。/usage /quota 等
+  路径是网关兜底非真端点（/xyzzy 同 429），「官方无限额查询口」结论维持。
+- **修复（档③配额探针）**：GET /models 取目录后 POST {base}/usage（model+max_tokens=1，零推理成本——健康时
+  落无路由处理器 404/400，max_tokens=1 兜底防意外计费）：429+耗尽签名（AllocationQuota/insufficient_quota/
+  消息含 exhausted）→ 红档「配额已用尽 · 重置 MM-dd HH:mm」+ Progress 100% + DetailUrl 指订阅页；
+  瞬时限速 429 不翻转 tile；非 429 维持目录态。重置时间年份按「已过顺延一年」推断。7 新单测（探针请求
+  形状/404 目录态/瞬时限速/OpenAI 风格包裹剥开/跨年顺延/非 JSON 429）。
+- **MiMo 计数器两 bug（tools/mimo-counter.py，已部署重启）**：①relay 日志原 truncate（inode 不变）时 tail
+  seek(0,2) 停在旧 EOF 偏移，新行全漏计（计数恒 0——「还是没有」的另一半）；按「inode 变化或 size<已跟踪
+  偏移」判定从头全量重读。②bootstrap 与 tail 首扫重复计同一文件（456 计成 912）；bootstrap 改返回
+  (inode,偏移) 供 tail 续读。修复后实测：total=456 与日志 MODEL= 行数一致；副本实例注入 2 行 → 456→458、
+  窗口 2、last_seen 落值。附：日志另有 452 行 `CLI model=… rc=1`（CLI 包装器失败记录，非 relay 请求行，
+  不计入）。
+
 ---
 
 ## 附：MVP 明确不做（评审基线）
