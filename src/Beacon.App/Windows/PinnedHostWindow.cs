@@ -794,7 +794,7 @@ internal sealed class PinnedHostWindow
         var work = CurrentWork();
         var width = appWindow.Size.Width;
         var height = appWindow.Size.Height;
-        var snap = (int)(SnapDips * dpi);
+        var snap = (int)(SnapDips * GetDpi()); // 吸附半径是 DIP 手感阈值，按当前屏 DPI 换算（拖动位移本身不经 DPI）
         var x = _drag.StartX + dx;
         var y = _drag.StartY + dy;
         _drag.LastFreeX = x; // 记录吸附前自由落点：收起判定看它，snap 对齐不算「用户贴边」
