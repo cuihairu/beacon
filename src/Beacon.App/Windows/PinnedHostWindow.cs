@@ -143,7 +143,7 @@ internal sealed class PinTile
     // ③ 旧 3px bar 可选：appearance.progressStyle=="bar"（设置里用户自选，见 SettingsWindow 外观页）
     // 池边描边与百分比统一 ThemeColors.Label()（主题令牌对比度最高的前景色，暗亮双主题均 ≥4.5:1）。
     private readonly Ellipse _poolRing;
-    private readonly Path _poolFill;
+    private readonly global::Microsoft.UI.Xaml.Shapes.Path _poolFill;
     private readonly Grid _waveHost;
     private readonly TextBlock _progressText = new()
     {
@@ -196,7 +196,7 @@ internal sealed class PinTile
         _poolRing = new Ellipse { Width = PoolSize, Height = PoolSize, Stroke = labelBrush, StrokeThickness = 1.5 };
         // 池水填充：Path 圆弓形（水位线以下整块）。UIElement.Clip 在 WinUI/UWP 只接受 RectangleGeometry——
         // 赋 EllipseGeometry 编译失败（8b94469 实证），故走 Path.Data 圆弓形，无 Clip 依赖
-        _poolFill = new Path
+        _poolFill = new global::Microsoft.UI.Xaml.Shapes.Path
         {
             Width = PoolSize,
             Height = PoolSize,
@@ -700,13 +700,14 @@ internal sealed class PinnedHostWindow
 
         if (strip)
         {
-            // 吸边细条：贴锚点侧竖边，纵向按偏移（B-703：拖至屏边收起为细条/圆点）
+            // 吸边细条 = 展开面板的锚边窄条：同一 Place 数学、宽度换细条宽，条缘与面板缘重合——
+            // 光标悬停细条任何位置都在展开面板 footprint 内。旧实现细条贴屏幕边（忽略 offsetX）而面板
+            // 内缩 offsetX：悬停展开瞬间光标落在面板外 → PointerExited 立刻坍缩 → 再悬停再展开死循环，
+            // 表现为「竖线贴着屏幕边无法恢复」（2026-10-10 用户实测根因）。高度仍取整面板高（细条=面板边条）。
             var stripWidth = Math.Max(1, (int)(CollapseStripDips * dpi));
-            var anchorLeft = _layout.Anchor is PinAnchor.TopLeft or PinAnchor.BottomLeft;
-            var x = anchorLeft ? work.X : work.Right - stripWidth;
-            var y = Math.Clamp(work.Y + (int)(_layout.OffsetDips.Y * dpi), work.Y + 8, Math.Max(work.Y + 8, work.Bottom - height - 8));
-            appWindow.Resize(new SizeInt32(stripWidth, height));
-            appWindow.Move(new PointInt32(x, y));
+            var stripRect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, stripWidth, height);
+            appWindow.Resize(new SizeInt32(stripRect.Width, stripRect.Height));
+            appWindow.Move(new PointInt32(stripRect.X, stripRect.Y));
             return;
         }
 

@@ -38,6 +38,28 @@ public sealed class PinLayoutMathTests
         Assert.True(small.Contains(rect.Right - 1, rect.Bottom - 1), "右下角必须可见");
     }
 
+    /// <summary>坍缩细条 = 展开面板的锚边窄条（同一 Place 数学、宽度不同）：细条必须落在面板 footprint 内。
+    /// 否则光标悬停细条 → 展开瞬间光标在面板外 → PointerExited 立刻坍缩 → 死循环
+    /// （2026-10-10 用户实测「竖线贴屏幕边无法恢复」：旧细条贴屏边、面板内缩 offsetX）。
+    /// 覆盖四锚点 × 三类偏移（默认内缩/贴角/越界回收）。</summary>
+    [Fact]
+    public void Place_CollapsedStrip_StaysWithinExpandedPanelFootprint()
+    {
+        const int stripWidth = 12;   // PinnedHostWindow CollapseStripDips
+        const int panelWidth = 168;  // PinnedHostWindow PanelWidthDips
+        const int height = 3 * 32;   // rows × TileHeightDips
+        foreach (var anchor in new[] { PinAnchor.TopLeft, PinAnchor.TopRight, PinAnchor.BottomLeft, PinAnchor.BottomRight })
+        {
+            foreach (var offset in new[] { new PinOffset(24, 96), new PinOffset(0, 0), new PinOffset(300, 500) })
+            {
+                var strip = PinLayoutMath.Place(Work, anchor, offset, Dpi, stripWidth, height);
+                var panel = PinLayoutMath.Place(Work, anchor, offset, Dpi, panelWidth, height);
+                Assert.True(panel.Contains(strip.X, strip.Y), $"{anchor}/{offset}：细条左上须落在面板内");
+                Assert.True(panel.Contains(strip.Right - 1, strip.Bottom - 1), $"{anchor}/{offset}：细条右下须落在面板内");
+            }
+        }
+    }
+
     [Fact]
     public void ClampInto_WindowLargerThanWork_PinsToLeftTopMargin()
     {
