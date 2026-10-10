@@ -24,6 +24,54 @@ internal sealed class PinTile
 {
     private const int TileHeight = 32;
     private const int LightSizeDips = 8;
+    private const int PoolSize = 16;  // 额度圆池直径（DIP）
+    private const double PoolRadius = PoolSize / 2.0;
+
+    /// <summary>圆池水位几何（池水=圆形池底部圆弓形，水位=进度）：满格整圆、空池不画。
+    /// 用折线近似圆弧（14 段 LineSegment，弧上点三角函数显式算出）而非 ArcSegment——
+    /// SweepDirection/IsLargeArc 方向歧义在 CI 上才会现形（本地 WinUI 不可编译），折线零歧义。
+    /// Point 全限定 global::Windows.Foundation.Point：WinUI3 无 Microsoft.UI.Xaml.Point 投影
+    /// （8b94469 CS0246 实证）。</summary>
+    internal static Geometry PoolGeometry(double fraction)
+    {
+        if (fraction >= 0.999)
+        {
+            return new EllipseGeometry
+            {
+                Center = new global::Windows.Foundation.Point(PoolRadius, PoolRadius),
+                RadiusX = PoolRadius,
+                RadiusY = PoolRadius,
+            };
+        }
+        if (fraction <= 0.001)
+        {
+            return null;
+        }
+        var waterY = PoolSize * (1.0 - fraction); // 水位线 y（DIP，向下为正）
+        var offset = waterY - PoolRadius;          // 水位线相对圆心纵距
+        var halfChord = Math.Sqrt(Math.Max(0.0, PoolRadius * PoolRadius - offset * offset));
+        var edgeAngle = Math.Asin(Math.Clamp(offset / PoolRadius, -1, 1));
+        var figure = new PathFigure
+        {
+            // 起点取右侧交点（θ=edgeAngle），沿底部圆弧扫到左侧交点（θ=π-edgeAngle），闭合线即水面
+            StartPoint = new global::Windows.Foundation.Point(PoolRadius + halfChord, waterY),
+            IsClosed = true,
+        };
+        const int segments = 14;
+        for (var i = 1; i <= segments; i++)
+        {
+            var angle = edgeAngle + (Math.PI - 2.0 * edgeAngle) * i / segments;
+            figure.Segments.Add(new LineSegment
+            {
+                Point = new global::Windows.Foundation.Point(
+                    PoolRadius + PoolRadius * Math.Cos(angle),
+                    PoolRadius + PoolRadius * Math.Sin(angle)),
+            });
+        }
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        return geometry;
+    }
 
     private readonly WidgetConfig _widget;
     private readonly UiPalette _palette;
@@ -95,7 +143,7 @@ internal sealed class PinTile
     // ③ 旧 3px bar 可选：appearance.progressStyle=="bar"（设置里用户自选，见 SettingsWindow 外观页）
     // 池边描边与百分比统一 ThemeColors.Label()（主题令牌对比度最高的前景色，暗亮双主题均 ≥4.5:1）。
     private readonly Ellipse _poolRing;
-    private readonly Rectangle _poolFill;
+    private readonly Path _poolFill;
     private readonly Grid _waveHost;
     private readonly TextBlock _progressText = new()
     {
@@ -134,7 +182,7 @@ internal sealed class PinTile
                 Foreground = new SolidColorBrush(ThemeColors.Label()),
             };
 
-        // ① pool 路径（默认）：16DIP 圆池，池边描边 + 底部水位矩形 Clip 成圆（水位=进度），满格变 severity 色。
+        // ① pool 路径（默认）：16DIP 圆池，池边描边 + Path 圆弓形水位（水位=进度），满格变 severity 色。
         // 静态呈现不依赖动画（用户令：涟漪动画去掉，圆圈不停闪不是正常人能看的）；加载中=空池环+「加载中」
         // bar 模式（progressStyle=="bar"）不建池。池形态由 appearance.progressStyle 决定（设置里用户自选），
         // 组件级 widgets.json config.progressStyle 可覆盖（向后兼容）
@@ -145,23 +193,22 @@ internal sealed class PinTile
         }
         _barMode = string.Equals(style, "bar", StringComparison.OrdinalIgnoreCase);
         var labelBrush = new SolidColorBrush(ThemeColors.Label());
-        _poolRing = new Ellipse { Width = 16, Height = 16, Stroke = labelBrush, StrokeThickness = 1.5 };
-        // 池水填充：16DIP 宽矩形从池底长高，Clip 成圆即水位面；Fill 由 UpdateProgress 按 severity 色给
-        _poolFill = new Rectangle
+        _poolRing = new Ellipse { Width = PoolSize, Height = PoolSize, Stroke = labelBrush, StrokeThickness = 1.5 };
+        // 池水填充：Path 圆弓形（水位线以下整块）。UIElement.Clip 在 WinUI/UWP 只接受 RectangleGeometry——
+        // 赋 EllipseGeometry 编译失败（8b94469 实证），故走 Path.Data 圆弓形，无 Clip 依赖
+        _poolFill = new Path
         {
-            Width = 16,
-            Height = 0,
-            VerticalAlignment = VerticalAlignment.Bottom,
+            Width = PoolSize,
+            Height = PoolSize,
             Fill = labelBrush,
         };
         _waveHost = new Grid
         {
-            Width = 16,
-            Height = 16,
+            Width = PoolSize,
+            Height = PoolSize,
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = _barMode ? Visibility.Collapsed : Visibility.Visible,
         };
-        _waveHost.Clip = new EllipseGeometry { Center = new Point(8, 8), RadiusX = 8, RadiusY = 8 };
         _waveHost.Children.Add(_poolFill);
         _waveHost.Children.Add(_poolRing);
         _progressText.Text = "加载中"; // 首态静态可读量：首个状态事件到达即被 NN% 覆盖
@@ -272,7 +319,7 @@ internal sealed class PinTile
     }
 
     /// <summary>进度两显示路径（2026-10-10 用户令三轮定稿：进度条→水波纹→「池子注水」→涟漪去掉）：
-    /// ① pool（默认）——16DIP 圆池水位=进度（底部填充 Clip 成圆），满格变 severity 色，静态可读；
+    /// ① pool（默认）——16DIP 圆池水位=进度（Path 圆弓形=水位线以下整块），满格变 severity 色，静态可读；
     /// ② percent——「NN%」静态文本常驻（截图/肉眼硬口径，永远可读）；
     /// ③ bar（可选）——appearance.progressStyle=="bar" 启用旧 3px 条。
     /// 无进度语义的类型全收（value 已带可读量）。</summary>
@@ -310,7 +357,7 @@ internal sealed class PinTile
             _barTrack.Visibility = Visibility.Collapsed;
             _barFill.Visibility = Visibility.Collapsed;
             _waveHost.Visibility = Visibility.Visible;
-            _poolFill.Height = fraction > 0 ? Math.Max(2, fraction * 16) : 0;
+            _poolFill.Data = PoolGeometry(fraction);
             _poolFill.Fill = new SolidColorBrush(color);
         }
     }
