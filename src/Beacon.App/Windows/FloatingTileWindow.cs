@@ -381,7 +381,12 @@ internal sealed class FloatingTileHost
                 return; // 死区，区分点击与拖动（同单宿主口径）
             }
             _dragMoved = true;
-            appWindow.Move(new PointInt32(_drag.StartX + dx, _drag.StartY + dy));
+            var x = _drag.StartX + dx;
+            var y = _drag.StartY + dy;
+            if (x != appWindow.Position.X || y != appWindow.Position.Y)
+            {
+                appWindow.Move(new PointInt32(x, y)); // 目标没变不重发 Move：减少 SetWindowPos 抖动
+            }
             e.Handled = true;
         }
 

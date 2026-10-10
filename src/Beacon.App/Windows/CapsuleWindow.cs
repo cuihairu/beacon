@@ -30,7 +30,7 @@ public sealed partial class CapsuleWindow : Window
     private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
     private bool _dragging;
     private global::Windows.Foundation.Point _dragStart;
-    private double _dragDistance;
+    private (int X, int Y) _dragOrigin; // 按下时的窗口位置：拖动目标 = 起点 + 总位移（起点绝对定位）
     private int _x;
     private int _y;
     private DateTimeOffset _lastFetchedAt;
@@ -93,8 +93,8 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         _dragging = true;
-        _dragDistance = 0;
         _dragStart = e.GetCurrentPoint(Root).Position;
+        _dragOrigin = (_x, _y);
         Root.CapturePointer(e.Pointer);
     }
 
@@ -104,12 +104,19 @@ public sealed partial class CapsuleWindow : Window
         {
             return;
         }
-        var position = e.GetCurrentPoint(Root).Position;
-        _dragDistance += Math.Abs(position.X - _dragStart.X) + Math.Abs(position.Y - _dragStart.Y);
         var dpi = GetDpi();
-        _x += (int)Math.Round((position.X - _dragStart.X) * dpi);
-        _y += (int)Math.Round((position.Y - _dragStart.Y) * dpi);
-        _dragStart = position;
+        var position = e.GetCurrentPoint(Root).Position;
+        // 起点绝对定位而非逐事件累加：高回报率鼠标的单事件增量常 <0.5px，累加路径逐次四舍五入
+        // 把增量舍成 0——窗口爬着走、快甩才动（2026-10-10 用户实测「拖不动」）。
+        // 目标含滞后自纠偏：上一帧窗口没跟上时，相对位移变大，目标一次补齐。
+        var x = _dragOrigin.X + (int)Math.Round((position.X - _dragStart.X) * dpi);
+        var y = _dragOrigin.Y + (int)Math.Round((position.Y - _dragStart.Y) * dpi);
+        if (x == _x && y == _y)
+        {
+            return; // 目标没变不重发 Move：高频事件下减少 SetWindowPos 抖动（跨屏闪烁放大器）
+        }
+        _x = x;
+        _y = y;
         _appWindow.Move(new PointInt32(_x, _y));
     }
 
@@ -121,8 +128,9 @@ public sealed partial class CapsuleWindow : Window
         }
         _dragging = false;
         Root.ReleasePointerCapture(e.Pointer);
-        // 位移 < 6 dip 视为单击（不是拖动）→ 打开 L2（B-504）
-        if (_dragDistance < 6)
+        // 净位移 < 6 dip 视为单击（不是拖动）→ 打开 L2（B-504）；按住抖动由净位移抵消
+        var dragDips = (Math.Abs(_x - _dragOrigin.X) + Math.Abs(_y - _dragOrigin.Y)) / GetDpi();
+        if (dragDips < 6)
         {
             OpenPanelRequested?.Invoke();
         }

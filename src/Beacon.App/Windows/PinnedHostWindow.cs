@@ -813,7 +813,10 @@ internal sealed class PinnedHostWindow
         {
             y = work.Bottom - height;
         }
-        appWindow.Move(new PointInt32(x, y));
+        if (x != appWindow.Position.X || y != appWindow.Position.Y)
+        {
+            appWindow.Move(new PointInt32(x, y)); // 目标没变不重发 Move：高频事件下减少 SetWindowPos 抖动
+        }
         e.Handled = true;
     }
 
@@ -984,8 +987,10 @@ internal sealed class PinnedHostWindow
                 }
                 break;
             case NativeMethods.WM_DPICHANGED:
-                // 跨 DPI：XAML 内容按新 DPI 自动缩放，窗口尺寸/位置按新 DPI 重排（B-703 验收）
-                if (_layout is not null)
+                // 跨 DPI：XAML 内容按新 DPI 自动缩放，窗口尺寸/位置按新 DPI 重排（B-703 验收）。
+                // 拖动中跳过重排：ApplyLayout 的 Resize+Move 会和拖拽 Move 互抢窗口位置，跨屏瞬间
+                // 来回跳就是用户看到的闪烁（2026-10-10 实测）；落点按新 DPI 重排交给 FinalizeDrag。
+                if (_layout is not null && _drag is null)
                 {
                     _layout.Monitor = CurrentMonitorIdentity() ?? _layout.Monitor;
                     ApplyLayout();
