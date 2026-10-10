@@ -21,10 +21,10 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 |---|---|---|---|---|
 | hotkey | 字符串 | `Ctrl+Alt+B` | 快捷面板全局热键。设置页「全局热键」可改；注册失败（被占用）托盘气泡提示 | 即时 |
 | launchOnStartup | 布尔 | `true` | 开机自启。落注册表 Run 键，与设置页「开机自启」开关同步 | 即时 |
-| theme | `system` / `light` / `dark` | `system` | 浅色/深色/跟随系统。WinUI 主题只能在进程启动时设定 | 重启 |
-| uiOpacity | 数值 | `1.0` | 四类悬浮面（胶囊、宿主面板、独立悬浮框、快捷面板）统一透明度。设置页滑杆范围 0.4–1.0 步进 0.05；直接改文件可到 0.2，低于 0.2 按 0.2 处理 | 即时 |
+| theme | `system` / `light` / `dark` | `system` | 浅色/深色/跟随系统。WinUI 主题只能在进程启动时设定（2026-10-10 拍板维持，见 mvp-issues 拍板记录） | 重启 |
+| uiOpacity | 数值 | `1.0` | 四类悬浮面（胶囊、宿主面板、独立悬浮框、快捷面板）统一透明度。设置页滑杆范围 0.2–1.0 步进 0.05（与运行时下限一致）；低于 0.2 按 0.2 处理 | 即时 |
 | showCapsule | 布尔 | `false` | L1 状态胶囊（右下角常驻胶囊）显隐。默认关是 2026-10-09 的拍板，升级安装的老配置会被一次性拉平 | 即时 |
-| pinDisplayMode | `panel` / `floating` | `panel` | L0 悬浮形态：`panel` 单窗多 tile 面板；`floating` 每个钉选组件一个独立窗，可拖到桌面任意位置 | 重启 |
+| pinDisplayMode | `panel` / `floating` | `panel` | L0 悬浮形态：`panel` 单窗多 tile 面板；`floating` 每个钉选组件一个独立窗，可拖到桌面任意位置（2026-10-10 拍板维持重启生效） | 重启 |
 | numericFloatingEnabled | 布尔 | `false` | 数值/额度类组件（AI 额度卡等）能否上独立悬浮窗。默认关 = 桌面零残留；关的时候这类钉选仍在宿主面板显示 | 即时 |
 | pollIntervalSeconds | 整数（秒） | `0` | 全局检查频率，`0` = 按各组件刷新档的默认周期。设置页选项 15 秒/30 秒/1 分/5 分。组件单独设了「检测间隔」的以组件为准 | 即时（重建刷新调度） |
 | notificationRules | 规则数组 | `[]` | 自定义通知规则，空数组用内置默认四条。见下节 | 即时（导入包路径）；手改文件重启 |
@@ -187,6 +187,7 @@ github.pull_requests：
 |---|---|---|
 | repo | 必填 | `owner/repo` |
 | warnOnReviewRequested | — | `true` 时「有待你 review 的 PR」告警 |
+| warnOnRedCi | `false` | `true` 时 PR 的 CI 红灯（combined status `failure`）计入告警。按 PR 记忆 CI 状态：终态且未换 commit 复用记忆（稳态零额外请求），仅新 push 或运行中的 PR 发探测；开启后首次全量每 PR 一请求，大仓库首刷代价高 |
 
 github.actions.runs：
 

@@ -427,6 +427,15 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **B-002 CI required check**：维持直推现状、不设 required check（设了会挡 daily-build 自身推送）；如需再议 PR 工作流再启。
 - **状态胶囊默认值**：维持当前实现不改（`ShowCapsule=false` 默认关，装机后设置页可开）。
 - **装机走查引导清单**：44 项验收按 nightly 资产装→验→回执格式整理为 [docs/acceptance-checklist.md](acceptance-checklist.md)，随批落仓。
+- **主题/悬浮形态「重启生效」改即时**：不通过，维持重启生效（2026-10-10 用户令自行拍板）。理由：
+  ①验收基线已把重启生效列为预期（acceptance-B803-e2e-walkthrough.md「即刻生效（主题重启生效属预期）」）；
+  ②两处均为装机时一次性设置，诚实标注已就位（设置页「主题（重启生效）」+ 配置参考逐项注明生效时机），
+  非静默失效；③主题即时的真代价 = 动色源真相（ThemeColors 静态读 Application.Current.RequestedTheme，
+  属启动口径）+ 逐窗根 RequestedTheme + Acrylic 背景重挂 + 全悬浮面重渲染，半主题化风险（背景/标题栏
+  错色）CI 抓不到，只能装机肉眼验收；④悬浮形态即时 = L0 宿主窗重建，该路径有前科（白板残留批，
+  现双宿主各自兜异常即是补丁），一次失误 = tile 消失到重启；⑤与本仓拍板记录保守取向一致
+  （胶囊默认关维持/直推不设 check/数量悬浮窗默认关）。要推翻：直接改本条，实现入口 =
+  App.ApplySettingsEffects + ThemeColors 色源 + SettingsWindow 标签去「重启生效」。
 
 ## 2026-10-09 实测回执批（小米类型空 / 千问接入 / 检查频率 / 方舟 5h 口径 / tile 名字）
 
