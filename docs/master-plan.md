@@ -1028,6 +1028,17 @@ CI 构建通过不等于产品验收通过。
 
 不能为了支持更多服务商而影响核心桌面体验和维护成本。
 
+> 落地状态（2026-10-11 批3-补41 评估收口）：**条件已满足且早已超出——本项关闭**。本项写入时是条件门控占位；
+> 此后 positioning P0 #5 将 AI Usage 提为首发 P0，2026-10-08 起逐家落地 **13 种组件类型/11 家**
+> （bigmodel/ark/claude/kimi/deepseek/mimo/codex/copilot/opencode/qwen/moonshot + http.status/quota 通用面）。
+> 数据源可靠性三档：① 官方稳定 API 六家（deepseek /v1/users/me/balance、moonshot balance、bigmodel 监控
+> quota/limit、ark 管控面 OpenAPI V4 签名、copilot 官方扩展同款配额端点、opencode Console Budgets——key 长效无会话态）；
+> ② 本机零网络两家（claude/codex 读本机会话 jsonl，绝对可靠零维护，codex 标注非官方口径）；
+> ③ 会话 cookie 两家（kimi/mimo 控制台口，端点稳定但会话过期是常态——401 明示+重录指引在卡面）+
+> qwen 官方额度口未开放（如实降级链：自定义端点→配额探针→模型目录，不造数）。
+> 维护成本实测：两次形状漂移（kimi F-50、mimo F-51）均被「单文件多类 + 防御解析 fail-loud + 如实降级」
+> 隔离、当日收口；刷新失败不清缓存（§14.5），单家漂移不伤核心桌面体验。残余维护面 = 两家 cookie 偶发重录（用户侧动作，有指引）。
+
 ---
 
 ## 14. MVP 验收标准

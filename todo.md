@@ -56,7 +56,7 @@
 
 ## 后续可选（master-plan.md）
 - [ ] 厂商私有打包工具 Provider（开源标准 API 的 Jenkins Provider 已落位 2026-10-11；私有厂商待取得真实 API/认证/状态字段再评估，不建常驻 Agent）
-- [ ] AI Usage Provider（仅在数据来源可靠、维护成本合理时实现）
+- [x] AI Usage Provider——条件门控项已满足并实质完成，关闭（2026-10-11 批3-补41 评估：13 种组件类型/11 家已落地，可靠性三档 + 两次形状漂移均被单文件隔离当日收口；详见 master-plan §13 注记与 positioning §8）
 
 ## MVP 验收标准（master-plan §14，需真实装机验证）
 - [ ] Windows 登录后按用户设置启动【需装机】
