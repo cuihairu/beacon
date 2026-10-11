@@ -1047,6 +1047,20 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   cookie>litellm>本机计数、URL & 续接），四项目 821/821 全绿；真机：①故意填过期 cookie 看「已失效+
   指引」原文；②网关接 DB 后录 litellm_spend_url 看真实已用量。
 
+### 批3-补39 单测复点巡检（2026-10-11 续批：todo.md 六条「夹具/表驱动单测」逐条核对）
+- **核对结论（六条全部已有测试，其中一条补缺）**：PR 计数/映射=GitHubPullRequestsProviderTests 18 例；
+  workflow 状态映射=GitHubActionsProviderTests MapRun_TableDriven TheoryData+端到端 9 例；
+  路由/确认/超时=ActionRunnerTests 9 例；API 封装假 Handler=GitHubApiClientTests 10 例+
+  GitHubWorkflowExecutorTests 6 例；规则引擎含冷却=NotificationEngineTests 17 例（阈值 TheoryData/
+  冷却抑制与到期/跨越重臂）；超时终止+输出落盘=LocalCommandExecutorTests。以上此前批3-补14/15 与
+  B-401 落地时已建，本次复点全部绿。
+- **补缺（模板渲染 4→11 例）**：TemplateRenderer 此前只有 4 例占位/缺键，本次按源码语义补 7 例：
+  键字符集含点与连字符、同键重复占位全替换、替换值不二次展开（单趟正则防注入递归）、
+  键字符集外花括号原样保留不抛（JSON body 模板实况）、缺键去重清单。
+- **口径**：todo.md 对应六条拆为「单测半勾选 + 手动半标注【需装机】」，不伪造手动验收；
+  未修类（50 条）逐条扫过均为「代码就位待装机首验」，无新增可代码修复项。
+- **验收**：四项目 828/828 全绿（Core 256→263）。
+
 ## 2026-10-10 装机对照清单（67 条三类，2026-10-11 九次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）

@@ -11,14 +11,21 @@
 - [ ] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口
 - [ ] 无网启动：界面有数据且标注 Last update，随后自动刷新
 - [ ] 真实 PAT 手动验证连接测试成功/失败路径
-- [ ] 夹具单测：计数/映射正确；真实仓库手动验证
-- [ ] 状态映射表驱动单测；真实 workflow 手动验证（成功/失败/运行中）
-- [ ] 路由/确认/超时单测；失败在 UI 有可见反馈
-- [ ] 模板渲染单测；手动验证浏览器打开正确 URL
-- [ ] API 封装单测（假 Handler）；真实仓库手动：Run→运行中→终态全程可在 Beacon 看到
-- [ ] 超时终止生效；输出落盘；确认弹窗可关（按 Action 配置）
-- [ ] 发送/点击/激活路由全链路手动通过；快捷方式缺失可自愈
-- [ ] 规则引擎表驱动单测（含冷却）；手动：注入 Failed 状态收到且仅收到一条 Toast
+- [x] 夹具单测：计数/映射正确（GitHubPullRequestsProviderTests 18 例：计数/亮黄映射/红 CI 续探复用；2026-10-11 巡检复点）
+- [ ] 真实仓库手动验证（PR 计数与亮黄随刷新走）【需装机】
+- [x] 状态映射表驱动单测（GitHubActionsProviderTests：MapRun_TableDriven TheoryData + 端到端共 9 例）
+- [ ] 真实 workflow 手动验证（成功/失败/运行中）【需装机】
+- [x] 路由/确认/超时单测（ActionRunnerTests 9 例：按类型路由/确认三态/超时取消/异常仍发事件/用户取消）
+- [ ] 失败在 UI 有可见反馈【需装机】
+- [x] 模板渲染单测（TemplateRendererTests 11 例；2026-10-11 补齐 7 例：键字符集/同键重复/单趟不二次展开/字面花括号/缺键去重）
+- [ ] 手动验证浏览器打开正确 URL【需装机】
+- [x] API 封装单测（假 Handler）（GitHubApiClientTests 10 例：ETag/401/403 配额/404/5xx/限流头/Bearer + GitHubWorkflowExecutorTests 6 例）
+- [ ] 真实仓库手动：Run→运行中→终态全程可在 Beacon 看到【需装机】
+- [x] 超时终止生效；输出落盘（LocalCommandExecutorTests：Timeout_KillsProcess_AndStillWritesLog、RunsRealCommand_CapturesOutput_WritesLogFile）
+- [ ] 确认弹窗可关（按 Action 配置）【需装机】
+- [ ] 发送/点击/激活路由全链路手动通过；快捷方式缺失可自愈【需装机】
+- [x] 规则引擎表驱动单测（含冷却）（NotificationEngineTests 17 例：阈值 TheoryData 表驱动/冷却抑制与到期放行/跨越重臂/停用与过滤）
+- [ ] 手动：注入 Failed 状态收到且仅收到一条 Toast【需装机】
 - [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘
 - [ ] 断网显示 Offline+时间；计数与实际 Widget 状态一致
 - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭
