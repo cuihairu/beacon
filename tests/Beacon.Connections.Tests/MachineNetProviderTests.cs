@@ -80,7 +80,7 @@ public sealed class MachineNetProviderTests
         }
     }
 
-    private static MachineNetSample Sample(DateTimeOffset at, string name = "eth0", string ip = "192.168.1.5",
+    private static MachineNetSample Sample(DateTimeOffset at, string? name = "eth0", string? ip = "192.168.1.5",
         long sent = 1_000, long received = 10_000, bool up = true)
         => new(at, name, ip, sent, received, up);
 
@@ -112,6 +112,7 @@ public sealed class MachineNetProviderTests
         await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
+        Assert.NotNull(state);
         Assert.Equal("1000", state.Payload["up_bps"]);   // (16000-1000)/15 = 1000 B/s
         Assert.Equal("80000", state.Payload["down_bps"]); // (1210000-10000)/15 = 80000 B/s
         Assert.Equal("本机网络 · 192.168.1.5 · ↓78.1 KB/s ↑1000 B/s", state.Summary);
@@ -126,6 +127,7 @@ public sealed class MachineNetProviderTests
         await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
+        Assert.NotNull(state);
         Assert.Equal("", state.Payload["up_bps"]);
         Assert.DoesNotContain("↓", state.Summary);
     }
@@ -139,6 +141,7 @@ public sealed class MachineNetProviderTests
         await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
+        Assert.NotNull(state);
         Assert.Equal("", state.Payload["up_bps"]);
         Assert.Equal("100", state.Payload["total_sent"]); // 基线已换成新计数
     }
@@ -152,6 +155,7 @@ public sealed class MachineNetProviderTests
         await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
+        Assert.NotNull(state);
         Assert.Equal("", state.Payload["up_bps"]);
         Assert.Equal("Wi-Fi", state.Payload["interface"]);
     }
@@ -162,6 +166,7 @@ public sealed class MachineNetProviderTests
         var provider = new MachineNetProvider(new FakeNetSource(Sample(T0, name: null, ip: null, up: false)));
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
+        Assert.NotNull(state);
         Assert.Equal(Severity.Warning, state.Severity);
         Assert.Equal(LifecycleState.Running, state.Lifecycle);
         Assert.Equal("本机网络 · 无活动网卡", state.Summary);
@@ -216,12 +221,10 @@ public sealed class MachineNetProviderTests
         => Assert.Equal(expected, MachineNetProvider.FormatBytes(bytes));
 
     [Fact]
-    public void MachineConnection_AlwaysHealthy()
+    public async Task MachineConnection_AlwaysHealthy()
     {
-        var result = new MachineConnectionProvider()
-            .TestAsync(Connection(), Ctx(), CancellationToken.None)
-            .GetAwaiter()
-            .GetResult();
+        var result = await new MachineConnectionProvider()
+            .TestAsync(Connection(), Ctx(), CancellationToken.None);
         Assert.Equal(ConnectionHealthState.Healthy, result.Health);
     }
 
