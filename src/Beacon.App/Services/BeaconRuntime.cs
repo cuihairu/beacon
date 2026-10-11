@@ -98,6 +98,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [JenkinsWidgetDescriptors.BuildType] = new JenkinsBuildProvider(), // 开源 CI 打包工具槽位（master-plan §13）：标准 JSON API
             [MoonshotWidgetDescriptors.BalanceType] = new MoonshotBalanceProvider(), // AI Usage 第十一家：Moonshot 开放平台余额（区别于 Kimi For Coding 套餐）
             [MachineWidgetDescriptors.NetType] = new MachineNetProvider(), // 本机网络（2026-10-11 用户拍板：IP/速率/流量，零凭据）
+            [GitWorkspaceDescriptors.Type] = new GitWorkspaceProvider(), // 本地 Git 工作区（2026-10-11 用户拍板：↑↓/改/stash 一卡四数，零凭据）
         });
 
         var scheduler = new RefreshScheduler(logger: logger);

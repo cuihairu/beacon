@@ -121,7 +121,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
             new ModuleDef("jenkins", "Jenkins", "构建状态 · 开源标准 API", "\ue9d5", "jenkins"),
-            new ModuleDef("machine", "本机", "本机网络 · IP/速率/流量 · 零凭据", "\ue772", "machine"),
+            new ModuleDef("machine", "本机", "本机网络 · Git 工作区 · 零凭据", "\ue772", "machine"),
             new ModuleDef("bigmodel", "智谱 GLM", "Coding Plan 额度", "\ue945", "bigmodel"),
             new ModuleDef("ark", "火山方舟", "Coding Plan Pro 额度", "\uE7C3", "ark"),
             new ModuleDef("claude", "Claude Code", "本机用量 · 零凭据", "\ue8bd", "claude"),
@@ -524,7 +524,7 @@ internal sealed class SettingsWindow : Window
         => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
 
     private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
-        => [.. GitHubWidgetDescriptors.All, .. JenkinsWidgetDescriptors.All, .. MachineWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MoonshotWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
+        => [.. GitHubWidgetDescriptors.All, .. JenkinsWidgetDescriptors.All, .. MachineWidgetDescriptors.All, .. GitWorkspaceDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MoonshotWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
 
     private static TextBlock Hint(string text) => new()
     {
@@ -975,7 +975,7 @@ internal sealed class SettingsWindow : Window
         "bigmodel" => "尚无连接——填智谱 API Key（open.bigmodel.cn 控制台获取，监控接口自动带默认端点；Z.AI 填国际站 Endpoint）。",
         "ark" => "尚无连接——火山控制台「API 访问密钥」创建 AK/SK（ArkReadOnlyAccess 权限即可），Token 框一次粘贴 AccessKey:SecretKey；推理用 ARK_API_KEY 调不了额度口（管控面实测 400 拒绝）。",
         "claude" => "无需连接配置——直接读本机 ~/.claude/projects 会话记录；名称随意填（如 claude-local），Endpoint 可空。",
-        "machine" => "无需连接配置——本机数据（网络/资源），零凭据零网络；名称随意填（如 machine-local），Endpoint 留空。",
+        "machine" => "无需连接配置——本机数据（网络/Git 仓库），零凭据零网络；名称随意填（如 machine-local），Endpoint 留空。",
         "kimi" => "尚无连接——填 Kimi Code 控制台 Key（sk-kimi-*，与 Moonshot 开放平台不通用；用量接口自动带默认端点）。",
         "moonshot" => "尚无连接——填 Moonshot 开放平台 Key（platform.moonshot.cn → API Key 管理）。与 Kimi For Coding 套餐是两套账号体系（Key 不通用）；余额接口自动带默认端点。",
         "deepseek" => "尚无连接——填 DeepSeek 开放平台 API Key（platform.deepseek.com；余额接口自动带默认端点）。",
