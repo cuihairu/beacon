@@ -15,6 +15,7 @@ public static class WidgetTypeNames
         {
             "github" => "GitHub",
             "jenkins" => "Jenkins",
+            "machine" => "本机",
             "http" => "HTTP",
             "bigmodel" => "智谱",
             "ark" => "火山方舟",

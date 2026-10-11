@@ -135,7 +135,7 @@ Codex    71% used   weekly 8h 后重置
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
 | Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance（§8，详细进度） |
 | Jenkins / 公司打包槽位 | **已落地**（2026-10-11）：jenkins.build——开源标准 JSON API（批3-补31，批3-补27 挂起项关闭） |
-| Machine Provider | 未实现——M5 收口后并入 [mvp-issues](mvp-issues.md) |
+| Machine Provider | **部分落地**（2026-10-11 批3-补32）：machine.net 本机网络（IP/↑↓速率/累计流量，零凭据零网络）；远程机器/服务器管理（§5 三类之一）按冻结记录不做 |
 
 ## 7. 排期约定
 
@@ -213,6 +213,10 @@ Codex    71% used   weekly 8h 后重置
   →Info 未构建、disabled→已禁用；`_anime` 后缀=构建中 → Running）——job 级 `lastBuild` **不含 result**
   （weekly.ci.jenkins.io 真实夹具实证），不追打第二击。连接测试取根视图 `/api/json`，2xx 且是 JSON 才算
   连通（反向代理回 200 HTML 壳按 Degraded，代理假阳性不算连通）；
+- **本机网络（2026-10-11 批3-补32）**：组件类型 `machine.net`——只读本机 `NetworkInterface`（零凭据零网络）：
+  IP + 实时 ↓↑ 速率（相邻两次采样计数差÷时间差，machine 档 15s，首刷无基线只出 IP 与累计值）+ 累计流量
+  （自开机，进 payload 走 L3 详情）；自动选卡=Up+非回环+有 IPv4、有网关者优先，点名网卡不存在按 Degraded；
+  不触及冻结的远程 Machines 管理；
 - **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
   组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
   （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；

@@ -935,6 +935,22 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   4 处文案）、BeaconRuntime（widget+connection 映射）；BrandIcons `["jenkins"]` 品牌标此前已就位。
 - **文档**：README/index 13→14 类；solution-structure（26 文件/树/722 测试）；configuration.md 两表加行；
   positioning §6 落地清单 + §8 条目；master-plan §10 落地状态改口径。
+
+### 批3-补32 本机网络 Provider 落地（2026-10-11，用户拍板「本机资源 和本机网络 都可以搞」）
+- **拍板回执**：用户令「本机的cpu 内存 磁盘空间 这个倒是一个低成本的显示」「还有网络资源比如ip 上行 下行速度
+  总的流量啥的」「网络资源 和 git 都搞吗」→「都搞」→「本机资源 和本机网络 都可以搞」。本机资源=只读本机 OS
+  数据，不触及 mission 冻结的远程 Machines 管理（服务器/PC/Agent 远程监控，§第二阶段冻结记录）。
+- **machine.net**：组件字段 `label` + `interface`（网卡名，空=自动选活动网卡）；自动选卡=Up+非回环+有非回环
+  IPv4，有网关者优先（默认路由所在卡）；点名网卡不存在按 Degraded fail-loud（与 Jenkins job_path 同口径）。
+  速率=相邻两次采样计数差÷时间差（machine 档 15s；首刷无基线只出 IP 与累计值；dt<1s 不出速率防手动连刷尖峰；
+  计数回退/换卡重记基线）；累计流量（自开机）进 payload 走 L3 详情，tile 一行只放 IP+实时速率（32 DIP 装不下四个数）。
+- **machine 连接**：零凭据零网络，恒通（本机即本机）；Endpoint/Token 留空。
+- **注册 6 点**：WidgetTypeNames、SettingsWindow（模块行/模块色 #107C10/描述聚合/空连接提示/连接表单 4 处文案）、
+  BeaconRuntime（widget+connection 映射）。
+- **文档**：README/index 14→15 类；solution-structure（27 文件/树/748 测试）；configuration.md 两表加行；
+  positioning §6 Machine Provider 行改口径 + §8 条目；master-plan §10 落地状态改口径。
+- **验收**：26 例（选卡 4 + 差分/状态 7 + 单位换算 12 + 连接 1 + 描述 1 + 异常透传 1）748/748 全绿；
+  真机：装后建 machine 连接 + machine.net 组件，首刷 IP+累计、第二刷起速率随刷新走。
 - **验收**：真实夹具 21 例（URL 转义/color 词汇表全量/SPA 假阳性/Basic 匿名两态/401 指引），4 项目 722/722
   全绿。真机项：装后对任意可达 Jenkins 实例（公共或公司）建连接 + 添加 job_path 组件看构建灯。
 
@@ -979,6 +995,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 批3-补27 托盘 Explorer 重启恢复 / 唤醒补刷 | 2 | 任务管理器重启 Explorer 后托盘图标自回（级别色不丢）；睡眠唤醒后 ≤1 周期出新数据（Win32 消息链路，只能装机验证） |
 | 批3-补28 胶囊右键直达设置 | 1 | 右键胶囊弹设置窗；左键拖动/单击开面板不受扰 |
 | 批3-补31 Jenkins 构建卡 | 1 | 对可达 Jenkins 实例建连接（匿名或 user:apiToken）+ job_path 组件：构建灯/构建号/构建中随刷新走 |
+| 批3-补32 本机网络卡 | 1 | 建 machine 连接（零凭据）+ machine.net 组件：IP 与累计流量在 L3，首刷无速率、第二刷起 ↓↑ 速率随刷新走 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
 | B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
 | B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |

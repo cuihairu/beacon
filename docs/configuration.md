@@ -99,6 +99,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 |---|---|---|---|
 | github | api.github.com | GitHub PAT | GET /rate_limit（不占核心配额） |
 | jenkins | 必填实例基址（如 jenkins.example.com） | user:apiToken（可空 = 匿名读；Manage Jenkins → Users → API Token 创建，Basic 认证） | GET /api/json（2xx 且是 JSON 才算连通，防反向代理假阳性） |
+| machine | 无（留空） | 无（本机数据，零凭据零网络） | 不适用：连接恒通（本机即本机） |
 | bigmodel | open.bigmodel.cn | 智谱 API Key（监控接口裸 Key 直传，无 Bearer 前缀） | GET quota/limit |
 | ark | open.volcengineapi.com | 火山 `AccessKey:SecretKey` 冒号分隔一次粘贴（控制台「API 访问密钥」创建；推理 ARK_API_KEY 调不了管控面） | V4 签名调 GetCodingPlanUsage |
 | claude | 无（读本机） | 留空 | 本机会话目录可读 |
@@ -150,6 +151,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | opencode | opencode.usage | 月度预算已用百分比（金额 micro-cents）；多成员聚合：消费求和、任一无上限即无上限、任一超支即超 | Console Budgets API。exceeded → Error；无上限 → Success 基线 |
 | github | github.pull_requests / github.actions.runs | 非额度：PR 列表状态 / Workflow 运行状态 | REST + ETag 条件请求，限额感知 |
 | jenkins | jenkins.build | 非额度：Job 最新构建状态（成功/失败/不稳定/构建中/未构建/已禁用） | 开源标准 JSON API（任意实例通用）：job 端点逐段 `job/<name>` 转义支持 Folder；一次请求按 `color` 判级（job 级 lastBuild 不含 result，实测），`_anime` 后缀=构建中 |
+| machine | machine.net | 非额度：本机网络（IP / ↑↓实时速率 / 累计流量） | 只读本机 `NetworkInterface`（IPv4 收发计数自开机累计）；速率=相邻两次采样差分÷时间差（machine 档 15s，首刷无基线只出 IP 与累计值），计数回退/换卡重记基线；累计流量在 L3 详情；只读本机，不触及冻结的远程机器管理 |
 | http | http.status / http.quota | 自定义：状态词映射或 JSONPath 数值卡 | 任意 HTTP JSON 接口，字段路径全部可配 |
 
 ## 组件（widgets.json）
