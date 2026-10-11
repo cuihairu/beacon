@@ -134,6 +134,7 @@ Codex    71% used   weekly 8h 后重置
 | 通知 | `NotificationEngine` + Toast（B-5xx 已接） |
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
 | Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance（§8，详细进度） |
+| Jenkins / 公司打包槽位 | **已落地**（2026-10-11）：jenkins.build——开源标准 JSON API（批3-补31，批3-补27 挂起项关闭） |
 | Machine Provider | 未实现——M5 收口后并入 [mvp-issues](mvp-issues.md) |
 
 ## 7. 排期约定
@@ -205,6 +206,13 @@ Codex    71% used   weekly 8h 后重置
   （与 Kimi For Coding 套餐是两套账号体系），`GET api.moonshot.cn/v1/users/me/balance` Bearer 认证，
   响应 `{code:0, data:{available_balance}}`；余额 ≤ `warn_below`（默认 20）→ Warning、≤ `error_below`（默认 5）→ Error，
   响应不含余额数据按 Degraded 处理（连接测试同口径，代理回错误体不算连通）；
+- **Jenkins 构建状态（开源 CI，master-plan §13 公司打包工具槽位）**：组件类型 `jenkins.build`——开源 Jenkins
+  标准 JSON API（任意实例通用，非厂商专属）：连接 Endpoint=实例基址，凭据可空（匿名读）或 `user:apiToken`
+  Basic 认证；组件 `job_path` 逐段 `job/<name>` 转义（Folder 嵌套支持）。一次请求 `/job/.../api/json?tree=…`
+  按 `color` 判级（blue→Success、yellow→Warning 不稳定、red/dark_red→Error、aborted→Cancelled、gray/notbuilt
+  →Info 未构建、disabled→已禁用；`_anime` 后缀=构建中 → Running）——job 级 `lastBuild` **不含 result**
+  （weekly.ci.jenkins.io 真实夹具实证），不追打第二击。连接测试取根视图 `/api/json`，2xx 且是 JSON 才算
+  连通（反向代理回 200 HTML 壳按 Degraded，代理假阳性不算连通）；
 - **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
   组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
   （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；

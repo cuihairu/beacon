@@ -14,6 +14,7 @@ public static class WidgetTypeNames
         return prefix switch
         {
             "github" => "GitHub",
+            "jenkins" => "Jenkins",
             "http" => "HTTP",
             "bigmodel" => "智谱",
             "ark" => "火山方舟",

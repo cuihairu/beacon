@@ -922,6 +922,22 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：真实形状 4 例（比例归一/块回退/Cookie+referer/95% 告警边界）+ 旧防御理论全保留，
   4 项目全绿。测试零真实凭据。
 
+### 批3-补31 Jenkins Provider 落地（2026-10-11，用户拍板走开源标准 JSON API，关闭批3-补27 挂起项）
+- **拍板回执**：批3-补27 曾挂起「等用户给真实 Jenkins 地址」——用户令：Jenkins 是开源软件，标准 JSON API
+  任意实例通用，地址只是配置值，不构成卡点。据此按 weekly.ci.jenkins.io 真实夹具（freestyle blue #1 /
+  pipeline red #22 / test notbuilt / queue / Folder）实现。
+- **jenkins.build**：`{base}/job/<每段>/api/json?tree=…`（Folder 逐段转义）；一次请求按 `color` 判级
+  （blue/yellow/red/dark_red/aborted/gray/notbuilt/disabled，`_anime`=构建中）——job 级 `lastBuild` 实测
+  **不含 result**，不追打第二击；`lastBuild.number/url` 与 `healthReport[0]` 进 payload。
+- **jenkins 连接**：Endpoint=实例基址必填；凭据可空（匿名读）或 `user:apiToken` Basic（DPAPI）；
+  测试取根视图 `/api/json`，2xx 且是 JSON 才算连通（防反代 200 HTML 假阳性）。
+- **注册 6 点**：WidgetTypeNames、SettingsWindow（模块行/模块色 #D33833/类型下拉/空连接提示/连接表单
+  4 处文案）、BeaconRuntime（widget+connection 映射）；BrandIcons `["jenkins"]` 品牌标此前已就位。
+- **文档**：README/index 13→14 类；solution-structure（26 文件/树/722 测试）；configuration.md 两表加行；
+  positioning §6 落地清单 + §8 条目；master-plan §10 落地状态改口径。
+- **验收**：真实夹具 21 例（URL 转义/color 词汇表全量/SPA 假阳性/Basic 匿名两态/401 指引），4 项目 722/722
+  全绿。真机项：装后对任意可达 Jenkins 实例（公共或公司）建连接 + 添加 job_path 组件看构建灯。
+
 ## 2026-10-10 装机对照清单（59 条三类，2026-10-11 六次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）
@@ -962,6 +978,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | B-101 单实例/托盘/常驻 | 2 | 二次启动唤起气泡；Exit 才退出 |
 | 批3-补27 托盘 Explorer 重启恢复 / 唤醒补刷 | 2 | 任务管理器重启 Explorer 后托盘图标自回（级别色不丢）；睡眠唤醒后 ≤1 周期出新数据（Win32 消息链路，只能装机验证） |
 | 批3-补28 胶囊右键直达设置 | 1 | 右键胶囊弹设置窗；左键拖动/单击开面板不受扰 |
+| 批3-补31 Jenkins 构建卡 | 1 | 对可达 Jenkins 实例建连接（匿名或 user:apiToken）+ job_path 组件：构建灯/构建号/构建中随刷新走 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
 | B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
 | B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |

@@ -35,7 +35,7 @@
 
 - **第一阶段（MVP）**：GitHub Provider（PR/CI）、Status Capsule、简单 Action、Notification、Tray/Hotkey、Local 配置；**明确不做**：复杂 Workflow Engine、多 Provider、Agent 联动
 - **第二阶段**：Jenkins/GitLab/Docker/Machines/Agents/Generic REST Widget、Schedule、Webhook、Workflow、[Run Task] 发往 Agent——走向 Developer Control Plane
-  - **冻结记录（2026-10-11，master-plan §2.3 拍板②配套）**：GitLab/Docker/Machines/Agents/Workflow/[Run Task]/Control Plane 一律**冻结不做**（长期产品边界，非暂缓）；Generic REST（http.status/http.quota）与 Webhook Action 已落地不受影响；Jenkins 按 master-plan「公司打包工具」槽位待真实地址另议。
+  - **冻结记录（2026-10-11，master-plan §2.3 拍板②配套）**：GitLab/Docker/Machines/Agents/Workflow/[Run Task]/Control Plane 一律**冻结不做**（长期产品边界，非暂缓）；Generic REST（http.status/http.quota）与 Webhook Action 已落地不受影响；Jenkins 已落地（jenkins.build，开源标准 JSON API，2026-10-11 批3-补31）。
 
 ## MVP 成功标准（第一版验收）
 
