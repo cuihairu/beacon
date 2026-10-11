@@ -25,8 +25,8 @@ internal sealed record RecentEvent(DateTimeOffset At, WidgetState State);
 /// </summary>
 public sealed partial class QuickPanelWindow : Window
 {
-    private const int PanelWidth = 320;
-    private const int PanelHeight = 540; // 通知中心区加入后加高（未读徽标 + 记录列表 MaxHeight 118）
+    private const int PanelWidth = 380; // master-plan §3.2 建议宽 360–420，取中（批3-补27 拍板④；原 320）
+    private const int PanelHeight = 540; // 通知中心区加入后加高（未读徽标 + 记录列表 MaxHeight 118）；在建议带 420–560 内
     private const int MaxRecentEvents = 50;
 
     private readonly NativeMethods.RECT _fallbackWorkArea = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
@@ -205,6 +205,7 @@ public sealed partial class QuickPanelWindow : Window
         }
         UpdateHeader();
         UpdateOverview();
+        RebuildStatus();
         RebuildRecent();
     }
 
@@ -271,6 +272,48 @@ public sealed partial class QuickPanelWindow : Window
     }
 
     /// <summary>
+    /// 批3-补27 拍板④（master-plan §3.2 三分区）：当前状态按 Core 纯函数 QuickPanelSections 分组——
+    /// 需要关注（失败/超时/离线/过期，级别降序）与正在运行；与 RECENT EVENTS（事件流）正交。
+    /// 空区隐藏，两区全空整块收起（面板回落旧观感）。
+    /// </summary>
+    private void RebuildStatus()
+    {
+        var attention = new List<WidgetState>();
+        var running = new List<WidgetState>();
+        foreach (var state in _states.Values)
+        {
+            switch (QuickPanelSections.Resolve(state))
+            {
+                case QuickPanelSection.NeedsAttention:
+                    attention.Add(state);
+                    break;
+                case QuickPanelSection.InProgress:
+                    running.Add(state);
+                    break;
+            }
+        }
+        attention.Sort((a, b) => b.Severity.CompareTo(a.Severity)); // Critical 最先
+        running.Sort((a, b) => b.Severity.CompareTo(a.Severity));
+        FillStateList(AttentionList, AttentionHeader, attention);
+        FillStateList(RunningList, RunningHeader, running);
+        StatusPanel.Visibility = attention.Count == 0 && running.Count == 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void FillStateList(ListView list, FrameworkElement header, IReadOnlyList<WidgetState> states)
+    {
+        list.Items.Clear();
+        foreach (var state in states)
+        {
+            list.Items.Add(MakeStateRow(state, state.FetchedAt.ToLocalTime().ToString("HH:mm:ss")));
+        }
+        var visible = states.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        list.Visibility = visible;
+        header.Visibility = visible;
+    }
+
+    /// <summary>
     /// B-601 通知中心：渲染 NotificationEngine.Records（旧→新 → 界面新→旧）。
     /// 记录由 notifications.json 水合跨重启；单击单条标已读，「全部已读」一键清；
     /// 无跳转（记录的 Widget 可能已删，链接语义交给 L3 详情）。
@@ -310,7 +353,7 @@ public sealed partial class QuickPanelWindow : Window
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 210,
+            MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
             VerticalAlignment = VerticalAlignment.Center,
             FontWeight = record.Read ? FontWeights.Normal : FontWeights.SemiBold, // 未读加粗区分
         };
@@ -337,29 +380,33 @@ public sealed partial class QuickPanelWindow : Window
     }
 
     private ListViewItem MakeEventRow(RecentEvent evt)
+        => MakeStateRow(evt.State, evt.At.ToString("HH:mm:ss"), tag: evt);
+
+    /// <summary>状态行（当前状态区与 RECENT 共用）：级别点 + 时间 + 摘要；单击进 L3，右键 Pin（B-702 口径）。</summary>
+    private ListViewItem MakeStateRow(WidgetState state, string timeText, object? tag = null)
     {
         var dot = new Ellipse
         {
             Width = 8,
             Height = 8,
             VerticalAlignment = VerticalAlignment.Center,
-            Fill = new SolidColorBrush(_palette.SeverityColor(evt.State.Severity,
-                widgetOverride: _runtime.Config.FindWidget(evt.State.WidgetId)?.ColorOverride)),
+            Fill = new SolidColorBrush(_palette.SeverityColor(state.Severity,
+                widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)),
         };
         var time = new TextBlock
         {
-            Text = evt.At.ToString("HH:mm:ss"),
+            Text = timeText,
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var label = new TextBlock
         {
-            Text = evt.State.Summary,
+            Text = state.Summary,
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
             FontSize = 12,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 210,
+            MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
             VerticalAlignment = VerticalAlignment.Center,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
@@ -367,12 +414,21 @@ public sealed partial class QuickPanelWindow : Window
         row.Children.Add(time);
         row.Children.Add(label);
 
-        var item = new ListViewItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = evt };
-        var pinned = _runtime.Config.FindWidget(evt.State.WidgetId)?.Pinned == true;
+        var item = new ListViewItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
+        var pinned = _runtime.Config.FindWidget(state.WidgetId)?.Pinned == true;
         var pin = new MenuFlyoutItem { Text = pinned ? "Unpin from desktop" : "Pin to desktop" };
-        pin.Click += (_, _) => PinWidget(evt.State.WidgetId);
+        pin.Click += (_, _) => PinWidget(state.WidgetId);
         item.ContextFlyout = new MenuFlyout { Items = { pin } };
         return item;
+    }
+
+    /// <summary>当前状态区（需要关注/正在运行）单击 → L3 详情（与 RECENT 同链路，B-603）。</summary>
+    private void OnStateItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is ListViewItem { Tag: WidgetState state })
+        {
+            DetailRequested?.Invoke(state);
+        }
     }
 
     private void OnRecentItemClick(object sender, ItemClickEventArgs e)
