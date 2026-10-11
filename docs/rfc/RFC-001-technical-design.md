@@ -4,7 +4,7 @@
 |---|---|
 | 状态 | Draft（待评审） |
 | 日期 | 2026-10-07 |
-| 上游 | [任务书](../mission.md)（定位 / 分期 / 验收标准） |
+| 上游 | [任务书](../mission.md)（定位 / 分期 / 验收标准） · [产品与技术实施总方案](../master-plan.md)（2026-10-11 定版；冲突处已拍板，见 mvp-issues 拍板记录） |
 | 下游 | [Solution 项目目录](../solution-structure.md) · [MVP Issue 列表](../mvp-issues.md) |
 | 平台 | Windows 10 1809 (17763)+ / Windows 11，仅 Windows（`TargetPlatformMinVersion=10.0.17763.0`） |
 
@@ -299,7 +299,12 @@ L0 只承载**用户需要被动感知变化**的信息，由 Widget 类型元�
 
 ### 6.4 L2 Quick Panel（摘要）
 
-Flyout 窗口，出现在胶囊/托盘附近：Overview（按来源计数）+ Recent Events（滚动最近状态变化）+ 常用 Action 按钮行。可激活以支持键盘（ESC 关闭、Tab 导航）。
+Flyout 窗口，出现在胶囊/托盘附近，**380 × 540 DIP**（master-plan §3.2 建议带取中，批3-补27④）：
+Overview（按来源计数）+ **NEEDS ATTENTION / RUNNING 当前状态三分区**（Core `QuickPanelSections` 判定：
+Warning 及以上 / 数据过期 / 连接断 = 需要关注；Running/Queued 无告警 = 正在运行；空区隐藏）+
+Recent Events（滚动最近状态变化，即 master-plan「最近状态」）+ 通知中心（notifications.json 落盘水合，单击标已读）。
+单击行进 L3，右键 Pin to desktop 落 widgets.json。可激活以支持键盘（ESC 关闭、Tab 导航）；
+**常驻档**（`config.keepQuickPanelOpen`，托盘菜单 Keep Panel Open 打勾）失焦不自隐，Esc/再次点托盘仍可显式关。
 
 ### 6.5 L3 Detail Window（摘要）
 
@@ -438,9 +443,9 @@ config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/
 ## 14. 可扩展路线（Provider → Plugin）
 
 - MVP：Provider 以程序集内文件夹组织（`Beacon.Connections/GitHub|Rest`），接口即边界。
-- 二期：Provider 拆独立程序集（`Beacon.Connections.Jenkins` 等），走 .NET 插件加载（AssemblyLoadContext）+ 清单注册；Plugin 可贡献 Connection/Widget/Action/Trigger。
-- Agent/中央服务器同样以 Connection + Provider 接入，**不写死进 Core**。
-- 二期/三期增强层：**本地 AI 支持**（Ollama / OpenAI-compatible API）——「Ask Beacon」收集 CI 结果、日志、提交上下文交模型分析（原方案有此项，归二期不丢）；AI 只是增强层，不进 Core 架构。
+- 二期：Provider 拆独立程序集（`Beacon.Connections.Jenkins` 等），走 .NET 插件加载（AssemblyLoadContext）+ 清单注册；Plugin 可贡献 Connection/Widget/Action/Trigger。**【冻结 2026-10-11】**（master-plan §2.3「不做复杂插件平台」拍板）：接口边界保持干净，程序集拆分与插件加载按需再议。
+- Agent/中央服务器同样以 Connection + Provider 接入，**不写死进 Core**。**【冻结 2026-10-11】**（master-plan §2.3「不做 AI Agent 管理/远程机器管理/控制中心」拍板）。
+- 二期/三期增强层：**本地 AI 支持**（Ollama / OpenAI-compatible API）——「Ask Beacon」收集 CI 结果、日志、提交上下文交模型分析（原方案有此项，归二期不丢）；AI 只是增强层，不进 Core 架构。**【冻结 2026-10-11】**（master-plan §2.3 拍板：维护成本优先）。
 
 ## 15. 测试策略
 
