@@ -173,7 +173,7 @@ Beacon.App/
 │   ├── UiPalette.cs  MotionEngine.cs  ShellStateStore.cs  UiDispatcher.cs
 │   └── （+ Monitor 相关辅助）
 └── Windows/                           # 7 文件（UI 多为代码构建）
-    ├── CapsuleWindow.xaml|cs          # L1 聚合胶囊（独立置顶常驻窗，位置记忆）
+    ├── CapsuleWindow.xaml|cs          # L1 聚合胶囊（独立置顶常驻窗，位置记忆；右键直达设置）
     ├── QuickPanelWindow.xaml|cs       # L2 快捷面板（可激活，ESC 关；通知中心/组件列表）
     ├── PinnedHostWindow.cs            # ★ L0 宿主面板形态（默认）：每显示器一窗，代码建 UI，
     │                                  #   Topmost+NoActivate+空白点击穿透；含 PinTile 控件
