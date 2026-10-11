@@ -24,7 +24,26 @@ public static class MachineWidgetDescriptors
         ],
     };
 
-    public static IReadOnlyList<WidgetTypeDescriptor> All { get; } = [Net];
+    public const string LocalType = "machine.local";
+
+    public static WidgetTypeDescriptor Local { get; } = new()
+    {
+        Type = LocalType,
+        DisplayName = "本机资源（CPU · 内存 · 磁盘）",
+        PinSupported = true,
+        FloatingOptIn = true, // 数值类：设置「数量悬浮窗」开关放行（2026-10-11 用户令默认开）
+        SuggestedTier = RefreshTiers.Machine,
+        Fields =
+        [
+            new WidgetFieldDescriptor("label", "显示名", Placeholder: "本机资源"),
+            new WidgetFieldDescriptor("disk_path", "磁盘/挂载点（空 = 系统盘/根分区）", Placeholder: "C:\\ 或 /mnt/data"),
+            new WidgetFieldDescriptor("cpu_threshold", "CPU 阈值 %（超线亮黄，默认 90）", Placeholder: "90"),
+            new WidgetFieldDescriptor("mem_threshold", "内存阈值 %（超线亮黄，默认 90）", Placeholder: "90"),
+            new WidgetFieldDescriptor("disk_threshold", "磁盘阈值 %（超线亮黄，默认 90）", Placeholder: "90"),
+        ],
+    };
+
+    public static IReadOnlyList<WidgetTypeDescriptor> All { get; } = [Net, Local];
 }
 
 /// <summary>
