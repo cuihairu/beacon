@@ -249,7 +249,8 @@ public sealed class GitWorkspaceProviderTests
         }
         finally
         {
-            try { Directory.Delete(root, recursive: true); } catch (IOException) { }
+            // Windows 上 .git 对象文件只读，递归删除会 UnauthorizedAccessException——清理尽力而为
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
 
