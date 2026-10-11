@@ -4,7 +4,8 @@ namespace Beacon.Core.Models;
 public sealed class ConnectionConfig
 {
     public required string Id { get; init; }
-    /// <summary>"github" | "rest" | ...（Provider 类型标识）。</summary>
+    /// <summary>Provider 类型标识：github / http / bigmodel / ark / claude / kimi / deepseek / mimo /
+    /// codex / copilot / opencode / qwen / moonshot（设置页模块目录即此全集）。</summary>
     public required string Type { get; init; }
     public string? Endpoint { get; init; }
     public string? CredentialRef { get; init; }

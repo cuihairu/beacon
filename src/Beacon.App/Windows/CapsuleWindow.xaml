@@ -6,7 +6,7 @@
     Title="Beacon Status">
     <!-- RFC §6.2.2 形态规范：高 32 DIP、宽随内容、圆角胶囊、亚克力/半透明、随主题；
          构成 = 状态灯 + 极简计数（无正文文字）；离线降级见 §6.2.6（灰空心灯 + Last update） -->
-    <Grid x:Name="Root" Background="Transparent" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased">
+    <Grid x:Name="Root" Background="Transparent" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased" RightTapped="OnRightTapped">
         <StackPanel Spacing="4">
             <Border
                 x:Name="RootBorder"

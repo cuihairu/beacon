@@ -42,6 +42,9 @@ public sealed partial class CapsuleWindow : Window
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
 
+    /// <summary>右键 → 直达设置（master-plan §3.1「右键打开…常用设置」；批3-补28）。</summary>
+    public event Action? SettingsRequested;
+
     public CapsuleWindow(ShellStateStore shellState, Beacon.Storage.JsonConfigurationStore config)
     {
         InitializeComponent();
@@ -129,6 +132,13 @@ public sealed partial class CapsuleWindow : Window
         _dragStartCursor = CursorPx();
         _dragOrigin = (_x, _y);
         Root.CapturePointer(e.Pointer);
+    }
+
+    /// <summary>右键直达设置（左键拖动已在 Pressed 过滤非左键，互不干扰）。</summary>
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        SettingsRequested?.Invoke();
+        e.Handled = true;
     }
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)

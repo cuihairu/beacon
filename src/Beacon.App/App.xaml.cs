@@ -158,6 +158,7 @@ public partial class App : Application
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
         _capsule = capsule; // 退出清理用
         capsule.OpenPanelRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
+        capsule.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings); // master-plan §3.1：胶囊右键直达设置（批3-补28）
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.TryEnqueue(() => capsule.NoteFetch(evt.State.FetchedAt)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.TryEnqueue(() =>
         {
