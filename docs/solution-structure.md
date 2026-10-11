@@ -68,7 +68,7 @@ Beacon.Core/
 │   ├── IClock.cs                      # 注入时钟，供退避/冷却单测
 │   ├── IEventBus.cs
 │   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）+ 记录落盘抽象 INotificationRecordStore
-├── Services/
+├── Services/                           # 17 文件
 │   ├── EventBus.cs                    # 线程安全的进程内发布/订阅
 │   ├── RefreshScheduler.cs            # (connection,tier,间隔覆盖) 合并轮询 + 抖动 + 退避
 │   ├── StatusAggregator.cs            # WidgetState* → 总体 Severity + 计数
@@ -78,6 +78,11 @@ Beacon.Core/
 │   ├── SvgPathParser.cs               # SVG path d → 中性几何（品牌图标渲染前置层，纯函数供单测）
 │   ├── BrandIcons.cs                  # Simple Icons CC0 品牌 path 字典 + 连接类型别名归一（纯字符串零依赖，供单测；未收录由 App 字形兜底）
 │   ├── WidgetValueHint.cs             # 悬浮 tile 数值位短文本（各家额度源 payload 键 → 主数值映射，纯函数供单测）
+│   ├── WidgetTypeNames.cs             # 组件类型 → 短显示名（tile 标签/L2 分组 chip 共用，纯函数供单测）
+│   ├── QuickPanelSections.cs          # L2 面板三分区判定（Warning+/过期/断连 → NEEDS ATTENTION，纯函数供单测）
+│   ├── DpiLayoutMath.cs               # DIP↔物理像素唯一换算口径（AppWindow 只认物理像素）
+│   ├── ContrastMath.cs                # WCAG 2.x 对比度数学（纯函数，Linux 门禁可测）
+│   └── HighContrastPalette.cs         # 高对比调色板（WCAG AA 4.5:1，配对经 Core.Tests 断言）
 ├── Events/
 │   └── Events.cs                      # WidgetStateChanged / AggregateStatusChanged 等事件
 └── Json/
@@ -175,8 +180,8 @@ Beacon.App/
 │   ├── SingleInstanceGuard.cs         # Mutex + 命名事件（二次启动通知既有实例弹气泡）
 │   ├── FileLoggerProvider.cs  CrashLog.cs    # beacon-YYYYMMDD.log / crash-*.log
 │   ├── UiPalette.cs  MotionEngine.cs  ShellStateStore.cs  UiDispatcher.cs
-│   └── （+ Monitor 相关辅助）
-└── Windows/                           # 7 文件（UI 多为代码构建）
+│   └── AppIcon.cs                     # 应用图标唯一来源（逐窗 AppWindow.SetIcon——unpackaged 任务栏图标坑）
+└── Windows/                           # 10 文件（8 .cs + 2 .xaml，UI 多为代码构建）
     ├── CapsuleWindow.xaml|cs          # L1 聚合胶囊（独立置顶常驻窗，位置记忆；右键直达设置）
     ├── QuickPanelWindow.xaml|cs       # L2 快捷面板（可激活，ESC 关；通知中心/组件列表）
     ├── PinnedHostWindow.cs            # ★ L0 宿主面板形态（默认）：每显示器一窗，代码建 UI，
@@ -186,6 +191,7 @@ Beacon.App/
     ├── BrandIconFactory.cs            # 品牌 path → Path(Stretch=Uniform)（设置目录/悬浮 tile 共用，
     │                                  #   空几何/渲染失败退 null 让调用方字形兜底）
     ├── DetailWindow.cs                # L3 详情 + 全部 Action（代码建 UI）
+    ├── ThemeColors.cs                 # 主题色桥：Core 高对比调色板 → WinUI 画刷（配对断言见 ContrastMathTests）
     └── SettingsWindow.cs              # B-801/802/805：PowerToys 形态配置中心（模块目录+启停+连接/组件 CRUD，
                                        #   悬浮形态二选一、导入导出、通知规则；代码建 UI）
 ```
@@ -194,7 +200,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 474 个测试（Connections 249 / Core 170 / Actions 27 / Storage 28），即本地门禁。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 685 个测试（Connections 371 / Core 256 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 
