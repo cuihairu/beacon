@@ -132,7 +132,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | qwen | usage_endpoint | 自定义用量端点（GET + Bearer）。留空则显示模型目录并如实标注官方额度口未开放 |
 | mimo | usage_endpoint | 本机计数源（GET + Bearer），防御解析 total_calls/window_calls/window_minutes |
 | mimo | console_usage_url | 控制台套餐用量 API 地址（默认 `/api/v1/tokenPlan/usage`，GET + api-platform_ph Cookie + plan-manage referer） |
-| mimo | console_credential_ref | 控制台 Cookie 的凭据引用，默认 `mimo:console`（Cookie 值 = 浏览器 F12 → Cookies → api-platform_ph；**粘贴 + DPAPI 回放，不做扫码登录**，会话过期重录） |
+| mimo | console_credential_ref | 控制台 Cookie 的凭据引用，默认 `mimo:console`（Cookie 值 = 浏览器 F12 → Cookies → api-platform_ph 的值（整行 Cookie 粘进来也行，自动取 api-platform_ph）；**粘贴 + DPAPI 回放，不做扫码登录**，会话过期重录） |
 
 ### 各家额度口径与数据源
 
@@ -151,7 +151,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | opencode | opencode.usage | 月度预算已用百分比（金额 micro-cents）；多成员聚合：消费求和、任一无上限即无上限、任一超支即超 | Console Budgets API。exceeded → Error；无上限 → Success 基线 |
 | github | github.pull_requests / github.actions.runs | 非额度：PR 列表状态 / Workflow 运行状态 | REST + ETag 条件请求，限额感知 |
 | jenkins | jenkins.build | 非额度：Job 最新构建状态（成功/失败/不稳定/构建中/未构建/已禁用） | 开源标准 JSON API（任意实例通用）：job 端点逐段 `job/<name>` 转义支持 Folder；一次请求按 `color` 判级（job 级 lastBuild 不含 result，实测），`_anime` 后缀=构建中 |
-| machine | machine.net | 非额度：本机网络（IP / ↑↓实时速率 / 累计流量） | 只读本机 `NetworkInterface`（IPv4 收发计数自开机累计）；速率=相邻两次采样差分÷时间差（machine 档 15s，首刷无基线只出 IP 与累计值），计数回退/换卡重记基线；累计流量在 L3 详情；只读本机，不触及冻结的远程机器管理 |
+| machine | machine.net / machine.git | 非额度：本机网络（IP / ↑↓实时速率 / 累计流量）+ 本机 Git 仓库（↑↓ · 改 · stash，每仓库一张卡） | 网络：只读本机 `NetworkInterface`（IPv4 收发计数自开机累计）；速率=相邻两次采样差分÷时间差（machine 档 15s，首刷无基线只出 IP 与累计值），计数回退/换卡重记基线；累计流量在 L3 详情。Git：git CLI 三连只读（status --porcelain -b / rev-list / stash list，零网络零凭据，无上游不上板 ↑↓），behind>0 或分叉亮黄（要动手拉取/rebase）；变更文件前 5 条预览在 L3。两者都只读本机，不触及冻结的远程机器管理 |
 | http | http.status / http.quota | 自定义：状态词映射或 JSONPath 数值卡 | 任意 HTTP JSON 接口，字段路径全部可配 |
 
 ## 组件（widgets.json）

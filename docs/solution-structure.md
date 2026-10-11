@@ -92,7 +92,7 @@ Beacon.Core/
 ### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
 
 ```text
-Beacon.Connections/                    # 27 文件
+Beacon.Connections/                    # 28 文件
 ├── GitHub 6 文件
 │   ├── GitHubConnectionProvider.cs    # PAT 认证、连接测试、rate-limit 感知
 │   ├── GitHubApiClient.cs             # 手写 REST 客户端（不引 Octokit）+ ETag 条件请求 + 限额感知
@@ -101,8 +101,10 @@ Beacon.Connections/                    # 27 文件
 │   ├── GitHubActionsProvider.cs       # type: github.actions.runs
 │   └── GitHubWorkflowExecutors.cs     # gh.workflow_dispatch/rerun/cancel 执行器
 ├── Jenkins 1 文件
-│   ├── JenkinsBuildProvider.cs        # type: jenkins.build（开源标准 JSON API，color 判级）+ JenkinsConnectionProvider（同文件）
-│   └── MachineNetProvider.cs          # type: machine.net（IP/↑↓速率/累计流量，差分算速率）+ MachineConnectionProvider（同文件）
+│   └── JenkinsBuildProvider.cs        # type: jenkins.build（开源标准 JSON API，color 判级）+ JenkinsConnectionProvider（同文件）
+├── Machine 2 文件（本机数据，零凭据零网络）
+│   ├── MachineNetProvider.cs          # type: machine.net（IP/↑↓速率/累计流量，差分算速率）+ MachineConnectionProvider（同文件）
+│   └── GitWorkspaceProvider.cs        # type: machine.git（本地 Git 工作区 ↑↓·改·stash，git CLI 只读）
 ├── HTTP 6 文件（Generic HTTP 接入）
 │   ├── HttpConnectionProvider.cs      # 连接测试（支持 auth_header/auth_prefix 覆盖）
 │   ├── HttpEndpoint.cs                # 端点请求与凭据装配
@@ -203,7 +205,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 748 个测试（Connections 434 / Core 256 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 766 个测试（Connections 452 / Core 256 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

@@ -135,7 +135,7 @@ Codex    71% used   weekly 8h 后重置
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
 | Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance（§8，详细进度） |
 | Jenkins / 公司打包槽位 | **已落地**（2026-10-11）：jenkins.build——开源标准 JSON API（批3-补31，批3-补27 挂起项关闭） |
-| Machine Provider | **部分落地**（2026-10-11 批3-补32）：machine.net 本机网络（IP/↑↓速率/累计流量，零凭据零网络）；远程机器/服务器管理（§5 三类之一）按冻结记录不做 |
+| Machine Provider | **部分落地**（2026-10-11 批3-补32/33）：machine.net 本机网络（IP/↑↓速率/累计流量）+ machine.git 本机 Git 仓库（↑↓·改·stash，每仓库一张卡），均零凭据零网络；远程机器/服务器管理（§5 三类之一）按冻结记录不做 |
 
 ## 7. 排期约定
 
@@ -217,6 +217,10 @@ Codex    71% used   weekly 8h 后重置
   IP + 实时 ↓↑ 速率（相邻两次采样计数差÷时间差，machine 档 15s，首刷无基线只出 IP 与累计值）+ 累计流量
   （自开机，进 payload 走 L3 详情）；自动选卡=Up+非回环+有 IPv4、有网关者优先，点名网卡不存在按 Degraded；
   不触及冻结的远程 Machines 管理；
+- **本机 Git 仓库（2026-10-11 批3-补33，用户拍板「git 都搞」）**：组件类型 `machine.git`——每仓库一张卡
+  `beacon ↑2↓5 · 改 7 · stash 1`：git CLI 三连只读（status --porcelain -b / rev-list @{u}...HEAD / stash list，
+  零网络零凭据，无上游不追打第二击）；behind>0 或分叉 → Warning（要动手才亮黄，仅待推 ahead 是 Info）；
+  变更文件前 5 条预览（重命名取 -> 右侧）进 payload 走 L3 详情，32 DIP 装不下也不分页；
 - **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
   组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
   （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；
