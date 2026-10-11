@@ -973,11 +973,32 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   （引号照剥）；键不存在原样透传由服务端 401 走既有指引。存量整行凭据无需重录，装新包即生效。
 - **验收**：6 例（裸值/引号/整行带引号/无引号/值含分号不干扰/无目标键透传）。
 
-## 2026-10-10 装机对照清单（61 条三类，2026-10-11 七次整理）
+### 批3-补35 Herald 接入落地（2026-10-11，用户拍板「先做 incidents+feed」）
+- **背景**：用户令为自有项目 herald（cuihairu/herald，Go 统一订阅与投递中枢）加配置主动拉关心的消息；
+  先分析 API 面（feeds/logs/incidents/stats）后拍板：三张卡候选先做两张，deliveries 暂缓。
+- **herald 连接**：Endpoint=基址必填；凭据可空（Herald 未开 auth 匿名可用）或 API Key 走 X-API-Key 头（DPAPI）；
+  测试打恒公开口 `/api/v1/status`，2xx 且是 JSON 才算连通（反代 HTML 壳按 Degraded，Jenkins 同口径）。
+- **herald.incidents**：`/api/v1/incidents?status=open|acked|resolved|all`（默认 open，乱填 fail-loud）；
+  open>0 亮黄、含 critical 亮红（Error/Failed）、回看口径恒 Info；最新一条 id/title/level/opened_at 进 payload 走 L3。
+- **herald.feed**：公开类目 `/feeds/{category}.xml`（slug 校验 `^[a-zA-Z0-9._-]{1,64}$` 防注入）或私密
+  `/feeds/private/{token}.xml`（token 即凭据，`feed_token_ref` 默认 herald:feed 走 DPAPI，不落 widgets.json
+  不进 payload；类目优先）；RSS 按最新在前；未读=自上一次刷新新增 guid（按组件记基线，首刷只记基线不出未读）。
+- **坑（实证）**：Go `time.RFC1123Z` 时区写 `+0000`（无冒号），且本机/CI 容器 .NET 跑 globalization-invariant
+  模式——带星期名的日期解析四种时区写法全挂（连 GMT+TryParseExact 都 False）；剥「Tue, 」前缀后 TryParse 全通。
+- **顺带修复**：GitWorkspaceProviderTests 真仓库集成清理在 Windows 撞 .git 只读对象（UnauthorizedAccessException，
+  CI windows-latest 实证，Linux 复现不了）→ 清理 catch 扩面。
+- **注册 6 点**：WidgetTypeNames、SettingsWindow（模块行/模块色琥珀/类型下拉/空连接提示/连接表单 4 处文案）、
+  BeaconRuntime（2 widget + 1 connection 映射）。
+- **文档**：README/index 15→16 类；solution-structure（29 文件/787 测试）；configuration.md 两表加行；
+  positioning §8 条目；master-plan §10 计数。
+- **验收**：21 例（incidents 解析 2 + 事件映射 5 + RSS 解析 3 + feed 6 + 连接 3 + 描述/slug 2），787/787 全绿；
+  真机：装后对自建 herald 实例建连接 + 两张卡看数。
+
+## 2026-10-10 装机对照清单（63 条三类，2026-10-11 八次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）
-+ 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34 新增项。2026-10-11 复点：
-原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 44 = **61 条**。
++ 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34/35 新增项。2026-10-11 复点：
+原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 46 = **63 条**。
 另有 1 条关联项（批3-补10 透明度）用户已确认修好，列「已验」。装 nightly 后按此清单对照回执；带 CI 证据的项已注证据文件。
 **装包版本门**：2026-10-10T17:30Z 后的 nightly（zip `a0b255bd…`，commit c880f5d）才含补22 三修复；
 此前用户报「没有修复」时装的是旧包（见补22 nightly 归属核实）。
@@ -1007,7 +1028,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 拖动跨三屏跟手 | 批3-补22 | 拖动锚点改光标屏幕物理像素（旧实现按下 DPI 与每帧当前 DPI 混算，跨缩放屏比例错乱）；装后慢拖胶囊/悬浮框跨三个缩放不同的屏看 |
 | 详情窗 200% 仍裁字 | 批3-补22 | DetailWindow 是标题栏窗，Resize 补回非客户区差值（GetWindowRect−GetClientRect）；装 200% 开详情窗看字完整 |
 
-### ⬜ 未修（44 条：无已知缺陷，代码就位，待装机首验）
+### ⬜ 未修（46 条：无已知缺陷，代码就位，待装机首验）
 | 项 | 条数 | 说明 |
 |---|---|---|
 | B-101 单实例/托盘/常驻 | 2 | 二次启动唤起气泡；Exit 才退出 |
@@ -1017,6 +1038,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 批3-补32 本机网络卡 | 1 | 建 machine 连接（零凭据）+ machine.net 组件：IP 与累计流量在 L3，首刷无速率、第二刷起 ↓↑ 速率随刷新走 |
 | 批3-补33 本机 Git 卡 | 1 | machine 连接 + machine.git 组件：repo_path 填本机任一仓库，↑↓/改/stash 随刷新走；落后远端亮黄 |
 | 批3-补34 MiMo 整行 Cookie | 1 | 整行 Cookie 粘进控制台凭据也能出数（自动取 api-platform_ph）；此前整行粘贴卡 offline |
+| 批3-补35 Herald 两卡 | 2 | 对自建 herald 实例建连接：herald.incidents 未决计数/亮黄亮红随台账走；herald.feed 公开类目或私密 token，新条目未读数随刷新走 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
 | B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
 | B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |
