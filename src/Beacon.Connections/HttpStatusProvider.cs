@@ -77,21 +77,23 @@ public sealed class HttpStatusProvider : IWidgetProvider
     {
         var body = await HttpEndpoint.FetchAsync(_client, connection, context, cancellationToken).ConfigureAwait(false);
 
+        // 数据提取键走生效配置视图（dsl_path 未配 = widget.Config 原样，行为零变化）
+        var config = ProviderDsl.EffectiveConfig(widget, connection);
         string? status, summary, url;
         try
         {
             using var document = JsonDocument.Parse(body);
             var root = document.RootElement;
-            status = HttpJsonPath.Select(root, widget.Config.GetValueOrDefault("status_path") ?? "$.status");
-            summary = HttpJsonPath.Select(root, widget.Config.GetValueOrDefault("summary_path"));
-            url = HttpJsonPath.Select(root, widget.Config.GetValueOrDefault("url_path"));
+            status = HttpJsonPath.Select(root, config.GetValueOrDefault("status_path") ?? "$.status");
+            summary = HttpJsonPath.Select(root, config.GetValueOrDefault("summary_path"));
+            url = HttpJsonPath.Select(root, config.GetValueOrDefault("url_path"));
         }
         catch (JsonException exception)
         {
             throw new ConnectionException($"HTTP 响应不是合法 JSON：{exception.Message}", ConnectionHealthState.Degraded, exception);
         }
 
-        var (lifecycle, severity) = MapStatus(status, SuccessValues(widget), WarningValues(widget), ErrorValues(widget));
+        var (lifecycle, severity) = MapStatus(status, SuccessValues(widget, connection), WarningValues(widget, connection), ErrorValues(widget, connection));
         var label = widget.Config.GetValueOrDefault("label");
         return new WidgetState
         {
@@ -114,15 +116,18 @@ public sealed class HttpStatusProvider : IWidgetProvider
         };
     }
 
-    internal static HashSet<string> SuccessValues(WidgetConfig widget) => Words(widget, "success_values", "success,ok,done,passed,healthy,finished");
+    internal static HashSet<string> SuccessValues(WidgetConfig widget, ConnectionConfig connection)
+        => Words(ProviderDsl.EffectiveConfig(widget, connection), "success_values", "success,ok,done,passed,healthy,finished");
 
-    internal static HashSet<string> WarningValues(WidgetConfig widget) => Words(widget, "warning_values", "running,building,pending,queued,in_progress,deploying,starting");
+    internal static HashSet<string> WarningValues(WidgetConfig widget, ConnectionConfig connection)
+        => Words(ProviderDsl.EffectiveConfig(widget, connection), "warning_values", "running,building,pending,queued,in_progress,deploying,starting");
 
-    internal static HashSet<string> ErrorValues(WidgetConfig widget) => Words(widget, "error_values", "failed,failure,error,critical,broken");
+    internal static HashSet<string> ErrorValues(WidgetConfig widget, ConnectionConfig connection)
+        => Words(ProviderDsl.EffectiveConfig(widget, connection), "error_values", "failed,failure,error,critical,broken");
 
-    private static HashSet<string> Words(WidgetConfig widget, string key, string fallback)
+    private static HashSet<string> Words(IReadOnlyDictionary<string, string> config, string key, string fallback)
     {
-        var raw = widget.Config.GetValueOrDefault(key);
+        var raw = config.GetValueOrDefault(key);
         if (string.IsNullOrWhiteSpace(raw))
         {
             raw = fallback;

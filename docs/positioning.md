@@ -62,7 +62,28 @@ Provider
    }
    ```
 
-   **计划中（未实现）**：原设计的 YAML provider DSL（`mapping` 声明式字段映射 + per-provider `actions.retry` 动作配置）——当前动作仍走既有 Action 执行器链路，声明式 DSL 待后续排期。
+   **已落地（批3-补42，2026-10-12）**：YAML provider DSL 已实现——连接 Settings 配 `dsl_path` 指向声明文件即启用，**不配置即零变化**（既有 widget.Config 路径逐字节等价）。口径：声明层只供**数据提取缺省值**（status/summary/url 路径、状态词表、额度路径与单位），`widget.Config` 实例值仍优先（声明层不夺实例覆盖权）；`label/icon/阈值` 属组件实例，不进 DSL；`actions` 走既有 Action 执行器链路（`open.url`/`http`/`webhook`），`retry`（max_attempts 1–10、backoff_seconds 0–300）落到 Runner 重试参数（默认 1 次=不重试，重试共享同一总超时预算，用户取消/超时不重试）。零第三方依赖：内置极小 YAML 子集解析器（缩进映射 / `- ` 列表 / 引号 / 行内注释），支持外的语法（flow、块标量、Tab、多文档）fail-loud 带行号，坏文件落 Degraded 卡面、动作加载失败记警告跳过。示例：
+
+   ```yaml
+   # 连接 Settings: dsl_path: C:\Beacon\packer.yaml
+   provider: company-packager
+   mapping:
+     status_path: $.job.state
+     success_values: green,passed
+   actions:
+     - id: restart
+       type: http
+       name: 重启打包任务
+       url: https://packer.local/api/jobs/42/restart
+       method: POST
+       confirm: true          # http/webhook 默认 true；open.url 默认 false
+       retry:
+         max_attempts: 3      # 1–10，默认 1（不重试）
+         backoff_seconds: 5   # 0–300，默认 5
+     - id: dashboard
+       type: open.url
+       url: https://packer.local/dashboard
+   ```
 
    > 不管内部是自研、老旧还是「垃圾」系统，只要有 HTTP API 就能接入 Beacon。
    > 凭据一律 `credentialRef` + DPAPI（**严禁明文 token**，与连接密钥同一条安全约束）。

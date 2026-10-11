@@ -95,9 +95,9 @@ public sealed class HttpStatusProviderTests
 
         var (lifecycle, severity) = HttpStatusProvider.MapStatus(
             status,
-            HttpStatusProvider.SuccessValues(widget),
-            HttpStatusProvider.WarningValues(widget),
-            HttpStatusProvider.ErrorValues(widget));
+            HttpStatusProvider.SuccessValues(widget, Connection()),
+            HttpStatusProvider.WarningValues(widget, Connection()),
+            HttpStatusProvider.ErrorValues(widget, Connection()));
 
         Assert.Equal(expectedLifecycle, lifecycle);
         Assert.Equal(expectedSeverity, severity);
@@ -112,9 +112,9 @@ public sealed class HttpStatusProviderTests
             ["warning_values"] = "warmup",
             ["error_values"] = "dead",
         });
-        HashSet<string> Success() => HttpStatusProvider.SuccessValues(widget);
-        HashSet<string> Warning() => HttpStatusProvider.WarningValues(widget);
-        HashSet<string> Error() => HttpStatusProvider.ErrorValues(widget);
+        HashSet<string> Success() => HttpStatusProvider.SuccessValues(widget, Connection());
+        HashSet<string> Warning() => HttpStatusProvider.WarningValues(widget, Connection());
+        HashSet<string> Error() => HttpStatusProvider.ErrorValues(widget, Connection());
 
         var (idle, _) = HttpStatusProvider.MapStatus("idle", Success(), Warning(), Error());
         var (warmup, _) = HttpStatusProvider.MapStatus("warmup", Success(), Warning(), Error());

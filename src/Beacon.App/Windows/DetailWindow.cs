@@ -156,12 +156,12 @@ internal sealed class DetailWindow : Window
             }
         }
 
-        // 自定义动作库（actions.json，用户令 2026-10-10「局域网打包机就是典型可以触发的」）：
-        // Parameters.widgetType 留空 = 全组件显示；填了则精确匹配当前组件类型
-        foreach (var candidate in _runtime.Config.Actions)
+        // 自定义动作库（actions.json，用户令 2026-10-10「局域网打包机就是典型可以触发的」）
+        // + DSL 声明动作（positioning §6 批3-补42：连接 dsl_path → actions，带 connection_id 限定）：
+        // 显隐统一走 ActionVisibility——widgetType 支持逗号分隔多值，connection_id 限定所属连接
+        foreach (var candidate in _runtime.Config.Actions.Concat(_runtime.DslActions))
         {
-            if (candidate.Parameters.TryGetValue("widgetType", out var scope) && scope.Length > 0
-                && !string.Equals(scope, _state.WidgetType, StringComparison.OrdinalIgnoreCase))
+            if (!ActionVisibility.IsVisible(candidate.Parameters, _state.WidgetType, _state.ConnectionId))
             {
                 continue;
             }

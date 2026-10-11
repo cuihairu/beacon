@@ -1063,11 +1063,11 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **顺带清警告（同日续）**：MachineNetProviderTests 8 处——CS8602×5 补 Assert.NotNull（流分析+断言质量）、
   CS8625×2 Sample 假源参数改可空、xUnit1031 阻塞 GetResult 改 async——**全仓编译警告清零**，828/828 维持。
 
-## 2026-10-10 装机对照清单（67 条三类，2026-10-11 九次整理）
+## 2026-10-10 装机对照清单（68 条三类，2026-10-12 十次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）
 + 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34/35/36/37/38 新增项。2026-10-11 复点：
-原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 50 = **67 条**。
+原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 51 = **68 条**。
 另有 1 条关联项（批3-补10 透明度）用户已确认修好，列「已验」。装 nightly 后按此清单对照回执；带 CI 证据的项已注证据文件。
 **装包版本门**：2026-10-10T17:30Z 后的 nightly（zip `a0b255bd…`，commit c880f5d）才含补22 三修复；
 此前用户报「没有修复」时装的是旧包（见补22 nightly 归属核实）。
@@ -1097,7 +1097,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 拖动跨三屏跟手 | 批3-补22 | 拖动锚点改光标屏幕物理像素（旧实现按下 DPI 与每帧当前 DPI 混算，跨缩放屏比例错乱）；装后慢拖胶囊/悬浮框跨三个缩放不同的屏看 |
 | 详情窗 200% 仍裁字 | 批3-补22 | DetailWindow 是标题栏窗，Resize 补回非客户区差值（GetWindowRect−GetClientRect）；装 200% 开详情窗看字完整 |
 
-### ⬜ 未修（50 条：无已知缺陷，代码就位，待装机首验）
+### ⬜ 未修（51 条：无已知缺陷，代码就位，待装机首验）
 | 项 | 条数 | 说明 |
 |---|---|---|
 | B-101 单实例/托盘/常驻 | 2 | 二次启动唤起气泡；Exit 才退出 |
@@ -1111,6 +1111,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 批3-补36 本机资源卡 | 1 | machine 连接 + machine.local 组件：CPU 首刷不出、第二刷起百分比随刷新走；内存/磁盘即时百分比；阈值调低（如 20）看亮黄 |
 | 批3-补37 Herald 投递失败卡 | 1 | herald 连接 + herald.deliveries 组件：无失败显「无失败」；人为制造一次失败投递（停掉目标 provider 再 notify）看亮黄与失败计数 |
 | 批3-补38 MiMo 401 指引 + LiteLLM 档 | 2 | ①故意填过期控制台 cookie：卡面明示「Cookie 已失效或未录制」+ 重录指引原文；②本机 LiteLLM 网关接 DB 后（现状 no_db_connection 是网关侧缺口）Settings 录 litellm_spend_url：卡显「本月已用 $X（网关记账）」 |
+| 批3-补42 YAML Provider DSL | 1 | http 连接 Settings 配 dsl_path 指向声明文件：mapping 缺省出数（widget.Config 实例覆盖仍优先）；详情页出现 DSL 动作（仅限该连接组件），带 retry 的动作失败自动重试（消息带「已重试 N 次」）；坏 YAML 卡 Degraded 明示、启动不受影响；不配 dsl_path 的连接行为零变化 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
 | B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
 | B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |
@@ -1168,3 +1169,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   落地，条件「数据源可靠 + 维护成本合理」在每家落地时都过了一遍门（不可靠者也以降级链守住如实口径）。
 - **处置**：todo.md 勾选关闭（附依据）；master-plan §13 该节补落地状态注记（同 批3-补31 先例）；
   positioning §8 已有逐家清单不重复。厂商私有打包 Provider 维持不动（用户令）；网关接 DB 仍等用户。
+
+### 批3-补42 YAML provider DSL 落地（2026-10-12 续批：positioning §6「计划中」项 → 已实现）
+- **口径**：positioning §6 原设计为准——per-provider `mapping` 声明式字段映射 + `actions`（含 retry）动作配置；**可选声明层**：连接 Settings 配 `dsl_path` 才启用，不配置即零变化（http.status/http.quota 既有 widget.Config 路径逐字节等价）；mapping 只管数据提取缺省（路径/词表/单位），widget.Config 实例值优先，label/icon/阈值不进 DSL；只做开源标准 API 侧（http 连接），冻结范围未触碰。
+- **实现**（零新第三方依赖，master-plan §15 最小改动）：`Beacon.Connections/ProviderDsl.cs`——文档模型 + 校验（顶层键白名单 / mapping 键白名单 / action 必填与类型白名单 open.url|http|webhook / confirm 默认按类型 / retry 范围 1–10 与 0–300，全部 fail-loud 带行号）+ `YamlLite` 极小 YAML 子集解析器（缩进映射 / `- ` 列表 / 引号 / 行内注释；flow、块标量、Tab、多文档、重复键、未闭合引号全 fail-loud）+ LoadFile mtime+size 缓存 + `EffectiveConfig` 合并视图（DSL 为底、实例覆盖）。`HttpStatusProvider`/`HttpQuotaProvider` 数据提取键改走 EffectiveConfig（dsl_path 未配返回原字典，行为不变）。`ActionRunner` 支持 `retry_max_attempts/retry_backoff_seconds`：默认 1 次=不重试（既有单次路径消息逐字节不变），重试共享同一总超时预算，用户取消/超时/退避被打断不重试，多次失败消息带「已重试 N 次」标注。DSL 动作经 `ToActionConfig`（Id=`dsl.{连接}.{id}`，connection_id 限定）进既有执行器链路；`BeaconRuntime.DslActions` 每取现算（坏文件记警告跳过，不影响启动与其他连接）；`Beacon.Core/ActionVisibility.cs` 纯函数统一显隐（widgetType 逗号多值 + connection_id 限定）；DetailWindow 动作区合并 actions.json 与 DSL 两来源。
+- **验收**：新增单测 60 例全绿——ProviderDslTests 46（解析全表 / 校验 fail-loud / mtime+size 缓存 / MappingValue 次序 / 三端到端：DSL 缺省生效、实例覆盖、缺文件 Degraded、quota 路径+单位）+ ActionRunnerTests 6（重试成功 / 耗尽标注 / 默认单次逐字节 / 非法参数钳位 / 退避中取消 / 超时打断退避）+ ActionVisibilityTests 8；四项目 880/880 绿（Core 277 / Connections 553 / Storage 31 / Actions 27），非 App 工程 0 警告；windows-latest CI 绿后交付（Beacon.App 两处接线 Linux 无法本地编 XAML）。
+- **文档**：positioning §6「计划中（未实现）」→「已落地（批3-补42）」+ YAML 示例与口径；configuration.md 新增 dsl_path 行 + 「Provider DSL」参考节；solution-structure.md 880/553/277 计数与文件清单（Connections 31、Core Services 18）；装机清单 67→68。

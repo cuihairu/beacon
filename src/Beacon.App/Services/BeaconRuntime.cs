@@ -37,6 +37,36 @@ public sealed class BeaconRuntime : IAsyncDisposable
     /// <summary>诊断日志（文件通道，%APPDATA%\Beacon\logs）——UI 层（设置/面板）逐跳打点共用。</summary>
     public ILogger? Logger { get; }
 
+    /// <summary>
+    /// DSL 声明动作（positioning §6，批3-补42）：配置里带 dsl_path 的连接 → YAML actions，
+    /// 每次取现算（LoadFile 有 mtime+size 缓存，成本低；坏文件记警告并跳过该连接——
+    /// 绝不影响启动与其他连接的动作加载）。
+    /// </summary>
+    public IReadOnlyList<ActionConfig> DslActions
+    {
+        get
+        {
+            var actions = new List<ActionConfig>();
+            foreach (var connection in Config.Connections)
+            {
+                if (!connection.Settings.TryGetValue(ProviderDsl.SettingKey, out var path)
+                    || string.IsNullOrWhiteSpace(path))
+                {
+                    continue;
+                }
+                try
+                {
+                    actions.AddRange(ProviderDsl.LoadFile(path).Actions.Select(a => a.ToActionConfig(connection.Id)));
+                }
+                catch (Exception exception)
+                {
+                    Logger?.LogWarning(exception, "DSL 动作加载失败（连接 {ConnectionId}）：{Message}", connection.Id, exception.Message);
+                }
+            }
+            return actions;
+        }
+    }
+
     private readonly RefreshScheduler _scheduler;
 
     private BeaconRuntime(

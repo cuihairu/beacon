@@ -29,11 +29,13 @@ public sealed class HttpQuotaProvider : IWidgetProvider
     {
         var body = await HttpEndpoint.FetchAsync(_client, connection, context, cancellationToken).ConfigureAwait(false);
 
+        // 数据提取键走生效配置视图（dsl_path 未配 = widget.Config 原样，行为零变化）
+        var config = ProviderDsl.EffectiveConfig(widget, connection);
         QuotaReading? reading;
         try
         {
             using var document = JsonDocument.Parse(body);
-            reading = ParseQuota(document.RootElement, widget.Config);
+            reading = ParseQuota(document.RootElement, config);
         }
         catch (JsonException exception)
         {
@@ -47,8 +49,8 @@ public sealed class HttpQuotaProvider : IWidgetProvider
         var severity = MapSeverity(reading.Percent,
             widget.Config.TryGetValue("warn_percent", out var warnRaw) && double.TryParse(warnRaw, CultureInfo.InvariantCulture, out var warn) ? warn : 60,
             widget.Config.TryGetValue("error_percent", out var errorRaw) && double.TryParse(errorRaw, CultureInfo.InvariantCulture, out var error) ? error : 90);
-        var label = widget.Config.GetValueOrDefault("label");
-        var unit = widget.Config.GetValueOrDefault("unit") ?? "";
+        var label = widget.Config.GetValueOrDefault("label"); // label/阈值属组件实例，不进 DSL 声明层
+        var unit = config.GetValueOrDefault("unit") ?? "";
         var head = label is { Length: > 0 } ? label : "额度";
         var summary = $"{head} · 已用 {Format(reading.Percent)}%";
         if (reading.Remaining is { } remaining)

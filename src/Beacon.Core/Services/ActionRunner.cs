@@ -8,6 +8,8 @@ namespace Beacon.Core.Services;
 /// <summary>
 /// Action 执行框架（B-401，RFC §13）：按 ActionType 路由 IActionExecutor；
 /// RequireConfirmation 走注入的确认通道（无通道时保守拒绝）；统一超时；
+/// 可选重试（Parameters retry_max_attempts/retry_backoff_seconds，默认 1 次 = 不重试；
+/// 重试共享同一总超时预算，用户取消与超时不重试）；
 /// 结果（成功/失败/取消）一律发 ActionExecuted 事件驱动 UI 反馈与通知。
 /// </summary>
 public sealed class ActionRunner
@@ -75,11 +77,51 @@ public sealed class ActionRunner
             return Fail(action.Id, $"未知 Action 类型：{action.Type}");
         }
 
+        // 重试参数（DSL actions.retry 落到 Parameters；手改配置非法值回退默认）。默认 1 次 = 不重试，
+        // 与既有单次路径逐字节等价；重试共享同一总超时预算（timeoutSource 在循环外）。
+        var maxAttempts = ReadRetryParam(action.Parameters, "retry_max_attempts", 1, 1, 10);
+        var backoffSeconds = ReadRetryParam(action.Parameters, "retry_backoff_seconds", 5, 0, 300);
+
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(Timeout);
         try
         {
-            return await executor.ExecuteAsync(action, context, timeoutSource.Token).ConfigureAwait(false);
+            for (var attempt = 1; ; attempt++)
+            {
+                ActionResult result;
+                try
+                {
+                    result = await executor.ExecuteAsync(action, context, timeoutSource.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                {
+                    return Fail(action.Id, $"执行超时（>{Timeout.TotalSeconds:0}s）");
+                }
+                catch (OperationCanceledException)
+                {
+                    return Cancelled(action.Id, "已取消");
+                }
+                catch (Exception exception)
+                {
+                    _logger?.LogError(exception, "Action {ActionId} 执行失败。", action.Id);
+                    result = Fail(action.Id, exception.Message);
+                }
+                if (result.Success || cancellationToken.IsCancellationRequested || attempt >= maxAttempts)
+                {
+                    // 多次尝试后仍失败：标注尝试次数（单次路径不标注，消息与既有口径一致）
+                    return !result.Success && maxAttempts > 1 && attempt > 1
+                        ? Fail(action.Id, $"已重试 {attempt - 1} 次仍失败：{result.Message}")
+                        : result;
+                }
+                _logger?.LogWarning(
+                    "Action {ActionId} 第 {Attempt} 次执行失败：{Message}；{Backoff}s 后重试（最多 {Max} 次）。",
+                    action.Id, attempt, result.Message, backoffSeconds, maxAttempts);
+                if (backoffSeconds > 0)
+                {
+                    // timeoutSource 已链接 outer：总超时与用户取消都能打断退避（不挂起）
+                    await Task.Delay(TimeSpan.FromSeconds(backoffSeconds), timeoutSource.Token).ConfigureAwait(false);
+                }
+            }
         }
         catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
@@ -89,12 +131,13 @@ public sealed class ActionRunner
         {
             return Cancelled(action.Id, "已取消");
         }
-        catch (Exception exception)
-        {
-            _logger?.LogError(exception, "Action {ActionId} 执行失败。", action.Id);
-            return Fail(action.Id, exception.Message);
-        }
     }
+
+    /// <summary>重试参数读取：可解析则钳位进范围，否则回退默认（DSL 层已 fail-loud 校验，这里兜手改配置）。</summary>
+    private static int ReadRetryParam(IReadOnlyDictionary<string, string> parameters, string key, int fallback, int min, int max)
+        => parameters.TryGetValue(key, out var raw) && int.TryParse(raw, out var value)
+            ? Math.Clamp(value, min, max)
+            : fallback;
 
     /// <summary>远程 Action 需要 Connection/密钥：按 SourceState.ConnectionId 从配置解析注入。</summary>
     private ActionExecutionContext EnrichContext(ActionExecutionContext context)

@@ -136,6 +136,38 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | mimo | litellm_key_ref | LiteLLM 网关 key 的凭据引用，默认 `mimo:litellm`（有则带 Bearer，无则裸调——本机记账常免鉴权）；网关无 DB 时 spend 面全回 `no_db_connection`，卡按 Degraded 明示「未接数据库」 |
 | mimo | console_usage_url | 控制台套餐用量 API 地址（默认 `/api/v1/tokenPlan/usage`，GET + api-platform_ph Cookie + plan-manage referer） |
 | mimo | console_credential_ref | 控制台 Cookie 的凭据引用，默认 `mimo:console`（Cookie 值 = 浏览器 F12 → Cookies → api-platform_ph 的值（整行 Cookie 粘进来也行，自动取 api-platform_ph）；**粘贴 + DPAPI 回放，不做扫码登录**，会话过期重录） |
+| http | dsl_path | Provider DSL 声明文件路径（YAML，见下节「Provider DSL」）。**不配即零变化**；配了则 mapping 供数据提取缺省值（widget.Config 实例值仍优先），actions 进组件详情页动作区。文件缺失/解析失败 → 相关卡按 Degraded 明示，绝不静默 |
+
+### Provider DSL（http 连接声明式映射与动作，批3-补42）
+
+连接类型 `http` 可在 Settings 配 `dsl_path` 指向 YAML 声明文件（零第三方依赖，内置极小 YAML 子集：缩进映射 / `- ` 列表 / 引号 / 行内注释；flow `{}` `[]`、块标量、Tab 缩进、多文档均不支持并 fail-loud 带行号）：
+
+```yaml
+provider: company-packager        # 必填，日志与校验用
+mapping:                          # 可选：数据提取缺省值（键见下表，未知键报错）
+  status_path: $.job.state
+  success_values: green,passed
+actions:                          # 可选：声明动作（进详情页动作区，走既有执行器链路）
+  - id: restart                   # 必填
+    type: http                    # open.url / http / webhook
+    name: 重启打包任务
+    url: https://packer.local/api/jobs/42/restart   # 必填，支持 {var} 模板
+    method: POST                  # http 默认 GET
+    body: '{"force": true}'       # 可选（含 { } 的字面量请加引号）
+    confirm: true                 # 默认：open.url=false，http/webhook=true
+    retry:                        # 可选，默认 1 次（不重试）
+      max_attempts: 3             # 1–10
+      backoff_seconds: 5          # 0–300
+```
+
+| mapping 键 | 作用于 | 缺省 |
+|---|---|---|
+| status_path / summary_path / url_path | http.status 状态/摘要/详情链接提取 | `$.status` / 空 / 空 |
+| success_values / warning_values / error_values | http.status 状态词表（逗号分隔） | 见 http.status 说明 |
+| total_path / used_path / remaining_path / reset_path | http.quota 数值提取 | 空（total 必填语义不变） |
+| unit | http.quota 单位 | 空 |
+
+口径：**声明层只管数据提取缺省值**，`widget.Config` 实例值优先（声明层不夺实例覆盖权）；`label/icon/warn_percent/error_percent` 属组件实例，不进 DSL。动作 Id 自动带 `dsl.{连接}.{id}` 前缀且只在该连接的组件详情页显示（connection_id 限定）；重试在 ActionRunner 层生效——默认 1 次=不重试（既有行为逐字节等价），重试共享同一总超时预算，用户取消/超时不重试，多次尝试后仍失败的消息带「已重试 N 次」标注。
 
 ### 各家额度口径与数据源
 
