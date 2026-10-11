@@ -19,6 +19,7 @@ internal sealed record RecentEvent(DateTimeOffset At, WidgetState State);
 
 /// <summary>
 /// L2 Quick Panel（RFC §6.4）：Flyout 语义——失焦自动隐藏、ESC 关闭、Tab 可达、不进任务栏。
+/// 常驻档（config.keepQuickPanelOpen，托盘菜单 Keep Panel Open 打勾）：失焦不自隐，面板一直在。
 /// 打开零网络等待（B-601/B-602）：内容常驻订阅事件流 + 启动时从缓存水合，打开 &lt;100ms。
 /// Overview 按来源计数；Recent Events 单击进 L3（DetailRequested），右键 Pin to desktop 落 widgets.json。
 /// </summary>
@@ -112,14 +113,17 @@ public sealed partial class QuickPanelWindow : Window
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
-        // 失焦自动关闭（RFC §6.4：Flyout 语义）
-        if (_visible && args.WindowActivationState == WindowActivationState.Deactivated)
+        // 失焦自动关闭（RFC §6.4：Flyout 语义）；常驻档（托盘菜单 Keep Panel Open 打勾）跳过——
+        // 面板要一直在，失焦不能自隐（Esc/再次点托盘仍走显式隐藏）
+        if (_visible
+            && args.WindowActivationState == WindowActivationState.Deactivated
+            && !_runtime.Config.App.KeepQuickPanelOpen)
         {
             Hide();
         }
     }
 
-    /// <summary>热键切换显隐。</summary>
+    /// <summary>热键/胶囊/托盘切换显隐。</summary>
     public void Toggle()
     {
         if (_visible)
@@ -128,11 +132,21 @@ public sealed partial class QuickPanelWindow : Window
         }
         else
         {
-            PositionNearPrimaryCapsule();
-            _appWindow.Show();
-            Activate(); // L2 需要键盘（ESC 关闭、Tab 导航）
-            _visible = true;
+            Show();
         }
+    }
+
+    /// <summary>确保显示（托盘打勾「面板常驻」即刻出）：已显示不动，不翻转。</summary>
+    public void Show()
+    {
+        if (_visible || _appWindow is null)
+        {
+            return; // Loaded 前无 AppWindow，启动链路不抢跑
+        }
+        PositionNearPrimaryCapsule();
+        _appWindow.Show();
+        Activate(); // L2 需要键盘（ESC 关闭、Tab 导航）
+        _visible = true;
     }
 
     public void Hide()

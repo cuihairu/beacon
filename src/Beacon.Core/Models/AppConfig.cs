@@ -12,6 +12,10 @@ public sealed class AppConfig
     /// <summary>L1 状态胶囊开关（胶囊本身即常驻 tile，可与 L0 分显示器，RFC §16 决策 6）。
     /// 2026-10-09 用户令：默认关闭（存量配置由 JsonConfigurationStore 一次性迁移拉平，设置里可再打开）。</summary>
     public bool ShowCapsule { get; set; } = false;
+    /// <summary>L2 快捷面板常驻（2026-10-11 用户令「右键菜单前打勾，显示消息的面板就可以一直在」）：
+    /// 开=托盘菜单 Keep Panel Open 打勾，面板失焦不再自动隐藏（Esc/再次点托盘仍可关，重启后保持勾选）；
+    /// 关=Flyout 瞬态语义（RFC §6.4 默认，失焦自隐）。</summary>
+    public bool KeepQuickPanelOpen { get; set; }
     /// <summary>配置结构版本：0=旧配置（缺字段），1=已执行状态胶囊默认关迁移。每次结构迁移 +1。</summary>
     public int ConfigVersion { get; set; }
     /// <summary>L0 悬浮形态：panel = 单宿主多 tile（默认）；floating = 每钉选组件一窗、可拖桌面任意位置（切换重启生效）。</summary>

@@ -221,6 +221,7 @@ public class SerializationRoundTripTests
         Assert.Equal("system", restored.Theme);
         Assert.Equal(1.0, restored.UiOpacity);
         Assert.False(restored.ShowCapsule);
+        Assert.False(restored.KeepQuickPanelOpen); // 2026-10-11 面板常驻默认关（Flyout 瞬态语义）
         Assert.Equal("panel", restored.PinDisplayMode);
         Assert.True(restored.NumericFloatingEnabled); // 2026-10-11 用户令翻转默认：数量悬浮窗默认开
         Assert.Equal(0, restored.PollIntervalSeconds);

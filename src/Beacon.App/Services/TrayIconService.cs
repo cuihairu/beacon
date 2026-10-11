@@ -17,6 +17,7 @@ internal sealed class TrayIconService : IDisposable
     private const int MenuSettings = 2;
     private const int MenuNotifications = 3;
     private const int MenuRefreshAll = 4;
+    private const int MenuKeepPanel = 5;
     private const int MenuExit = 99;
 
     private readonly Win32MessageWindow _messageWindow;
@@ -32,6 +33,12 @@ internal sealed class TrayIconService : IDisposable
     public event Action? NotificationsRequested;
     public event Action? RefreshAllRequested;
     public event Action? ExitRequested;
+
+    /// <summary>「Keep Panel Open」勾选态读取（App 注入 config 实时值；null=未注入按未勾选渲染）。</summary>
+    public Func<bool>? IsKeepPanelOn { get; set; }
+
+    /// <summary>「Keep Panel Open」被点击（App 落盘 + 打勾即把面板显示出来）。</summary>
+    public event Action? KeepPanelToggled;
 
     public TrayIconService(Win32MessageWindow messageWindow, ILogger<TrayIconService> logger)
     {
@@ -222,6 +229,13 @@ internal sealed class TrayIconService : IDisposable
         try
         {
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuOpenPanel, "Open Beacon");
+            // 可勾选项（2026-10-11 用户令）：打勾=面板常驻不失焦自隐；勾选态每次开菜单实时读 config
+            var keepPanelOn = IsKeepPanelOn?.Invoke() == true;
+            NativeMethods.AppendMenuW(
+                menu,
+                NativeMethods.MF_STRING | (keepPanelOn ? NativeMethods.MF_CHECKED : 0u),
+                (IntPtr)MenuKeepPanel,
+                "Keep Panel Open");
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuNotifications, "Notifications");
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuRefreshAll, "Refresh All");
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuSettings, "Settings");
@@ -240,6 +254,9 @@ internal sealed class TrayIconService : IDisposable
             {
                 case MenuOpenPanel:
                     OpenPanelRequested?.Invoke();
+                    break;
+                case MenuKeepPanel:
+                    KeepPanelToggled?.Invoke();
                     break;
                 case MenuNotifications:
                     NotificationsRequested?.Invoke();

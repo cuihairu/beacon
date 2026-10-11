@@ -125,6 +125,18 @@ public partial class App : Application
         _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher);
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => quickPanel.Toggle();
+        // 面板常驻（2026-10-11 用户令「右键菜单前打勾，显示消息的面板就可以一直在」）：
+        // 勾选态实时读 config（菜单每次打开重绘）；点击落盘 + 打勾即刻显示（已显示不动，不翻转）
+        tray.IsKeepPanelOn = () => runtime.Config.App.KeepQuickPanelOpen;
+        tray.KeepPanelToggled += () =>
+        {
+            runtime.Config.App.KeepQuickPanelOpen = !runtime.Config.App.KeepQuickPanelOpen;
+            runtime.Config.SaveApp();
+            if (runtime.Config.App.KeepQuickPanelOpen)
+            {
+                Dispatcher.TryEnqueue(quickPanel.Show);
+            }
+        };
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
         quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
         // B-503：Notifications 入口 → L2 通知中心视图（148c3bd 落地）；Refresh All 已接 runtime.RefreshAll
