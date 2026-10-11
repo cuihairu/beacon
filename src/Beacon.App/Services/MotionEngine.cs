@@ -44,11 +44,15 @@ internal sealed class MotionEngine
         ? Math.Clamp(_config.App.Appearance.Motion.Intensity, 0.5, 2.0)
         : 1.0;
 
-    /// <summary>tile 额度显示方式（config appearance.progressStyle）："pool"=圆池水位（默认）；
-    /// "bar"=旧 3px 进度条。实时读，设置改即刻生效。</summary>
-    public string ProgressStyle => string.Equals(_config.App.Appearance.ProgressStyle, "bar", StringComparison.OrdinalIgnoreCase)
-        ? "bar"
-        : "pool";
+    /// <summary>tile 额度显示方式（config appearance.progressStyle）："bar"=底部线性进度条（默认，2026-10-11
+    /// 用户令翻转）；"pool"=圆池注水（旧特效，仅显式选择——缺省/非法值一律落 bar，圆池绝不做默认路径）。
+    /// 实时读，设置改即刻生效。</summary>
+    public string ProgressStyle => string.Equals(_config.App.Appearance.ProgressStyle, "pool", StringComparison.OrdinalIgnoreCase)
+        ? "pool"
+        : "bar";
+
+    /// <summary>进度条推进过渡时长（intensity 接管）；off 档 0 = 瞬时直设。</summary>
+    public TimeSpan BarTransitionDuration => Mode == MotionMode.Off ? TimeSpan.Zero : TimeSpan.FromMilliseconds(300 * Intensity);
 
     /// <summary>① 变色过渡：换色后亮度渐入（8px 灯上视觉等价交叉淡变）。off 档瞬时。</summary>
     public void TransitionFill(Shape shape, global::Windows.UI.Color to)

@@ -226,6 +226,7 @@ public class SerializationRoundTripTests
         Assert.Equal(0, restored.PollIntervalSeconds);
         Assert.Equal("reduced", restored.Appearance.Motion.Mode);
         Assert.Equal(1.0, restored.Appearance.Motion.Intensity);
+        Assert.Equal("bar", restored.Appearance.ProgressStyle); // 2026-10-11 用户令翻转默认：进度条（pool 仅显式选择）
         Assert.Empty(restored.Appearance.SeverityColors);
     }
 }

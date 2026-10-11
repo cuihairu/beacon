@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
 
@@ -26,6 +27,20 @@ internal sealed class PinTile
     private const int LightSizeDips = 8;
     private const int PoolSize = 16;  // 额度圆池直径（DIP）
     private const double PoolRadius = PoolSize / 2.0;
+
+    // —— 底部线性进度条（2026-10-11 重设计，替代「进度条看不到」的 3px 旧版）——
+    // 4 DIP 高 + 2 DIP 圆角（整条胶囊形）：3px 在 100% 缩放下细到难以辨认（用户实测「进度条看不到」），
+    // 提到 4 DIP 并在两端圆角，track 35% 透明底轨 + fill 档位色，暗亮双主题都可辨。
+    private const int BarHeightDips = 4;
+    private const double BarRadiusDips = 2;
+    private const double BarMinFillDips = 2; // 极小进度保底可辨
+
+    /// <summary>进度百分比字号随 tile 高度分级（固定 12 会在任何 tile 尺寸变化后裁字——
+    /// 5K/200% 裁字同族缺陷；DIP 恒定比例，高缩放下 XAML 按新 DPI 等比放大不裁）。</summary>
+    private static double ProgressFontDips => Math.Round(TileHeight * 0.375, 1);
+
+    private const double BarNearFull = 0.8;   // ≥80% 起 warning 档
+    private const double BarFull = 0.98;      // ≥98% 满格 error 红（用户「满了就变成另一颜色」）
 
     /// <summary>圆池水位几何（池水=圆形池底部圆弓形，水位=进度）：满格整圆、空池不画。
     /// 用折线近似圆弧（14 段 LineSegment，弧上点三角函数显式算出）而非 ArcSegment——
@@ -112,35 +127,40 @@ internal sealed class PinTile
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Right,
     };
-    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 3px 条，按已用比例填色。
+    // 额度数值卡进度条（http.quota/bigmodel.usage 等 Progress 语义）：tile 底部 4 DIP 线性条 + NN% 读数。
     // 2026-10-10 重构（用户实测「进度条看不到」，CI 截图证实前代 Star 列设计从未渲染出任何像素）：
-    // 弃嵌套 Star 列 Grid，改两枚显式 Rectangle——Height 3、贴底 margin 0、宽度由 container.SizeChanged
-    // 按实测像素设置，结构上不存在「布局余量被吃掉整条消失」路径；track=Value 色 35% 透明（双主题
-    // 都可辨的底轨），fill=severity 色。比例缓存进 _barFraction，SizeChanged 到达即重放（首次
-    // Update 时 ActualWidth 可能还是 0，不丢）。
+    // 弃嵌套 Star 列 Grid，改两枚显式 Rectangle——贴底 margin 0、宽度由 container.SizeChanged 按实测像素
+    // 设置，结构上不存在「布局余量被吃掉整条消失」路径；track=Value 色 35% 透明（双主题都可辨的底轨），
+    // fill=档位色。比例缓存进 _barFraction，SizeChanged 到达即重放（首次 Update 时 ActualWidth 可能还是 0，不丢）。
+    // 2026-10-11 重设计（用户令「现在的进度特效太丑了…不要现在这个圆圈的效果」）：3px→4 DIP + 2 DIP 圆角
+    // （3px 在 100% 下细到难辨），颜色随档位（≥0.8 warning / ≥0.98 error 红），NN% 读数常驻双通道；
+    // 推进过渡走 Storyboard+DoubleAnimation(Width)（intensity 接管时长，off 档瞬时），不再依赖圆池/涟漪效果。
     private readonly Rectangle _barTrack = new()
     {
-        Height = 3,
+        Height = BarHeightDips,
         VerticalAlignment = VerticalAlignment.Bottom,
         Fill = new SolidColorBrush(ThemeColors.Value()) { Opacity = 0.35 },
+        RadiusX = BarRadiusDips,
+        RadiusY = BarRadiusDips,
         Visibility = Visibility.Collapsed,
     };
     private readonly Rectangle _barFill = new()
     {
-        Height = 3,
+        Height = BarHeightDips,
         VerticalAlignment = VerticalAlignment.Bottom,
         HorizontalAlignment = HorizontalAlignment.Left,
-        RadiusX = 1.5,
-        RadiusY = 1.5,
+        RadiusX = BarRadiusDips,
+        RadiusY = BarRadiusDips,
         Visibility = Visibility.Collapsed,
     };
+    private Storyboard? _barStoryboard; // 字段持有：每次推进先 Stop 上段（HoldEnd 动画值会压住本地新值）
     private double _barFraction;
 
-    // —— 额度显示（2026-10-10 用户令三轮定稿：进度条→水波纹→「池子注水」→涟漪去掉）——
-    // 两显示路径并存：① pool=16DIP 圆池，水位=进度（圆环内底部填充），满格变 severity 色
-    //   （Error 红——用户「满了就变成另一颜色」）；静态默认可读，不依赖动画
-    // ② _progressText「NN%」常驻静态可读量（截图永远抓得到，用户硬口径）
-    // ③ 旧 3px bar 可选：appearance.progressStyle=="bar"（设置里用户自选，见 SettingsWindow 外观页）
+    // —— 额度显示（2026-10-11 用户令「进度特效太丑了…不要现在这个圆圈的效果」重设计）——
+    // 两显示路径并存，默认 bar（旧配置显式 "pool" 保持不动）：
+    // ① bar（默认）=底部 4 DIP 圆角线性条（track+fill，档位配色）——推进过渡，不再依赖任何圆/波纹效果
+    // ② pool（可选）=16 DIP 圆池，水位=进度（圆环内底部填充），满格变 severity 色
+    // ③ _progressText「NN%」常驻静态可读量——动画+文字双通道，截图和一眼扫都能拿到状态（用户硬口径）。
     // 池边描边与百分比统一 ThemeColors.Label()（主题令牌对比度最高的前景色，暗亮双主题均 ≥4.5:1）。
     private readonly Ellipse _poolRing;
     private readonly global::Microsoft.UI.Xaml.Shapes.Path _poolFill;
@@ -148,7 +168,7 @@ internal sealed class PinTile
     private readonly TextBlock _progressText = new()
     {
         Foreground = new SolidColorBrush(ThemeColors.Label()),
-        FontSize = 12, // 系统默认小字号，双主题可读
+        FontSize = ProgressFontDips, // 随 tile 高度分级（TileHeight×0.375），tile 尺寸变化后不裁字
         VerticalAlignment = VerticalAlignment.Center,
         Visibility = Visibility.Collapsed,
     };
@@ -182,10 +202,8 @@ internal sealed class PinTile
                 Foreground = new SolidColorBrush(ThemeColors.Label()),
             };
 
-        // ① pool 路径（默认）：16DIP 圆池，池边描边 + Path 圆弓形水位（水位=进度），满格变 severity 色。
-        // 静态呈现不依赖动画（用户令：涟漪动画去掉，圆圈不停闪不是正常人能看的）；加载中=空池环+「加载中」
-        // bar 模式（progressStyle=="bar"）不建池。池形态由 appearance.progressStyle 决定（设置里用户自选），
-        // 组件级 widgets.json config.progressStyle 可覆盖（向后兼容）
+        // 显示路径：bar=底部线性进度条（默认，2026-10-11 用户令翻转）；pool=圆池注水（旧特效，显式选择）。
+        // 组件级 widgets.json config.progressStyle 可覆盖外观设置（向后兼容）；加载中=bar 空轨/空池环+「加载中」
         var style = widget.Config.GetValueOrDefault("progressStyle");
         if (string.IsNullOrEmpty(style))
         {
@@ -235,7 +253,7 @@ internal sealed class PinTile
         grid.Children.Add(_progressText);
 
         // 主行 + 底部进度条叠放（见 _barTrack/_barFill 注释）：单 Grid 三子，后加者在上层；
-        // 主内容竖直居中（12px 文本居 32 DIP，下部留白 ≥6 DIP），与 3px 条互不碰撞
+        // 主内容竖直居中（进度读数字号居 32 DIP，下部留白 ≥6 DIP），与 4 DIP 条互不碰撞。
         var container = new Grid();
         container.Children.Add(grid);
         container.Children.Add(_barTrack);
@@ -295,9 +313,7 @@ internal sealed class PinTile
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
-            _barFraction = 0;
-            _barTrack.Visibility = Visibility.Collapsed;
-            _barFill.Visibility = Visibility.Collapsed;
+            CollapseBar(); // 先停推进动画再收条（HoldEnd 值压本地值）
             ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
             _motion.StopLoops(_light);
             _motion.StopLoops(_root);
@@ -318,10 +334,11 @@ internal sealed class PinTile
         }
     }
 
-    /// <summary>进度两显示路径（2026-10-10 用户令三轮定稿：进度条→水波纹→「池子注水」→涟漪去掉）：
-    /// ① pool（默认）——16DIP 圆池水位=进度（Path 圆弓形=水位线以下整块），满格变 severity 色，静态可读；
-    /// ② percent——「NN%」静态文本常驻（截图/肉眼硬口径，永远可读）；
-    /// ③ bar（可选）——appearance.progressStyle=="bar" 启用旧 3px 条。
+    /// <summary>进度两显示路径（2026-10-11 用户令重设计，默认翻转）：
+    /// ① bar（默认）——底部 4 DIP 圆角线性条：track 35% 透明底轨 + fill 档位色
+    ///   （≥80% warning、≥98% error 红——用户「满了就变成另一颜色」），推进平滑过渡；
+    /// ② pool（可选，显式选择）——16DIP 圆池水位=进度（Path 圆弓形=水位线以下整块），满格变 severity 色；
+    /// ③ percent——「NN%」静态文本常驻（动画+文字双通道，截图/肉眼硬口径，永远可读）。
     /// 无进度语义的类型全收（value 已带可读量）。</summary>
     private void UpdateProgress(WidgetState state, global::Windows.UI.Color color)
     {
@@ -329,9 +346,7 @@ internal sealed class PinTile
         {
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
-            _barFraction = 0;
-            _barTrack.Visibility = Visibility.Collapsed;
-            _barFill.Visibility = Visibility.Collapsed;
+            CollapseBar();
             return;
         }
 
@@ -341,9 +356,9 @@ internal sealed class PinTile
 
         if (_barMode)
         {
-            // ③ 旧 bar 可选路径：显式像素矩形（CI 已证渲染），池收
+            // ① bar 默认路径：显式像素矩形（CI 已证渲染），档位配色，池收
             _waveHost.Visibility = Visibility.Collapsed;
-            _barFill.Fill = new SolidColorBrush(color);
+            _barFill.Fill = new SolidColorBrush(BarFillColor(fraction, color));
             _barTrack.Visibility = Visibility.Visible;
             _barFill.Visibility = Visibility.Visible;
             _barFraction = fraction;
@@ -351,19 +366,36 @@ internal sealed class PinTile
         }
         else
         {
-            // ① pool 默认路径：水位=进度（≥2 DIP 保底可辨），Fill=severity 色（满格 Error 红
-            // 即用户「满了就变成另一颜色」）；bar 收
-            _barFraction = 0;
-            _barTrack.Visibility = Visibility.Collapsed;
-            _barFill.Visibility = Visibility.Collapsed;
+            // ② pool 可选路径（旧特效，显式选择）：水位=进度（≥2 DIP 保底可辨），Fill=severity 色
+            // （满格 Error 红同口径）；bar 收
+            CollapseBar();
             _waveHost.Visibility = Visibility.Visible;
             _poolFill.Data = PoolGeometry(fraction);
             _poolFill.Fill = new SolidColorBrush(color);
         }
     }
 
+    /// <summary>收掉 bar 路径（无进度语义/切池）：先停推进动画（HoldEnd 值压本地值），再收矩形。</summary>
+    private void CollapseBar()
+    {
+        _barFraction = 0;
+        _barStoryboard?.Stop();
+        _barTrack.Visibility = Visibility.Collapsed;
+        _barFill.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>进度条档位配色：≥98% 满格 error 红、≥80% 接近满 warning、其余用组件 severity 色
+    /// （正常档保持与状态灯一致； quota 组件 severity 本就随进度分档，两套口径在这里合流）。</summary>
+    private global::Windows.UI.Color BarFillColor(double fraction, global::Windows.UI.Color normalColor)
+        => fraction >= BarFull ? _palette.SeverityColor(Severity.Error)
+        : fraction >= BarNearFull ? _palette.SeverityColor(Severity.Warning)
+        : normalColor;
+
     /// <summary>按容器实测宽设条几何：track 全宽、fill=比例宽（≥2 DIP 保底可辨）；
-    /// 未布局（宽 0）或已隐藏时跳过——SizeChanged 会带着实测宽再进来。</summary>
+    /// 未布局（宽 0）或已隐藏时跳过——SizeChanged 会带着实测宽再进来。
+    /// 进度推进用 Storyboard+DoubleAnimation(Width) 平滑过渡（时长随动效档 intensity，off 档瞬时直设；
+    /// WinUI 无 LayoutTransaction，Storyboard 动 Width 是唯一不改视觉树的布局动画口）。
+    /// 首次显示（旧宽非有限值，如未布局的 NaN）直接落位，不播从 0 涨的假动画。</summary>
     private void ApplyBarGeometry(double innerWidth)
     {
         if (_barTrack.Visibility != Visibility.Visible || double.IsNaN(innerWidth) || innerWidth < 8)
@@ -371,8 +403,33 @@ internal sealed class PinTile
             return;
         }
 
-        _barTrack.Width = Math.Floor(innerWidth);
-        _barFill.Width = Math.Max(2, Math.Floor(innerWidth * _barFraction));
+        var trackWidth = Math.Floor(innerWidth);
+        var fillWidth = Math.Max(BarMinFillDips, Math.Floor(trackWidth * _barFraction));
+        if (_barTrack.Width == trackWidth && _barFill.Width == fillWidth)
+        {
+            return; // 目标没变不重排（重放/SizeChanged 抖动防抖）
+        }
+        _barTrack.Width = trackWidth;
+        _barStoryboard?.Stop(); // 上段还在 HoldEnd：不先停，动画值会压住下面的本地新值
+        var from = _barFill.Width;
+        _barFill.Width = fillWidth; // 本地值=目标（动画结束后 HoldEnd 值与其重合，无跳变）
+        var duration = _motion.BarTransitionDuration;
+        if (duration > TimeSpan.Zero && double.IsFinite(from) && from != fillWidth)
+        {
+            var animation = new DoubleAnimation
+            {
+                From = from,
+                To = fillWidth,
+                Duration = new Duration(duration),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            Storyboard.SetTarget(animation, _barFill);
+            Storyboard.SetTargetProperty(animation, "Width");
+            var storyboard = new Storyboard();
+            storyboard.Children.Add(animation);
+            _barStoryboard = storyboard;
+            storyboard.Begin();
+        }
     }
 
     /// <summary>收起为细条（宿主 ApplyLayout 判定）：暂停全部动画循环省电；展开复位。</summary>

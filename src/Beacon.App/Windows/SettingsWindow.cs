@@ -1038,12 +1038,14 @@ internal sealed class SettingsWindow : Window
         };
         _motionIntensitySlider.ValueChanged += (_, _) => SaveMotion();
 
-        // 2026-10-10 用户令「设置里让用户自己选表现方式，比如一开始的进度条」：额度显示方式全局可选
+        // 2026-10-10 用户令「设置里让用户自己选表现方式，比如一开始的进度条」：额度显示方式全局可选。
+        // 2026-10-11 用户令重设计后 bar 为默认（4 DIP 圆角条 + NN% 读数），标签按用户易读序排列：
+        // 进度条（默认）在前，圆池注水（旧特效）在后
         _progressStyleBox = new ComboBox { Header = "额度显示方式", Width = 260 };
         foreach (var (value, label) in new[]
         {
-            ("pool", "池子注水（水位=进度，满格变红）"),
-            ("bar", "进度条（旧式 3px 条）"),
+            ("bar", "进度条（默认：底部条 + 百分比读数）"),
+            ("pool", "圆池注水（旧特效：水位=进度，满格变红）"),
         })
         {
             _progressStyleBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
@@ -1136,11 +1138,12 @@ internal sealed class SettingsWindow : Window
         _runtime.Config.SaveApp(); // MotionEngine 每次调用实时读配置——无需重渲染
     }
 
-    /// <summary>额度显示方式（2026-10-10 用户令「设置里让用户自己选表现方式」）：pool=圆池水位（默认），
-    /// bar=旧 3px 进度条。PinTile 构造时读 MotionEngine.ProgressStyle（实时读配置，无需重渲染）。</summary>
+    /// <summary>额度显示方式（2026-10-10 用户令「设置里让用户自己选表现方式」；2026-10-11 用户令重设计后
+    /// bar=4 DIP 圆角进度条 + NN% 读数为默认，pool=圆池注水为可选旧特效）。
+    /// PinTile 构造时读 MotionEngine.ProgressStyle（实时读配置，无需重渲染）。</summary>
     private void SaveProgressStyle()
     {
-        _runtime.Config.App.Appearance.ProgressStyle = TagOf(_progressStyleBox) ?? "pool";
+        _runtime.Config.App.Appearance.ProgressStyle = TagOf(_progressStyleBox) ?? "bar";
         _runtime.Config.SaveApp();
     }
 

@@ -1,7 +1,7 @@
-﻿# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
+﻿﻿# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
 #   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
-#     池水近景（水位=进度静态可读）+「NN%」UIA 文本硬断言（zhipu 连接指 mock
-#     /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据；bar 已降级可选路径）。
+#     进度条像素硬断言（底部 4 DIP 条带，2026-10-11 重设计后 bar 为默认）+「NN%」UIA 文本硬断言
+#     （zhipu 连接指 mock /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据）。
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
 #   场景 C 浅色主题 icon 可辨度：白桌面 + theme=light，tile 近景暗像素硬断言——
 #     近白 icon/文字叠浅底不可辨（用户实测「根本看不清」）在这里现形（修复=实色底+深前景）。
@@ -11,8 +11,8 @@
 #     再 UIA 走一遍保存连接（save-flow），硬断言新连接**立即**出现在下拉（下拉不刷新回归在这里现形）；
 #     组件向导「类型」下拉逐家断言非空且含本家条目（小米类型空回归在这里现形）；预置五张钉选
 #     provider tile——UIA 读 tile 文本硬断言名字（火山方舟/DeepSeek/阿里千问）与数值（42.5/¥420.5/mimo 本机计数 128 次），
-#     字段名（usage/quota）冒充名字在这里现形；「NN%」常驻百分比硬断言 + ark 波纹双帧近景（2026-10-10
-#     池子注水改造）；设置侧三断言：①config settingsSidebarWidth=400 启动恢复→左栏实测 400±8px（可拖
+#     字段名（usage/quota）冒充名字在这里现形；「NN%」常驻百分比硬断言 + ark 进度条像素硬断言
+#     （2026-10-11 重设计：bar 默认，底部 4 DIP 圆角条 + NN% 读数）；设置侧三断言：①config settingsSidebarWidth=400 启动恢复→左栏实测 400±8px（可拖
 #     数据链）②设置搜索「额度」过滤 + 清词复原 ③SendInput 拖拽分隔条 +60px（不生效降级 warning，
 #     手势转装机手验）；设置常规页改「检查频率」→15 秒——config.json 落盘
 #     + 日志「检查频率变更为 15s」双硬断言（轮询节奏可配证据）。
@@ -159,7 +159,7 @@ function Write-ScenarioConfig([bool] $numericFloating, [string] $theme = "dark")
 ]
 '@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
     # zhipu 指 mock（连接 Endpoint 是全 URL 语义）：GLM tile 确定性健康——此前无凭据真端点时好时坏
-    # （38048738860 离线态、38044411443 健康），波纹+NN% 断言不能赌公网
+    # （38048738860 离线态、38044411443 健康），条带+NN% 断言不能赌公网
     @'
 [
   {
@@ -278,7 +278,7 @@ function Start-MockServer
                 switch ($path)
                 {
                     "/coding/v1/usages" { $body = $kimi }
-                    "/api/monitor/usage/quota/limit" { $body = $bigmodel } # 场景 A GLM tile 健康链（38% → 波纹+NN%）
+                    "/api/monitor/usage/quota/limit" { $body = $bigmodel } # 场景 A GLM tile 健康链（38% → 条带+NN%）
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
                     "/mimo/usage" { $body = $mimoUsage }
@@ -367,9 +367,11 @@ function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow)
     return $count
 }
 
-# 进度条像素硬断言助手（2026-10-10 修「进度条看不到」配套）：扫 tile 截图底部 6 物理像素行、
-# 中部 60% 宽（避开圆角处桌面色与左右 padding），统计与底色 (15,23,42) 任一通道差 >25 的像素。
-# 修复前该区域纯底色（CI 截图实证：条从未渲染出像素）→ 0；修复后 track(≈63,74,90)+fill(severity 色) 覆盖整带 → 数百。
+# 进度条像素硬断言助手（2026-10-10 修「进度条看不到」配套，2026-10-11 重设计后 bar 为默认路径）：
+# 扫 tile 截图（必须 margin 0，防桌面色混入）底部 6 物理像素行、中部 60% 宽（避开 2 DIP 圆角端头
+# 与 NN% 读数列），统计与暗底色 (15,23,42) 任一通道差 >25 的像素。
+# bar 缺席=0（CI 截图实证过的旧病）；bar 在场：track(≈62,72,92)+fill(档位色) 盖满 4px 高带 → 数百，
+# 阈值 120 ≈ 期望值的 30%，容忍圆角/窗口边 1-2 行的毛边。
 # 只对 dark 主题（A/D 场景）成立；浅主题底色不同不适用（C 场景走暗像素断言）。
 function Count-BarPixels([System.Drawing.Bitmap] $bmp)
 {
@@ -507,24 +509,33 @@ try
     }
     Save-FullScreenshot "A-numeric-on-desktop.png"
     Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-on-tile-closeup.png" 6
-    # 百分比硬断言（2026-10-10 用户令「池子注水+常驻静态可读量」）：GLM tile 有 Progress 语义，
-    # 「NN%」文本必须常驻（bar 已降级为 progressStyle=="bar" 可选路径，默认 pool）
+    # 进度条像素硬断言（2026-10-11 重设计，bar 默认路径）：GLM tile 有 Progress 语义（mock 38%），
+    # 底部 4 DIP 条带必须出像素——旧病「条从未渲染」/ 3px 细到难辨都在这里现形
+    $aBarCrop = New-Crop ([WinEnum]::RectOf($tiles[0])) 0
+    Save-Zoom $aBarCrop "A-tile-bar-band.png" 6
+    $aBarPixels = Count-BarPixels $aBarCrop
+    $aBarCrop.Dispose()
+    if ($aBarPixels -lt 120)
+    {
+        throw "断言失败（场景 A）：GLM tile 底部进度条带仅 $aBarPixels 像素（期望 ≥120，即 4 DIP 条+底轨）——bar 默认路径渲染回归"
+    }
+    # 百分比硬断言（2026-10-10 用户令「常驻静态可读量」）：GLM tile「NN%」文本必须常驻
     $aTexts = Get-WindowUiaTexts $tiles[0]
     $aPercent = $aTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
     if ($aPercent)
     {
-        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（mock 38% 健康链，池水近景已存）"
+        Write-Host "场景 A 百分比断言通过：GLM tile 常驻静态文本「$aPercent」（mock 38% 健康链）；进度条像素 $aBarPixels（A-tile-bar-band.png）"
     }
     elseif (($aTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
-        throw "断言失败（场景 A）：GLM tile 文本可读但无百分比（N% 常驻静态量缺失）——池子注水改造回归；实际文本：$($aTexts -join ' | ')"
+        throw "断言失败（场景 A）：GLM tile 文本可读但无百分比（N% 常驻静态量缺失）——进度读数回归；实际文本：$($aTexts -join ' | ')"
     }
     else
     {
         # UIA 对 NOACTIVATE 悬浮窗读不出任何文本时：6x 近景截图即数字状态证据（转人工目检），不拦绿
         Write-Host "::warning::场景 A UIA 文本不可读（$($aTexts.Count) 条）——「NN%」断言转 A-numeric-on-tile-closeup.png 人工目检"
     }
-    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏/近景/池水截图已存"
+    Write-Host "场景 A 通过：悬浮框窗口存在（$($tiles.Count) 个），全屏/近景/条带截图已存"
 }
 catch
 {
@@ -745,7 +756,7 @@ try
         throw "断言失败（场景 D）：tile 宿主窗未见（Beacon Pinned / Beacon Tile）"
     }
     $tileTexts = @()
-    $windowTexts = @() # 按窗保序（一窗多条文本已 join 成一条）——波纹/百分比断言按窗序定位 ark tile
+    $windowTexts = @() # 按窗保序（一窗多条文本已 join 成一条）——条带/百分比断言按窗序定位 ark tile
     for ($tileIndex = 0; $tileIndex -lt $panelHandles.Count; $tileIndex++)
     {
         $texts = Get-WindowUiaTexts $panelHandles[$tileIndex]
@@ -778,19 +789,19 @@ try
         Write-Host "tile 证据已收：$($panelHandles.Count) 个悬浮窗存在 + 近景截图；文本断言跳过"
     }
 
-    # 进度显示硬断言（2026-10-10 用户令「换形态水波纹+常驻百分比」三轮定稿→池子注水）：ark tile
-    # （火山方舟，Progress=42.5%）文本必含「NN%」；bar 已降级 progressStyle 可选路径，像素断言随之作废。
-    # 池水是静态水位（水位=进度），近景截图即可目检（不再有循环动画，无相位差）
+    # 进度显示硬断言（2026-10-11 用户令重设计定稿：bar 默认，圆池仅显式选择）：ark tile
+    # （火山方舟，Progress=42.5%）文本必含「NN%」+ 底部 4 DIP 条带像素硬断言（margin 0 防桌面混色）。
+    # bar 推进是 ~300ms 一次性过渡（intensity 接管），截图前 sleep 足够长即无相位差
     $arkIndex = -1
     for ($i = 0; $i -lt $windowTexts.Count; $i++) { if ($windowTexts[$i] -like "*火山方舟*") { $arkIndex = $i } }
     $percentHit = $tileTexts | Where-Object { $_ -match '\d+\s*%' } | Select-Object -First 1
     if ($percentHit)
     {
-        Write-Host "百分比常驻断言通过：tile 静态文本「$percentHit」（NN% 一眼可读，静态池水不依赖动画）"
+        Write-Host "百分比常驻断言通过：tile 静态文本「$percentHit」（NN% 一眼可读，动画+文字双通道）"
     }
     elseif (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
-        throw "断言失败（场景 D）：tile 文本可读但无百分比（N% 常驻静态量缺失）——池子注水改造回归；实际文本：$($tileTexts -join ' | ')"
+        throw "断言失败（场景 D）：tile 文本可读但无百分比（N% 常驻静态量缺失）——进度读数回归；实际文本：$($tileTexts -join ' | ')"
     }
     else
     {
@@ -799,8 +810,15 @@ try
     if ($arkIndex -ge 0)
     {
         $arkRect = [WinEnum]::RectOf($panelHandles[$arkIndex])
-        Save-Zoom (New-Crop $arkRect 8) "D-tile-ark-pool-closeup.png" 6
-        Write-Host "ark 池水近景已存：D-tile-ark-pool-closeup.png（水位=进度目检）"
+        $arkBarCrop = New-Crop $arkRect 0
+        Save-Zoom $arkBarCrop "D-tile-ark-bar-closeup.png" 6
+        $arkBarPixels = Count-BarPixels $arkBarCrop
+        $arkBarCrop.Dispose()
+        if ($arkBarPixels -lt 120)
+        {
+            throw "断言失败（场景 D）：ark tile 底部进度条带仅 $arkBarPixels 像素（期望 ≥120，即 4 DIP 条+底轨）——bar 默认路径渲染回归"
+        }
+        Write-Host "ark 条带断言通过：$arkBarPixels 像素（D-tile-ark-bar-closeup.png，档位色+底轨目检）"
     }
 
     # 检查频率：常规页改「检查频率」→15 秒——config.json 落盘 + 日志重建调度双硬断言
