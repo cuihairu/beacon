@@ -5,13 +5,19 @@ using Beacon.Core.Models;
 namespace Beacon.Connections.Tests;
 
 /// <summary>
-/// mimo.usage（小米 MiMo 开放平台，三档探测后如实降级）：模型目录解析、缺 Key/401/5xx 分级、
+/// mimo.usage（小米 MiMo 开放平台，三档探测后如实降级）：控制台真实响应形状（monthUsage/usage 块
+/// + 0-1 比例 percent，2026-10-11 实抓）、旧防御键名兜底、模型目录解析、缺 Key/401/5xx 分级、
 /// 无用量口时 Info 卡如实标注、自定义 usage_endpoint 原样透传。
 /// </summary>
 public sealed class MiMoUsageProviderTests
 {
     private const string ModelsBody = """
         {"object":"list","data":[{"id":"mimo-v2.5","object":"model","owned_by":"xiaomi"},{"id":"mimo-v2.5-pro","object":"model","owned_by":"xiaomi"}]}
+        """;
+
+    // 控制台真实响应形状（2026-10-11 用户实抓 GET /api/v1/tokenPlan/usage；percent 是 0-1 比例）
+    private const string RealConsoleBody = """
+        {"code":0,"message":"","data":{"monthUsage":{"percent":0.0007,"items":[{"name":"month_total_token","used":90912620,"limit":132000000000,"percent":0.0007}]},"usage":{"percent":0.00,"items":[{"name":"plan_total_token","used":90912620,"limit":132000000000,"percent":0.00},{"name":"compensation_total_token","used":0,"limit":0,"percent":0}]}}}
         """;
 
     private static ConnectionConfig Connection(Dictionary<string, string>? settings = null, string? credentialRef = "conn:mimo") => new()
@@ -157,6 +163,65 @@ public sealed class MiMoUsageProviderTests
     [InlineData("""not json""")]
     public void ParseConsoleUsage_Unrecognized_ReturnsNull(string body)
         => Assert.Null(MiMoUsageProvider.ParseConsoleUsage(body));
+
+    // ---- 控制台真实形状（2026-10-11 实抓） ----
+
+    [Fact]
+    public void ParseConsoleUsage_RealShape_MonthUsagePrimary()
+    {
+        var usage = MiMoUsageProvider.ParseConsoleUsage(RealConsoleBody)!;
+
+        Assert.Equal(0.0689, usage.Percent, 3); // used/limit 自算：90912620/132e9 → 0.0689%，非 0-1 比例直读
+        Assert.Equal(90912620, usage.Used);
+        Assert.Equal(132000000000, usage.Total);
+    }
+
+    [Fact]
+    public void ParseConsoleUsage_RealShape_FallsBackToUsageBlock()
+    {
+        const string body = """{"code":0,"data":{"usage":{"percent":0.42,"items":[{"name":"compensation_total_token","used":1,"limit":100,"percent":0.01},{"name":"plan_total_token","used":42,"limit":10000,"percent":0.0042}]}}}""";
+
+        var usage = MiMoUsageProvider.ParseConsoleUsage(body)!;
+
+        Assert.Equal(0.42, usage.Percent, 3); // monthUsage 缺 → usage 块按 name=plan_total_token 取，非首个
+        Assert.Equal(42, usage.Used);
+        Assert.Equal(10000, usage.Total);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_RealConsoleShape_CookieRefererAndDisplay()
+    {
+        var (provider, http) = Faked(HttpStatusCode.OK, RealConsoleBody);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("sk-test", consoleCookie: "ph-session-value"), CancellationToken.None);
+
+        Assert.Equal("console_api", state!.Payload["usage_source"]);
+        Assert.True(http.Requests[0].Headers.TryGetValues("api-platform_ph", out var cookie));
+        Assert.Equal("ph-session-value", string.Join(",", cookie));
+        Assert.True(http.Requests[0].Headers.TryGetValues("Referer", out var referer)); // 实抓请求带来源页
+        Assert.Contains("/console/plan-manage", string.Join(",", referer!));
+
+        Assert.Equal("0.1", state.Payload["percent"]); // 0.0689% 显示口径（0.# 一位小数）
+        Assert.Equal("0.1%", state.Payload["value_text"]);
+        Assert.Equal("90912620", state.Payload["used"]);
+        Assert.Equal("132000000000", state.Payload["total"]);
+        Assert.Contains("已用 90,912,620 / 1320亿", state.Summary); // 90.9M 未到亿位走千分位（FormatTokens 口径）
+        Assert.Contains("0.1%（控制台套餐用量）", state.Summary);
+        Assert.Equal(Severity.Success, state.Severity);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_RealConsoleShape_NearLimitWarns()
+    {
+        const string body = """{"code":0,"data":{"monthUsage":{"percent":0.95,"items":[{"name":"month_total_token","used":125400000000,"limit":132000000000,"percent":0.95}]}}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("sk-test", consoleCookie: "ph"), CancellationToken.None);
+
+        Assert.Equal(Severity.Warning, state!.Severity); // 95%：快用完提醒（0-1 比例不得漏判成 0.95%）
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal(0.95, state.Progress!.Value, 3);
+    }
 
     [Fact]
     public async Task GetStateAsync_ConsoleUnparseable_ThrowsDegradedWithBody()

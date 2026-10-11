@@ -28,16 +28,18 @@ public static class MiMoWidgetDescriptors
 
 /// <summary>
 /// mimo.usage（positioning P0 #5）：小米 MiMo 开放平台用量卡。三档如实降级：
-/// ① 控制台套餐用量 API（2026-10-10 批6 实证：GET platform.xiaomimimo.com/api/v1/tokenPlan/usage，
-/// 认证=浏览器登录 cookie api-platform_ph——**API Key 双形态（Bearer/cookie/裸头）实测全 401**，
-/// key 只授权模型调用，与千问 Token Plan 同构；连接里录控制台 Cookie（SecretStore，ref 默认
-/// mimo:console）后生效，组件给 已用/总量/百分比（plan-manage 页口径，用户令替代模型数占额度位）；
+/// ① 控制台套餐用量 API（2026-10-10 批6 实证端点、2026-10-11 用户实抓响应真身：GET
+/// platform.xiaomimimo.com/api/v1/tokenPlan/usage，认证=浏览器登录 cookie api-platform_ph——
+/// **API Key 双形态（Bearer/cookie/裸头）实测全 401**，key 只授权模型调用，与千问 Token Plan 同构；
+/// 连接里录控制台 Cookie（SecretStore，ref 默认 mimo:console）后生效，组件给 已用/总量/百分比
+/// （plan-manage 页口径，用户令替代模型数占额度位）。真实响应 data.monthUsage/usage 块 + items[]，
+/// percent 字段是 **0-1 比例**（非 0-100），used/limit 自算精确百分比）；
 /// ② 本机计数：连接 Settings 填 usage_endpoint（GET + Bearer）指向计数源，防御解析
 /// total_calls/window_calls/window_minutes（{"data":{...}} 包裹剥开）→「本机累计 N 次 · 近M分 K 次」，
 /// 无计数键则原样透传（不加工）；③ 两者皆无 → 额度位「无额度口」+ 摘要给控制台 plan-manage 指引
 /// （需登录）+ 模型数降次行——模型数是目录不是额度，不得冒充（用户令）。
-/// 推理域 7 个候选端点 404、无限流头（2026-10-08 首测 + 2026-10-10 复核 + 批6 真 Key 三验）。
-/// 控制台响应字段名未拿真会话验证（无 cookie 无法取真数据）——解析走防御键名，认不出显式 Degraded。
+/// 推理域 7 个候选端点 404、无限流头（2026-10-08 首测 + 2026-10-10 复核 + 批6 真 Key 三验）；
+/// 旧防御键名解析保留兜底，认不出显式 Degraded。
 /// </summary>
 public sealed class MiMoUsageProvider : IWidgetProvider
 {
@@ -124,6 +126,8 @@ public sealed class MiMoUsageProvider : IWidgetProvider
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.TryAddWithoutValidation(ConsoleCookieHeader, cookie);
+        // 控制台接口校验来源页（2026-10-11 实抓请求带 plan-manage referer）
+        request.Headers.TryAddWithoutValidation("Referer", "https://platform.xiaomimimo.com/console/plan-manage");
         var client = _client ?? HttpEndpoint.Shared;
         using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -311,10 +315,12 @@ public sealed class MiMoUsageProvider : IWidgetProvider
     public sealed record MiMoPlanUsage(double? Used, double? Total, double Percent);
 
     /// <summary>
-    /// 控制台套餐用量解析（纯函数供单测）。真会话响应字段名未验证（无登录 cookie 拿不到真数据）——
-    /// 防御键名 + data 包裹剥开：百分比 percentage/percent/usage_percent/used_percent；
-    /// 已用 used_tokens/usedTokens/used/usage/currentValue；总量 total_tokens/totalTokens/total/limit/quota。
-    /// 百分比缺、used+total 齐 → 自算；数字一律兼容字符串形态。
+    /// 控制台套餐用量解析（纯函数供单测）。真实形状（2026-10-11 用户实抓）：
+    /// {"code":0,"message":"","data":{"monthUsage":{"percent":0.0007,"items":[{"name":"month_total_token",
+    /// "used":90912620,"limit":132000000000,"percent":0.0007}]},"usage":{"items":[...]}}}——
+    /// percent 字段是 **0-1 比例**（非 0-100），优先 used/limit 自算精确百分比；monthUsage 缺失退
+    /// data.usage（name=plan_total_token 优先）。旧防御键名路径兜底（percentage/used/total 顶层字段，
+    /// 数字一律兼容字符串形态），认不出返回 null（显式 Degraded）。
     /// </summary>
     internal static MiMoPlanUsage? ParseConsoleUsage(string json)
     {
@@ -325,12 +331,21 @@ public sealed class MiMoUsageProvider : IWidgetProvider
             if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var envelope)
                 && envelope.ValueKind == JsonValueKind.Object)
             {
-                root = envelope; // {"code":200,"data":{...}} 控制台统一包裹
+                root = envelope; // {"code":0,"message":"","data":{...}} 控制台统一包裹
             }
             if (root.ValueKind != JsonValueKind.Object)
             {
                 return null;
             }
+            // 真实形状：monthUsage（月度套餐主口径）→ usage（plan_total_token）兜底
+            var plan = ParseUsageBlock(root, "monthUsage", "month_total_token")
+                ?? ParseUsageBlock(root, "usage", "plan_total_token");
+            if (plan is not null)
+            {
+                return plan;
+            }
+            // 旧防御键名兜底：百分比 percentage/percent/usage_percent/used_percent；
+            // 已用 used_tokens/usedTokens/used/usage/currentValue；总量 total_tokens/totalTokens/total/limit/quota。
             var percent = ReadDouble(root, "percentage", "percent", "usage_percent", "used_percent", "usedPercent", "usagePercent");
             var used = ReadDouble(root, "used_tokens", "usedTokens", "used", "usage", "currentValue");
             var total = ReadDouble(root, "total_tokens", "totalTokens", "total", "limit", "quota");
@@ -344,6 +359,43 @@ public sealed class MiMoUsageProvider : IWidgetProvider
         {
             return null;
         }
+    }
+
+    /// <summary>真实形状块解析：{percent(0-1 比例), items:[{name,used,limit,percent}]} → 0-100 百分比。</summary>
+    private static MiMoPlanUsage? ParseUsageBlock(JsonElement root, string blockKey, string primaryItemName)
+    {
+        if (!root.TryGetProperty(blockKey, out var block) || block.ValueKind != JsonValueKind.Object
+            || !block.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+        JsonElement? chosen = null;
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+            chosen ??= item; // 兜底：首个条目
+            if (item.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
+                && name.GetString() == primaryItemName)
+            {
+                chosen = item;
+                break;
+            }
+        }
+        if (chosen is not { } entry)
+        {
+            return null;
+        }
+        var used = ReadDouble(entry, "used");
+        var total = ReadDouble(entry, "limit");
+        double? percent = used is { } usedValue && total is { } totalValue && totalValue > 0
+            ? usedValue * 100 / totalValue // 自算精确值（块级 percent 是舍入过的 0-1 比例）
+            : ReadDouble(entry, "percent") is { } ratio ? ratio * 100
+            : ReadDouble(block, "percent") is { } blockRatio ? blockRatio * 100
+            : null;
+        return percent is { } finalPercent ? new MiMoPlanUsage(used, total, finalPercent) : null;
     }
 
     private static double? ReadDouble(JsonElement element, params string[] keys)

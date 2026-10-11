@@ -171,11 +171,14 @@ Codex    71% used   weekly 8h 后重置
   （open.volcengineapi.com，V4 签名火山变体；凭据为控制台 AK/SK 一次粘贴 `AccessKey:SecretKey` 只进 DPAPI——
   推理 ARK_API_KEY 实测被管控面 400 拒绝，不能互推），`Result.QuotaUsage[]` 归一化 5h/周/月三窗口已用百分比
   （接口只给百分比，绝对数不经此口）；空数组=未订阅/已回收，渲染「无套餐」Info 卡非错误；
-- **小米 MiMo 用量卡（AI Usage 九家之一）**：组件类型 `mimo.usage`——**官方无额度接口**（2026-10-08 首测、
-  2026-10-10 复核：/usage 等 7 端点全 404，/models 与 /chat/completions 响应均无限流头）。按用户令
-  （2026-10-10）模型数**不得占额度位**：无计数源时额度位显式「无额度口」、模型数降 Summary 次行；
-  连接 Settings 填 `usage_endpoint` 指向本机计数源（防御解析 total_calls/window_calls/window_minutes）
-  即切「本机累计 N 次 · 近M分 K 次」+ 数据源注明本机计数；
+- **小米 MiMo 用量卡（AI Usage 九家之一）**：组件类型 `mimo.usage`——三档降级：①控制台套餐用量（端点
+  2026-10-10 前端 bundle 实证、**响应真身 2026-10-11 用户实抓**：GET platform.xiaomimimo.com/api/v1/tokenPlan/usage，
+  Cookie `api-platform_ph` 认证 + plan-manage referer；响应 `data.monthUsage/usage` 块 + `items[]`，
+  `percent` 字段是 **0-1 比例**非 0-100，used/limit 自算精确百分比；早前「/usage 等 7 端点全 404」系
+  **推理域 API** 实测，控制台域例外）②本机计数（Settings `usage_endpoint`，防御解析
+  total_calls/window_calls/window_minutes →「本机累计 N 次 · 近M分 K 次」）③皆无 → 额度位「无额度口」+
+  plan-manage 指引、模型数降 Summary 次行（用户令：模型数是目录不是额度，不得占额度位）。
+  Cookie 凭据模型同 Kimi：浏览器复制粘贴 + DPAPI 回放，不做扫码登录，过期重录；
 - **OpenAI Codex 本机统计（AI Usage 九家之一）**：组件类型 `codex.usage`——读本机
   `~/.codex/sessions/**/rollout-*.jsonl` 的 token_count 事件（total_token_usage 为会话内累计值，每文件取末条求和），
   零凭据零网络，卡面如实标注「本地统计」（ChatGPT OAuth 官方用量口与「连接+凭据」模型不同构，暂不接）；

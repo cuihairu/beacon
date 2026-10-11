@@ -909,6 +909,19 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：真实形状夹具（实抓 JSON 结构，零凭据）+ 旧形状回归 + POST/Cookie 头断言共 9 例新增，
   4 项目 690/690 全绿。测试 Cookie 用假值 `sk-kimi-demo`，真实 Cookie 只进用户 DPAPI。
 
+### 批3-补30 MiMo 控制台响应真身实抓落地（2026-10-11 用户实抓 tokenPlan/usage）
+- **真身**：`{"code":0,"data":{"monthUsage":{"percent":0.0007,"items":[{"name":"month_total_token",
+  "used":…,"limit":…,"percent":…}]},"usage":{"items":[plan_total_token, compensation_total_token]}}}`——
+  **percent 字段是 0-1 比例（非 0-100）**，且舍入粗糙（usage 块 2 位小数会把 0.069% 舍成 0.00）。
+- **修复**：`ParseConsoleUsage` 真实形状优先（monthUsage → usage 块，items[] 按 name 取主条目），
+  used/limit 自算精确百分比、比例字段仅作无绝对数时的兜底（×100 归一 0-100）；旧防御键名路径保留兜底。
+  `SendConsoleAsync` 补 plan-manage referer（实抓请求带，防来源校验）。
+- **文档改口**：positioning「官方无额度接口（7 端点全 404）」限定为**推理域 API** 实测，控制台域例外
+  （早前表述会误导「小米无任何额度口」）；configuration.md mimo 行补真实形状与 0-1 比例口径。
+- **凭据模型**：同 Kimi 控制台口——浏览器复制 Cookie 粘贴 + DPAPI 回放，不做扫码登录，过期重录。
+- **验收**：真实形状 4 例（比例归一/块回退/Cookie+referer/95% 告警边界）+ 旧防御理论全保留，
+  4 项目全绿。测试零真实凭据。
+
 ## 2026-10-10 装机对照清单（59 条三类，2026-10-11 六次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）

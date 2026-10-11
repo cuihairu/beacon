@@ -129,8 +129,8 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | ark | region | 签名区域，默认 `cn-beijing` |
 | qwen | usage_endpoint | 自定义用量端点（GET + Bearer）。留空则显示模型目录并如实标注官方额度口未开放 |
 | mimo | usage_endpoint | 本机计数源（GET + Bearer），防御解析 total_calls/window_calls/window_minutes |
-| mimo | console_usage_url | 控制台套餐用量 API 地址 |
-| mimo | console_credential_ref | 控制台 Cookie 的凭据引用，默认 `mimo:console`（Cookie 值 = 浏览器 F12 → Cookies → api-platform_ph） |
+| mimo | console_usage_url | 控制台套餐用量 API 地址（默认 `/api/v1/tokenPlan/usage`，GET + api-platform_ph Cookie + plan-manage referer） |
+| mimo | console_credential_ref | 控制台 Cookie 的凭据引用，默认 `mimo:console`（Cookie 值 = 浏览器 F12 → Cookies → api-platform_ph；**粘贴 + DPAPI 回放，不做扫码登录**，会话过期重录） |
 
 ### 各家额度口径与数据源
 
@@ -143,7 +143,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | kimi | kimi.coding | 5h 窗 + 周限的剩余百分比，最差者判级（余 0% 显示「已用尽」） | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
 | moonshot | moonshot.balance | 余额金额（¥），余额 ≤ warn_below（默认 20）→ Warning、≤ error_below（默认 5）→ Error | GET /v1/users/me/balance（Bearer）。响应不含余额数据按 Degraded 处理 |
 | deepseek | deepseek.balance | 余额金额（CNY/USD），total ≤ 阈值判级 | GET /user/balance。is_available=false 直接 Error |
-| mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；否则本机计数；再否则如实「无额度口」 | 三档降级：控制台 API → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充） |
+| mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；否则本机计数；再否则如实「无额度口」 | 三档降级：控制台 API → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充）。控制台响应真身 2026-10-11 实抓：data.monthUsage/usage 块 + items[]，percent 字段是 **0-1 比例**（used/limit 自算精确百分比，≥90% Warn / ≥100% Error） |
 | qwen | qwen.usage | Token Plan 已用百分比 + 重置日（个人版 7 天固定窗、团队版月度） | 四档探测：官方用量 API 无 → 自定义 usage_endpoint → 配额探针（耗尽时任意 POST 得 429 AllocationQuota 携重置时间，非耗尽型 429 不翻转）→ 模型目录兜底 |
 | copilot | copilot.usage | premium_interactions 槽已用百分比（chat/completions 无限不参与）；配额重置日展示 | 官方客户端同款配额端点，需 Editor-Version / Copilot-Integration-Id 两个请求头 |
 | opencode | opencode.usage | 月度预算已用百分比（金额 micro-cents）；多成员聚合：消费求和、任一无上限即无上限、任一超支即超 | Console Budgets API。exceeded → Error；无上限 → Success 基线 |
