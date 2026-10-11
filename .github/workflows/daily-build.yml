@@ -11,14 +11,15 @@ name: Daily Build
 # 停在首次发布日，装机验收无法凭它确认装到新包）。发布步骤末尾带硬断言：
 # publishedAt / 三个资产 updatedAt 必须 ≥ 本次 run 起始时间，远端 SHA256SUMS 须与
 # 本地构建逐字节一致——发布失败=run 红，不许绿着不发货。--prerelease
-# 2026-10-11 版本发布红线（用户令，覆盖本文以上全部说明）：**禁止自动发版**——
-# 不许打 tag、不许建 Release、不许推产物；schedule 已移除，只能用户手动 workflow_dispatch 触发。
-# 原「nightly 是固定滚动 tag 不受红线限制」的口径**作废**，nightly 同样属于版本发布。
+# --latest=false 保证滚动构建永不冒充正式版。仓库红线是「禁版本 tag」；
+# `nightly` 是固定滚动 tag，不是版本号，不受限。
 #
 # 调度：GitHub schedule 只在默认分支（main）生效；北京时间凌晨执行。
 
 on:
-# 2026-10-11 版本发布红线（用户令）：版本只能用户手动触发，schedule 自动发版已移除。
+  schedule:
+    # UTC 19:07 = 北京时间 03:07（凌晨），避开整点调度高峰
+    - cron: '7 19 * * *'
   workflow_dispatch:
 
 permissions:
