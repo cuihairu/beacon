@@ -158,7 +158,6 @@ public partial class App : Application
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
         _capsule = capsule; // 退出清理用
         capsule.OpenPanelRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
-        capsule.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings); // master-plan §3.1：胶囊右键直达设置（批3-补28）
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.TryEnqueue(() => capsule.NoteFetch(evt.State.FetchedAt)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.TryEnqueue(() =>
         {
@@ -338,6 +337,8 @@ public partial class App : Application
             }
         }
         tray.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings);
+        // master-plan §3.1：胶囊右键直达设置（批3-补28）——须在 OpenSettings/hotkey 声明之后挂（CS0165）
+        capsule.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings);
 
         // --settings 启动参数：装配完成即开设置页（CI 视觉取证/装机排查入口，与托盘入口同一 OpenSettings 路径）
         if (Environment.GetCommandLineArgs().Any(a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
