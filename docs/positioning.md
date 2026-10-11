@@ -193,6 +193,10 @@ Codex    71% used   weekly 8h 后重置
   填自定义口（GET + Bearer），响应按防御键名解析（percent/used_percent、remaining_percent 反推、
   remaining/total_credits、reset_at/reset/period_end ISO 或秒级 epoch）即出额度卡（已用% 进度条 + 阈值告警
   + 重置时间）。窗口口径：个人版 7 天固定窗口、团队版月度（官方 FAQ），重置以端点数据为准；
+- **Moonshot 开放平台余额（AI Usage 第十一家，2026-10-10）**：组件类型 `moonshot.balance`——开放平台余额监控
+  （与 Kimi For Coding 套餐是两套账号体系），`GET api.moonshot.cn/v1/users/me/balance` Bearer 认证，
+  响应 `{code:0, data:{available_balance}}`；余额 ≤ `warn_below`（默认 20）→ Warning、≤ `error_below`（默认 5）→ Error，
+  响应不含余额数据按 Degraded 处理（连接测试同口径，代理回错误体不算连通）；
 - **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
   组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
   （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；
@@ -208,10 +212,10 @@ Codex    71% used   weekly 8h 后重置
 - **L0 独立悬浮框形态（B-701 扩展）**：设置「悬浮形态」二选一——宿主面板（默认，单窗多 tile）/ 独立悬浮框
   （每钉选组件一窗，桌面任意拖放，位置按组件各记 `PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）；
   两形态同享置顶哨兵、点击下钻 L2、停用模块即时消失；切换重启生效。
-  **产品拍板（数值类悬浮：可配置+默认关，2026-10-08 修正）**：独立悬浮窗对信息密集组件（趋势图/状态灯组，
+  **产品拍板（数值类悬浮：可配置；默认开，2026-10-11 用户令）**：独立悬浮窗对信息密集组件（趋势图/状态灯组，
   descriptor `FloatingSupported`）恒生效；数值/额度类（descriptor `FloatingOptIn`）由设置「数量悬浮窗」总开关控制——
-  **默认关**（新装/升级零残留，关=桌面不出水滴/窗口），开启即刻生效恢复数值类悬浮窗；关闭态下钉选由宿主面板承载
-  （一次性迁移提示指路设置）。当前组件库暂无 FloatingSupported 类型，开关关=悬浮形态等效面板。
+  **默认开**（`numericFloatingEnabled` 默认 true；2026-10-08 曾拍默认关，用户令推翻），
+  关闭即刻收回落盘恢复宿主面板承载。当前组件库暂无 FloatingSupported 类型（状态类恒面板承载），开关只挡数值类独立悬浮窗一条路。
 
 ### 调研结论（暂缓接入）
 
@@ -223,8 +227,8 @@ Codex    71% used   weekly 8h 后重置
   （2026-10-10 复核：/usage /quota /balance 等 7 端点全 404，响应无限流头）——`mimo.usage` 已按「无额度口 +
   本机计数」落（见 §8）；官方日后开放即按 bigmodel/kimi 同构升级。另注：小米 key 本机（litellm/relay）无调用方，
   litellm 的 mimo-v2.6-flash-free 走 DeepSeek serverless 中转非小米直连。
-- **Moonshot 开放平台余额**（区别于 Kimi For Coding 套餐）：`GET https://api.moonshot.cn/v1/users/me/balance`
-  Bearer 认证，响应 `{code:0, data:{available_balance}}`（dsh-plugin-llm-balance 验证）——端点已确认，后续按 deepseek 同构接入。
+- **Moonshot 开放平台余额**：~~端点已确认，后续按 deepseek 同构接入~~
+  **已于 2026-10-10 落 `moonshot.balance`**（见 §8 AI Usage 第十一家，按 deepseek 同构）。
 - **OpenAI Codex 用量**：社区走 ChatGPT OAuth（`chatgpt.com/backend-api/wham/usage`，5h/周/月限额+Credits），
   需要本机 OAuth 凭据封装，与当前"连接+凭据"模型不同构——已按第三档落本机会话 JSONL 统计（`codex.usage`，见 §8），
   OAuth 口单独排期。

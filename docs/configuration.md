@@ -102,6 +102,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | ark | open.volcengineapi.com | 火山 `AccessKey:SecretKey` 冒号分隔一次粘贴（控制台「API 访问密钥」创建；推理 ARK_API_KEY 调不了管控面） | V4 签名调 GetCodingPlanUsage |
 | claude | 无（读本机） | 留空 | 本机会话目录可读 |
 | kimi | api.kimi.com/coding/v1/usages | Kimi For Coding Key（sk-kimi- 前缀；与 Moonshot 开放平台是两套账号） | GET usages |
+| moonshot | api.moonshot.cn/v1/users/me/balance | Moonshot 开放平台 API Key（Bearer；与 Kimi For Coding 是两套账号） | GET balance（响应须含余额数据） |
 | deepseek | api.deepseek.com | DeepSeek API Key | GET /user/balance |
 | mimo | token-plan-cn.xiaomimimo.com/v1 | 小米 API Key（Bearer；只授权模型调用，额度另录控制台 Cookie） | GET /models |
 | qwen | token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1 | 百炼 Token Plan 专属 Key（sk-sp- 前缀） | GET /models |
@@ -138,6 +139,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | claude | claude.usage | 窗口内 token 与成本（costUSD 存在才计成本，不自行估价） | 读本机 `~/.claude/projects/**/*.jsonl`，零凭据零网络。设了 daily_cost_limit 才按用量升级别 |
 | codex | codex.usage | 近 N 天 token（每会话文件取最后一条累计值求和，如实标注「本地统计，非官方口径」） | 读本机 `~/.codex/sessions/**/rollout-*.jsonl`。官方口需 OAuth，落本地统计档 |
 | kimi | kimi.coding | 5h 窗 + 周限的剩余百分比，最差者判级（余 0% 显示「已用尽」） | GET usages（社区实现交叉验证）。limits[] 窗口明细归一化 |
+| moonshot | moonshot.balance | 余额金额（¥），余额 ≤ warn_below（默认 20）→ Warning、≤ error_below（默认 5）→ Error | GET /v1/users/me/balance（Bearer）。响应不含余额数据按 Degraded 处理 |
 | deepseek | deepseek.balance | 余额金额（CNY/USD），total ≤ 阈值判级 | GET /user/balance。is_available=false 直接 Error |
 | mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；否则本机计数；再否则如实「无额度口」 | 三档降级：控制台 API → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充） |
 | qwen | qwen.usage | Token Plan 已用百分比 + 重置日（个人版 7 天固定窗、团队版月度） | 四档探测：官方用量 API 无 → 自定义 usage_endpoint → 配额探针（耗尽时任意 POST 得 429 AllocationQuota 携重置时间，非耗尽型 429 不翻转）→ 模型目录兜底 |

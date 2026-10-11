@@ -18,7 +18,7 @@ Beacon/
 ├── src/
 │   ├── Beacon.App/                  # WinUI 3 壳（唯一 exe，代码建 UI 为主）
 │   ├── Beacon.Core/                 # 领域模型 + 抽象 + 服务（无 UI 依赖）
-│   ├── Beacon.Connections/          # 连接与 Widget Provider（GitHub / HTTP / 智谱 / 方舟 / Claude / Kimi / DeepSeek / MiMo / Codex）
+│   ├── Beacon.Connections/          # 连接与 Widget Provider（13 类：GitHub / HTTP / 智谱 / 方舟 / Claude / Kimi / Moonshot / DeepSeek / MiMo / Codex / Copilot / OpenCode / 百炼）
 │   ├── Beacon.Actions/              # Action 执行器
 │   └── Beacon.Storage/              # JSON 配置 / 缓存 / DPAPI Secrets / 导入导出
 └── tests/
@@ -77,7 +77,7 @@ Beacon.Core/
 │   ├── WidgetHost.cs  TemplateRenderer.cs  PaletteResolver.cs  PinLayoutMath.cs
 │   ├── SvgPathParser.cs               # SVG path d → 中性几何（品牌图标渲染前置层，纯函数供单测）
 │   ├── BrandIcons.cs                  # Simple Icons CC0 品牌 path 字典 + 连接类型别名归一（纯字符串零依赖，供单测；未收录由 App 字形兜底）
-│   ├── WidgetValueHint.cs             # 悬浮 tile 数值位短文本（九家 payload 键 → 主数值映射，纯函数供单测）
+│   ├── WidgetValueHint.cs             # 悬浮 tile 数值位短文本（各家额度源 payload 键 → 主数值映射，纯函数供单测）
 ├── Events/
 │   └── Events.cs                      # WidgetStateChanged / AggregateStatusChanged 等事件
 └── Json/
@@ -87,7 +87,7 @@ Beacon.Core/
 ### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
 
 ```text
-Beacon.Connections/                    # 23 文件
+Beacon.Connections/                    # 25 文件
 ├── GitHub 6 文件
 │   ├── GitHubConnectionProvider.cs    # PAT 认证、连接测试、rate-limit 感知
 │   ├── GitHubApiClient.cs             # 手写 REST 客户端（不引 Octokit）+ ETag 条件请求 + 限额感知
@@ -120,8 +120,12 @@ Beacon.Connections/                    # 23 文件
 │   └── CodexUsageProvider.cs          # type: codex.usage（本机 rollout 会话统计，source=local 如实标注）+ CodexConnectionProvider（同文件）
 ├── Copilot 1 文件
 │   └── CopilotUsageProvider.cs        # type: copilot.usage（官方扩展同款配额端点直连，quota_snapshots 三槽）+ CopilotConnectionProvider（同文件）
-└── OpenCode 1 文件
-    └── OpenCodeUsageProvider.cs       # type: opencode.usage（官方 Console Budgets API 直连，micro-cents 金额）+ OpenCodeConnectionProvider（同文件）
+├── OpenCode 1 文件
+│   └── OpenCodeUsageProvider.cs       # type: opencode.usage（官方 Console Budgets API 直连，micro-cents 金额）+ OpenCodeConnectionProvider（同文件）
+├── Qwen 1 文件
+│   └── QwenUsageProvider.cs           # type: qwen.usage（百炼 Token Plan 四档探测：官方口→自定义→配额探针→模型目录兜底）+ QwenConnectionProvider（同文件）
+└── Moonshot 1 文件
+    └── MoonshotBalanceProvider.cs     # type: moonshot.balance（开放平台余额，区别于 Kimi For Coding 套餐）+ MoonshotConnectionProvider（同文件）
 ```
 
 ### 3.3 src/Beacon.Actions（类库）

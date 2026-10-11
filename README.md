@@ -55,7 +55,7 @@ On first launch the app settles into the system tray and shows the status capsul
 | [docs/master-plan.md](docs/master-plan.md) | 产品与技术实施总方案 — product scope & design baseline (2026-10-11): boundaries / interaction / architecture / acceptance / agent constraints |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / project structure / dependency rules / scaffold commands (runnable on Windows machines) |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 MVP issues (P0–P8, with acceptance criteria and dependencies) |
-| [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 12 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
+| [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 13 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
 
 ## Roadmap
 
