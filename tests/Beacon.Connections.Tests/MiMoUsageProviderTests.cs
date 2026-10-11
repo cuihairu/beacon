@@ -164,6 +164,18 @@ public sealed class MiMoUsageProviderTests
     public void ParseConsoleUsage_Unrecognized_ReturnsNull(string body)
         => Assert.Null(MiMoUsageProvider.ParseConsoleUsage(body));
 
+    // ---- 控制台 cookie 归一化（2026-10-11 用户问「复制多了也能正确处理吧」→ 整行 Cookie 自动取 api-platform_ph） ----
+
+    [Theory]
+    [InlineData("abc+/1==", "abc+/1==")]                                     // 裸值原样
+    [InlineData("\"abc+/1==\"", "abc+/1==")]                                 // 裸值带引号剥掉
+    [InlineData("a=1; api-platform_ph=\"abc+/1==\"; userId=42", "abc+/1==")] // 整行 Cookie：取目标键（引号剥离）
+    [InlineData("a=1; api-platform_ph=abc+/1==", "abc+/1==")]                // 整行无引号
+    [InlineData("a=\"x;y\"; api-platform_ph=\"abc+/1==\"", "abc+/1==")]      // 前面值里带分号不干扰定位
+    [InlineData("a=1; b=2", "a=1; b=2")]                                     // 无目标键：原样透传（服务端 401 走指引）
+    public void NormalizeConsoleCookie_ExtractsPhFromFullLine(string raw, string expected)
+        => Assert.Equal(expected, MiMoUsageProvider.NormalizeConsoleCookie(raw));
+
     // ---- 控制台真实形状（2026-10-11 实抓） ----
 
     [Fact]

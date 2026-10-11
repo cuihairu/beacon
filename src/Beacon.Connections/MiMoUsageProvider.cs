@@ -75,7 +75,7 @@ public sealed class MiMoUsageProvider : IWidgetProvider
         var consoleRef = connection.Settings.TryGetValue("console_credential_ref", out var customRef) && customRef.Length > 0
             ? customRef
             : DefaultConsoleCredentialRef;
-        var cookie = (await context.Secrets.GetAsync(consoleRef).ConfigureAwait(false))?.Trim();
+        var cookie = NormalizeConsoleCookie((await context.Secrets.GetAsync(consoleRef).ConfigureAwait(false))?.Trim());
         if (!string.IsNullOrEmpty(cookie))
         {
             return await FetchConsoleUsageAsync(widget, connection, cookie, cancellationToken).ConfigureAwait(false);
@@ -104,6 +104,41 @@ public sealed class MiMoUsageProvider : IWidgetProvider
         var body = await SendAsync($"{baseEndpoint}/models", key, cancellationToken).ConfigureAwait(false);
         return ParseCatalog(body);
     }
+
+    /// <summary>
+    /// 归一化控制台登录 cookie（2026-10-11 用户问「复制多了也能正确处理吧」→ 补容错）：
+    /// 从 DevTools 复制时经常把整行 Cookie（`k1=v1; api-platform_ph=v2; …`）一起粘进来，整行塞进
+    /// api-platform_ph 头等于把别的 cookie 喂给服务端（登录态必挂）。含分号按整行解析只取
+    /// api-platform_ph 的值；不含分号按裸值用（引号剥掉）；键不存在原样返回，由服务端 401 走既有指引。
+    /// </summary>
+    internal static string NormalizeConsoleCookie(string? raw)
+    {
+        var trimmed = raw?.Trim() ?? "";
+        if (trimmed.Length == 0)
+        {
+            return trimmed;
+        }
+        if (!trimmed.Contains(';'))
+        {
+            return TrimQuotes(trimmed);
+        }
+        foreach (var pair in trimmed.Split(';'))
+        {
+            var equals = pair.IndexOf('=');
+            if (equals <= 0)
+            {
+                continue;
+            }
+            if (string.Equals(pair[..equals].Trim(), ConsoleCookieHeader, StringComparison.Ordinal))
+            {
+                return TrimQuotes(pair[(equals + 1)..].Trim());
+            }
+        }
+        return trimmed;
+    }
+
+    private static string TrimQuotes(string value)
+        => value.Length >= 2 && value[0] == '"' && value[^1] == '"' ? value[1..^1] : value;
 
     /// <summary>档① 控制台套餐用量：GET console_usage_url（默认 plan-manage 页接口），api-platform_ph 头携带登录 cookie。</summary>
     private async Task<WidgetState> FetchConsoleUsageAsync(
