@@ -1144,3 +1144,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 ## 附：MVP 明确不做（评审基线）
 
 复杂插件市场 · Workflow DSL/引擎 · AI Agent · Jenkins/GitLab/Docker 全功能管理 · 数据库 · 云账号/用户系统/团队协作/云同步 · 复杂图表 · 复杂主题 · macOS/Linux。
+
+### 批3-补40 MiMo 排障条目（2026-10-11 续批：用户实踩「小米的还是不行」后的文档面补缺）
+- **背景**：troubleshooting.md 无 MiMo 条目，用户只能靠对话排障；本次修复单（批3-补38）落地后把自查路径写进手册。
+- **内容**：新增「小米 MiMo 卡显示 Offline / 不出数？」段——胶囊 Offline 横幅=聚合告警（含 Degraded 401），真因在 tile 失败原因行；三种常见坑：Cookie 失效重录指引（F12 → api-platform_ph，整行粘贴也行）/ 只填 Key 不够（Key 只授权模型调用，两条凭据链）/ litellm 档默认空=不外发、no_db_connection 归属网关侧。
+- **验收**：文档增量，审计台账 F-58（58 条）；无代码改动。

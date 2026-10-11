@@ -44,6 +44,14 @@ Beacon 是**单实例常驻**：安装器覆盖了文件，但托盘里驻留的
 
 另查两处：组件列表（设置 → 对应模块）里该组件是否带「已钉」标记；`组件不出数且日志全无` → 确认模块开关（左侧目录）是开的——停用模块的组件不占板面。
 
+## 小米 MiMo 卡显示 Offline / 不出数？
+
+先分清两件事：**胶囊上的「Offline」横幅是聚合告警**——任何连接不健康（含 Degraded）都会点亮它；真正的失败原因在 **tile 值位**（「拉取失败：…」）和运行日志的 `refresh failed` 行。MiMo 常见三种：
+
+1. **「控制台 Cookie 已失效或未录制」**：额度卡的登录态过期（会话 cookie 过期是常态）。重录：浏览器登录 `platform.xiaomimimo.com` → F12 → 应用 → Cookies → 复制 `api-platform_ph` 的值 → 设置 → 小米模块连接里粘贴（整行 Cookie 粘进来也行，会自动取该键）。
+2. **只填了 API Key**：Key 只授权模型调用（`/v1/models` 连接测试绿≠Cookie 有效，两条凭据链），**额度必须另录控制台 Cookie**——Bearer/裸头带 Key 实测全 401。
+3. **LiteLLM 网关记账档**：连接 Settings `litellm_spend_url` **默认空=不外发（正常，不是故障）**；填了但卡面显「未接数据库」= 你本机 LiteLLM 网关 config 没接 database——spend 面全回 `no_db_connection`，需网关侧接 DB（SQLite 即可）后自动出「本月已用 $X」。
+
 ## 悬浮框白板残留 / 品牌 icon 不显示
 
 - **全局关「数量悬浮窗」后桌面还剩一个白板空窗**：旧版悬浮窗关闭只调 WinUI `Window.Close`，在无边框 NOACTIVATE 窗上不保证销毁窗口句柄——内容已拆、壳残留即白板。已修（Close 后句柄仍存活则硬销毁）；升级 nightly 后须托盘 Exit 重启（单实例常驻）。再出现即新问题，附运行日志反馈。
