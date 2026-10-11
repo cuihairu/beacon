@@ -503,6 +503,11 @@ Activity
 
 不建设复杂的事件编排、工作流或事件分析引擎。
 
+> 落地状态（2026-10-11 审计补记）：`Activity`/`Fingerprint` 未作为一等类型实现（src 全域零命中）。
+> 当前以三段现有机制承载其语义：`NotificationRecord`（notifications.json 落盘，含 `read` 已读态，滚动保留 200 条）
+> + `NotificationEngine` 去重（阈值跨越语义 = 同一段 Warning 只提醒一次，或时间冷却）
+> + `RecentEvent`（L2 面板会话内事件流，无持久化）。指纹级去重未实现，事件合并未实现——待真机验收后排期。
+
 ### 5.5 Provider 接口
 
 继续沿用现有 Provider 抽象，概念上提供：
@@ -707,6 +712,11 @@ GitHub Token 应遵循最小权限原则。需要写操作时才申请相应写�
 * `history.json`：有限的事件历史。
 
 如果当前仓库已经存在不同的配置文件划分，不必强行改名。重点是保持职责清晰，并提供向后兼容的配置迁移。
+
+> 落地状态（2026-10-11 审计补记）：实际文件划分与上表逻辑名不同，按「不必强行改名」执行——
+> `%AppData%\Beacon\` 下 `config.json`（全局设置）、`connections.json`、`widgets.json`、`pins.json`、`actions.json`、
+> `notifications.json`（本方案无对应逻辑名；已读态落盘，滚动 200 条）、`cache\{connId}\states.json`（缓存按连接分目录，非 cache.json）、
+> `secrets.bin`（DPAPI 密钥，唯一密钥落点）。损坏原件留档 `*.corrupt` 并记录 `LoadErrors`，不阻断启动。
 
 要求：
 
