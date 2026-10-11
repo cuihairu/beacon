@@ -101,6 +101,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [MachineWidgetDescriptors.LocalType] = new MachineLocalProvider(), // 本机资源（批3-补32 拍板回执：CPU/内存/磁盘，零凭据）
             [HeraldWidgetDescriptors.IncidentsType] = new HeraldIncidentsProvider(), // Herald 事件台账（2026-10-11 用户拍板：先做 incidents+feed）
             [HeraldWidgetDescriptors.FeedType] = new HeraldFeedProvider(),
+            [HeraldWidgetDescriptors.DeliveriesType] = new HeraldDeliveriesProvider(), // 投递失败台账（批3-补35 暂缓项，2026-10-11 续批拍板落地）
             [GitWorkspaceDescriptors.Type] = new GitWorkspaceProvider(), // 本地 Git 工作区（2026-10-11 用户拍板：↑↓/改/stash 一卡四数，零凭据）
         });
 

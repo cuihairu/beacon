@@ -14,6 +14,7 @@ public static class HeraldWidgetDescriptors
 {
     public const string IncidentsType = "herald.incidents";
     public const string FeedType = "herald.feed";
+    public const string DeliveriesType = "herald.deliveries";
 
     public static WidgetTypeDescriptor Incidents { get; } = new()
     {
@@ -44,7 +45,21 @@ public static class HeraldWidgetDescriptors
         ],
     };
 
-    public static IReadOnlyList<WidgetTypeDescriptor> All { get; } = [Incidents, Feed];
+    public static WidgetTypeDescriptor Deliveries { get; } = new()
+    {
+        Type = DeliveriesType,
+        DisplayName = "Herald 投递失败（送信台账）",
+        PinSupported = true,
+        FloatingOptIn = true, // 失败计数也是数值
+        SuggestedTier = RefreshTiers.Default,
+        Fields =
+        [
+            new WidgetFieldDescriptor("label", "显示名", Placeholder: "Herald 投递"),
+            new WidgetFieldDescriptor("provider", "提供方筛选（空 = 全部）", Placeholder: "feishu / webhook / smtp"),
+        ],
+    };
+
+    public static IReadOnlyList<WidgetTypeDescriptor> All { get; } = [Incidents, Feed, Deliveries];
 }
 
 /// <summary>一条事件（台账行裁剪：id/title/level/opened_at，字段见 herald core/incident）。</summary>
@@ -52,6 +67,9 @@ public sealed record HeraldIncident(string Id, string Title, string Level, DateT
 
 /// <summary>一条订阅条目（RSS item 裁剪；Herald 两口都按最新在前返回）。</summary>
 public sealed record HeraldFeedItem(string Id, string Title, string? Description, DateTimeOffset? PublishedAt);
+
+/// <summary>一条投递日志（TaskLog 裁剪；重试耗尽的 dead 在日志层也写 failed——都要人管，不区分）。</summary>
+public sealed record HeraldDeliveryLog(string Id, string Provider, string Error, DateTimeOffset? CreatedAt);
 
 /// <summary>
 /// herald 采样：连接 Endpoint=Herald 基址；Herald 开启 auth.enabled 时凭据=API Key 走 X-API-Key 头
@@ -385,6 +403,100 @@ public sealed class HeraldFeedProvider : IWidgetProvider
         return DateTimeOffset.TryParse(body, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed)
             ? parsed
             : null;
+    }
+}
+
+/// <summary>
+/// herald.deliveries：投递失败台账 `/api/v1/logs?status=failed&limit=200[&provider=X]`（响应 {code,data:{total,logs[]}}）。
+/// Signal 同构 incidents：failed=该送达的没送达=要人管（补投/查提供方），挂着直到处理——不做增量基线
+/// （跨重启状态一致，基线重启即失忆）。日志态词表 pending/success/failed/shadow 四态写死（core/types.go），
+/// 重试耗尽的 dead 在日志层也写 failed（runtime/manager.go settle）——都要人管，不区分；shadow 是 dry-run
+/// 观察（"never represent delivery"），被 status=failed 过滤天然排除。pending 是排队/投递中瞬态，不报。
+/// 计数取响应 total（全窗口过滤总数，logs 数组截断在 limit）；最新一条进 payload 走 L3。
+/// </summary>
+public sealed class HeraldDeliveriesProvider : IWidgetProvider
+{
+    private readonly HttpClient? _client;
+
+    public HeraldDeliveriesProvider() { }
+
+    public HeraldDeliveriesProvider(HttpMessageHandler handler) => _client = HttpEndpoint.Create(handler);
+
+    public WidgetTypeDescriptor Descriptor => HeraldWidgetDescriptors.Deliveries;
+
+    public async Task<WidgetState?> GetStateAsync(
+        WidgetConfig widget,
+        ConnectionConfig connection,
+        ConnectionContext context,
+        CancellationToken cancellationToken)
+    {
+        var provider = widget.Config.GetValueOrDefault("provider")?.Trim();
+        var baseUri = HeraldIncidentsProvider.RequireEndpoint(connection);
+        var url = $"{baseUri}/api/v1/logs?status=failed&limit=200";
+        if (!string.IsNullOrEmpty(provider))
+        {
+            url += $"&provider={Uri.EscapeDataString(provider)}";
+        }
+        var json = await HeraldFetch.GetAsync(url, connection, context, cancellationToken, _client).ConfigureAwait(false);
+        var (total, logs) = ParseDeliveries(json);
+
+        var severity = total > 0 ? Severity.Warning : Severity.Info;
+        var head = widget.Config.GetValueOrDefault("label") is { Length: > 0 } label ? label : "Herald 投递";
+        var latest = logs.Count > 0 ? logs[0] : null;
+
+        return new WidgetState
+        {
+            WidgetId = widget.Id,
+            WidgetType = Descriptor.Type,
+            ConnectionId = connection.Id,
+            Severity = severity,
+            Lifecycle = severity == Severity.Warning ? LifecycleState.Running : LifecycleState.Success,
+            Progress = null,
+            Summary = total == 0 ? $"{head} · 无失败" : $"{head} · 失败 {total} · {latest!.Provider}",
+            DetailUrl = null,
+            Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["failed"] = total.ToString(CultureInfo.InvariantCulture),
+                ["latest_id"] = latest?.Id ?? "",
+                ["latest_provider"] = latest?.Provider ?? "",
+                ["latest_error"] = latest is null ? "" : HeraldFetch.Clip(latest.Error, 200),
+                ["latest_created_at"] = latest?.CreatedAt?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "",
+            },
+            FetchedAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    /// <summary>解析投递日志 JSON（{code,data:{total,logs[]}}）；created_at RFC3339（可带纳秒小数），解析不动不强求。</summary>
+    internal static (int Total, List<HeraldDeliveryLog> Logs) ParseDeliveries(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (!document.RootElement.TryGetProperty("data", out var data)
+            || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("logs", out var list)
+            || list.ValueKind != JsonValueKind.Array)
+        {
+            throw new ConnectionException("Herald 投递响应缺 data.logs（版本不符或反代 HTML 壳）。", ConnectionHealthState.Degraded);
+        }
+
+        var total = data.TryGetProperty("total", out var totalElement) && totalElement.ValueKind == JsonValueKind.Number
+            ? totalElement.GetInt32()
+            : 0;
+        var logs = new List<HeraldDeliveryLog>();
+        foreach (var element in list.EnumerateArray())
+        {
+            var id = element.TryGetProperty("id", out var idElement) ? idElement.GetString() ?? "" : "";
+            var provider = element.TryGetProperty("provider", out var providerElement) ? providerElement.GetString() ?? "" : "";
+            var error = element.TryGetProperty("error", out var errorElement) ? errorElement.GetString() ?? "" : "";
+            DateTimeOffset? createdAt = null;
+            if (element.TryGetProperty("created_at", out var createdElement)
+                && createdElement.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(createdElement.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            {
+                createdAt = parsed;
+            }
+            logs.Add(new HeraldDeliveryLog(id, provider, error, createdAt));
+        }
+        return (total, logs);
     }
 }
 

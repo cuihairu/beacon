@@ -122,7 +122,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
             new ModuleDef("jenkins", "Jenkins", "构建状态 · 开源标准 API", "\ue9d5", "jenkins"),
             new ModuleDef("machine", "本机", "本机资源 · 网络 · Git · 零凭据", "\ue772", "machine"),
-            new ModuleDef("herald", "Herald", "事件台账 · 订阅源（自己的投递中枢）", "\ue7be", "herald"),
+            new ModuleDef("herald", "Herald", "事件台账 · 订阅源 · 投递失败", "\ue7be", "herald"),
             new ModuleDef("bigmodel", "智谱 GLM", "Coding Plan 额度", "\ue945", "bigmodel"),
             new ModuleDef("ark", "火山方舟", "Coding Plan Pro 额度", "\uE7C3", "ark"),
             new ModuleDef("claude", "Claude Code", "本机用量 · 零凭据", "\ue8bd", "claude"),

@@ -287,6 +287,88 @@ public sealed class HeraldProviderTests
         Assert.Contains("令牌", exception.Message);
     }
 
+    // —— 投递失败卡（批3-补35 暂缓项，2026-10-11 续批落地） ——
+
+    private const string DeliveriesBody = """
+        {"code":0,"message":"ok","data":{"total":2,"offset":0,"limit":50,"logs":[
+          {"id":"log-1","provider":"feishu","payload_kind":"notify","level":"error","status":"failed","error":"dial tcp timeout","created_at":"2026-10-11T08:00:00.123456789Z","duration":3000},
+          {"id":"log-2","provider":"webhook","payload_kind":"notify","status":"failed","error":"","created_at":"2026-10-11T07:00:00Z"}
+        ]}}
+        """;
+
+    [Fact]
+    public void ParseDeliveries_FieldsAndFallbacks()
+    {
+        var (total, logs) = HeraldDeliveriesProvider.ParseDeliveries(DeliveriesBody);
+        Assert.Equal(2, total); // total 是过滤后全窗口计数（logs 数组可能被 limit 截断）
+        Assert.Equal("log-1", logs[0].Id);
+        Assert.Equal("feishu", logs[0].Provider);
+        Assert.Equal("dial tcp timeout", logs[0].Error);
+        // Go time.Time 带纳秒（.123456789Z）：.NET tick 精度 100ns，四舍五入到 1234568 ticks
+        Assert.Equal(new DateTimeOffset(2026, 10, 11, 8, 0, 0, TimeSpan.Zero).AddTicks(1_234_568), logs[0].CreatedAt);
+        Assert.Equal("", logs[1].Error); // 无 error 兜底空串
+    }
+
+    [Fact]
+    public void ParseDeliveries_BadShape_Throws()
+    {
+        var exception = Assert.Throws<ConnectionException>(() => HeraldDeliveriesProvider.ParseDeliveries("""{"code":0}"""));
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+    }
+
+    [Fact]
+    public async Task Deliveries_ZeroFailed_Info()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, """{"code":0,"data":{"total":0,"logs":[]}}""") };
+        var state = await new HeraldDeliveriesProvider(http).GetStateAsync(DeliveriesWidget(), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal(Severity.Info, state!.Severity);
+        Assert.Equal(LifecycleState.Success, state.Lifecycle);
+        Assert.Equal("Herald 投递 · 无失败", state.Summary);
+        Assert.Equal("0", state.Payload["failed"]);
+    }
+
+    [Fact]
+    public async Task Deliveries_Failed_WarningPayloadCarries()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, DeliveriesBody) };
+        var state = await new HeraldDeliveriesProvider(http).GetStateAsync(DeliveriesWidget(), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal(Severity.Warning, state!.Severity); // 失败即黄：该送达的没送达，要人管
+        Assert.Equal(LifecycleState.Running, state.Lifecycle);
+        Assert.Equal("Herald 投递 · 失败 2 · feishu", state.Summary);
+        Assert.Equal("2", state.Payload["failed"]);
+        Assert.Equal("feishu", state.Payload["latest_provider"]);
+        Assert.Equal("dial tcp timeout", state.Payload["latest_error"]);
+        Assert.Equal("2026-10-11 08:00", state.Payload["latest_created_at"]);
+    }
+
+    [Fact]
+    public async Task Deliveries_ProviderFilter_InUrl()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, """{"code":0,"data":{"total":0,"logs":[]}}""") };
+        await new HeraldDeliveriesProvider(http).GetStateAsync(
+            DeliveriesWidget(provider: "fei shu"), Connection(), Ctx(), CancellationToken.None);
+        var query = http.Requests[0].RequestUri!.PathAndQuery;
+        Assert.EndsWith("/api/v1/logs?status=failed&limit=200&provider=fei%20shu", query); // 提供方筛选 + 转义
+    }
+
+    [Fact]
+    public async Task Deliveries_MissingEndpoint_FailLoud()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, DeliveriesBody) };
+        await Assert.ThrowsAsync<ConnectionException>(() =>
+            new HeraldDeliveriesProvider(http).GetStateAsync(DeliveriesWidget(), Connection(endpoint: null), Ctx(), CancellationToken.None));
+    }
+
+    private static WidgetConfig DeliveriesWidget(string provider = "") => new()
+    {
+        Id = "w-deliveries",
+        Type = HeraldWidgetDescriptors.DeliveriesType,
+        ConnectionId = "herald-main",
+        Config = provider.Length > 0
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["provider"] = provider }
+            : [],
+    };
+
     // —— 连接测试 ——
 
     [Fact]
@@ -329,6 +411,12 @@ public sealed class HeraldProviderTests
         Assert.Equal("herald.feed", HeraldWidgetDescriptors.Feed.Type);
         Assert.Contains(HeraldWidgetDescriptors.Feed.Fields, field => field.Key == "feed_category");
         Assert.Contains(HeraldWidgetDescriptors.Feed.Fields, field => field.Key == "feed_token_ref");
+
+        Assert.Equal("herald.deliveries", HeraldWidgetDescriptors.Deliveries.Type);
+        Assert.True(HeraldWidgetDescriptors.Deliveries.FloatingOptIn);
+        Assert.Equal(RefreshTiers.Default, HeraldWidgetDescriptors.Deliveries.SuggestedTier);
+        Assert.Contains(HeraldWidgetDescriptors.Deliveries.Fields, field => field.Key == "provider");
+        Assert.Contains(HeraldWidgetDescriptors.All, item => item.Type == HeraldWidgetDescriptors.DeliveriesType);
     }
 
     [Fact]
