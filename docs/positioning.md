@@ -226,11 +226,13 @@ Codex    71% used   weekly 8h 后重置
   Linux 读 /proc（stat 首行 + meminfo MemAvailable，老内核 MemFree 兜底）、Windows 走 GetSystemTimes +
   GlobalMemoryStatusEx，磁盘统一 DriveInfo（空=系统盘/根分区，点名不存在/未就绪 Degraded fail-loud）；
   三项阈值默认 90%（超线亮黄，Signal 不分级），按四舍五入后的显示值比线（所见即所警）；
-- **Herald 接入（2026-10-11 批3-补35，用户拍板先做 incidents+feed，deliveries 暂缓）**：连接类型 `herald`——
+- **Herald 接入（2026-10-11 批3-补35/37，用户拍板 incidents+feed 先行，deliveries 续批补齐）**：连接类型 `herald`——
   Endpoint=基址，凭据可空（未开 auth 匿名可用）或 API Key 走 X-API-Key 头，测试打恒公开口 `/api/v1/status`
   （2xx+JSON 才算连通）；`herald.incidents` 事件台账（open 未决>0 亮黄、含 critical 亮红，回看口径恒 Info）+
   `herald.feed` 订阅源（公开类目 RSS 或私密 token feed——token 即凭据走 DPAPI 不落配置；未读=上次刷新以来
-  新增 guid，首刷只记基线）。Herald 是用户自有项目（cuihairu/herald，统一订阅与投递中枢）；
+  新增 guid，首刷只记基线）+ `herald.deliveries` 投递失败（`/api/v1/logs?status=failed`，failed>0 亮黄 =
+  送信没送达要人管；日志态词表 pending/success/failed/shadow 写死四态，重试耗尽 dead 在日志层也写 failed
+  不区分，shadow 被 status 过滤天然排除）。Herald 是用户自有项目（cuihairu/herald，统一订阅与投递中枢）；
 - **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
   组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
   （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；

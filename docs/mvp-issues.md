@@ -1012,11 +1012,27 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：14 例（/proc 解析 2 + 阈值 1 + Provider 映射 8 + 描述 1 + 真实采样链路 2 条件跑），801/801 全绿；
   真机：machine 连接 + machine.local 组件，首刷两段第二刷三段随刷新走，调低阈值（如 20）看亮黄。
 
-## 2026-10-10 装机对照清单（64 条三类，2026-10-11 八次整理）
+### 批3-补37 Herald 投递失败卡落地（2026-10-11 续批，批3-补35 暂缓项收尾）
+- **拍板**：源码实证（herald core/logstore+runtime/manager+api/server）后落地。日志态词表写死四态
+  pending/success/failed/shadow（types.go 注释 "maps it to its wire strings unchanged"）；重试耗尽的
+  dead 在 settle() 里 task 态是 dead 但**日志行统一写 failed**——Beacon 从 logs 口看二者不可分也不必分
+  （都要人管）；shadow 是 dry-run 观察（"never represent delivery"）被 `status=failed` 过滤天然排除；
+  pending 是排队/投递中瞬态不报。
+- **herald.deliveries**：`GET /api/v1/logs?status=failed&limit=200[&provider=X]`（提供方筛选可空，转义）；
+  failed>0 亮黄（Signal 同构 incidents：送信没送达=要人管，挂着直到处理——不做增量基线，跨重启状态一致）；
+  计数取响应 total（全窗口过滤总数，logs 数组截断在 limit）；最新一条 id/provider/error/created_at 进 payload
+  走 L3；created_at RFC3339 带纳秒（.NET tick 精度 100ns 四舍五入，测试按 tick 口径断言）。无全局
+  deliveries 专口（`/apps/{app}/deliveries` 是按 app 的），logs 端点即正确取数面。字段 `label`+`provider`。
+- **注册**：HeraldWidgetDescriptors.Deliveries（FloatingOptIn）、BeaconRuntime 映射、SettingsWindow 模块行
+  描述改「事件台账 · 订阅源 · 投递失败」。
+- **验收**：6 例（logs 解析 2 + 投递映射 4，含 provider 筛选进 URL 与缺 Endpoint fail-loud），807/807 全绿；
+  真机：装后对 herald 实例加 herald.deliveries 组件，人为制造一次失败投递看亮黄与计数。
+
+## 2026-10-10 装机对照清单（65 条三类，2026-10-11 八次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）
-+ 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34/35/36 新增项。2026-10-11 复点：
-原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 47 = **64 条**。
++ 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34/35/36/37 新增项。2026-10-11 复点：
+原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 48 = **65 条**。
 另有 1 条关联项（批3-补10 透明度）用户已确认修好，列「已验」。装 nightly 后按此清单对照回执；带 CI 证据的项已注证据文件。
 **装包版本门**：2026-10-10T17:30Z 后的 nightly（zip `a0b255bd…`，commit c880f5d）才含补22 三修复；
 此前用户报「没有修复」时装的是旧包（见补22 nightly 归属核实）。
@@ -1046,7 +1062,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 拖动跨三屏跟手 | 批3-补22 | 拖动锚点改光标屏幕物理像素（旧实现按下 DPI 与每帧当前 DPI 混算，跨缩放屏比例错乱）；装后慢拖胶囊/悬浮框跨三个缩放不同的屏看 |
 | 详情窗 200% 仍裁字 | 批3-补22 | DetailWindow 是标题栏窗，Resize 补回非客户区差值（GetWindowRect−GetClientRect）；装 200% 开详情窗看字完整 |
 
-### ⬜ 未修（47 条：无已知缺陷，代码就位，待装机首验）
+### ⬜ 未修（48 条：无已知缺陷，代码就位，待装机首验）
 | 项 | 条数 | 说明 |
 |---|---|---|
 | B-101 单实例/托盘/常驻 | 2 | 二次启动唤起气泡；Exit 才退出 |
@@ -1058,6 +1074,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 批3-补34 MiMo 整行 Cookie | 1 | 整行 Cookie 粘进控制台凭据也能出数（自动取 api-platform_ph）；此前整行粘贴卡 offline |
 | 批3-补35 Herald 两卡 | 2 | 对自建 herald 实例建连接：herald.incidents 未决计数/亮黄亮红随台账走；herald.feed 公开类目或私密 token，新条目未读数随刷新走 |
 | 批3-补36 本机资源卡 | 1 | machine 连接 + machine.local 组件：CPU 首刷不出、第二刷起百分比随刷新走；内存/磁盘即时百分比；阈值调低（如 20）看亮黄 |
+| 批3-补37 Herald 投递失败卡 | 1 | herald 连接 + herald.deliveries 组件：无失败显「无失败」；人为制造一次失败投递（停掉目标 provider 再 notify）看亮黄与失败计数 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
 | B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
 | B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |
