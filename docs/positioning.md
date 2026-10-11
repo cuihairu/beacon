@@ -135,7 +135,7 @@ Codex    71% used   weekly 8h 后重置
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
 | Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance（§8，详细进度） |
 | Jenkins / 公司打包槽位 | **已落地**（2026-10-11）：jenkins.build——开源标准 JSON API（批3-补31，批3-补27 挂起项关闭） |
-| Machine Provider | **部分落地**（2026-10-11 批3-补32/33）：machine.net 本机网络（IP/↑↓速率/累计流量）+ machine.git 本机 Git 仓库（↑↓·改·stash，每仓库一张卡），均零凭据零网络；远程机器/服务器管理（§5 三类之一）按冻结记录不做 |
+| Machine Provider | **部分落地**（2026-10-11 批3-补32/33/36）：machine.net 本机网络（IP/↑↓速率/累计流量）+ machine.git 本机 Git 仓库（↑↓·改·stash，每仓库一张卡）+ machine.local 本机资源（CPU/内存/磁盘+阈值），均零凭据零网络；远程机器/服务器管理（§5 三类之一）按冻结记录不做 |
 
 ## 7. 排期约定
 
@@ -221,6 +221,11 @@ Codex    71% used   weekly 8h 后重置
   `beacon ↑2↓5 · 改 7 · stash 1`：git CLI 三连只读（status --porcelain -b / rev-list @{u}...HEAD / stash list，
   零网络零凭据，无上游不追打第二击）；behind>0 或分叉 → Warning（要动手才亮黄，仅待推 ahead 是 Info）；
   变更文件前 5 条预览（重命名取 -> 右侧）进 payload 走 L3 详情，32 DIP 装不下也不分页；
+- **本机资源（批3-补32 拍板回执「本机的cpu 内存 磁盘空间」，批3-补36 落地）**：组件类型 `machine.local`——
+  CPU/内存/磁盘一行三个百分比（零凭据零网络）：CPU=相邻两次累计 tick 差分（首刷无基线不出 CPU，回退重记基线）；
+  Linux 读 /proc（stat 首行 + meminfo MemAvailable，老内核 MemFree 兜底）、Windows 走 GetSystemTimes +
+  GlobalMemoryStatusEx，磁盘统一 DriveInfo（空=系统盘/根分区，点名不存在/未就绪 Degraded fail-loud）；
+  三项阈值默认 90%（超线亮黄，Signal 不分级），按四舍五入后的显示值比线（所见即所警）；
 - **Herald 接入（2026-10-11 批3-补35，用户拍板先做 incidents+feed，deliveries 暂缓）**：连接类型 `herald`——
   Endpoint=基址，凭据可空（未开 auth 匿名可用）或 API Key 走 X-API-Key 头，测试打恒公开口 `/api/v1/status`
   （2xx+JSON 才算连通）；`herald.incidents` 事件台账（open 未决>0 亮黄、含 critical 亮红，回看口径恒 Info）+

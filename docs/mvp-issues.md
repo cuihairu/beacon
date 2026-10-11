@@ -994,11 +994,29 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：21 例（incidents 解析 2 + 事件映射 5 + RSS 解析 3 + feed 6 + 连接 3 + 描述/slug 2），787/787 全绿；
   真机：装后对自建 herald 实例建连接 + 两张卡看数。
 
-## 2026-10-10 装机对照清单（63 条三类，2026-10-11 八次整理）
+### 批3-补36 本机资源 Provider 落地（2026-10-11，批3-补32 拍板回执「本机的cpu 内存 磁盘空间」）
+- **背景**：批3-补32 拍板「本机资源 和本机网络 都可以搞」的第三块拼图——net/git 已落（补32/33），本条补 CPU/内存/磁盘。
+- **machine.local**：一行三段 `本机资源 · CPU 40% · 内存 62% · C: 70%`（首刷无 CPU 基线只出两段，第二刷起三段）。
+  CPU=相邻两次累计 tick 差分（同速率口径；idle 回退/原地不动只换基线不出数）；内存/磁盘即时占比。
+  阈值 `cpu_threshold`/`mem_threshold`/`disk_threshold` 默认 90，只认 1-100 数字（乱填 fail-loud）；
+  超线亮黄不分级（Signal 不是 Dashboard），**按四舍五入后的显示值比线**（显示 90 就按 90 报警，所见即所警）。
+- **采样跨平台**：`IMachineResourceSource` 注入抽象（假样本 Linux 全程可测）；生产 Linux 读 /proc
+  （stat 首行 user..steal，idle+iowait 记闲；meminfo MemAvailable，老内核 MemFree 兜底），Windows 走
+  GetSystemTimes（kernel 段已含 idle）+ GlobalMemoryStatusEx；磁盘统一 DriveInfo（空=系统盘/根分区；
+  点名不存在/相对路径/未就绪都 Degraded fail-loud）。真实 /proc+DriveInfo 集成测试 Linux 跑、windows-latest 跳过。
+- **坑**：`Enumerable.Sum` 无 ulong 重载（CS1929），jiffies 累加手写 foreach。
+- **注册**：MachineWidgetDescriptors.Local（5 字段：label/disk_path/三阈值）、BeaconRuntime 映射、
+  SettingsWindow 模块行描述与空连接提示文案（资源/网络/Git 并列）。
+- **文档**：solution-structure（30 文件/801 测试，Machine 3 文件）；configuration.md machine 行；
+  positioning §6/§8。
+- **验收**：14 例（/proc 解析 2 + 阈值 1 + Provider 映射 8 + 描述 1 + 真实采样链路 2 条件跑），801/801 全绿；
+  真机：machine 连接 + machine.local 组件，首刷两段第二刷三段随刷新走，调低阈值（如 20）看亮黄。
+
+## 2026-10-10 装机对照清单（64 条三类，2026-10-11 八次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）
-+ 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34/35 新增项。2026-10-11 复点：
-原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 46 = **63 条**。
++ 补19/20/21/22/23 新增项 + 补27 增补 2 项（托盘 Explorer 重启恢复/唤醒补刷）+ 补28 增补 1 项（胶囊右键直达设置）+ 补31/32/33/34/35/36 新增项。2026-10-11 复点：
+原「44+5+6=55」算术差 1，以实际类计数为准 = ✅ 已验 1 + 🔧 已修待验 16 + ⬜ 未修 47 = **64 条**。
 另有 1 条关联项（批3-补10 透明度）用户已确认修好，列「已验」。装 nightly 后按此清单对照回执；带 CI 证据的项已注证据文件。
 **装包版本门**：2026-10-10T17:30Z 后的 nightly（zip `a0b255bd…`，commit c880f5d）才含补22 三修复；
 此前用户报「没有修复」时装的是旧包（见补22 nightly 归属核实）。
@@ -1028,7 +1046,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 拖动跨三屏跟手 | 批3-补22 | 拖动锚点改光标屏幕物理像素（旧实现按下 DPI 与每帧当前 DPI 混算，跨缩放屏比例错乱）；装后慢拖胶囊/悬浮框跨三个缩放不同的屏看 |
 | 详情窗 200% 仍裁字 | 批3-补22 | DetailWindow 是标题栏窗，Resize 补回非客户区差值（GetWindowRect−GetClientRect）；装 200% 开详情窗看字完整 |
 
-### ⬜ 未修（46 条：无已知缺陷，代码就位，待装机首验）
+### ⬜ 未修（47 条：无已知缺陷，代码就位，待装机首验）
 | 项 | 条数 | 说明 |
 |---|---|---|
 | B-101 单实例/托盘/常驻 | 2 | 二次启动唤起气泡；Exit 才退出 |
@@ -1039,6 +1057,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 批3-补33 本机 Git 卡 | 1 | machine 连接 + machine.git 组件：repo_path 填本机任一仓库，↑↓/改/stash 随刷新走；落后远端亮黄 |
 | 批3-补34 MiMo 整行 Cookie | 1 | 整行 Cookie 粘进控制台凭据也能出数（自动取 api-platform_ph）；此前整行粘贴卡 offline |
 | 批3-补35 Herald 两卡 | 2 | 对自建 herald 实例建连接：herald.incidents 未决计数/亮黄亮红随台账走；herald.feed 公开类目或私密 token，新条目未读数随刷新走 |
+| 批3-补36 本机资源卡 | 1 | machine 连接 + machine.local 组件：CPU 首刷不出、第二刷起百分比随刷新走；内存/磁盘即时百分比；阈值调低（如 20）看亮黄 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
 | B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
 | B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |
