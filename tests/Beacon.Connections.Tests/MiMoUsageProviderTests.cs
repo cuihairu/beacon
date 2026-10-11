@@ -36,7 +36,7 @@ public sealed class MiMoUsageProviderTests
         Config = config ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
     };
 
-    private static ConnectionContext Ctx(string? secret = null, string? consoleCookie = null)
+    private static ConnectionContext Ctx(string? secret = null, string? consoleCookie = null, string? litellmKey = null)
     {
         var secrets = new SecretStoreStub();
         if (secret is not null)
@@ -46,6 +46,10 @@ public sealed class MiMoUsageProviderTests
         if (consoleCookie is not null)
         {
             secrets.Secrets["mimo:console"] = consoleCookie; // 档① 控制台登录态（默认 ref）
+        }
+        if (litellmKey is not null)
+        {
+            secrets.Secrets["mimo:litellm"] = litellmKey; // 档② 网关记账（默认 ref）
         }
         return new ConnectionContext { Secrets = secrets };
     }
@@ -255,7 +259,10 @@ public sealed class MiMoUsageProviderTests
             () => provider.GetStateAsync(Widget(), Connection(), Ctx("sk-test", consoleCookie: "expired"), CancellationToken.None));
 
         Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
-        Assert.Contains("api-platform_ph", exception.Message); // 指引：回浏览器重取 cookie
+        // 2026-10-11 修复单：明示「已失效或未录制」+ 重录指引原文（浏览器 → F12 → Cookies → api-platform_ph → 设置重录）
+        Assert.Contains("已失效或未录制", exception.Message);
+        Assert.Contains("api-platform_ph", exception.Message);
+        Assert.Contains("设置重录", exception.Message);
     }
 
     [Fact]
@@ -288,6 +295,169 @@ public sealed class MiMoUsageProviderTests
 
         Assert.Equal(Severity.Error, state!.Severity);
         Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+    }
+
+    // ---- 档② LiteLLM 网关记账（2026-10-11 修复单：litellm_spend_url 非空才走，如实只显已用量） ----
+
+    [Theory]
+    [InlineData("""[{"spend":1.25,"model":"mimo-v2.5"},{"spend":0.75,"model":"mimo-v2.5"}]""", 2.0)] // 根数组：逐条累计
+    [InlineData("""{"response":[{"spend":3.5}]}""", 3.5)] // {"response":[...]} 包裹
+    [InlineData("""{"results":[{"spend":0.5},{"spend":2.5}]}""", 3.0)] // {"results":[...]} 包裹
+    [InlineData("""{"spend":12.34,"total_tokens":100}""", 12.34)] // summarize 汇总形：对象直接带数值
+    public void ParseLitellmSpend_Shapes(string body, decimal expected)
+        => Assert.Equal(expected, MiMoUsageProvider.ParseLitellmSpend(body));
+
+    [Theory]
+    [InlineData("""not json""")]
+    [InlineData("""{"data":[]}""")] // 无 spend 键的数组
+    [InlineData("""{"message":"ok"}""")]
+    public void ParseLitellmSpend_Unrecognized_ReturnsNull(string body)
+        => Assert.Null(MiMoUsageProvider.ParseLitellmSpend(body));
+
+    [Fact]
+    public async Task GetStateAsync_LitellmSpend_ArrayBody_SumsWithBearerAndMonthWindow()
+    {
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, """{"response":[{"spend":1.25},{"spend":0.75}]}""");
+        });
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+        });
+
+        var state = await provider.GetStateAsync(Widget(), connection, Ctx("sk-test", litellmKey: "sk-gateway"), CancellationToken.None);
+
+        // 请求形状：GET /spend/logs + 本月起止（openapi 参数名）+ Bearer=网关 key
+        Assert.NotNull(captured);
+        var query = captured!.RequestUri!.Query;
+        var now = DateTimeOffset.UtcNow;
+        Assert.Contains("start_date=", query);
+        Assert.Contains($"{now:yyyy-MM}-01", query); // 本月 1 日 0 点起（UTC）
+        Assert.Contains("end_date=", query);
+        Assert.Contains("summarize=true", query);
+        Assert.Equal("Bearer", captured.Headers.Authorization?.Scheme);
+        Assert.Equal("sk-gateway", captured.Headers.Authorization?.Parameter);
+
+        // 卡面：无额度分母只显已用量（如实，不造）
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Success, state!.Severity);
+        Assert.Equal("litellm", state.Payload["usage_source"]);
+        Assert.Equal("month", state.Payload["spend_window"]);
+        Assert.Equal("$2.00", state.Payload["value_text"]);
+        Assert.Contains("本月已用 $2.00（网关记账）", state.Summary);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LitellmSpend_WinsOverLocalCounter()
+    {
+        // 档序：cookie > litellm > 本机计数（litellm_spend_url 非空即优先于 usage_endpoint）
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, """[{"spend":9.9}]""");
+        });
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+            ["usage_endpoint"] = "https://count.local/mimo/usage",
+        });
+
+        var state = await provider.GetStateAsync(Widget(), connection, Ctx("sk-test"), CancellationToken.None);
+
+        Assert.EndsWith("/spend/logs", captured!.RequestUri!.AbsolutePath);
+        Assert.Equal("litellm", state!.Payload["usage_source"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LitellmSpend_NoKey_BareCallNoAuthHeader()
+    {
+        // key 未录 = 裸调（本机记账常免鉴权；用户实测无参 400 非 401 = auth 没拦）
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, """{"spend":5}""");
+        });
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs?tag=mimo",
+        });
+
+        var state = await provider.GetStateAsync(Widget(), connection, Ctx("sk-test"), CancellationToken.None);
+
+        Assert.Null(captured!.Headers.Authorization); // 空 key=裸调
+        Assert.Contains("&start_date=", captured.RequestUri!.Query); // 原有 query 用 & 续接不破坏
+        Assert.Contains("tag=mimo", captured.RequestUri.Query); // 原参数保留
+        Assert.Contains("$5.00", state!.Summary);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LitellmNoDbConnection_ExplicitDegraded()
+    {
+        // 2026-10-11 实证：网关无 DB 时全部 spend 面 400 no_db_connection——按配置缺口明示，不冒充 0
+        var (provider, _) = Faked(_ => new FakeHttpResponse(
+            HttpStatusCode.BadRequest, """{"error":{"type":"no_db_connection","message":"No connected db."}}"""));
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+        });
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), connection, Ctx("sk-test", litellmKey: "sk-gateway"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("未接数据库", exception.Message);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LitellmUnauthorized_DegradedWithKeyHint()
+    {
+        var (provider, _) = Faked(_ => new FakeHttpResponse(
+            HttpStatusCode.Unauthorized, """{"error":{"type":"auth_error"}}"""));
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+        });
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), connection, Ctx("sk-test", litellmKey: "bad-key"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("litellm_key_ref", exception.Message); // 指引：核对网关 key 凭据
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LitellmServerError_Offline()
+    {
+        var (provider, _) = Faked(_ => new FakeHttpResponse(HttpStatusCode.InternalServerError, "boom"));
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+        });
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), connection, Ctx("sk-test"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Offline, exception.Health);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LitellmUnparseable_ThrowsDegradedWithBody()
+    {
+        var (provider, _) = Faked(_ => new FakeHttpResponse(HttpStatusCode.OK, """{"message":"no spend surface"}"""));
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+        });
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), connection, Ctx("sk-test"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health); // 认不出形状显式报，不编数
     }
 
     // ---- 大数中文口径 ----
