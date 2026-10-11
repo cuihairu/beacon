@@ -895,6 +895,20 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   （§2.3 反对 GitHub 全功能客户端），不做。
 - **验收**：4 项目全绿；胶囊右键弹设置窗为装机目检项（清单 58→59）。
 
+### 批3-补29 Kimi 套餐余量按真实响应重写 + HTTP 通道 POST 体（2026-10-11 用户实抓 GetUsages）
+- **真因**：旧解析器假设顶层 `usage` 对象 + 数字值；真实响应（POST
+  `www.kimi.com/apiv2/...BillingService/GetUsages`，用户浏览器实抓）是 `usages[]`（按 scope=FEATURE_CODING
+  取条目，条目 detail=周期窗、条目内 limits[]=5h 滚动窗）+ `totalQuota`，**数值全是字符串**（"100"）——
+  旧 `ReadDouble` 只认 Number → 全 null → Degraded/显示错。
+- **修复**：解析器双形兼容（真实形状优先、旧社区端点形状兜底）；`ReadDouble` 容忍字符串数值；
+  `totalQuota` 进 payload（total_limit/total_used/total_remaining）。
+- **HttpEndpoint 增强**：通用 Settings 新增 `http_method`（默认 GET）与 `http_body`（默认不带），
+  控制台 POST 口可配（Cookie 认证：`auth_header=Cookie` + `auth_prefix` 置空）；存量 13 类零行为变化。
+- **凭据模型（文档已明示）**：Cookie 由用户从浏览器 F12 复制粘贴进凭据框，DPAPI 存储、请求回放；
+  Beacon **不做扫码/登录流**；会话过期后重录一次（与 MiMo 控制台 Cookie 同口径）。
+- **验收**：真实形状夹具（实抓 JSON 结构，零凭据）+ 旧形状回归 + POST/Cookie 头断言共 9 例新增，
+  4 项目 690/690 全绿。测试 Cookie 用假值 `sk-kimi-demo`，真实 Cookie 只进用户 DPAPI。
+
 ## 2026-10-10 装机对照清单（59 条三类，2026-10-11 六次整理）
 
 **口径**：`docs/mvp-issues.md` 中「待 Windows 装机」B-* 验收行 +「待装机走查」（批3-补8/9/11/12/13 验收行）

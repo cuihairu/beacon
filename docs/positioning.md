@@ -156,9 +156,14 @@ Codex    71% used   weekly 8h 后重置
   Z.AI 国际站把连接 Endpoint 换成 `https://api.z.ai/api/monitor/usage/quota/limit` 即用；
 - **Claude Code 本机用量（P0 #5）**：组件类型 `claude.usage`——读本机 `~/.claude/projects/**\/*.jsonl`（ccusage 同源数据，
   ccusage.com 口径），按窗口聚合 token 与 costUSD；零凭据零网络，`daily_cost_limit` 可选阈值告警（无上限恒 Success）；
-- **Kimi For Coding 套餐余量（P0 #5）**：组件类型 `kimi.coding`——`GET https://api.kimi.com/coding/v1/usages`，
-  Bearer 认证（sk-kimi-* Key，与 Moonshot 开放平台两套体系），窗口 `{duration,timeUnit}` 归一化为 5h/周，
-  顶层 `usage` 兜底为周限，按剩余百分比阈值告警（warn 30 / error 10）；
+- **Kimi For Coding 套餐余量（P0 #5）**：组件类型 `kimi.coding`——默认 `GET https://api.kimi.com/coding/v1/usages`
+  Bearer 认证（sk-kimi-* Key，与 Moonshot 开放平台两套体系）；控制台真实口（2026-10-11 用户实抓）为 POST
+  `www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`（Cookie 认证，Settings 加
+  `http_method=POST`/`auth_header=Cookie`/`http_body` 切换）。响应 `usages[]`（scope=FEATURE_CODING）条目
+  detail=周期窗、limits[]=5h 窗，`totalQuota` 进 payload，数值为字符串（解析容忍）；旧形状（顶层
+  usage+limits[]+membership.level）兼容兜底。窗口归一化 5h/周，按剩余百分比阈值告警（warn 30 / error 10）。
+  **凭据模型**：Cookie 由用户从浏览器 F12 复制粘贴进设置凭据框（DPAPI 存储、请求时回放），Beacon
+  **不做扫码/登录流**；会话过期后重录一次（与 MiMo 控制台 Cookie 同口径）；
 - **DeepSeek 开放平台余额（P0 #5）**：组件类型 `deepseek.balance`——`GET https://api.deepseek.com/user/balance`，
   Bearer 认证，`balance_infos[]` 字符串金额，`is_available=false` 直接 Error，余额击穿下限告警（warn 20 / error 5，按余额币种）
   （2026-10-09 实测真数据：CNY 余额、is_available=true，形状逐字段吻合）；
@@ -424,7 +429,7 @@ Codex    71% used   weekly 8h 后重置
 `http.status` 状态词表可整体省略（用上例默认值）；未知状态词按 Warning 兜底（宁报勿漏）。
 `bigmodel.usage` 摘要形如 `GLM Coding Pro · 5h 42.5% · 周 8% · 月 3%`，级别取各窗口最差者过阈值。
 `claude.usage` 摘要形如 `Claude · 今日 · $1.00 · 2.5K tok · 12 条`（costUSD 缺失时只报 token，不自行估价）。
-`kimi.coding` 摘要形如 `Pro · 5h 剩25% · 周 剩55%`，剩余百分比越低越差。
+`kimi.coding` 摘要形如 `Pro · 5h 剩25% · 周 剩55%`（社区口带套餐等级；控制台口无等级，head 落 label 或「Kimi」），剩余百分比越低越差。
 `deepseek.balance` 摘要形如 `DeepSeek · ¥110.00（含赠 ¥10.00）`，币种 CNY/USD 自适应。
 `ark.usage` 摘要形如 `方舟 · 5h 42% · 周 8% · 月 3%`（接口只给百分比，级别取各窗口最差者过阈值）；`mimo.usage`
 摘要形如 `MiMo · 本机累计 128 次 · 近60分 6 次 · 官方无额度接口（本机计数）`（配计数源）或

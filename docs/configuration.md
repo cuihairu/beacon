@@ -101,7 +101,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | bigmodel | open.bigmodel.cn | 智谱 API Key（监控接口裸 Key 直传，无 Bearer 前缀） | GET quota/limit |
 | ark | open.volcengineapi.com | 火山 `AccessKey:SecretKey` 冒号分隔一次粘贴（控制台「API 访问密钥」创建；推理 ARK_API_KEY 调不了管控面） | V4 签名调 GetCodingPlanUsage |
 | claude | 无（读本机） | 留空 | 本机会话目录可读 |
-| kimi | api.kimi.com/coding/v1/usages | Kimi For Coding Key（sk-kimi- 前缀；与 Moonshot 开放平台是两套账号） | GET usages |
+| kimi | api.kimi.com/coding/v1/usages（社区 GET 口，默认）。控制台口 `www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`：endpoint 整串直填 + Settings 加 `http_method=POST`、`auth_header=Cookie`（载荷照 F12 → 网络 → 该请求补 `http_body`） | 二选一：Kimi For Coding Key（sk-kimi- 前缀），或浏览器 Cookie（F12 → Cookies 复制值粘贴）。**Beacon 不做扫码/登录流**——Cookie 凭据由用户从浏览器复制粘贴，DPAPI 加密存储，请求时原样回放；会话过期（浏览器登出/过期）后重录一次即可。与 Moonshot 开放平台是两套账号 | GET usages / POST GetUsages（2xx 即连通） |
 | moonshot | api.moonshot.cn/v1/users/me/balance | Moonshot 开放平台 API Key（Bearer；与 Kimi For Coding 是两套账号） | GET balance（响应须含余额数据） |
 | deepseek | api.deepseek.com | DeepSeek API Key | GET /user/balance |
 | mimo | token-plan-cn.xiaomimimo.com/v1 | 小米 API Key（Bearer；只授权模型调用，额度另录控制台 Cookie） | GET /models |
@@ -117,8 +117,10 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 
 | 键 | 默认 | 说明 |
 |---|---|---|
-| auth_header | `Authorization` | 认证头名称 |
-| auth_prefix | `Bearer` | 值前缀，可显式置空（bigmodel 裸 Key 即置空场景，其类型默认已处理） |
+| auth_header | `Authorization` | 认证头名称（Cookie 凭据即填 `Cookie`） |
+| auth_prefix | `Bearer` | 值前缀，可显式置空（bigmodel 裸 Key、Cookie 原样回放即置空场景） |
+| http_method | `GET` | 请求方法（POST 等；kimi 控制台 GetUsages 即 POST 口） |
+| http_body | 空 | 请求体（JSON 文本，配置了才携带；内容照浏览器 F12 → 网络 → 该请求的载荷） |
 
 ### 类型专属 Settings 键
 
@@ -138,7 +140,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | bigmodel | bigmodel.usage | 5h 滚动窗占主位，周限、月度次之（窗口上限无绝对 token 口，监控接口只给百分比） | 监控接口 quota/limit。rolling → weekly → monthly 优先级取主数值 |
 | claude | claude.usage | 窗口内 token 与成本（costUSD 存在才计成本，不自行估价） | 读本机 `~/.claude/projects/**/*.jsonl`，零凭据零网络。设了 daily_cost_limit 才按用量升级别 |
 | codex | codex.usage | 近 N 天 token（每会话文件取最后一条累计值求和，如实标注「本地统计，非官方口径」） | 读本机 `~/.codex/sessions/**/rollout-*.jsonl`。官方口需 OAuth，落本地统计档 |
-| kimi | kimi.coding | 5h 窗 + 周限的剩余百分比，最差者判级（余 0% 显示「已用尽」） | GET usages（社区实现交叉验证）。limits[] 窗口明细归一化 |
+| kimi | kimi.coding | 5h 窗 + 周限的剩余百分比，最差者判级（余 0% 显示「已用尽」） | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
 | moonshot | moonshot.balance | 余额金额（¥），余额 ≤ warn_below（默认 20）→ Warning、≤ error_below（默认 5）→ Error | GET /v1/users/me/balance（Bearer）。响应不含余额数据按 Degraded 处理 |
 | deepseek | deepseek.balance | 余额金额（CNY/USD），total ≤ 阈值判级 | GET /user/balance。is_available=false 直接 Error |
 | mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；否则本机计数；再否则如实「无额度口」 | 三档降级：控制台 API → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充） |

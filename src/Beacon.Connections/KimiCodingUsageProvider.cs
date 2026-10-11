@@ -30,11 +30,14 @@ public static class KimiWidgetDescriptors
 
 /// <summary>
 /// kimi.coding（positioning P0 #5）：Kimi For Coding 套餐余量监控（注意与 Moonshot 开放平台是两套
-/// 账号体系，Key 形如 sk-kimi-*）。接口（dsh-plugin-llm-balance 等社区实现交叉验证）：
-/// GET https://api.kimi.com/coding/v1/usages，Authorization: Bearer &lt;Key&gt;。响应顶层 usage =
-/// 周限额 { limit, used, remaining, resetTime }，limits[] 为窗口明细（window:{duration,timeUnit} →
-/// 5h/weekly 归一化），user.membership.level = 套餐等级。级别按窗口剩余百分比最差者判：
-/// ≤ error_percent → Error，≤ warn_percent → Warning，否则 Success。
+/// 账号体系，Key 形如 sk-kimi-*）。真实接口（2026-10-11 用户实抓）：POST
+/// https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages —— 控制台会话
+/// （auth_header=Cookie，配 http_method=POST/http_body={}），凭据是浏览器 Cookie 不是 sk Key。
+/// 社区端点 GET https://api.kimi.com/coding/v1/usages（Bearer sk-kimi-* Key）保留为默认兜底。
+/// 响应顶层 usages[]（按 scope=FEATURE_CODING 选条目）——条目级 detail = 周期窗（约一周），
+/// limits[] = 5h 滚动窗（window:{duration,timeUnit} 归一化），totalQuota = 总额度；数值为字符串。
+/// 旧形状（顶层 usage 对象 + 顶层 limits[] + user.membership.level，数字值）兼容兜底。
+/// 级别按窗口剩余百分比最差者判：≤ error_percent → Error，≤ warn_percent → Warning，否则 Success。
 /// </summary>
 public sealed class KimiCodingUsageProvider : IWidgetProvider
 {
@@ -94,6 +97,9 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
                 ["weekly_limit"] = usage.Weekly?.Limit?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_remaining"] = usage.Weekly?.Remaining?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_reset"] = usage.Weekly?.ResetTime ?? "",
+                ["total_limit"] = usage.Total?.Limit?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
+                ["total_used"] = usage.Total?.Used?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
+                ["total_remaining"] = usage.Total?.Remaining?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
@@ -102,8 +108,11 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
     /// <summary>单窗口余量（RemainingPercent = remaining/limit×100）。</summary>
     public sealed record QuotaWindow(double? RemainingPercent, double? Limit, double? Remaining, string? ResetTime);
 
-    /// <summary>归一化后的套餐余量：5h 滚动窗 + 周限 + 套餐等级。</summary>
-    public sealed record KimiUsage(string? Level, QuotaWindow? Rolling, QuotaWindow? Weekly)
+    /// <summary>套餐总额度（totalQuota；真实响应数值为字符串）。</summary>
+    public sealed record TotalQuota(double? Limit, double? Used, double? Remaining);
+
+    /// <summary>归一化后的套餐余量：5h 滚动窗 + 周限 + 套餐等级 + 总额度。</summary>
+    public sealed record KimiUsage(string? Level, QuotaWindow? Rolling, QuotaWindow? Weekly, TotalQuota? Total)
     {
         /// <summary>各窗口最差剩余（级别判定依据）；全部缺失 → null。100% 是合法值，不折叠。</summary>
         public double? WorstRemainingPercent
@@ -123,7 +132,10 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
         }
     }
 
-    /// <summary>解析 /v1/usages 响应（纯函数供单测）：limits 明细优先，顶层 usage 兜底为周限。</summary>
+    /// <summary>解析 /v1/usages 响应（纯函数供单测）。真实形状（2026-10-11 实抓）：顶层 usages[]
+    /// 按 scope=FEATURE_CODING 选条目（无匹配取首个含 detail 的），条目级 detail = 周期窗，
+    /// 条目内 limits[] = 滚动窗明细，totalQuota = 总额度，数值为字符串。旧形状（顶层 usage 对象
+    /// + 顶层 limits[]，数字值）兜底兼容。</summary>
     internal static KimiUsage? ParseUsages(string json)
     {
         JsonDocument document;
@@ -138,8 +150,41 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
         using (document)
         {
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object
-                || !root.TryGetProperty("usage", out var usageElement) || usageElement.ValueKind != JsonValueKind.Object)
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            // 真实形状：usages[] 按 scope 选条目
+            if (root.TryGetProperty("usages", out var usages) && usages.ValueKind == JsonValueKind.Array)
+            {
+                JsonElement? coding = null;
+                foreach (var item in usages.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object
+                        || !item.TryGetProperty("detail", out var detail) || detail.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+                    coding ??= item; // 兜底：首个含 detail 的条目
+                    if (item.TryGetProperty("scope", out var scope) && scope.ValueKind == JsonValueKind.String
+                        && scope.GetString() == "FEATURE_CODING")
+                    {
+                        coding = item;
+                        break;
+                    }
+                }
+                if (coding is not { } entry)
+                {
+                    return null;
+                }
+                var (rolling, weeklyFromLimits) = ParseWindowList(entry);
+                var weekly = weeklyFromLimits ?? ParseWindow(entry.GetProperty("detail")); // 条目 detail = 周期窗
+                return new KimiUsage(Level: null, rolling, weekly, ParseTotalQuota(root));
+            }
+
+            // 旧形状兜底：顶层 usage = 周限额，顶层 limits[] 为窗口明细
+            if (!root.TryGetProperty("usage", out var usageElement) || usageElement.ValueKind != JsonValueKind.Object)
             {
                 return null;
             }
@@ -148,38 +193,56 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
                 && membershipElement.TryGetProperty("level", out var levelElement) && levelElement.ValueKind == JsonValueKind.String
                     ? levelElement.GetString()
                     : null;
+            var (legacyRolling, legacyWeekly) = ParseWindowList(root);
+            legacyWeekly ??= ParseWindow(usageElement); // 顶层 usage = 周限额（limits 未含周窗时兜底）
+            return new KimiUsage(level, legacyRolling, legacyWeekly, ParseTotalQuota(root));
+        }
+    }
 
-            QuotaWindow? rolling = null, weekly = null;
-            if (root.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
+    /// <summary>limits[] →（滚动窗, 周窗）：window:{duration,timeUnit} 归一化 5h/weekly，未识别窗口跳过（不误标）。</summary>
+    private static (QuotaWindow? Rolling, QuotaWindow? Weekly) ParseWindowList(JsonElement parent)
+    {
+        QuotaWindow? rolling = null, weekly = null;
+        if (parent.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in limits.EnumerateArray())
             {
-                foreach (var item in limits.EnumerateArray())
+                if (item.ValueKind != JsonValueKind.Object
+                    || !item.TryGetProperty("detail", out var detail) || detail.ValueKind != JsonValueKind.Object
+                    || !item.TryGetProperty("window", out var windowElement))
                 {
-                    if (item.ValueKind != JsonValueKind.Object
-                        || !item.TryGetProperty("detail", out var detail) || detail.ValueKind != JsonValueKind.Object
-                        || !item.TryGetProperty("window", out var windowElement))
-                    {
-                        continue;
-                    }
-                    var label = WindowLabel(windowElement);
-                    if (label is not ("5h" or "weekly"))
-                    {
-                        continue; // 未识别窗口不入摘要（不误标）
-                    }
-                    var window = ParseWindow(detail);
-                    if (label == "5h")
-                    {
-                        rolling = window;
-                    }
-                    else if (weekly is null)
-                    {
-                        weekly = window;
-                    }
+                    continue;
+                }
+                var label = WindowLabel(windowElement);
+                if (label is not ("5h" or "weekly"))
+                {
+                    continue; // 未识别窗口不入摘要（不误标）
+                }
+                var window = ParseWindow(detail);
+                if (label == "5h")
+                {
+                    rolling = window;
+                }
+                else if (weekly is null)
+                {
+                    weekly = window;
                 }
             }
-            var topLevel = ParseWindow(usageElement);
-            weekly ??= topLevel; // 顶层 usage = 周限额（limits 未含周窗时兜底）
-            return new KimiUsage(level, rolling, weekly);
         }
+        return (rolling, weekly);
+    }
+
+    /// <summary>totalQuota:{limit,used,remaining} → 总额度（可缺省；全空 → null）。</summary>
+    private static TotalQuota? ParseTotalQuota(JsonElement root)
+    {
+        if (!root.TryGetProperty("totalQuota", out var total) || total.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        var limit = ReadDouble(total, "limit");
+        var used = ReadDouble(total, "used");
+        var remaining = ReadDouble(total, "remaining");
+        return limit is null && used is null && remaining is null ? null : new TotalQuota(limit, used, remaining);
     }
 
     /// <summary>window:{duration,timeUnit} → 归一化标签（5h/weekly；兼容字符串 window；未识别 → null）。</summary>
@@ -218,9 +281,19 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
     }
 
     private static double? ReadDouble(JsonElement item, string property)
-        => item.TryGetProperty(property, out var element) && element.ValueKind == JsonValueKind.Number && element.TryGetDouble(out var value)
-            ? value
-            : null;
+    {
+        if (!item.TryGetProperty(property, out var element))
+        {
+            return null;
+        }
+        return element.ValueKind switch
+        {
+            JsonValueKind.Number when element.TryGetDouble(out var number) => number,
+            // 真实响应数值是字符串（"100"），容忍解析
+            JsonValueKind.String when double.TryParse(element.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) => parsed,
+            _ => null,
+        };
+    }
 
     /// <summary>级别映射（纯函数供单测）：剩余百分比越低越差；无数据 → Warning（宁报勿漏）。</summary>
     internal static Severity MapSeverity(double? worstRemainingPercent, double warnPercent, double errorPercent)
@@ -247,7 +320,8 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
     private static string Format(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 }
 
-/// <summary>kimi 连接：TestAsync = GET /v1/usages（Endpoint 可空取默认），Bearer 认证（sk-kimi-* Key）。</summary>
+/// <summary>kimi 连接：TestAsync = GET /v1/usages（Endpoint 可空取默认），Bearer 认证（sk-kimi-* Key）。
+/// 控制台 POST 端点经连接设置覆盖：endpoint + http_method=POST + http_body + auth_header=Cookie。</summary>
 public sealed class KimiConnectionProvider : IConnectionProvider
 {
     private readonly HttpClient? _client;

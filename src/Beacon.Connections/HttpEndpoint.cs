@@ -40,7 +40,15 @@ internal static class HttpEndpoint
             throw new ConnectionException("HTTP 连接缺少 Endpoint", ConnectionHealthState.Degraded);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        using var request = new HttpRequestMessage(
+            connection.Settings.TryGetValue("http_method", out var method) && !string.IsNullOrWhiteSpace(method)
+                ? new HttpMethod(method.Trim().ToUpperInvariant())
+                : HttpMethod.Get,
+            endpoint);
+        if (connection.Settings.TryGetValue("http_body", out var body) && !string.IsNullOrWhiteSpace(body))
+        {
+            request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+        }
         var credentialRef = connection.CredentialRef;
         if (!string.IsNullOrWhiteSpace(credentialRef))
         {

@@ -4,9 +4,28 @@ using Beacon.Core.Models;
 
 namespace Beacon.Connections.Tests;
 
-/// <summary>kimi.coding（Kimi For Coding 套餐余量，positioning P0 #5）：窗口归一化、剩余百分比阈值、Bearer 认证。</summary>
+/// <summary>kimi.coding（Kimi For Coding 套餐余量，positioning P0 #5）：真实响应形状（usages[]+
+/// totalQuota+字符串数值，2026-10-11 实抓）、旧形状兼容、窗口归一化、剩余百分比阈值、Bearer/Cookie 认证。</summary>
 public sealed class KimiCodingUsageProviderTests
 {
+    // 真实响应形状（2026-10-11 用户实抓 POST www.kimi.com/...GetUsages；数值是字符串）
+    private const string RealBody = """
+        {
+          "usages": [
+            {
+              "scope": "FEATURE_CODING",
+              "detail": { "limit": "100", "remaining": "100", "resetTime": "2026-10-18T00:38:30.819935Z" },
+              "limits": [
+                { "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },
+                  "detail": { "limit": "100", "remaining": "100", "resetTime": "2026-10-11T07:38:30.819935Z" } }
+              ]
+            }
+          ],
+          "totalQuota": { "limit": "100", "used": "41", "remaining": "59" }
+        }
+        """;
+
+    // 旧形状（社区端点兜底口径：顶层 usage 对象 + 数字值）
     private const string Body = """
         {
           "usage": { "limit": 1000, "used": 450, "remaining": 550, "resetTime": "2026-10-12T00:00:00Z" },
@@ -124,6 +143,47 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Null(KimiCodingUsageProvider.ParseUsages(json));
     }
 
+    // ---- 真实形状（2026-10-11 实抓）----
+
+    [Fact]
+    public void ParseUsages_RealShape_StringNumbersWindowsAndTotalQuota()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages(RealBody)!;
+
+        Assert.Null(usage.Level); // 真实响应无 user.membership，head 落「Kimi」默认
+        Assert.Equal(100, usage.Rolling!.RemainingPercent!.Value, 5); // 300min → 5h 窗
+        Assert.Equal(100, usage.Rolling.Limit); // 字符串数值容忍
+        Assert.Equal("2026-10-11T07:38:30.819935Z", usage.Rolling.ResetTime);
+        Assert.Equal(100, usage.Weekly!.RemainingPercent!.Value, 5); // 条目 detail = 周期窗
+        Assert.Equal("2026-10-18T00:38:30.819935Z", usage.Weekly.ResetTime);
+        Assert.Equal(100, usage.Total!.Limit);
+        Assert.Equal(41, usage.Total.Used);
+        Assert.Equal(59, usage.Total.Remaining);
+        Assert.Equal(100, usage.WorstRemainingPercent!.Value, 5);
+    }
+
+    [Fact]
+    public void ParseUsages_RealShape_SelectsCodingScope_NotFirstEntry()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usages": [
+                { "scope": "FEATURE_CHAT", "detail": { "limit": "999", "remaining": "1" } },
+                { "scope": "FEATURE_CODING", "detail": { "limit": "100", "remaining": "50" } }
+              ]
+            }
+            """)!;
+
+        Assert.Equal(50, usage.Weekly!.RemainingPercent!.Value, 5); // 取 FEATURE_CODING 条目而非首个
+        Assert.Null(usage.Rolling); // 该条目无 limits
+    }
+
+    [Fact]
+    public void ParseUsages_RealShape_EmptyUsages_ReturnsNull()
+    {
+        Assert.Null(KimiCodingUsageProvider.ParseUsages("""{ "usages": [] }"""));
+    }
+
     // ---- 级别阈值（剩余口径：越低越差）----
 
     public static TheoryData<double?, double, double, Severity> SeverityCases => new()
@@ -153,7 +213,8 @@ public sealed class KimiCodingUsageProviderTests
         var both = KimiCodingUsageProvider.Summarize(new KimiCodingUsageProvider.KimiUsage(
             "pro",
             new KimiCodingUsageProvider.QuotaWindow(0, 100, 0, "2026-10-13"),
-            new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20")));
+            new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
+            null));
 
         Assert.Contains("5h 已用尽", both);
         Assert.Contains("周 已用尽", both);
@@ -161,7 +222,8 @@ public sealed class KimiCodingUsageProviderTests
         var mixed = KimiCodingUsageProvider.Summarize(new KimiCodingUsageProvider.KimiUsage(
             "pro",
             new KimiCodingUsageProvider.QuotaWindow(74, 100, 74, null),
-            new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20")));
+            new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
+            null));
 
         Assert.Contains("5h 剩74%", mixed); // 有余量的窗维持原口径
         Assert.Contains("周 已用尽", mixed);
@@ -191,6 +253,53 @@ public sealed class KimiCodingUsageProviderTests
         Assert.True(hasAuth);
         Assert.Equal("Bearer sk-kimi-demo", string.Join(",", authorization!));
         Assert.Equal(KimiCodingUsageProvider.DefaultEndpoint, http.Requests[0].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetStateAsync_RealShape_SummaryPayloadAndTotalQuota()
+    {
+        var (provider, http) = Faked(HttpStatusCode.OK, RealBody);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Success, state!.Severity); // 窗口全剩 100%
+        Assert.Equal(LifecycleState.Success, state.Lifecycle);
+        Assert.Equal("Kimi · 5h 剩100% · 周 剩100%", state.Summary); // 无 level → head 默认 Kimi
+        Assert.Equal("100", state.Payload["total_limit"]);
+        Assert.Equal("41", state.Payload["total_used"]);
+        Assert.Equal("59", state.Payload["total_remaining"]);
+        Assert.Equal("100", state.Payload["weekly_limit"]); // 字符串数值归一
+        Assert.Equal("2026-10-18T00:38:30.819935Z", state.Payload["weekly_reset"]);
+        Assert.Equal(KimiCodingUsageProvider.DefaultEndpoint, http.Requests[0].RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetStateAsync_HttpMethodBodyAndCookieHeader_Apply()
+    {
+        var http = new FakeHttpMessageHandler();
+        string? sentBody = null; // 请求发出后 Content 即被释放，发送时同步截留
+        http.Responder = request =>
+        {
+            sentBody = request.Content is null ? null : request.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new FakeHttpResponse(HttpStatusCode.OK, RealBody);
+        };
+        var provider = new KimiCodingUsageProvider(http);
+        var connection = Connection("https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages");
+        connection.Settings["http_method"] = "POST";
+        connection.Settings["http_body"] = "{}";
+        connection.Settings["auth_header"] = "Cookie"; // 控制台会话凭据走 Cookie，无 Bearer 前缀
+        connection.Settings["auth_prefix"] = "";
+
+        var state = await provider.GetStateAsync(Widget(), connection, Ctx(), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("POST", http.Requests[0].Method.Method);
+        Assert.Equal("https://www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages",
+            http.Requests[0].RequestUri!.ToString());
+        Assert.Equal("{}", sentBody);
+        var hasCookie = http.Requests[0].Headers.TryGetValues("Cookie", out var cookie);
+        Assert.True(hasCookie);
+        Assert.Equal("sk-kimi-demo", string.Join(",", cookie!)); // auth_prefix 置空 → 裸凭据
     }
 
     [Fact]
