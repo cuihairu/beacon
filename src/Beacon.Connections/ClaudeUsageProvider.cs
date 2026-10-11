@@ -15,7 +15,7 @@ public static class ClaudeWidgetDescriptors
         Type = UsageType,
         DisplayName = "Claude Code 用量（本机）",
         PinSupported = true,
-        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Static, // 本地文件统计：手动/打开面板时重算即可
         Fields =
         [

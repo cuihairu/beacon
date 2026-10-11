@@ -15,7 +15,7 @@ public static class DeepSeekWidgetDescriptors
         Type = BalanceType,
         DisplayName = "DeepSeek 余额（开放平台）",
         PinSupported = true,
-        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Default,
         Fields =
         [

@@ -48,7 +48,7 @@ internal sealed class FloatingTileHost
 
     /// <summary>悬浮形态准入（产品拍板）：钉选准入之外还须信息密度够（FloatingSupported）——数值/额度类只在宿主面板。</summary>
     /// <summary>悬浮形态准入：信息密集组件（FloatingSupported，趋势图/灯组）恒可悬浮；
-    /// 数值/额度类（FloatingOptIn）由设置「数量悬浮窗」开关放行，默认关=桌面零残留（拍板 2026-10-08）。</summary>
+    /// 数值/额度类（FloatingOptIn）由设置「数量悬浮窗」开关放行（2026-10-11 用户令默认开；关=桌面零残留）。</summary>
     public bool IsFloatingEligible(string widgetType)
     {
         var descriptor = _runtime.Resolver.Resolve(widgetType)?.Descriptor;

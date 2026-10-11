@@ -24,7 +24,7 @@ public sealed record WidgetTypeDescriptor
     /// </summary>
     public bool FloatingSupported { get; init; }
     /// <summary>数值/额度类悬浮 opt-in 标记：FloatingSupported=false 但可经设置「数量悬浮窗」开关放行
-    /// （拍板 2026-10-08 修正：功能不删改可配置+默认关；信息密集组件不受该开关约束）。</summary>
+    /// （拍板 2026-10-08 改可配置；2026-10-11 用户令默认翻转开；信息密集组件不受该开关约束）。</summary>
     public bool FloatingOptIn { get; init; }
     public string SuggestedTier { get; init; } = RefreshTiers.Default;
     public IReadOnlyList<WidgetFieldDescriptor> Fields { get; init; } = [];

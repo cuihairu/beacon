@@ -592,7 +592,7 @@ internal sealed class PinnedHostWindow
                 _latest.Remove(widget.Id);
                 continue;
             }
-            // 数量悬浮框默认关（拍板 ×4）：数值/额度类（FloatingOptIn）受 设置→常规 数量悬浮窗 总闸，
+            // 数量悬浮窗默认开（2026-10-11 用户令，推翻 2026-10-08 拍板）：数值/额度类（FloatingOptIn）受 设置→常规 数量悬浮窗 总闸，
             // 关 = 钉选也不画上桌面。此前只闸了悬浮形态窗口（IsFloatingEligible），本面板照画
             // widget.Pinned 的数值卡（GLM 绑定流一键建卡即钉选）——「改了还弹」的第二条渲染路径。
             if (WidgetDisplayPolicy.IsNumericSuppressed(

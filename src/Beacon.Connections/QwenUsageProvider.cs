@@ -17,7 +17,7 @@ public static class QwenWidgetDescriptors
         Type = UsageType,
         DisplayName = "阿里千问用量（百炼 Token Plan）",
         PinSupported = true,
-        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

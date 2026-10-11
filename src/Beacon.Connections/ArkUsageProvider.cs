@@ -18,7 +18,7 @@ public static class ArkWidgetDescriptors
         Type = UsageType,
         DisplayName = "方舟 Coding Plan 额度（火山）",
         PinSupported = true,
-        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

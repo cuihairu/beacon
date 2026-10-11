@@ -15,7 +15,7 @@ public static class OpenCodeWidgetDescriptors
         Type = UsageType,
         DisplayName = "OpenCode Go 用量",
         PinSupported = true,
-        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认关）
+        FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Default, // 月度预算窗口（resets_at 按 UTC 自然月）
         Fields =
         [
