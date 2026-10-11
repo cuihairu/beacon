@@ -16,8 +16,9 @@ public sealed class AppConfig
     public int ConfigVersion { get; set; }
     /// <summary>L0 悬浮形态：panel = 单宿主多 tile（默认）；floating = 每钉选组件一窗、可拖桌面任意位置（切换重启生效）。</summary>
     public string PinDisplayMode { get; set; } = "panel";
-    /// <summary>数量悬浮窗（数值/额度类独立悬浮窗）总开关，默认关（拍板 2026-10-08：功能保留改可配置——关=桌面零残留，开=数值类恢复悬浮窗）。</summary>
-    public bool NumericFloatingEnabled { get; set; } = false;
+    /// <summary>数量悬浮窗（数值/额度类独立悬浮窗）总开关。默认开（2026-10-11 用户令翻转，
+    /// 推翻 2026-10-08 的默认关拍板）：数值/额度类恢复悬浮窗；想桌面零残留可在设置里关。</summary>
+    public bool NumericFloatingEnabled { get; set; } = true;
     /// <summary>全局检查频率（秒，0=按各组件刷新档策略表，默认）。设置「检查频率」落点：
     /// 组件级检测间隔优先，未设组件级的按此值走（2026-10-09 用户令：轮询节奏可配）。</summary>
     public int PollIntervalSeconds { get; set; } = 0;
@@ -27,7 +28,8 @@ public sealed class AppConfig
     /// <summary>设置窗口尺寸记忆（DIP）。0=未记忆用默认 880×640；拖窗结束防抖落盘（2026-10-10 用户令）。</summary>
     public double SettingsWindowWidth { get; set; }
     public double SettingsWindowHeight { get; set; }
-    /// <summary>升级迁移标记：NumericFloatingEnabled 强制置关是一次性动作（老包开关 ON 的配置升级即回干净桌面），已执行不再动用户选择。</summary>
+    /// <summary>已废弃（2026-10-11 用户令数量悬浮窗改默认开，一次性强制置关迁移随之撤除）：
+    /// 字段保留只为旧配置 JSON 兼容，程序不再读不再写。</summary>
     public bool NumericFloatingResetDone { get; set; }
     /// <summary>用户通知规则；空列表时使用 DefaultNotificationRules（RFC §8）。</summary>
     public List<NotificationRule> NotificationRules { get; set; } = [];

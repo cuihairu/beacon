@@ -149,7 +149,7 @@ internal sealed class FloatingTileHost
                 SourceWidgetId = "",
                 Severity = Severity.Info,
                 Title = "悬浮形态提示",
-                Message = "数量类组件默认不显示悬浮窗（桌面零残留），钉选内容在宿主面板查看，数据未动；可在 设置 → 常规 → 数量悬浮窗 打开。",
+                Message = "数量悬浮窗已关闭：数值/额度类钉选在宿主面板展示，数据未动；可在 设置 → 常规 → 数量悬浮窗 打开（默认开）。",
                 Timestamp = DateTimeOffset.UtcNow,
             }, new NotificationDelivery(Toast: true, Sound: false));
         }

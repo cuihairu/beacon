@@ -222,7 +222,7 @@ public class SerializationRoundTripTests
         Assert.Equal(1.0, restored.UiOpacity);
         Assert.False(restored.ShowCapsule);
         Assert.Equal("panel", restored.PinDisplayMode);
-        Assert.False(restored.NumericFloatingEnabled);
+        Assert.True(restored.NumericFloatingEnabled); // 2026-10-11 用户令翻转默认：数量悬浮窗默认开
         Assert.Equal(0, restored.PollIntervalSeconds);
         Assert.Equal("reduced", restored.Appearance.Motion.Mode);
         Assert.Equal(1.0, restored.Appearance.Motion.Intensity);

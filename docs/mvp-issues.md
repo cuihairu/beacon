@@ -436,6 +436,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   现双宿主各自兜异常即是补丁），一次失误 = tile 消失到重启；⑤与本仓拍板记录保守取向一致
   （胶囊默认关维持/直推不设 check/数量悬浮窗默认关）。要推翻：直接改本条，实现入口 =
   App.ApplySettingsEffects + ThemeColors 色源 + SettingsWindow 标签去「重启生效」。
+  **2026-10-11 推翻记录**：「数量悬浮窗默认关」已按用户令翻转为**默认开**（批3-补24；一次性强制置关迁移撤除）；
+  「胶囊默认关维持」与「直推不设 check」两项维持不变（2026-10-11 用户令重申胶囊默认关）。
 - **evidence-before 分支处置**：`git branch -D` 删除（2026-10-10 用户令）。该分支为 2026-10-09 晚的
   rebase 前安全快照（3 commit：visual-evidence 扩展/BOM/automation ids），`git cherry origin/main
   evidence-before` 全 `-` 证实补丁内容已全部等价存在于 main，无未合并工作；删除前已逐 commit 核对
@@ -799,6 +801,16 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **CI 视觉断言**（visual-evidence.ps1）：复用 Count-BarPixels 做硬断言（margin 0 裁窗，底部 4px 带 ≥120 像素，A/D 两场景）+ 新增 `A-tile-bar-band.png` / `D-tile-ark-bar-closeup.png` 证据截图（池水近景命名随之退役）。
 - **验收**：4 项目全绿（含新增默认值断言 `AppConfig_defaults_survive_round_trip`）。装后看：tile 底部圆角进度条 + NN% 读数；≥80% 变黄、满格变红；设置里两档可切即时生效。
 - **诚实口径**：CI 单屏恒 100% 缩放，150/200/250% 的条带与字号表现 CI 无法代验（DIP 恒定，缩放由系统等比放大；装机复测为准）。
+
+
+### 批3-补24 默认值两连翻转（2026-10-11 用户令「数量悬浮窗 默认开 状态胶囊默认关」）
+- **数量悬浮窗默认开**：`NumericFloatingEnabled` 缺省 `false`→`true`（推翻 2026-10-08 默认关拍板，见拍板记录推翻行）；
+  **一次性强制置关迁移整块撤除**（App.xaml.cs——迁移不撤会把新默认在新配置首启即强制回关，与新令直接冲突）；
+  `NumericFloatingResetDone` 字段废弃保留（旧配置 JSON 兼容，不再读写）；设置开关标签改「默认开」；
+  悬浮形态迁移提示文案改条件式措辞（只在总闸关时提示，不再写「默认不显示」）。
+- **状态胶囊默认关**：维持现状（`ShowCapsule=false` 本就是 2026-10-09 拍板，用户令重申，零代码改动）。
+- **验收**：默认值断言翻转（`AppConfig_defaults_survive_round_trip` 断 `NumericFloatingEnabled=true`），4 项目全绿。
+  装后看：新装/新配置数值类组件（GLM/Kimi 等额度卡）默认出现在桌面悬浮框；设置里可关回零残留。
 
 
 

@@ -168,23 +168,8 @@ public partial class App : Application
         runtime.Host.Start();
         _activePollInterval = runtime.Config.App.PollIntervalSeconds; // 与调度器在用值对齐（设置改动检测基线）
 
-        // 数量悬浮窗升级迁移（拍板 2026-10-08 ×4）：老配置开关 ON 强制置关 + 一次性提示，
-        // 标记只置一次（NumericFloatingResetDone）——此后用户再开是自己的选择，升级不再动。
-        // 老包「改了还弹」根因即钉选面板路径没闸，本迁移保证升级后桌面默认干净。
-        if (!runtime.Config.App.NumericFloatingResetDone)
-        {
-            runtime.Config.App.NumericFloatingResetDone = true;
-            var numericWasOn = runtime.Config.App.NumericFloatingEnabled;
-            runtime.Config.App.NumericFloatingEnabled = false;
-            runtime.Config.SaveApp();
-            _logger.LogInformation("数量悬浮窗升级迁移：开关原值 {WasOn} → 强制关（一次性）。", numericWasOn);
-            if (numericWasOn)
-            {
-                tray.ShowBalloon("Beacon", "数量悬浮窗已默认关闭（桌面零残留），可在 设置 → 常规 重新打开。");
-            }
-        }
-
-        // B-701：L0 悬浮组件（主屏单实例宿主或独立悬浮框两形态；多显示器分配随 B-703 位置持久化）
+        // B-701：L0 悬浮组件（主屏单实例宿主或独立悬浮框两形态；多显示器分配随 B-703 位置持久化）。
+        // 数量悬浮窗默认开（2026-10-11 用户令翻转，2026-10-08 的一次性强制置关迁移已随默认撤除）
         if (Infrastructure.MonitorService.Primary() is { } primaryMonitor)
         {
             if (runtime.Config.App.PinDisplayMode == "floating")

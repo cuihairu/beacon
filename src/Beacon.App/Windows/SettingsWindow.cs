@@ -562,7 +562,7 @@ internal sealed class SettingsWindow : Window
         _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
         // 拍板 2026-10-08：数量悬浮窗不删功能改可配置——默认关（新装/升级零残留），开=数值/额度类恢复独立悬浮窗
-        _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认关）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
+        _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认开）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
         _numericFloatingToggle.Toggled += (_, _) => SaveGeneral();
         // 全局检查频率（2026-10-09 用户令）：组件级「检测间隔」优先，未设组件级的按此走；改后立即重建调度
         _pollBox = new ComboBox { Header = "检查频率（未单独设置间隔的组件）", Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
