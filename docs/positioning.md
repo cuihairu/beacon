@@ -133,7 +133,7 @@ Codex    71% used   weekly 8h 后重置
 | 刷新 | `RefreshScheduler` 分层调度（状态与额度的窗口粒度可复用） |
 | 通知 | `NotificationEngine` + Toast（B-5xx 已接） |
 | Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
-| Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage（§8，详细进度） |
+| Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance（§8，详细进度） |
 | Machine Provider | 未实现——M5 收口后并入 [mvp-issues](mvp-issues.md) |
 
 ## 7. 排期约定
