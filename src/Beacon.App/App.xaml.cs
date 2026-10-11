@@ -25,6 +25,7 @@ public partial class App : Application
     private Windows.PinnedHostWindow? _pinnedHost;
     private Windows.FloatingTileHost? _floatingHost;
     private TopmostGuard? _topmostGuard;
+    private IntPtr _suspendResumeRegistration; // 睡眠唤醒通知句柄（master-plan §9；ShutdownApp 反注册）
     private int _activePollInterval; // 当前调度在用的全局检查频率（设置改动检测，变化才重建调度）
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
@@ -165,6 +166,21 @@ public partial class App : Application
             tray.SetTip(BuildTrayTip(status));
         }));
         tray.RefreshAllRequested += () => Dispatcher.TryEnqueue(runtime.RefreshAll);
+
+        // master-plan §9 睡眠唤醒自愈：挂起期间轮询停摆，唤醒（PBT_APMRESUMEAUTOMATIC 必发）立即补一轮刷新，
+        // 不等下个周期；message-only 窗收不到电源广播，走 RegisterSuspendResumeNotification 定向注册。
+        // Explorer 重启的托盘恢复在 TrayIconService（TaskbarCreated），此处只管唤醒补刷。
+        var messageWindow = Services.GetRequiredService<Infrastructure.Win32MessageWindow>();
+        _suspendResumeRegistration = Infrastructure.NativeMethods.RegisterSuspendResumeNotification(
+            messageWindow.Hwnd, Infrastructure.NativeMethods.DEVICE_NOTIFY_WINDOW_HANDLE);
+        messageWindow.MessageReceived += (msg, wParam, _) =>
+        {
+            if (msg == Infrastructure.NativeMethods.WM_POWERBROADCAST
+                && wParam.ToInt64() == Infrastructure.NativeMethods.PBT_APMRESUMEAUTOMATIC)
+            {
+                Dispatcher.TryEnqueue(runtime.RefreshAll);
+            }
+        };
 
         // 初值渲染（空集 = Success 基线），再启动调度（首轮拉取立即 kick）
         var snapshot = runtime.Aggregator.Snapshot();
@@ -339,6 +355,11 @@ public partial class App : Application
     {
         try
         {
+            if (_suspendResumeRegistration != IntPtr.Zero)
+            {
+                Infrastructure.NativeMethods.PowerUnregisterSuspendResumeNotification(_suspendResumeRegistration);
+                _suspendResumeRegistration = IntPtr.Zero;
+            }
             _topmostGuard?.Dispose();
             Services.GetRequiredService<HotkeyService>().Unregister();
             Services.GetRequiredService<TrayIconService>().Dispose(); // 先摘托盘图标

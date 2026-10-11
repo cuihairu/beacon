@@ -17,6 +17,11 @@ internal static class NativeMethods
     public const int HTCLIENT = 1;
     public const int HTTRANSPARENT = -1;
 
+    // —— 电源广播（master-plan §9：睡眠唤醒自愈）——
+    public const int WM_POWERBROADCAST = 0x0218;
+    public const int PBT_APMRESUMEAUTOMATIC = 0x12; // 唤醒必发（含自动唤醒）；仅在它上面补刷，不叠加 APMRESUMESUSPEND
+    public const uint DEVICE_NOTIFY_WINDOW_HANDLE = 0x0; // RegisterSuspendResumeNotification 的接收者形态
+
     // —— 扩展样式 ——
     public const int GWL_EXSTYLE = -20;
     public const long WS_EX_TOPMOST = 0x00000008;
@@ -173,6 +178,17 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool IsWindow(IntPtr hWnd);
+
+    // Explorer 重启广播是动态消息号：TaskbarCreated 只能 RegisterWindowMessage 取（master-plan §9 托盘自愈）
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint RegisterWindowMessageW(string lpString);
+
+    // 睡眠/唤醒通知：message-only 窗收不到 WM_POWERBROADCAST 广播，只有注册式定向通知可达（HWND_MESSAGE 例外）
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr RegisterSuspendResumeNotification(IntPtr hRecipient, uint dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool PowerUnregisterSuspendResumeNotification(IntPtr pRegistration);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetWindowLongPtrW(IntPtr hWnd, int nIndex);

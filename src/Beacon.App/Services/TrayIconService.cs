@@ -27,6 +27,7 @@ internal sealed class TrayIconService : IDisposable
     private NativeMethods.NOTIFYICONDATA _nid;
     private IntPtr _icon;
     private bool _added;
+    private uint _taskbarCreatedMsg; // Explorer 重启广播的动态消息号（Initialize 注册）
 
     public event Action? OpenPanelRequested;
     public event Action? SettingsRequested;
@@ -81,6 +82,9 @@ internal sealed class TrayIconService : IDisposable
         {
             _logger.LogWarning("Shell_NotifyIcon NIM_ADD failed: {Error}", Marshal.GetLastWin32Error());
         }
+
+        // Explorer 重启会销毁全部托盘图标并以 TaskbarCreated 广播（动态消息号）通知——收到即重发 NIM_ADD（master-plan §9）
+        _taskbarCreatedMsg = NativeMethods.RegisterWindowMessageW("TaskbarCreated");
     }
 
     /// <summary>托盘气泡（unpackaged Toast 未就绪时的兜底通道，RFC §16 风险 2）。</summary>
@@ -201,6 +205,12 @@ internal sealed class TrayIconService : IDisposable
 
     private void OnWindowMessage(uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (_taskbarCreatedMsg != 0 && msg == _taskbarCreatedMsg)
+        {
+            RestoreAfterExplorerRestart();
+            return;
+        }
+
         if (msg != NativeMethods.WM_APP_TRAYICON)
         {
             return;
@@ -220,6 +230,19 @@ internal sealed class TrayIconService : IDisposable
             case NativeMethods.WM_RBUTTONUP:
                 ShowContextMenu();
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Explorer 重启后托盘恢复（master-plan §9）：用现成 NID 重发 NIM_ADD——hIcon 仍持最后一次
+    /// SetSeverity 写入的级别色图标句柄（运行时绘制的 HICON 在本进程缓存里活着），恢复即回到当前级别色。
+    /// </summary>
+    private void RestoreAfterExplorerRestart()
+    {
+        _added = NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_ADD, ref _nid);
+        if (!_added)
+        {
+            _logger.LogWarning("Tray icon re-add after Explorer restart failed: {Error}", Marshal.GetLastWin32Error());
         }
     }
 
