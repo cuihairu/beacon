@@ -144,10 +144,12 @@ public sealed class GitWorkspaceProviderTests
         var with = await new GitWorkspaceProvider(new FakeGitSource(Snapshot(stash: 1, dirty: 0)))
             .GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
         Assert.Equal("main · ↑0↓0 · 改 0 · stash 1", with!.Summary);
+        Assert.Equal("↑0↓0 · 改 0 · stash 1", with.Payload["value_text"]); // 数值位 = Summary 计数段
 
         var without = await new GitWorkspaceProvider(new FakeGitSource(Snapshot(stash: 0, dirty: 0)))
             .GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
         Assert.Equal("main · ↑0↓0 · 改 0", without!.Summary);
+        Assert.Equal("↑0↓0 · 改 0", without.Payload["value_text"]);
     }
 
     [Fact]
@@ -156,6 +158,7 @@ public sealed class GitWorkspaceProviderTests
         var provider = new GitWorkspaceProvider(new FakeGitSource(Snapshot(ahead: 1, behind: 0, dirty: 4, staged: 1, untracked: 2, stash: 2, preview: "a.cs、b.cs")));
         var state = await provider.GetStateAsync(Widget(label: "beacon"), Connection(), Ctx(), CancellationToken.None);
         Assert.Equal("beacon · ↑1↓0 · 改 4 · stash 2", state!.Summary);
+        Assert.Equal("↑1↓0 · 改 4 · stash 2", state.Payload["value_text"]);
         Assert.Equal("1", state.Payload["ahead"]);
         Assert.Equal("0", state.Payload["behind"]);
         Assert.Equal("4", state.Payload["dirty"]);

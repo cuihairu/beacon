@@ -605,7 +605,7 @@ internal sealed class SettingsWindow : Window
             ?.InformationalVersion;
         panel.Children.Add(new TextBlock
         {
-            Text = $"Beacon 版本：{string.IsNullOrEmpty(informational) ? UpdateCheckService.LocalVersion() : informational}",
+            Text = $"Beacon 版本：{(string.IsNullOrEmpty(informational) ? UpdateCheckService.LocalVersion() : informational)}",
             FontSize = 11,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
         });

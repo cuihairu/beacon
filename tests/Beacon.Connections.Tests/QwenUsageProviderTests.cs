@@ -316,6 +316,7 @@ public sealed class QwenUsageProviderTests
         Assert.Contains(resetUtc.Value.LocalDateTime.ToString("MM-dd HH:mm"), state.Summary);
         Assert.Equal("exhausted", state.Payload["quota_state"]);
         Assert.Equal("gateway_429", state.Payload["usage_source"]);
+        Assert.Equal("已用尽", state.Payload["value_text"]); // 数值位显式状态（Summary[..7] 截断会丢「用尽」）
         Assert.Equal(1.0, state.Progress!.Value, 5);
 
         var probe = Assert.Single(http.Requests, r => !r.RequestUri!.ToString().EndsWith("/models"));

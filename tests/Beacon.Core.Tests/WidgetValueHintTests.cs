@@ -41,6 +41,8 @@ public sealed class WidgetValueHintTests
         { State("DeepSeek · ¥110.00", new() { ["total"] = "110.00", ["currency"] = "CNY" }), "¥110.00" },
         { State("DeepSeek · $4.50", new() { ["total"] = "4.50", ["currency"] = "USD" }), "$4.50" },
         { State("DeepSeek · 7.00 EUR", new() { ["total"] = "7.00", ["currency"] = "EUR" }), "7.00" },
+        // moonshot.balance：开放平台余额（平台只按 CNY 计价）
+        { State("Moonshot · ¥110.00", new() { ["available_balance"] = "110.00" }), "¥110.00" },
         // claude.usage：今日成本
         { State("Claude · $0.00 · in 1.2K", new() { ["cost"] = "0.00" }), "$0.00" },
         // claude.usage：无成本时退 token 合计

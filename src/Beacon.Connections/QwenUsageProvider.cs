@@ -423,6 +423,7 @@ public sealed class QwenUsageProvider : IWidgetProvider
             DetailUrl = ConsoleUrl,
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["value_text"] = "已用尽", // 数值位显式状态（比照 mimo 无额度口：Summary[..7] 截断会丢「用尽」）
                 ["quota_state"] = "exhausted",
                 ["reset_iso"] = quota.ResetUtc?.ToString("o", CultureInfo.InvariantCulture) ?? "",
                 ["models"] = catalog.Models.ToString("0", CultureInfo.InvariantCulture),

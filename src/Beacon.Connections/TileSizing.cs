@@ -86,13 +86,16 @@ public static class TileSizing
     {
         // 多窗口全拼（三窗 100% 顶格；两窗/单窗都是其子集形态）
         BigModelWidgetDescriptors.UsageType or ArkWidgetDescriptors.UsageType => "100%/5h 100%/w 100%/M",
-        // kimi 剩余口径双窗（Progress 恒 null，无池/读数）
+        // kimi 剩余口径双窗（Progress 恒 null，无池/读数）；RemainingWindows 预留的月窗键今天
+        // provider 不产出（接口只给 rolling/weekly），预算按现状双窗，接口加月窗时同步抬一行
         KimiWidgetDescriptors.CodingType => "剩100%/5h 剩100%/w",
         // machine 按所选展示项构造最坏值行（数值位 = value_text 同构）
         MachineWidgetDescriptors.LocalType => LocalWorstValue(MachineShowOptions.ResolveOrAll(widget.Type, widget), widget),
         MachineWidgetDescriptors.NetType => NetWorstValue(MachineShowOptions.ResolveOrAll(widget.Type, widget)),
-        // 单百分比（0.# 顶格 3 位）：qwen/http.quota 常驻读数，mimo 控制台路径有进度
-        HttpWidgetDescriptors.QuotaType or QwenWidgetDescriptors.UsageType => "100%",
+        // 单百分比：http.quota 的 percent = used/total 计算值**不封顶**（可超 100 供严重度判定），
+        // 按 3 位带小数顶格；qwen percent 已 Clamp(0,100)，最坏 = 用尽路径显式「已用尽」（33 > "100%" 31）
+        HttpWidgetDescriptors.QuotaType => "999.9%",
+        QwenWidgetDescriptors.UsageType => "已用尽",
         // 计数：open PR 顶格 5 位
         GitHubWidgetDescriptors.PullRequestsType => "99999 open",
         // copilot：premium 已用/含额（Pro 1500/月，4 位 generous）
@@ -100,12 +103,18 @@ public static class TileSizing
         // 金额（0.00 顶格）
         OpenCodeWidgetDescriptors.UsageType => "$9999.99",
         DeepSeekWidgetDescriptors.BalanceType => "¥99999.99",
-        ClaudeWidgetDescriptors.UsageType => "$999.99",
-        // token 短格式最大形态（FormatCount 0.# → 999.9M）
-        CodexWidgetDescriptors.UsageType => "999.9M tok",
-        // mimo 四路径（$月消费/无额度口/NN%/本机计数「999.9M 次」）取最宽
-        MiMoWidgetDescriptors.UsageType => "999.9M 次",
-        // 无 hint 键的类型（github.actions/http.status/jenkins/herald×3/git/moonshot）走 Summary[..7]+"…" 兜底
+        // claude 两形态取宽者：$成本 48 < token 合计（FormatCount M 形态无上界，尾数顶格 9999.9 ≈ 百亿 token）
+        ClaudeWidgetDescriptors.UsageType => "9999.9M tok",
+        // token 短格式最大形态（FormatCount 0.# M 尾数顶格 9999.9）
+        CodexWidgetDescriptors.UsageType => "9999.9M tok",
+        // mimo 四路径（$月消费 55/无额度口 44/NN% 31/本机计数 63）取最宽
+        MiMoWidgetDescriptors.UsageType => "9999.9M 次",
+        // moonshot：开放平台余额（0.00 顶格，CNY 与 Summarize 同口径）
+        MoonshotWidgetDescriptors.BalanceType => "¥99999.99",
+        // machine.git：计数段五数顶格（ahead/behind/dirty/stash 5 位，与 PR 计数同档 generous）——
+        // 无上游形态「改 99999 · stash 99999」更窄，上游全拼为最坏
+        GitWorkspaceDescriptors.Type => "↑99999↓99999 · 改 99999 · stash 99999",
+        // 无 hint 键的类型（github.actions/http.status/jenkins/herald×3）走 Summary[..7]+"…" 兜底
         _ => FallbackWorstValue,
     };
 

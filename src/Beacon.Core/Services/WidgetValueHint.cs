@@ -69,6 +69,10 @@ public static class WidgetValueHint
             };
             return $"{symbol}{total}";
         }
+        if (Text(payload, "available_balance") is { } moonshotBalance)
+        {
+            return $"¥{moonshotBalance}"; // moonshot.balance：开放平台余额（平台只按 CNY 计价，Summarize 同口径）
+        }
         if (Text(payload, "cost") is { } cost)
         {
             return $"${cost}"; // claude.usage：今日成本（provider 已按 0.00 格式化）

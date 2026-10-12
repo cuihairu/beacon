@@ -59,21 +59,27 @@ public sealed class TileSizingTests
     // —— 单百分比额度类：读数 + 池都预算 ——
 
     [Fact]
-    public void TileWidth_Qwen_Percent_WithReadoutAndPool()
+    public void TileWidth_Qwen_ExhaustedTextIsTheWorst()
     {
-        // 值行 "100%" 31；读数 "100%"@12 = 34；池 16；6 列间距 30；标签「阿里千问」48
-        Assert.Equal(207, TileSizing.TileWidthDips(Widget(QwenWidgetDescriptors.UsageType)));
+        // 值行最坏 = 用尽路径显式「已用尽」3 CJK = 33（> "100%" 31）；读数 "100%"@12 = 34；池 16；
+        // 6 列间距 30；标签「阿里千问」48 → 44+48+33+16+34+30+4 = 209
+        Assert.Equal(209, TileSizing.TileWidthDips(Widget(QwenWidgetDescriptors.UsageType)));
     }
 
     [Fact]
     public void TileWidth_HttpQuota_Percent_WithReadoutAndPool()
-        => Assert.Equal(191, TileSizing.TileWidthDips(Widget(HttpWidgetDescriptors.QuotaType))); // 44+32+31+16+34+30+4
+    {
+        // percent = used/total 计算值不封顶（可超 100）→ 最坏 "999.9%" 44；读数 "100%"@12 = 34（读数来自
+        // Clamp 后的 Progress，恒 ≤100）；池 16；6 列间距 30 → 44+32+44+16+34+30+4 = 204
+        Assert.Equal(204, TileSizing.TileWidthDips(Widget(HttpWidgetDescriptors.QuotaType)));
+    }
 
     [Fact]
     public void TileWidth_Mimo_WorstPathIsLocalCount()
     {
-        // 四路径最宽 = 本机计数「999.9M 次」56（$消费 48 / 无额度口 44 / NN% 31 都更窄）；标签「小米 MiMo」60
-        Assert.Equal(244, TileSizing.TileWidthDips(Widget(MiMoWidgetDescriptors.UsageType)));
+        // 四路径最宽 = 本机计数「9999.9M 次」63（FormatCount M 尾数顶格；$消费 55 / 无额度口 44 / NN% 31 都更窄）；
+        // 标签「小米 MiMo」60 → 44+60+63+16+34+30+4 = 251
+        Assert.Equal(251, TileSizing.TileWidthDips(Widget(MiMoWidgetDescriptors.UsageType)));
     }
 
     // —— 无进度语义类型 ——
@@ -100,7 +106,8 @@ public sealed class TileSizingTests
     [InlineData("copilot.usage")]   // "9999/9999" 62 + Copilot 56 → 184
     [InlineData("opencode.usage")]  // "$9999.99" 55 + OpenCode 64 → 185
     [InlineData("deepseek.balance")] // "¥99999.99" 62 + DeepSeek 64 → 192
-    [InlineData("codex.usage")]     // "999.9M tok" 66 + Codex 40 → 172
+    [InlineData("moonshot.balance")] // 同款余额形态 62 + Moonshot 64 → 192
+    [InlineData("codex.usage")]     // "9999.9M tok" 73 + Codex 40 → 179
     public void TileWidth_NumericTypes_BudgetOwnWorstText(string type)
     {
         var width = TileSizing.TileWidthDips(Widget(type));
@@ -109,15 +116,17 @@ public sealed class TileSizingTests
             "copilot.usage" => 184,
             "opencode.usage" => 185,
             "deepseek.balance" => 192,
-            _ => 172,
+            "moonshot.balance" => 192,
+            _ => 179,
         }, width);
     }
 
     [Fact]
-    public void TileWidth_Claude_LandsOnFloor()
+    public void TileWidth_Claude_TokenFormIsTheWorst()
     {
-        // "$999.99" 48 + Claude 48 + chrome 44 + 间距 18 + 余量 4 = 162 < 168 → 下限兜底
-        Assert.Equal(168, TileSizing.TileWidthDips(Widget(ClaudeWidgetDescriptors.UsageType)));
+        // 两形态取宽者：$成本 "$999.99" 48 < token 合计 "9999.9M tok" 73（FormatCount M 尾数顶格）
+        // → 44+48+73+18+4 = 187（成本形态 162 会落 168 下限，token 形态顶开后不再触底）
+        Assert.Equal(187, TileSizing.TileWidthDips(Widget(ClaudeWidgetDescriptors.UsageType)));
     }
 
     [Theory]
@@ -125,10 +134,17 @@ public sealed class TileSizingTests
     [InlineData("http.status", "HTTP", 32, 186)]
     [InlineData("jenkins.build", "Jenkins", 56, 210)]
     [InlineData("herald.incidents", "Herald", 48, 202)]
-    [InlineData("moonshot.balance", "Moonshot", 64, 218)]
-    [InlineData("git.workspace", "workspace", 72, 226)]      // 未知前缀退类型尾段
     public void TileWidth_FallbackTypes_SummaryBound(string type, string _, int labelWidth, int expected)
         => Assert.Equal(expected, TileSizing.TileWidthDips(Widget(type)));
+
+    [Fact]
+    public void TileWidth_GitWorkspace_CountsFormIsTheWorst()
+    {
+        // 值行 = 计数段五数顶格 "↑99999↓99999 · 改 99999 · stash 99999"：↑↓···改 5×1.0 + 20 数字×0.62
+        // + 6 空格×0.36 + stash 5×0.62 = 22.66em×11 = 250；标签 = 类型尾段「git」24 → 44+24+250+18+4 = 340
+        // （无 hint 键时代的兜底 226 会把 ↑↓/改 计数全截没——2026-10-12 巡检补 value_text 后按真形态预算）
+        Assert.Equal(340, TileSizing.TileWidthDips(Widget(GitWorkspaceDescriptors.Type)));
+    }
 
     [Fact]
     public void WorstValueText_Fallback_IsSevenCjkPlusEllipsis()

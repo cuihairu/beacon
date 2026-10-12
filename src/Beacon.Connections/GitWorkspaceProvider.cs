@@ -267,16 +267,18 @@ public sealed class GitWorkspaceProvider : IWidgetProvider
         var severity = snapshot.Behind > 0 ? Severity.Warning : Severity.Info; // 分叉（前后都有）同样落在 behind>0 分支
 
         var head = widget.Config.GetValueOrDefault("label") is { Length: > 0 } label ? label : snapshot.Branch ?? "Git";
-        var segments = new List<string> { head };
+        var countSegments = new List<string>();
         if (snapshot.HasUpstream)
         {
-            segments.Add($"↑{snapshot.Ahead}↓{snapshot.Behind}");
+            countSegments.Add($"↑{snapshot.Ahead}↓{snapshot.Behind}");
         }
-        segments.Add($"改 {snapshot.Dirty}");
+        countSegments.Add($"改 {snapshot.Dirty}");
         if (snapshot.Stash > 0)
         {
-            segments.Add($"stash {snapshot.Stash}");
+            countSegments.Add($"stash {snapshot.Stash}");
         }
+        var segments = new List<string> { head };
+        segments.AddRange(countSegments);
 
         return Task.FromResult<WidgetState?>(new WidgetState
         {
@@ -290,6 +292,7 @@ public sealed class GitWorkspaceProvider : IWidgetProvider
             DetailUrl = null,
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["value_text"] = string.Join(" · ", countSegments), // 数值位 = Summary 计数段（machine 同源键：Summary 兜底截断会丢 ↑↓/改 计数）
                 ["branch"] = snapshot.Branch ?? "",
                 ["upstream"] = snapshot.Upstream ?? "",
                 ["ahead"] = snapshot.Ahead.ToString(System.Globalization.CultureInfo.InvariantCulture),

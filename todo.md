@@ -3,6 +3,10 @@
 > 生成于 2026-10-11（无 todo 文件；来源：docs/mvp-issues.md 未完成 42 项全量搬入 + docs/master-plan.md 后续可选）。
 > 2026-10-11 巡检复点：六条「夹具/表驱动单测」单测半全部核对（模板渲染补 7 例，批3-补39），手动半统一标注【需装机】留待用户；后续可选两条为范围决策不标注。
 
+## 决策记录
+
+- **moonshot.balance 数值位补映射**（2026-10-12 巡检点火，用户倾向「补一行映射」→ 拍板落地，批3-补49）：payload 只有 `available_balance`，不在 `WidgetValueHint` 优先级链 → 数值位跌 `Summary[..7]+"…"` 截断，数字全没（「Moonshot · ¥110.00」→「Moonshot…」）——正是 hint 链立项要消灭的「数不出值」失败模式。**口径**：`¥{value}` 固定 CNY 符号（开放平台只按 CNY 计价，provider Summarize 已硬编码 ¥，不引 deepseek 式币种开关）；`0.00` 顶格形态，宽预算与 deepseek 同款 `¥99999.99`。同轮 hint 链全量自查另修两处：qwen 配额用尽路径补 `value_text="已用尽"`（比照 mimo「无额度口」显式文本先例）、machine.git 补 `value_text`（Summary 计数段同源，兜底截断把 ↑↓/改 计数全截没）。
+
 ## MVP 待验/未修项（原样搬自 docs/mvp-issues.md，共 42 项，完成即改回该文件勾选）
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）【需装机】
 - [ ] 关闭所有窗口后进程驻留托盘，Exit 才退出【需装机】
