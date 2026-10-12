@@ -5,7 +5,7 @@
 > 2026-10-12 装机清单 CI 代验转化（批3-补50）：daily-build 视觉取证新增场景 E（单实例+托盘驻留+Exit）、F（无网启动+Last update+自愈+零弹窗+单条通知）、G（调色即时生效/非法回退/重置/动效持久化/帧差分静止呼吸/两 tile 独立）、H（悬浮位置两轮还原+TOOLWINDOW+刷新不抢焦点+panel/floating 二选一）、J（静默安装/卸载）；安装包步骤前置到取证之前。下表「已由 CI 代验」均指此批场景，证据在 Actions `visual-evidence` 工件；断言失败=红构建。
 > 2026-10-12 批3-补51：G 系色彩断言阈值按 38261911354 工件逐像素实测重标定（状态灯亚像素渲染漂移 10~44px，详见决策记录）；托盘菜单驱动改 AttachThreadInput 取前台（ForceForeground）。
 > 2026-10-13 patrol-20261013-A1：场景 L（行54 reduced 档变色过渡：L1 同色 tick 不闪灯 + L2 三轮翻档渐入中间态帧，38284623093）+ 修复 Update 每 tick 重放过渡导致的同色闪灯缺陷；场景 M（行6 开机自启注册表 HKCU Run\Beacon 双向断言，38287590006）；行70 热键条注记修正（K1 已代验应用侧链）；行40 补托盘图标像素不可取证的实际原因（溢出折叠区）。
-> 2026-10-13 patrol-20261013-A2：场景 N（行18 设置改热键持久化：设置页改 Ctrl+Alt+B→Ctrl+Alt+C 落盘 + 重启注册无失败日志 + 触发链可用，待 run 实证）；场景 O（行41 面板计数一致性：WM_HOTKEY 开面板读 UIA 文本三态往返，待 run 实证）；场景 P（行51 收起态还原：panel 模式 collapsed=true 细条宽启动 + 重启还原 + 展开对照，待 run 实证）。
+> 2026-10-13 patrol-20261013-A2：场景 N（行18 设置改热键持久化，38297713667 实证：改键落盘 + 重启注册 + 触发链全绿）；场景 O（行41 面板计数一致性，38299509997 实证：三态往返全绿）；场景 P（行51 收起态还原：panel 模式 collapsed=true 细条宽启动 + 重启还原 + 展开对照，38302150211 待实证）；场景 Q（行42 胶囊计数/离线横幅：2 ok ↔ 1 ok · 1 err ↔ Last update + stale 2 warn，38302150211 待实证）。另记：38297713667/38299509997 场景全绿但发布步 403——仓库 default workflow permissions 被置 read、GITHUB_TOKEN 建 nightly release 被拒（nightly release 已被删待重建）；已改回 write 并重发 38302150211，见卡点回报。
 
 ## 决策记录
 
@@ -18,7 +18,7 @@
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）——CI 已代验进程半（场景 E1：二次启动进程数恒 1 + 副实例退出日志硬断言）；唤起气泡是 OS Toast 面不可脚本取证【需装机（半）】
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出【已由 CI 代验：场景 E2 设置窗 WM_CLOSE 后进程驻留 + E3 托盘菜单 Exit 后进程退出（菜单驱动失败时降级 warning 转装机，见 run 日志）】
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱【需装机：胶囊（L0）位置持久化与真实 DPI 拓扑切换需物理显示器；悬浮 tile 半已由场景 H 代验】
-- [ ] 任意前台应用下热键生效；可在设置改键并持久化——CI 已代验应用侧链（场景 K1：启动日志无 RegisterHotKey 失败 = 注册成功；SendInput 和弦优先，环境不可达时 WM_HOTKEY 直驱同入口验证 → 面板窗出现硬断言）；设置改键持久化半场景 N 已建（patrol-20261013-A2：设置页改 Ctrl+Alt+B→Ctrl+Alt+C 落盘 + 重启注册无失败日志 + 触发链可用，待 run 实证）；真实键盘在任意第三方前台的 OS 级唤起需装机（SendInput 键盘注入 CI 会话不可达，与鼠标手势同限制）【需装机（半）】
+- [ ] 任意前台应用下热键生效；可在设置改键并持久化——CI 已代验应用侧链（场景 K1：启动日志无 RegisterHotKey 失败 = 注册成功；SendInput 和弦优先，环境不可达时 WM_HOTKEY 直驱同入口验证 → 面板窗出现硬断言）与改键持久化半（场景 N，38297713667 实证：设置页改 Ctrl+Alt+B→Ctrl+Alt+C 落盘 config.json + 开关双切净态 False；重启后新键注册无失败日志（RegisterHotKey/Invalid hotkey string 双断言）；WM_HOTKEY 直驱触发面板出现）；真实键盘在任意第三方前台的 OS 级唤起需装机（SendInput 键盘注入 CI 会话不可达，与鼠标手势同限制）【需装机（半）】
 - [ ] 开关即时生效（重启验证）；卸载清理——CI 已代验卸载半（场景 J：静默安装/卸载、程序文件清空、用户数据保留）+ 开机自启注册表半（场景 M：launchOnStartup true/false 双向断言 HKCU Run\Beacon 写入/清值，38287590006 实证）；OS 重启生效需装机【需装机（半）】
 - [ ] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口【需装机：应用无故障注入开关，加注入点属代码变更另立项】
 - [x] 无网启动：界面有数据且标注 Last update，随后自动刷新【已由 CI 代验：场景 F1-F4（断网启动有窗有缓存数据、Last update 标注 45s 硬断言、恢复后 90s 自愈百分比读数）】
@@ -39,9 +39,9 @@
 - [x] 规则引擎表驱动单测（含冷却）（NotificationEngineTests 17 例：阈值 TheoryData 表驱动/冷却抑制与到期放行/跨越重臂/停用与过滤）
 - [ ] 手动：注入 Failed 状态收到且仅收到一条 Toast——CI 已代验记录半（场景 F5：断网降级通知恰 1 条，connection-degraded 冷却去重，notifications.json 硬断言）；Toast 呈现面是 OS UI 需装机目检【需装机（半）】
 - [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘【需装机：托盘图标像素在通知区域不可脚本取证（托盘图标确随 severity 换色——SetSeverity 运行时绘制；但全新会话图标默认落溢出折叠区不可见，需注册表 IsPromoted+重启 Explorer 才能取证，版本强依赖不做）；同链路 tile 层已由场景 G7a 代验（38%→95% ≤75s 反映）】
-- [ ] 断网显示 Offline+时间；计数与实际 Widget 状态一致——CI 已代验 tile 半（场景 F2：Last update 离线标注硬断言）；面板计数一致性场景 O 已建（patrol-20261013-A2：WM_HOTKEY 开面板读 UIA 文本，双健康 all clear + chip 智谱 1/DeepSeek 1 → 注入 Error 翻「0 warn · 1 error」→ 清档回 all clear 三态往返硬断言，待 run 实证）【需装机（半）】
+- [ ] 断网显示 Offline+时间；计数与实际 Widget 状态一致——CI 已代验 tile 半（场景 F2：Last update 离线标注硬断言）与面板计数半（场景 O，38299509997 实证：O1 双健康 all clear + chip 智谱 1/DeepSeek 1；O2 注入 Error 翻「0 warn · 1 error」chip 计数保持；O3 清档回 all clear 三态往返）；胶囊半场景 Q 已建（patrol-20261013-A2：showCapsule=true 读「Beacon Status」UIA 文本，2 ok → 1 ok · 1 err → 断网 Last update 横幅 + stale 抬档 2 warn，待 run 实证）【需装机（半）】
 - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭——CI 已代验两半（场景 K2：断网 Stop mock 后热键开面板、缓存百分比读数在即无白屏；K3：Esc 关闭优先、键盘注入不可达时降级 warning 并以热键 toggle 硬断言面板可关）；Esc 键盘半与 <100ms 精确计时需装机【需装机（半）】
-- [ ] 计数/事件与状态一致；右键 Pin 落库（本阶段无 UI 效果）——面板标题锚点已补（「Beacon 快速面板」，场景 K 用），计数一致性与右键 Pin 交互需装机【需装机：面板行点击/右键交互流未建场景】
+- [ ] 计数/事件与状态一致；右键 Pin 落库（本阶段无 UI 效果）——面板标题锚点已补（「Beacon 快速面板」，场景 K 用）；计数半已由场景 O 代验（38299509997：摘要/chip 三态往返与 Widget 状态一致）；Recent 事件流一致与右键 Pin 交互需装机【需装机：面板行点击/右键交互流未建场景】
 - [ ] 从 L2 事件一键打开对应详情；[Retry] 全链路可用【需装机：面板行点击→详情窗交互流未建场景（锚点已具备，可后续转化）】
 - [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面——CI 已代验刷新半（场景 H1：mock 38%→95% 翻档期间前台窗句柄不变硬断言）；点击 tile 打开详情属用户意图合法夺焦，空白点击穿透需装机【需装机（半）】
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab【已由 CI 代验：场景 G7a（GLM 95% 时 DeepSeek 420.5 不动）+ 场景 H（每 tile WS_EX_TOOLWINDOW 置位、WS_EX_APPWINDOW 清位硬断言）】

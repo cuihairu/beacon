@@ -527,7 +527,8 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
 }
 
 # G 场景配置：GLM（bigmodel 38% 健康）+ DeepSeek（420.5）双 tile；GLM 可带 colorOverride（合法/非法两态）
-function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0, [bool] $launchOnStartup = $false)
+# $showCapsule：胶囊窗显示开关（场景 Q 胶囊计数/离线横幅断言用；默认 false 维持各场景零残留口径）
+function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0, [bool] $launchOnStartup = $false, [bool] $showCapsule = $false)
 {
     Stop-Beacon
     $appearance = '"appearance": { "motion": { "mode": "' + $motionMode + '", "intensity": ' + $motionIntensity + ' } }'
@@ -540,11 +541,11 @@ function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "
   "pinDisplayMode": "floating",
   "numericFloatingEnabled": true,
   "numericFloatingResetDone": true,
-  "showCapsule": false,
+  "showCapsule": __CAPSULE__,
   "settingsSidebarWidth": 400,
   __APPEARANCE__
 }
-'@.Replace("__STARTUP__", $launchOnStartup.ToString().ToLowerInvariant()).Replace("__APPEARANCE__", $appearance) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+'@.Replace("__STARTUP__", $launchOnStartup.ToString().ToLowerInvariant()).Replace("__APPEARANCE__", $appearance).Replace("__CAPSULE__", $showCapsule.ToString().ToLowerInvariant()) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     @'
 [
   { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
@@ -2392,6 +2393,93 @@ catch
     Save-FullScreenshot "P-FAIL-unexpected.png"
     $failures.Add("场景 P：$($_.Exception.Message)")
     Write-Host "::error::场景 P 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 Q：胶囊（L0）计数与离线横幅（todo 行 42 / mvp B-504「断网显示 Offline+时间；计数与实际 Widget 状态一致」胶囊半 CI 代验）——
+# 胶囊计数零值组不显示（§6.2.2）：双健康=「2 ok」；注入 Error=「1 ok · 1 err」。
+# 断网（Stop mock）→ OfflineBanner 显 +「Last update HH:mm」（§6.2.6）+ 计数翻「2 warn」
+# （缓存命中 PublishStale severity=Max(cached,Warning)，批3-补50 拍板的胶囊面兑现；
+#   断网前先轮询回「2 ok」确定性复位——否则 GLM 残留 Error 缓存会翻出「1 warn · 1 err」假阴性）。
+# 断言全走 UIA 文本（与 O 同机制），不碰像素——胶囊观感（透明度/位置/灯色）仍属装机。
+try
+{
+    Write-GConfig "" "off" 1.0 $false $true
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $capsule = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($capsule.Count -lt 1)
+    {
+        Save-FullScreenshot "Q-FAIL-no-capsule.png"
+        throw "断言失败（场景 Q 前置）：showCapsule=true 未见「Beacon Status」胶囊窗"
+    }
+    # Q1 双健康计数：2 ok（零值组不显示）
+    $texts = @()
+    $ok = $false
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $capsule[0]
+        if ($texts -contains "2 ok") { $ok = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$ok) { Save-FullScreenshot "Q-FAIL-count.png"; throw "断言失败（场景 Q1）：胶囊计数未见「2 ok」（实际：$($texts -join ' | ')）" }
+    Write-Host "场景 Q1 通过：双健康胶囊计数 2 ok（零值组不显示）"
+    # Q2 注入 Error：1 ok · 1 err
+    Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "error" -Encoding ASCII
+    $ok = $false
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $capsule[0]
+        if ($texts -contains "1 ok · 1 err") { $ok = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$ok) { Save-FullScreenshot "Q-FAIL-err-count.png"; throw "断言失败（场景 Q2）：注入 Error 后胶囊计数未翻「1 ok · 1 err」（实际：$($texts -join ' | ')）" }
+    Write-Host "场景 Q2 通过：Error 注入后胶囊计数 1 ok · 1 err"
+    # 复位：清档位文件并轮询回「2 ok」，断网前提确定性（GLM 缓存回 Success）
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    $ok = $false
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $capsule[0]
+        if ($texts -contains "2 ok") { $ok = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$ok) { Save-FullScreenshot "Q-FAIL-reset.png"; throw "断言失败（场景 Q 复位）：清档后 40s 内胶囊计数未回「2 ok」（实际：$($texts -join ' | ')）" }
+    # Q3 断网：OfflineBanner + Last update 时间 + 计数随 stale 抬档 2 warn
+    Stop-MockServer
+    $banner = $false
+    $warned = $false
+    $deadline = (Get-Date).AddSeconds(75)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $capsule[0]
+        if (!$banner -and ($texts | Where-Object { $_ -match '^Last update \d{2}:\d{2}$' })) { $banner = $true }
+        if (!$warned -and ($texts -contains "2 warn")) { $warned = $true }
+        if ($banner -and $warned) { break }
+        Start-Sleep -Seconds 3
+    }
+    Start-MockServer # 还原 mock（J/收尾统一管理，但失败路径也不能把后续拖红）
+    if (!$banner)
+    {
+        Save-FullScreenshot "Q-FAIL-no-banner.png"
+        throw "断言失败（场景 Q3）：断网 75s 内胶囊未出「Last update HH:mm」离线横幅（实际：$($texts -join ' | ')）"
+    }
+    if (!$warned)
+    {
+        Save-FullScreenshot "Q-FAIL-stale-count.png"
+        throw "断言失败（场景 Q3）：断网 stale 后胶囊计数未翻「2 warn」（severity=Max(cached,Warning) 未反映到胶囊）"
+    }
+    Write-Host "场景 Q3 通过：断网离线横幅 Last update HH:mm + 计数随 stale 抬档 2 warn"
+    Write-Host "场景 Q 通过：胶囊计数与离线横幅随实际状态翻转（B-504 CI 面）"
+}
+catch
+{
+    try { Start-MockServer } catch { } # 失败路径也还原 mock，别让 J/收尾连带红
+    Save-FullScreenshot "Q-FAIL-unexpected.png"
+    $failures.Add("场景 Q：$($_.Exception.Message)")
+    Write-Host "::error::场景 Q 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
