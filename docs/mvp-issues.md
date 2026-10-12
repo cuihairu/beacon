@@ -1187,3 +1187,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **复扫面**：todo/mvp-issues 未完项（全装机或用户输入卡点）、审计台账 F-01~F-58（全收口）、mkdocs nav（14 项齐）、src TODO/FIXME（零）、README/README.zh/mkdocs/troubleshooting 陈旧引用。
 - **发现与处置**：① README.md 路线行仍指「44-item acceptance checklist」→ 改 70 条可执行版；② README.zh.md 路线行缺装机清单链接 → 对齐 en 版补链接；③ troubleshooting.md 补「DSL 声明文件（dsl_path）报错？」条目（解析器子集三类踩点：Tab/JSON 引号/白名单外键 + 文件不存在 + mtime 缓存生效时机——MiMo 先例，配置坑无文档就多一轮排查）。
 - **验收**：文档增量无代码改动；grep 全仓无「44 项/44-item」残留；CI 绿。
+
+### 批3-补45 本机组件可选展示项 + 悬浮框宽度按值行推算（2026-10-12 用户实测反馈）
+- **背景**：用户实测两条——① machine.local（cpu/内存/磁盘）、machine.net（上下行带宽）在悬浮 tile 值位被省略号截断（本机类型无 value_text 映射，跌进 Summary[..8] 兜底再叠 168 DIP 窗宽不够）；② 要求本机组件能在配置里多选展示项。
+- **①可选展示项**：组件 config `show` 逗号分隔多选（local：cpu_percent/mem_percent/disk_percent；net：down_bps/up_bps/ip），留空 = 全显（默认版式逐字节不变，存量零迁移）。解析在 `MachineShowOptions`（大小写不敏感/去重/规范序；未知键与选空 fail-loud Degraded，与阈值同口径）。三处同源的根在 Provider：未选中的键不出 payload——悬浮 tile 数值位（新增 `value_text`，WidgetValueHint 首优先键）、快捷面板 Summary、详情页 payload 表自然一致省略；原始台账键（mem_used/total_sent 等）不参与选择恒留详情页；超线判黄只看选中项。DetailWindow 跳过 value_text 行（tile 提示键不重复占行）。改 show 下次刷新即生效免重启（ReloadTiles 对已存悬浮窗补排尺寸）。
+- **②宽度按值行推算**：`MachineTileSizing` 按所选展示项的最坏值行（百分比顶格 100、速率顶格「999.9 MB/s」= FormatRate 最大长度形态、IP 顶格 15 位；net 数值位速率行/IP 行互斥取宽者）× 保守字宽模型（ASCII=7、CJK=11、%=10、箭头/·=11、空格=4）+ 固定件 74（padding 20/灯 8/icon 16/列间距 30）+ 标签实测宽 + 取整余量 4，下限 168。同口径三处一次改齐：面板列定义 / PanelPxSize / WM_NCHITTEST HitWidthPx（`PanelWidthDips()` 取钉选 tile 最大值）与独立悬浮窗 ApplyDesignSize（按组件各算）。默认全选下 local = **302 DIP**、net = **262 DIP**（原 168）。
+- **验收**：新增 MachineShowOptionsTests 13 例 + local/net provider show 过滤 9 例（未选中不占位/不判黄/value_text 同源/首刷占位符/无网卡提示）；全绿 910（Connections 575，553+22 逐项复核）。

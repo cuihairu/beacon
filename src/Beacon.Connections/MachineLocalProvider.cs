@@ -213,6 +213,8 @@ public sealed class MachineLocalProvider : IWidgetProvider
         var cpuThreshold = Threshold(widget, "cpu_threshold");
         var memThreshold = Threshold(widget, "mem_threshold");
         var diskThreshold = Threshold(widget, "disk_threshold");
+        // 可选展示项（2026-10-12 用户令）：未选中的键不出 payload/Summary/数值位，阈值校验仍全量
+        var show = new HashSet<string>(MachineShowOptions.Resolve(Descriptor.Type, widget), StringComparer.Ordinal);
         var sample = _source.Sample(widget.Config.GetValueOrDefault("disk_path"));
 
         if (sample.MemoryTotalBytes == 0)
@@ -245,18 +247,50 @@ public sealed class MachineLocalProvider : IWidgetProvider
         var memShown = Math.Round(100.0 * (sample.MemoryTotalBytes - Math.Min(sample.MemoryAvailableBytes, sample.MemoryTotalBytes)) / sample.MemoryTotalBytes);
         var diskShown = Math.Round(100.0 * (sample.DiskTotalBytes - Math.Min(sample.DiskFreeBytes, sample.DiskTotalBytes)) / sample.DiskTotalBytes);
 
-        var severity = (cpuShown >= cpuThreshold || memShown >= memThreshold || diskShown >= diskThreshold)
+        var severity = (show.Contains("cpu_percent") && cpuShown >= cpuThreshold)
+            || (show.Contains("mem_percent") && memShown >= memThreshold)
+            || (show.Contains("disk_percent") && diskShown >= diskThreshold)
             ? Severity.Warning
             : Severity.Info;
         var head = widget.Config.GetValueOrDefault("label") is { Length: > 0 } label ? label : "本机资源";
         var diskHead = sample.DiskName == "/" ? "/" : sample.DiskName!.TrimEnd('\\', '/'); // C:\ → C:；根分区保持 /
         var segments = new List<string>();
-        if (cpuShown is { } shownCpu)
+        if (show.Contains("cpu_percent") && cpuShown is { } shownCpu)
         {
             segments.Add($"CPU {shownCpu.ToString("0", CultureInfo.InvariantCulture)}%");
         }
-        segments.Add($"内存 {memShown.ToString("0", CultureInfo.InvariantCulture)}%");
-        segments.Add($"{diskHead} {diskShown.ToString("0", CultureInfo.InvariantCulture)}%");
+        if (show.Contains("mem_percent"))
+        {
+            segments.Add($"内存 {memShown.ToString("0", CultureInfo.InvariantCulture)}%");
+        }
+        if (show.Contains("disk_percent"))
+        {
+            segments.Add($"{diskHead} {diskShown.ToString("0", CultureInfo.InvariantCulture)}%");
+        }
+        // 数值位短文本（WidgetValueHint 首优先键）：与 Summary 段同源——所选段拼行，三处口径一致的根
+        var valueText = string.Join(" · ", segments);
+
+        var payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["mem_used"] = (sample.MemoryTotalBytes - sample.MemoryAvailableBytes).ToString(CultureInfo.InvariantCulture),
+            ["mem_total"] = sample.MemoryTotalBytes.ToString(CultureInfo.InvariantCulture),
+            ["disk_free"] = sample.DiskFreeBytes.ToString(CultureInfo.InvariantCulture),
+            ["disk_total"] = sample.DiskTotalBytes.ToString(CultureInfo.InvariantCulture),
+            ["disk"] = sample.DiskName,
+            ["value_text"] = segments.Count > 0 ? valueText : "—",
+        };
+        if (show.Contains("cpu_percent"))
+        {
+            payload["cpu_percent"] = cpuShown?.ToString("0", CultureInfo.InvariantCulture) ?? "";
+        }
+        if (show.Contains("mem_percent"))
+        {
+            payload["mem_percent"] = memShown.ToString("0", CultureInfo.InvariantCulture);
+        }
+        if (show.Contains("disk_percent"))
+        {
+            payload["disk_percent"] = diskShown.ToString("0", CultureInfo.InvariantCulture);
+        }
 
         return Task.FromResult<WidgetState?>(new WidgetState
         {
@@ -266,19 +300,9 @@ public sealed class MachineLocalProvider : IWidgetProvider
             Severity = severity,
             Lifecycle = severity == Severity.Warning ? LifecycleState.Running : LifecycleState.Success,
             Progress = null,
-            Summary = $"{head} · {string.Join(" · ", segments)}",
+            Summary = segments.Count > 0 ? $"{head} · {valueText}" : head,
             DetailUrl = null,
-            Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["cpu_percent"] = cpuShown?.ToString("0", CultureInfo.InvariantCulture) ?? "",
-                ["mem_percent"] = memShown.ToString("0", CultureInfo.InvariantCulture),
-                ["disk_percent"] = diskShown.ToString("0", CultureInfo.InvariantCulture),
-                ["mem_used"] = (sample.MemoryTotalBytes - sample.MemoryAvailableBytes).ToString(CultureInfo.InvariantCulture),
-                ["mem_total"] = sample.MemoryTotalBytes.ToString(CultureInfo.InvariantCulture),
-                ["disk_free"] = sample.DiskFreeBytes.ToString(CultureInfo.InvariantCulture),
-                ["disk_total"] = sample.DiskTotalBytes.ToString(CultureInfo.InvariantCulture),
-                ["disk"] = sample.DiskName,
-            },
+            Payload = payload,
             FetchedAt = DateTimeOffset.UtcNow,
         });
     }

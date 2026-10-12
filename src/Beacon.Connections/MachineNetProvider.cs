@@ -21,6 +21,8 @@ public static class MachineWidgetDescriptors
         [
             new WidgetFieldDescriptor("label", "显示名", Placeholder: "本机网络"),
             new WidgetFieldDescriptor("interface", "网卡名（空 = 自动选活动网卡）", Placeholder: "以太网 / Wi-Fi / eth0"),
+            new WidgetFieldDescriptor("show", "展示项（逗号分隔，留空 = 全显；可选 down_bps / up_bps / ip）",
+                Placeholder: "down_bps, up_bps, ip"),
         ],
     };
 
@@ -36,6 +38,8 @@ public static class MachineWidgetDescriptors
         Fields =
         [
             new WidgetFieldDescriptor("label", "显示名", Placeholder: "本机资源"),
+            new WidgetFieldDescriptor("show", "展示项（逗号分隔，留空 = 全显；可选 cpu_percent / mem_percent / disk_percent）",
+                Placeholder: "cpu_percent, mem_percent, disk_percent"),
             new WidgetFieldDescriptor("disk_path", "磁盘/挂载点（空 = 系统盘/根分区）", Placeholder: "C:\\ 或 /mnt/data"),
             new WidgetFieldDescriptor("cpu_threshold", "CPU 阈值 %（超线亮黄，默认 90）", Placeholder: "90"),
             new WidgetFieldDescriptor("mem_threshold", "内存阈值 %（超线亮黄，默认 90）", Placeholder: "90"),
@@ -213,20 +217,62 @@ public sealed class MachineNetProvider : IWidgetProvider
         }
 
         var head = widget.Config.GetValueOrDefault("label") is { Length: > 0 } label ? label : "本机网络";
+        // 可选展示项（2026-10-12 用户令）：未选中的键不出 payload/Summary/数值位；无网卡是健康态不属展示项
+        var show = new HashSet<string>(MachineShowOptions.Resolve(Descriptor.Type, widget), StringComparer.Ordinal);
         Severity severity;
         string summary;
+        string valueText;
         if (!sample.Up)
         {
             severity = Severity.Warning;
             summary = $"{head} · 无活动网卡";
+            valueText = "无活动网卡";
         }
         else
         {
             severity = Severity.Info;
-            var speeds = downSpeed is { } down && upSpeed is { } up
-                ? $" · ↓{FormatRate(down, "/s")} ↑{FormatRate(up, "/s")}"
-                : "";
-            summary = $"{head} · {sample.Address}{speeds}";
+            // Summary 段序维持既有「IP · ↓… ↑…」：IP 用「 · 」接，上下行对保持既有单空格并排；
+            // 数值位 = Summary 去头（WidgetValueHint 首优先键 value_text）
+            var segments = new List<string>();
+            if (show.Contains("ip") && !string.IsNullOrEmpty(sample.Address))
+            {
+                segments.Add(sample.Address);
+            }
+            var rates = new List<string>();
+            if (show.Contains("down_bps") && downSpeed is { } down)
+            {
+                rates.Add($"↓{FormatRate(down, "/s")}");
+            }
+            if (show.Contains("up_bps") && upSpeed is { } up)
+            {
+                rates.Add($"↑{FormatRate(up, "/s")}");
+            }
+            if (rates.Count > 0)
+            {
+                segments.Add(string.Join(" ", rates));
+            }
+            summary = segments.Count > 0 ? $"{head} · {string.Join(" · ", segments)}" : head;
+            valueText = segments.Count > 0 ? string.Join(" · ", segments) : "—"; // 无基线且未选 IP：测速中
+        }
+
+        var payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["interface"] = sample.InterfaceName ?? "",
+            ["total_sent"] = sample.SentBytes.ToString(CultureInfo.InvariantCulture),
+            ["total_received"] = sample.ReceivedBytes.ToString(CultureInfo.InvariantCulture),
+            ["value_text"] = valueText,
+        };
+        if (show.Contains("ip"))
+        {
+            payload["ip"] = sample.Address ?? "";
+        }
+        if (show.Contains("down_bps"))
+        {
+            payload["down_bps"] = downSpeed?.ToString("0", CultureInfo.InvariantCulture) ?? "";
+        }
+        if (show.Contains("up_bps"))
+        {
+            payload["up_bps"] = upSpeed?.ToString("0", CultureInfo.InvariantCulture) ?? "";
         }
 
         return Task.FromResult<WidgetState?>(new WidgetState
@@ -239,15 +285,7 @@ public sealed class MachineNetProvider : IWidgetProvider
             Progress = null,
             Summary = summary,
             DetailUrl = null,
-            Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["ip"] = sample.Address ?? "",
-                ["interface"] = sample.InterfaceName ?? "",
-                ["up_bps"] = upSpeed?.ToString("0", CultureInfo.InvariantCulture) ?? "",
-                ["down_bps"] = downSpeed?.ToString("0", CultureInfo.InvariantCulture) ?? "",
-                ["total_sent"] = sample.SentBytes.ToString(CultureInfo.InvariantCulture),
-                ["total_received"] = sample.ReceivedBytes.ToString(CultureInfo.InvariantCulture),
-            },
+            Payload = payload,
             FetchedAt = DateTimeOffset.UtcNow,
         });
     }

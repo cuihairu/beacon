@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
+using Beacon.Connections;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
@@ -179,9 +180,14 @@ internal sealed class PinTile
 
     public string WidgetId { get; }
 
+    /// <summary>本 tile 推算宽（DIP）：machine 类型按所选展示项最坏值行算（MachineTileSizing），
+    /// 其余类型维持旧全局宽——面板列宽取钉选 tile 的最大值，值行恒不裁（2026-10-12 用户令）。</summary>
+    public int TileWidthDips { get; }
+
     public PinTile(WidgetConfig widget, UiPalette palette, MotionEngine motion, string? connectionType = null)
     {
         WidgetId = widget.Id;
+        TileWidthDips = MachineTileSizing.TileWidthDips(widget);
         _widget = widget;
         _palette = palette;
         _motion = motion;
@@ -499,7 +505,6 @@ internal sealed record DragSession(UIElement Element, (int X, int Y) StartCursor
 /// </summary>
 internal sealed class PinnedHostWindow
 {
-    private const int PanelWidthDips = 168;
     private const int TileHeightDips = 32;
     private const int TwoColumnThreshold = 18; // UI/UX 审计：tile 超此数改双列——单列在超工作区高时底部裁切且无提示（18×32=576 DIP）
     private const int CollapseStripDips = 12; // 收起细条宽（DIP）
@@ -610,11 +615,12 @@ internal sealed class PinnedHostWindow
         }
         // UI/UX 审计：单列竖排在 tile 超工作区高时底部被裁且无任何提示——超阈值改双列
         // （18×32=576 DIP 起切），面板宽随列数翻倍，行高仍 32 不挤压 tile。
+        // 列宽按钉选 tile 的推算宽取最大（machine 按值行、其余 168），三处（列定义/PanelPxSize/HitWidthPx）同源。
         var columns = placed.Count > TwoColumnThreshold ? 2 : 1;
         var rows = Math.Max(1, (placed.Count + columns - 1) / columns);
         for (var i = 0; i < columns; i++)
         {
-            _tilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(PanelWidthDips) });
+            _tilePanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(PanelWidthDips()) });
         }
         for (var i = 0; i < rows; i++)
         {
@@ -728,13 +734,18 @@ internal sealed class PinnedHostWindow
         _runtime.Config.SavePins();
     }
 
-    /// <summary>面板物理尺寸（ApplyLayout 与 WM_NCHITTEST 唯一口径）：列数随 tile 数切换（双列 336 宽），
+    /// <summary>面板列宽（DIP）：钉选 tile 推算宽（PinTile.TileWidthDips，machine 按所选展示项最坏值行、
+    /// 其余 168）取最大；零钉选退 168。列定义/PanelPxSize/HitWidthPx 三处唯一口径。</summary>
+    private int PanelWidthDips()
+        => _tiles.Count == 0 ? MachineTileSizing.FloorDips : _tiles.Values.Max(tile => tile.TileWidthDips);
+
+    /// <summary>面板物理尺寸（ApplyLayout 与 WM_NCHITTEST 唯一口径）：列数随 tile 数切换，
     /// DIP 设计值只在 Win32 边界换算一次；总高一次四舍五入而非逐行（DPI 修复单 2026-10-10）。</summary>
     private (int Width, int Height) PanelPxSize(double dpi)
     {
         var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
         var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
-        return (DpiLayoutMath.ToPx(columns * PanelWidthDips, dpi), DpiLayoutMath.PanelHeightPx(rows, TileHeightDips, dpi));
+        return (DpiLayoutMath.ToPx(columns * PanelWidthDips(), dpi), DpiLayoutMath.PanelHeightPx(rows, TileHeightDips, dpi));
     }
 
     private void ApplyLayout()
@@ -1080,7 +1091,7 @@ internal sealed class PinnedHostWindow
     private int HitWidthPx(double dpi)
     {
         var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
-        var hitDips = _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips * columns;
+        var hitDips = _layout is { Collapsed: true } && !_hoverExpanded ? CollapseStripDips : PanelWidthDips() * columns;
         return DpiLayoutMath.ToPx(hitDips, dpi);
     }
 

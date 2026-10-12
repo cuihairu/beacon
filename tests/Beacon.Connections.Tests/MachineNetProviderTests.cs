@@ -84,7 +84,15 @@ public sealed class MachineNetProviderTests
         long sent = 1_000, long received = 10_000, bool up = true)
         => new(at, name, ip, sent, received, up);
 
-    private static WidgetConfig Widget() => new() { Id = "w1", Type = MachineWidgetDescriptors.NetType, ConnectionId = "machine-local" };
+    private static WidgetConfig Widget(params (string Key, string Value)[] config)
+    {
+        var widget = new WidgetConfig { Id = "w1", Type = MachineWidgetDescriptors.NetType, ConnectionId = "machine-local" };
+        foreach (var (key, value) in config)
+        {
+            widget.Config[key] = value;
+        }
+        return widget;
+    }
 
     private static ConnectionConfig Connection() => new() { Id = "machine-local", Type = "machine" };
 
@@ -239,5 +247,71 @@ public sealed class MachineNetProviderTests
         Assert.True(descriptor.FloatingOptIn);
         Assert.Equal(RefreshTiers.Machine, descriptor.SuggestedTier);
         Assert.Contains(descriptor.Fields, field => field.Key == "interface");
+        Assert.Contains(descriptor.Fields, field => field.Key == "show"); // 可选展示项（2026-10-12 用户令）
+    }
+
+    // —— 可选展示项（2026-10-12 用户令）：未选中的键不出 payload/Summary/数值位 ——
+
+    [Fact]
+    public async Task Show_RatesOnly_IpAbsentEverywhere()
+    {
+        var provider = new MachineNetProvider(new FakeNetSource(
+            Sample(T0, sent: 1_000, received: 10_000),
+            Sample(T0.AddSeconds(15), sent: 16_000, received: 1_210_000)));
+        await provider.GetStateAsync(Widget(("show", "down_bps,up_bps")), Connection(), Ctx(), CancellationToken.None);
+        var state = (await provider.GetStateAsync(Widget(("show", "down_bps,up_bps")), Connection(), Ctx(), CancellationToken.None))!;
+
+        Assert.Equal("本机网络 · ↓78.1 KB/s ↑1000 B/s", state.Summary); // IP 段不进 Summary
+        Assert.Equal("↓78.1 KB/s ↑1000 B/s", state.Payload["value_text"]);
+        Assert.Equal("80000", state.Payload["down_bps"]);
+        Assert.False(state.Payload.ContainsKey("ip")); // 未选中不占位
+        Assert.True(state.Payload.ContainsKey("interface")); // 台账键恒留详情页
+        Assert.True(state.Payload.ContainsKey("total_sent"));
+    }
+
+    [Fact]
+    public async Task Show_IpOnly_FirstRefresh_ValueTextIsAddress()
+    {
+        var provider = new MachineNetProvider(new FakeNetSource(Sample(T0, sent: 100, received: 200)));
+        var state = await provider.GetStateAsync(Widget(("show", "ip")), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("本机网络 · 192.168.1.5", state.Summary);
+        Assert.Equal("192.168.1.5", state.Payload["value_text"]); // 无速率段时数值位退 IP 行
+        Assert.True(state.Payload.ContainsKey("ip"));
+        Assert.False(state.Payload.ContainsKey("up_bps"));
+        Assert.False(state.Payload.ContainsKey("down_bps"));
+    }
+
+    [Fact]
+    public async Task Show_RatesOnly_FirstRefresh_ValueTextDash()
+    {
+        var provider = new MachineNetProvider(new FakeNetSource(Sample(T0, sent: 100, received: 200)));
+        var state = await provider.GetStateAsync(Widget(("show", "down_bps,up_bps")), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("本机网络", state.Summary); // 无基线无段可拼 → 退 head
+        Assert.Equal("—", state.Payload["value_text"]);
+    }
+
+    [Fact]
+    public async Task Show_NoNic_ValueTextCarriesHint()
+    {
+        var provider = new MachineNetProvider(new FakeNetSource(Sample(T0, name: null, ip: null, up: false)));
+        var state = await provider.GetStateAsync(Widget(("show", "down_bps")), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Warning, state.Severity);
+        Assert.Equal("本机网络 · 无活动网卡", state.Summary); // 健康态不受 show 影响
+        Assert.Equal("无活动网卡", state.Payload["value_text"]);
+    }
+
+    [Fact]
+    public async Task Show_UnknownKey_FailsLoudDegraded()
+    {
+        var provider = new MachineNetProvider(new FakeNetSource(Sample(T0)));
+        var exception = await Assert.ThrowsAsync<ConnectionException>(() =>
+            provider.GetStateAsync(Widget(("show", "gpu")), Connection(), Ctx(), CancellationToken.None));
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
     }
 }

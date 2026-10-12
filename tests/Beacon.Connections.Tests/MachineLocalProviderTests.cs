@@ -274,4 +274,60 @@ public sealed class MachineLocalProviderTests
         Assert.Throws<ConnectionException>(() => MachineResourceSource.ResolveDrive("/no-such-mount-beacon")); // 点名不存在 fail-loud
         Assert.Throws<ConnectionException>(() => MachineResourceSource.ResolveDrive("data")); // 相对路径不是盘/挂载点
     }
+
+    // —— 可选展示项（2026-10-12 用户令）：未选中的键不出 payload/Summary/数值位，也不参与超线判黄 ——
+
+    [Fact]
+    public async Task Show_CpuOnly_MemDiskAbsentAndNotGatingSeverity()
+    {
+        // 内存 97% 超默认阈值，但未选中——不亮黄、不进 payload/Summary/数值位
+        var provider = new MachineLocalProvider(new FakeSource(
+            Sample(T0, idle: 700, total: 1000, memTotal: 10_000_000, memAvailable: 300_000),
+            Sample(T0.AddSeconds(15), idle: 760, total: 1100, memTotal: 10_000_000, memAvailable: 300_000)));
+        await provider.GetStateAsync(Widget(("show", "cpu_percent")), Connection(), Ctx(), CancellationToken.None);
+        var state = (await provider.GetStateAsync(Widget(("show", "cpu_percent")), Connection(), Ctx(), CancellationToken.None))!;
+
+        Assert.Equal(Severity.Info, state.Severity); // 未选中项不参与超线判黄
+        Assert.Equal("本机资源 · CPU 40%", state.Summary);
+        Assert.Equal("CPU 40%", state.Payload["value_text"]); // 数值位与 Summary 段同源
+        Assert.Equal("40", state.Payload["cpu_percent"]);
+        Assert.False(state.Payload.ContainsKey("mem_percent")); // 未选中不占位
+        Assert.False(state.Payload.ContainsKey("disk_percent"));
+        Assert.True(state.Payload.ContainsKey("mem_used")); // 原始台账键不参与选择，恒留详情页
+        Assert.True(state.Payload.ContainsKey("disk"));
+    }
+
+    [Fact]
+    public async Task Show_CpuOnly_FirstRefresh_ValueTextDash()
+    {
+        // 只选 CPU 且首刷无基线：无段可拼 → Summary 退 head、数值位占位符
+        var provider = new MachineLocalProvider(new FakeSource(Sample(T0)));
+        var state = await provider.GetStateAsync(Widget(("show", "cpu_percent")), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("本机资源", state.Summary);
+        Assert.Equal("—", state.Payload["value_text"]);
+        Assert.Equal("", state.Payload["cpu_percent"]);
+    }
+
+    [Fact]
+    public async Task Show_Default_ValueTextMatchesSummarySegments()
+    {
+        var provider = new MachineLocalProvider(new FakeSource(Sample(T0)));
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("内存 50% · C: 70%", state.Payload["value_text"]); // = Summary 去头
+        Assert.Equal("本机资源 · 内存 50% · C: 70%", state.Summary);
+        Assert.True(state.Payload.ContainsKey("cpu_percent")); // 默认全选
+    }
+
+    [Fact]
+    public async Task Show_UnknownKey_FailsLoudDegraded()
+    {
+        var provider = new MachineLocalProvider(new FakeSource(Sample(T0)));
+        var exception = await Assert.ThrowsAsync<ConnectionException>(() =>
+            provider.GetStateAsync(Widget(("show", "mem_percent, nope")), Connection(), Ctx(), CancellationToken.None));
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+    }
 }

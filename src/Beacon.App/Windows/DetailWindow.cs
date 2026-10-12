@@ -119,6 +119,10 @@ internal sealed class DetailWindow : Window
             var table = new StackPanel { Spacing = 3 };
             foreach (var pair in _state.Payload)
             {
+                if (pair.Key == "value_text")
+                {
+                    continue; // tile 数值位提示键（machine/MiMo）：内容与 Summary/数据行重复，详情表不重复占行
+                }
                 table.Children.Add(new TextBlock
                 {
                     Text = $"{pair.Key}  {pair.Value}",

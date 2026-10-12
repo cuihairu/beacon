@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
+using Beacon.Connections;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
@@ -167,7 +168,7 @@ internal sealed class FloatingTileHost
             if (_windows.TryGetValue(widget.Id, out var existing))
             {
                 existing.CascadeIndex = index;
-                existing.EnsurePlaced();
+                existing.ApplyDesignSize(); // 重排尺寸+落位：show 改动会变推算宽，即时生效（Loaded 前内部自跳）
             }
             else
             {
@@ -234,9 +235,12 @@ internal sealed class FloatingTileHost
     internal sealed class FloatingTileWindow
     {
         private const int TileHeightDips = 32;
-        private const int TileWidthDips = 168;
         private const int CascadeStepDips = 36;
         private const int EdgeMarginPx = 8;
+
+        // 窗宽按组件推算（MachineTileSizing：machine 按所选展示项最坏值行，其余 168 下限）——
+        // 2026-10-12 用户令「宽度按最长一行数值文本能完整显示自己算」，替代拍脑袋的全局 168
+        private readonly int _tileWidthDips;
 
         private readonly FloatingTileHost _host;
         private readonly WidgetConfig _widget;
@@ -263,6 +267,7 @@ internal sealed class FloatingTileHost
             _host = host;
             _widget = widget;
             _fallbackMonitor = fallbackMonitor;
+            _tileWidthDips = MachineTileSizing.TileWidthDips(widget);
             CascadeIndex = cascadeIndex;
             _tile = new PinTile(widget, palette, motion, connectionType);
             _tile.Root.PointerPressed += OnPointerPressed;
@@ -385,15 +390,16 @@ internal sealed class FloatingTileHost
                 : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
         }
 
-        /// <summary>按 DIP 设计值×当前 DPI 重排尺寸并收回工作区（Loaded / WM_DPICHANGED / 拖动跨 DPI 补排共用）。</summary>
-        private void ApplyDesignSize()
+        /// <summary>按 DIP 设计值×当前 DPI 重排尺寸并收回工作区（Loaded / WM_DPICHANGED / 拖动跨 DPI 补排共用；
+        /// ReloadTiles 对已存窗也调——展示项（show）改了推算宽就跟着变，即时生效不重启）。</summary>
+        public void ApplyDesignSize()
         {
             if (GetAppWindow() is not { } appWindow)
             {
                 return;
             }
             var dpi = GetDpi();
-            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(TileWidthDips, dpi), DpiLayoutMath.ToPx(TileHeightDips, dpi)));
+            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(_tileWidthDips, dpi), DpiLayoutMath.ToPx(TileHeightDips, dpi)));
             EnsurePlaced();
         }
 
