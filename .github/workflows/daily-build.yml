@@ -21,6 +21,10 @@ on:
     # UTC 19:07 = 北京时间 03:07（凌晨），避开整点调度高峰
     - cron: '7 19 * * *'
   workflow_dispatch:
+  push:
+    # 版本 tag（v*）= 自动构建并把产物传到该 tag 的 release（资产名带版本号，
+    # 说明文字保留作者手写内容，不删不重建）。nightly 仍走 schedule/手动。
+    tags: ['v*']
 
 permissions:
   contents: write
@@ -41,13 +45,40 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # 通道与版本：版本 tag -> 正式版（版本号取 tag，资产名带版本）；
+      # 否则 -> 滚动 nightly（版本号=日期 yyyy.M.d，资产名带 nightly）。
+      - name: Resolve channel & version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          # started = 本 job 起始时刻（UTC ISO8601），发布断言拿它对齐资产时间戳。
+          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
+            v="${GITHUB_REF_NAME#v}"
+            {
+              echo "channel=release"
+              echo "version=$v"
+              echo "asset=beacon-$v-windows-x86_64"
+              echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "channel=nightly"
+              echo "version=$(date -u +%Y.%-m.%-d)"
+              echo "asset=beacon-nightly-windows-x86_64"
+              echo "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish (self-contained win-x64)
         shell: pwsh
         # 版本盖进 exe（yyyy.M.d，InformationalVersion=+commit）——设置页「关于」据此显示，
         # 装机排障可自查构建日期与提交。此前 0.0.yyyyMMdd 触发 CS7034（AssemblyVersion
         # 每段 ≤65535，日期八位数超限）——四段日期方案（2026.10.9）全部合规且可读可排序。
+        env:
+          BEACON_VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          $version = Get-Date -Format "yyyy.M.d"
+          $version = $env:BEACON_VERSION
           dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish -p:Version=$version "-p:InformationalVersion=$version+$env:GITHUB_SHA"
 
       # 真机冒烟（B-803 的 CI 化）：发布产物在本机真启动 30s——进程存活 + 日志出现
@@ -102,78 +133,98 @@ jobs:
 
       - name: Pack (zip)
         shell: pwsh
-        run: Compress-Archive -Path "publish/*" -DestinationPath "beacon-nightly-windows-x86_64.zip"
+        env:
+          ASSET: ${{ steps.ver.outputs.asset }}
+        run: Compress-Archive -Path "publish/*" -DestinationPath "$env:ASSET.zip"
 
       - name: Build installer (Inno Setup)
         shell: pwsh
+        env:
+          BEACON_VERSION: ${{ steps.ver.outputs.version }}
         run: |
           # 向导中文语言包与 DPI 修复需要 Inno 6.5+，强制升到最新稳定（choco 无则装、旧则升）
           choco upgrade innosetup -y --no-progress | Out-Null
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          $version = Get-Date -Format "yyyy.M.d"
+          $version = $env:BEACON_VERSION
           & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Publish rolling nightly release
+      # 发布：nightly 通道删旧重建（publishedAt=本次 run）；版本 tag 通道只传资产、
+      # 不删不重建——作者手写的 release 说明原样保留。两条通道共用发布后硬断言。
+      - name: Publish release assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ steps.ver.outputs.channel }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          ASSET: ${{ steps.ver.outputs.asset }}
         run: |
           set -euo pipefail
-          ZIP=beacon-nightly-windows-x86_64.zip
-          SETUP=beacon-nightly-windows-x86_64-setup.exe
+          ZIP="${ASSET}.zip"
+          SETUP="${ASSET}-setup.exe"
           sha256sum "$ZIP" "$SETUP" > SHA256SUMS
           stamp="$(date -u '+%Y-%m-%d %H:%M UTC')"
           sz="$(du -h "$ZIP" | cut -f1)"
           szs="$(du -h "$SETUP" | cut -f1)"
-          {
-            echo "滚动每日构建（rolling nightly）。tag 固定 \`nightly\`，资产随最新 main 清旧传新——本页永远对应当前主干。"
-            echo
-            echo "- 构建时间：${stamp}"
-            echo "- Commit：\`${GITHUB_SHA}\`"
-            echo "- 工作流：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo
-            echo "## 资产"
-            echo
-            echo "| 资产 | 大小 | 说明 |"
-            echo "| --- | --- | --- |"
-            echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含便携包（含 .NET 10 + Windows App SDK 运行时） |"
-            echo "| \`${SETUP}\` | ${szs} | Windows 安装包（Inno Setup；装到 %LOCALAPPDATA%\\Beacon，无需管理员） |"
-            echo "| \`SHA256SUMS\` | - | 全部资产 sha256 清单 |"
-            echo
-            echo "## 校验"
-            echo
-            echo "资产与 \`SHA256SUMS\` 放同一目录后（PowerShell）："
-            echo
-            echo "    Get-FileHash ${ZIP} -Algorithm SHA256   # 与 SHA256SUMS 逐行比对"
-            echo "    # 装了 Git Bash 也可：sha256sum -c SHA256SUMS"
-            echo
-            echo "## 说明"
-            echo
-            echo "- 自包含（self-contained）：无需安装 .NET 运行时，解压后直接运行 \`Beacon.App.exe\`。"
-            echo "- 安装包与便携 zip 内容相同：开始菜单启动，可选桌面快捷方式与开机自启；卸载走系统「添加或删除程序」。"
-            echo "- 产物未签名：首次运行 SmartScreen 可能提示，选「仍要运行」。"
-            echo "- 每日构建只证明可构建 + 打包成功；完整质量门禁以仓库 CI（ci.yml）为准。"
-          } > notes.md
-          TAG=nightly
-          # 滚动 release 每次删旧重建（连 tag）：publishedAt=本次 run，时间戳即交付凭证。
-          # concurrency 已串行化同一 job，无并发互踩；delete 不存在时容许失败（首跑）。
-          gh release delete "$TAG" --yes --cleanup-tag || true
-          gh release create "$TAG" --target "$GITHUB_SHA" \
-            --title "Nightly · 每日构建 ${stamp}" --notes-file notes.md \
-            --prerelease --latest=false
-          gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS
+
+          if [[ "$CHANNEL" == "release" ]]; then
+            TAG="v${VERSION}"
+            if ! gh release view "$TAG" >/dev/null 2>&1; then
+              gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+            fi
+            gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS --clobber
+            echo "版本发布：$TAG（说明文字不动，仅上传资产）"
+          else
+            TAG=nightly
+            {
+              echo "滚动每日构建（rolling nightly）。tag 固定 \`nightly\`，资产随最新 main 清旧传新——本页永远对应当前主干。"
+              echo
+              echo "- 构建时间：${stamp}"
+              echo "- Commit：\`${GITHUB_SHA}\`"
+              echo "- 工作流：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              echo
+              echo "## 资产"
+              echo
+              echo "| 资产 | 大小 | 说明 |"
+              echo "| --- | --- | --- |"
+              echo "| \`${ZIP}\` | ${sz} | Windows x86_64 自包含便携包（含 .NET 10 + Windows App SDK 运行时） |"
+              echo "| \`${SETUP}\` | ${szs} | Windows 安装包（Inno Setup；装到 %LOCALAPPDATA%\\Beacon，无需管理员） |"
+              echo "| \`SHA256SUMS\` | - | 全部资产 sha256 清单 |"
+              echo
+              echo "## 校验"
+              echo
+              echo "资产与 \`SHA256SUMS\` 放同一目录后（PowerShell）："
+              echo
+              echo "    Get-FileHash ${ZIP} -Algorithm SHA256   # 与 SHA256SUMS 逐行比对"
+              echo "    # 装了 Git Bash 也可：sha256sum -c SHA256SUMS"
+              echo
+              echo "## 说明"
+              echo
+              echo "- 自包含（self-contained）：无需安装 .NET 运行时，解压后直接运行 \`Beacon.App.exe\`。"
+              echo "- 安装包与便携 zip 内容相同：开始菜单启动，可选桌面快捷方式与开机自启；卸载走系统「添加或删除程序」。"
+              echo "- 产物未签名：首次运行 SmartScreen 可能提示，选「仍要运行」。"
+              echo "- 每日构建只证明可构建 + 打包成功；完整质量门禁以仓库 CI（ci.yml）为准。"
+            } > notes.md
+            # 滚动 release 每次删旧重建（连 tag）：时间戳即交付凭证；concurrency 已串行化。
+            gh release delete "$TAG" --yes --cleanup-tag || true
+            gh release create "$TAG" --target "$GITHUB_SHA" \
+              --title "Nightly · 每日构建 ${stamp}" --notes-file notes.md \
+              --prerelease --latest=false
+            gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS
+          fi
 
           # ── 发布后硬断言：任一不过=本步失败（发布失败必须红，不许绿着不发货）──
-          # ①publishedAt 与三个资产 updatedAt 必须 ≥ 本次 run 起始（同为 ISO8601 UTC，字典序可比）；
-          # ②远端 SHA256SUMS 下载回来与本地 diff——发出的就是本次构建的硬证明。
+          # ①nightly 通道 publishedAt 必须 ≥ 本次 run 起始；②三资产 updatedAt 必须 ≥ 起始；
+          # ③远端 SHA256SUMS 下载回来与本地 diff——发出的就是本次构建的硬证明。
           sleep 5
           view="$(gh release view "$TAG" --json publishedAt,assets)"
-          pub="$(echo "$view" | jq -r '.publishedAt')"
-          started="${{ github.run_started_at }}"
-          if [[ -z "$pub" || "$pub" < "$started" ]]; then
-            echo "::error::发布断言失败：Release publishedAt=${pub:-空} 早于本次 run 起始 ${started}——新 release 未建成"
-            exit 1
+          started="${{ steps.ver.outputs.started }}"
+          if [[ "$CHANNEL" == "nightly" ]]; then
+            pub="$(echo "$view" | jq -r '.publishedAt')"
+            if [[ -z "$pub" || "$pub" < "$started" ]]; then
+              echo "::error::发布断言失败：Release publishedAt=${pub:-空} 早于本次 run 起始 ${started}——新 release 未建成"
+              exit 1
+            fi
           fi
           for f in "$ZIP" "$SETUP" SHA256SUMS; do
             ts="$(echo "$view" | jq -r --arg n "$f" '.assets[] | select(.name == $n) | .updatedAt')"
@@ -187,5 +238,5 @@ jobs:
             echo "::error::发布断言失败：远端 SHA256SUMS 与本次构建不一致——传错/传漏资产"
             exit 1
           fi
-          echo "发布断言通过：publishedAt=${pub}，三资产时间戳均为本次 run，SHA256SUMS 与本地构建一致"
+          echo "发布断言通过：TAG=${TAG}，三资产时间戳均为本次 run，SHA256SUMS 与本地构建一致"
           echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
