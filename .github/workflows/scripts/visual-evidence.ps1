@@ -2243,6 +2243,89 @@ catch
     Write-Host "::error::场景 N 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 O：L2 面板计数与实际 Widget 状态一致（todo 行 41「计数与实际 Widget 状态一致」半项 CI 代验）——
+# 摘要 OverallSummary 由 UpdateHeader 从 _states 实时 severity 计数算出（all clear / N warn · N error），
+# chip 由 UpdateOverview 按 source 分组计数——若面板计数与 Widget 状态脱钩，注入 Error 后文本不翻。
+# 三态往返硬断言：双健康 all clear → 注入 Error（mode file）→「0 warn · 1 error」→ 清档回 all clear。
+# 面板开：WM_HOTKEY 直驱（K1 已证应用侧触发链；O 不重复注册断言）。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    # 前置：GLM tile 在且百分比读数在（states 已落 _states，面板摘要才有可断之数）
+    $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    $glmIndex = -1
+    for ($i = 0; $i -lt $handles.Count; $i++)
+    {
+        if ((Get-WindowUiaTexts $handles[$i]) -like "*GLM*") { $glmIndex = $i }
+    }
+    if ($glmIndex -lt 0) { throw "断言失败（场景 O 前置）：GLM tile 不可辨" }
+    $glmTexts = @()
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmTexts = Get-WindowUiaTexts $handles[$glmIndex]
+        if (($glmTexts | Where-Object { $_ -match '\d+\s*%' })) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!($glmTexts | Where-Object { $_ -match '\d+\s*%' })) { throw "断言失败（场景 O 前置）：40s 内 GLM tile 无百分比读数（states 未落）" }
+    # O1 双健康态：摘要 all clear + 双 chip 各计 1
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 O1）：托盘消息窗未找到" }
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId
+    $panel = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $ph = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($ph.Count -ge 1) { $panel = $ph[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panel -eq [IntPtr]::Zero) { Save-FullScreenshot "O-FAIL-no-panel.png"; throw "断言失败（场景 O1）：热键触发后 5s 内快速面板未出现" }
+    Start-Sleep -Seconds 2 # 等面板渲染
+    $texts = Get-WindowUiaTexts $panel
+    if (!($texts -contains "all clear")) { Save-FullScreenshot "O-FAIL-summary.png"; throw "断言失败（场景 O1）：双健康态摘要非 all clear（实际：$($texts -join ' | ')）" }
+    if (!($texts -contains "智谱 1")) { throw "断言失败（场景 O1）：chip 缺「智谱 1」" }
+    if (!($texts -contains "DeepSeek 1")) { throw "断言失败（场景 O1）：chip 缺「DeepSeek 1」" }
+    Write-Host "场景 O1 通过：双健康态摘要 all clear + chip 智谱 1 / DeepSeek 1"
+    # O2 注入 Error：mode file "error" → GLM 95% → 摘要翻「0 warn · 1 error」（ci 档 15s 一轮，45s 留 2 轮余量）
+    Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "error" -Encoding ASCII
+    $ok = $false
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $panel
+        if ($texts -contains "0 warn · 1 error") { $ok = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$ok) { Save-FullScreenshot "O-FAIL-error-summary.png"; throw "断言失败（场景 O2）：注入 Error 后 45s 内摘要未翻「0 warn · 1 error」（实际：$($texts -join ' | ')）" }
+    if (!($texts -contains "智谱 1")) { throw "断言失败（场景 O2）：Error 态 chip 计数丢失（智谱 1 不在）" }
+    Write-Host "场景 O2 通过：Error 注入后摘要 0 warn · 1 error，chip 计数保持"
+    # O3 恢复：清 mode file → 回 all clear（计数随状态往返，非钉死）
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    $ok = $false
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $panel
+        if ($texts -contains "all clear") { $ok = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$ok) { Save-FullScreenshot "O-FAIL-recover-summary.png"; throw "断言失败（场景 O3）：恢复后 45s 内摘要未回 all clear（实际：$($texts -join ' | ')）" }
+    Write-Host "场景 O3 通过：恢复后摘要回 all clear（计数随状态往返）"
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # Toggle 再收，避免残留影响后续场景
+    Start-Sleep -Seconds 1
+    Write-Host "场景 O 通过：面板摘要/chip 计数与 Widget 状态三态往返一致"
+}
+catch
+{
+    Save-FullScreenshot "O-FAIL-unexpected.png"
+    $failures.Add("场景 O：$($_.Exception.Message)")
+    Write-Host "::error::场景 O 断言失败：$($_.Exception.Message)"
+}
+
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
 Stop-Beacon
 Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
