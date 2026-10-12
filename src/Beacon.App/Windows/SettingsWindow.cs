@@ -547,6 +547,7 @@ internal sealed class SettingsWindow : Window
         _hotkeyBox = new TextBox { Header = "全局热键（如 Ctrl+Alt+B）", Text = _runtime.Config.App.Hotkey, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
         _hotkeyBox.LostFocus += (_, _) => SaveGeneral();
         _startupToggle = new ToggleSwitch { Header = "开机自启", IsOn = _runtime.Config.App.LaunchOnStartup };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_startupToggle, "startup-toggle"); // UIA 取证：开机自启驱动
         _startupToggle.Toggled += (_, _) => SaveGeneral();
         _themeBox = new ComboBox { Header = "主题（重启生效）", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var item in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
@@ -1109,16 +1110,21 @@ internal sealed class SettingsWindow : Window
             };
             var captured = key;
             box.LostFocus += (_, _) => SaveSeverityColor(captured, box.Text.Trim());
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, $"appearance-color-{key}"); // UIA 取证/自动化入口（同 module-* 口径）
             _colorBoxes[key] = box;
             palette.Children.Add(box);
         }
         var reset = new Button { Content = "重置默认" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(reset, "appearance-reset-button"); // UIA 取证：重置默认驱动
         reset.Click += (_, _) => ResetSeverityColors();
 
         _motionModeBox = new ComboBox { Header = "动效档位", Width = 170 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_motionModeBox, "appearance-motion-mode-box"); // UIA 取证：动效档位驱动
         foreach (var (value, label) in new[] { ("full", "完全"), ("reduced", "适度（默认）"), ("off", "关闭") })
         {
-            _motionModeBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+            var item = new ComboBoxItem { Content = label, Tag = value };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, $"motion-{value}"); // 同 poll-{n} 口径
+            _motionModeBox.Items.Add(item);
         }
         _motionModeBox.SelectedIndex = Math.Max(0, IndexOfTag(_motionModeBox, _runtime.Config.App.Appearance.Motion.Mode));
         _motionModeBox.SelectionChanged += (_, _) => SaveMotion();
@@ -1132,6 +1138,7 @@ internal sealed class SettingsWindow : Window
             Value = Math.Clamp(_runtime.Config.App.Appearance.Motion.Intensity, 0.5, 2.0),
             Width = 240,
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_motionIntensitySlider, "appearance-motion-intensity"); // UIA 取证：动效强度驱动
         _motionIntensitySlider.ValueChanged += (_, _) => SaveMotion();
 
         // 2026-10-10 用户令「设置里让用户自己选表现方式，比如一开始的进度条」：额度显示方式全局可选。

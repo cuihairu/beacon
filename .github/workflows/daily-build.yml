@@ -123,11 +123,48 @@ jobs:
           Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           Write-Host "冒烟测试通过：进程存活且日志含启动完成标记"
 
-      # 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完）：A=数量悬浮窗开（悬浮框在桌面，
-      # 品牌 icon 近景截图）；B=数量悬浮窗关（桌面零残留窗，硬断言）；C=浅色主题 icon 可辨度
-      # （白桌面+暗像素硬断言）；D=四家 Provider 连接链（本地 mock+DPAPI 密钥+设置页 UIA：
-      # 逐家「测试」硬断言「连接正常」+组件下拉有该项+保存连接即时进下拉）。
-      # 断言失败=红构建不发版——悬浮窗渲染与连接链回归从此在这里现形。
+      - name: Pack (zip)
+        shell: pwsh
+        env:
+          ASSET: ${{ steps.ver.outputs.asset }}
+        run: Compress-Archive -Path "publish/*" -DestinationPath "$env:ASSET.zip"
+
+      # 安装包先于视觉取证产出：场景 J（静默安装/卸载，B-803 CI 代验）需要 setup.exe 在场。
+      # ISCC 输出文件名固定（beacon-nightly-…-setup，beacon.iss OutputBaseFilename），
+      # 版本 tag 通道资产名带版本号——重命名对齐，否则版本通道发布步骤找不到 $ASSET-setup.exe。
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        env:
+          BEACON_VERSION: ${{ steps.ver.outputs.version }}
+          ASSET: ${{ steps.ver.outputs.asset }}
+        run: |
+          # 向导中文语言包与 DPI 修复需要 Inno 6.5+，强制升到最新稳定（choco 无则装、旧则升）
+          choco upgrade innosetup -y --no-progress | Out-Null
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $version = $env:BEACON_VERSION
+          & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $built = Join-Path (Get-Location) "beacon-nightly-windows-x86_64-setup.exe"
+          $wanted = "$env:ASSET-setup.exe"
+          if ((Test-Path $built) -and ($built -ne (Join-Path (Get-Location) $wanted)))
+          {
+            Move-Item $built $wanted -Force
+          }
+          if (!(Test-Path $wanted)) { throw "安装包未产出：$wanted" }
+          Write-Host "安装包就位：$wanted"
+
+      # 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完）。场景一览：
+      # A=数量悬浮窗开（品牌 icon 近景截图）；B=数量悬浮窗关（桌面零残留窗，硬断言）；
+      # C=浅色主题 icon 可辨度（白桌面+暗像素硬断言）；D=四家 Provider 连接链（本地 mock+
+      # DPAPI 密钥+设置页 UIA：逐家「测试」硬断言「连接正常」+组件下拉有该项+保存即时进下拉）；
+      # E=单实例+托盘驻留（副实例退出进程数恒 1、关窗不退进程、托盘菜单 Exit 唯一退出）；
+      # F=无网启动（缓存优先+「Last update」标注+恢复自愈+断网零弹窗+降级通知恰 1 条）；
+      # G=调色/动效（colorOverride 仅该 tile、非法色回退不崩且重启保持、设置改色即时生效落盘、
+      # 重置默认还原、动效档持久化重启恢复选中、off 档全静止/full 档呼吸帧差分断言、状态翻档两 tile 独立）；
+      # H=悬浮位置还原（FloatingX/Y 两轮重启精确落位、TOOLWINDOW 置位不进 Alt-Tab、
+      # 刷新不抢焦点、panel/floating 二选一）；
+      # J=静默安装/卸载（setup.exe /VERYSILENT 装卸，程序文件清空、用户数据保留）。
+      # 断言失败=红构建不发版——渲染、连接链与常驻行为回归从此在这里现形。
       - name: Visual evidence (tile icon + providers + zero-residue screenshots)
         shell: pwsh
         run: .github/workflows/scripts/visual-evidence.ps1
@@ -138,24 +175,6 @@ jobs:
         with:
           name: visual-evidence
           path: evidence/
-
-      - name: Pack (zip)
-        shell: pwsh
-        env:
-          ASSET: ${{ steps.ver.outputs.asset }}
-        run: Compress-Archive -Path "publish/*" -DestinationPath "$env:ASSET.zip"
-
-      - name: Build installer (Inno Setup)
-        shell: pwsh
-        env:
-          BEACON_VERSION: ${{ steps.ver.outputs.version }}
-        run: |
-          # 向导中文语言包与 DPI 修复需要 Inno 6.5+，强制升到最新稳定（choco 无则装、旧则升）
-          choco upgrade innosetup -y --no-progress | Out-Null
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          $version = $env:BEACON_VERSION
-          & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # ── SignPath 代码签名（仅版本 tag 通道；nightly 永不签名）──
       # 链路：未签名 zip+exe → upload-artifact 拿 artifact-id → SignPath 提交签名

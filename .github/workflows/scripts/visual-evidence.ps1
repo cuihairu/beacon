@@ -121,6 +121,67 @@ public static class WinEnum
         return v;
     }
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+
+    // —— 场景 E/F/G/H（2026-10-12 巡检点火批）新增：单实例/托盘/离线/调色/形态结构取证面 ——
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string cls, string title);
+    public static IntPtr FindByClass(string cls) { return FindWindowW(cls, null); }
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr h, int index);
+    public static long ExStyleOf(IntPtr h) { return (long)(uint)GetWindowLong(h, -20); } // GWL_EXSTYLE=-20
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    public static IntPtr Foreground() { return GetForegroundWindow(); }
+    [DllImport("user32.dll")] private static extern bool PostMessageW(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    public static void Post(IntPtr h, uint msg, IntPtr w, IntPtr l) { PostMessageW(h, msg, w, l); }
+    [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    public static void SetCursor(int x, int y) { SetCursorPos(x, y); }
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    public static uint PidOf(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return pid; }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    public static string ClassOf(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
+    public static List<IntPtr> VisibleHandlesByClassAndPid(string cls, uint pid)
+    {
+        var found = new List<IntPtr>();
+        EnumWindows((h, l) =>
+        {
+            if (IsWindowVisible(h))
+            {
+                uint p; GetWindowThreadProcessId(h, out p);
+                if (p == pid)
+                {
+                    var sb = new StringBuilder(256);
+                    GetClassName(h, sb, 256);
+                    if (sb.ToString() == cls) { found.Add(h); }
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
+    // 键盘注入（托盘原生菜单导航）：dwFlags=0 按下 / 2 抬起
+    public static void SendVirtualKey(ushort vk)
+    {
+        var down = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0000 } } };
+        var up = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0002 } } };
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { down }, size);
+        System.Threading.Thread.Sleep(90);
+        SendInput(1, new[] { up }, size);
+        System.Threading.Thread.Sleep(120);
+    }
+    // 单击注入（前景不被打断断言用）：绝对坐标 move+down+up
+    public static void ClickAt(int x, int y)
+    {
+        int vx = ToVirtual(x, 76, 78); int vy = ToVirtual(y, 77, 79);
+        var move = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dx = vx, dy = vy, dwFlags = 0x8001 } } };
+        var down = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dwFlags = 0x0002 } } };
+        var up = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dwFlags = 0x0004 } } };
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { move }, size);
+        System.Threading.Thread.Sleep(150);
+        SendInput(1, new[] { down }, size);
+        System.Threading.Thread.Sleep(90);
+        SendInput(1, new[] { up }, size);
+        System.Threading.Thread.Sleep(300);
+    }
 }
 "@
 
@@ -263,6 +324,10 @@ function Start-MockServer
         $ark = '{"ResponseMetadata":{"RequestId":"mock-1","Action":"GetCodingPlanUsage"},"Result":{"Status":"Running","QuotaUsage":[{"Level":"session","Percent":42.5,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":8,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":"92","ResetTimestamp":0}]}}'
         # bigmodel 监控响应（quota/limit 结构：limits[] 按 type/unit/number 归类——5h 滚动窗 unit=3/number=5）
         $bigmodel = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":38,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":61,"nextResetTime":0}]}}'
+        # 档位翻转态（G 场景状态变化/动效断言）：主窗 percentage 95 ≥ error_percent(90) → severity Error
+        $bigmodelError = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":95,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":61,"nextResetTime":0}]}}'
+        # 档位文件：内容 "error" = 95% 态，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
+        $modeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
         $mimo = '{"data":[{"id":"mimo-v1"},{"id":"mimo-mini"}]}'
@@ -278,7 +343,11 @@ function Start-MockServer
                 switch ($path)
                 {
                     "/coding/v1/usages" { $body = $kimi }
-                    "/api/monitor/usage/quota/limit" { $body = $bigmodel } # 场景 A GLM tile 健康链（38% → 条带+NN%）
+                    "/api/monitor/usage/quota/limit" {
+                        $mode = ""
+                        try { $mode = (Get-Content $modeFile -Raw -ErrorAction Stop).Trim() } catch { }
+                        $body = if ($mode -eq "error") { $bigmodelError } else { $bigmodel } # 38% 健康链 / 95% Error 链按档位文件翻转
+                    }
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
                     "/mimo/usage" { $body = $mimoUsage }
@@ -315,6 +384,185 @@ function Stop-MockServer
         Stop-Job $script:mockJob -ErrorAction SilentlyContinue
         Remove-Job $script:mockJob -Force -ErrorAction SilentlyContinue
     }
+}
+
+# —— 场景 E/F/G/H 取证助手（2026-10-12 巡检点火批：需装机清单 CI 代验转化） ——
+
+# 颜色像素计数：与目标 RGB 三通道各差 ≤tol 的像素数（状态灯/条带档位色硬断言）
+function Count-ColorPixels([System.Drawing.Bitmap] $bmp, [int] $r, [int] $g, [int] $b, [int] $tol)
+{
+    $count = 0
+    for ($y = 0; $y -lt $bmp.Height; $y++)
+    {
+        for ($x = 0; $x -lt $bmp.Width; $x++)
+        {
+            $p = $bmp.GetPixel($x, $y)
+            if ([Math]::Abs($p.R - $r) -le $tol -and [Math]::Abs($p.G - $g) -le $tol -and [Math]::Abs($p.B - $b) -le $tol) { $count++ }
+        }
+    }
+    return $count
+}
+
+# 双帧差分像素计数：任一通道差 >tol 的像素数（呼吸动效在帧间现形；off 档应≈0）
+function Count-FrameDiff([System.Drawing.Bitmap] $a, [System.Drawing.Bitmap] $b, [int] $tol)
+{
+    $count = 0
+    $w = [Math]::Min($a.Width, $b.Width)
+    $h = [Math]::Min($a.Height, $b.Height)
+    for ($y = 0; $y -lt $h; $y++)
+    {
+        for ($x = 0; $x -lt $w; $x++)
+        {
+            $p1 = $a.GetPixel($x, $y)
+            $p2 = $b.GetPixel($x, $y)
+            if ([Math]::Abs($p1.R - $p2.R) -gt $tol -or [Math]::Abs($p1.G - $p2.G) -gt $tol -or [Math]::Abs($p1.B - $p2.B) -gt $tol) { $count++ }
+        }
+    }
+    return $count
+}
+
+# 今日应用日志全文（UTF-8 无 BOM——PS 5.1 默认 ANSI 读中文必乱码，见场景 D 同款教训）
+function Get-TodayLog
+{
+    $logPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    if (!(Test-Path $logPath)) { return "" }
+    return (Get-Content $logPath -Raw -Encoding UTF8)
+}
+
+# 合成托盘右键菜单驱动：直发托盘回调消息（WM_APP_TRAYICON, IconId=1, WM_RBUTTONUP）绕过真实图标点击，
+# TrackPopupMenu 原生菜单（#32768）在应用消息线程模态弹出后键盘导航（DOWN×n + RETURN）选中。
+# 返回 $false = 菜单未弹出（调用方按降级口径处理，参考分隔条拖拽先例）。
+# 菜单项序：Open Beacon(1) Keep Panel Open(2) Notifications(3) Refresh All(4) Settings(5) ── Exit(6)，分隔符跳过。
+function Invoke-TrayMenu([int] $downCount, [string] $expect)
+{
+    # 残留菜单先收掉（Esc），避免 #32768 命中旧窗
+    if ([WinEnum]::FindByClass("#32768") -ne [IntPtr]::Zero)
+    {
+        [WinEnum]::SendVirtualKey(0x1B)
+        Start-Sleep -Milliseconds 400
+    }
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "未找到 BeaconMessageWindow（托盘消息窗，托盘未初始化？）" }
+    [WinEnum]::SetCursor(300, 300) # 菜单弹在光标处，避开右上角 tile 级联区
+    Start-Sleep -Milliseconds 200
+    [WinEnum]::Post($msgWindow, 0x8100, [IntPtr]1, [IntPtr]0x0202) # WM_APP_TRAYICON=0x8100, IconId=1, WM_RBUTTONUP=0x0202
+    $menu = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline)
+    {
+        $menu = [WinEnum]::FindByClass("#32768")
+        if ($menu -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 300
+    }
+    if ($menu -eq [IntPtr]::Zero) { return $false }
+    Save-FullScreenshot "tray-menu-open.png"
+    Write-Host "托盘菜单已弹出（#32768）：DOWN×${downCount} → RETURN 选中「$expect」"
+    for ($i = 0; $i -lt $downCount; $i++) { [WinEnum]::SendVirtualKey(0x28) } # VK_DOWN
+    [WinEnum]::SendVirtualKey(0x0D) # VK_RETURN
+    Start-Sleep -Milliseconds 800
+    return $true
+}
+
+# G 场景配置：GLM（bigmodel 38% 健康）+ DeepSeek（420.5）双 tile；GLM 可带 colorOverride（合法/非法两态）
+function Write-GConfig([string] $glmColorOverride = "")
+{
+    Stop-Beacon
+    @'
+{
+  "configVersion": 1,
+  "hotkey": "Ctrl+Alt+B",
+  "launchOnStartup": false,
+  "theme": "dark",
+  "pinDisplayMode": "floating",
+  "numericFloatingEnabled": true,
+  "numericFloatingResetDone": true,
+  "showCapsule": false,
+  "settingsSidebarWidth": 400
+}
+'@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+    @'
+[
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
+]
+'@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    $glmOverride = ""
+    if ($glmColorOverride) { $glmOverride = ", `"colorOverride`": `"$glmColorOverride`"" }
+    $widgets = @"
+[
+  { "id": "bigmodel.usage:GLM", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "pinned": true, "config": { "label": "GLM" }$glmOverride },
+  { "id": "deepseek.balance:ds", "type": "deepseek.balance", "connectionId": "ds-main", "refreshTier": "ci", "pinned": true, "config": {} }
+]
+"@
+    Set-Content -Path (Join-Path $configDir "widgets.json") -Value $widgets -Encoding UTF8
+    '{ "tiles": [] }' | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
+    # deepseek 密钥预置（420.5 健康链）
+    $secretsPath = Join-Path $configDir "secrets.bin"
+    $store = @{}
+    if (Test-Path $secretsPath)
+    {
+        (ConvertFrom-Json (Get-Content $secretsPath -Raw)).PSObject.Properties | ForEach-Object { $store[$_.Name] = $_.Value }
+    }
+    $entropy = [System.Text.Encoding]::UTF8.GetBytes("Beacon:conn:ds-main")
+    $protected = [System.Security.Cryptography.ProtectedData]::Protect(
+        [System.Text.Encoding]::UTF8.GetBytes("sk-ds-mock"), $entropy,
+        [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+    $store["conn:ds-main"] = [Convert]::ToBase64String($protected)
+    [System.IO.File]::WriteAllText($secretsPath, ($store | ConvertTo-Json -Compress))
+}
+
+# H 场景配置：双 tile 带预置悬浮位置（pinLayout.floatingX/Y，DIP=px @96dpi），panel 模式切位用
+function Write-HConfig([string] $displayMode = "floating")
+{
+    Stop-Beacon
+    $config = @'
+{
+  "configVersion": 1,
+  "hotkey": "Ctrl+Alt+B",
+  "launchOnStartup": false,
+  "theme": "dark",
+  "pinDisplayMode": "__MODE__",
+  "numericFloatingEnabled": true,
+  "numericFloatingResetDone": true,
+  "showCapsule": false
+}
+'@.Replace("__MODE__", $displayMode)
+    Set-Content -Path (Join-Path $configDir "config.json") -Value $config -Encoding UTF8
+    @'
+[
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
+]
+'@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    # pinLayout 权威双写：widgets.json 便利引用 + pins.json（EnsurePlaced 读 widget.PinLayout）
+    @'
+[
+  { "id": "bigmodel.usage:GLM", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "pinned": true, "config": { "label": "GLM" },
+    "pinLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 120, "floatingY": 120 } },
+  { "id": "deepseek.balance:ds", "type": "deepseek.balance", "connectionId": "ds-main", "refreshTier": "ci", "pinned": true, "config": {},
+    "pinLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 260, "floatingY": 220 } }
+]
+'@ | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
+    @'
+{
+  "tiles": [
+    { "widgetId": "bigmodel.usage:GLM", "layout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 120, "floatingY": 120 } },
+    { "widgetId": "deepseek.balance:ds", "layout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 260, "floatingY": 220 } }
+  ]
+}
+'@ | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
+    $secretsPath = Join-Path $configDir "secrets.bin"
+    $store = @{}
+    if (Test-Path $secretsPath)
+    {
+        (ConvertFrom-Json (Get-Content $secretsPath -Raw)).PSObject.Properties | ForEach-Object { $store[$_.Name] = $_.Value }
+    }
+    $entropy = [System.Text.Encoding]::UTF8.GetBytes("Beacon:conn:ds-main")
+    $protected = [System.Security.Cryptography.ProtectedData]::Protect(
+        [System.Text.Encoding]::UTF8.GetBytes("sk-ds-mock"), $entropy,
+        [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+    $store["conn:ds-main"] = [Convert]::ToBase64String($protected)
+    [System.IO.File]::WriteAllText($secretsPath, ($store | ConvertTo-Json -Compress))
 }
 
 function Save-FullScreenshot([string] $name)
@@ -856,8 +1104,573 @@ catch
 }
 finally
 {
+    Stop-Beacon # mock 服务留待 E/F/G/H 场景复用，脚本末尾统一收尾
+}
+
+# —— 场景 E：单实例 + 托盘驻留 + Exit 唯一退出（todo「二次启动不重复进程」「关窗驻留 Exit 才退」CI 代验）——
+try
+{
+    Write-ScenarioConfig $true
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 18
+    # E1 二次启动：命名互斥体 → 副实例 SignalExisting 后退出——进程数恒 1 + 日志凭证
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 8
+    $alive = @(Get-Process Beacon.App -ErrorAction SilentlyContinue)
+    if ($alive.Count -ne 1)
+    {
+        Save-FullScreenshot "E-FAIL-second-instance.png"
+        throw "断言失败（场景 E1）：二次启动后 Beacon 进程数 $($alive.Count)（期望 1）——单实例互斥体失效"
+    }
+    $log = Get-TodayLog
+    if ($log -notmatch "Secondary instance exit")
+    {
+        Save-FullScreenshot "E-FAIL-no-secondary-log.png"
+        throw "断言失败（场景 E1）：二次启动后日志未见「Secondary instance exit.」——副实例退出路径未走"
+    }
+    Write-Host "场景 E1 通过：二次启动进程数保持 1，副实例退出日志在案（唤起气泡为 Toast 面不可断，转装机目检）"
+    # E2 托盘菜单 → Settings → 关窗不退进程（托盘驻留语义）；菜单驱动失败降级 warning（分隔条拖拽同款先例）
+    $opened = Invoke-TrayMenu 5 "Settings"
+    if (!$opened)
+    {
+        Write-Host "::warning::托盘菜单未弹出（合成右键未生效）——关窗驻留与 Exit 转装机手验（tray-menu 未截图）"
+    }
+    else
+    {
+        $settings = Find-SettingsWindow 15
+        if (!$settings)
+        {
+            Save-FullScreenshot "E-FAIL-no-settings.png"
+            throw "断言失败（场景 E2）：托盘菜单 Settings 后未见「Beacon 设置」窗"
+        }
+        [WinEnum]::Post([IntPtr]$settings.Current.NativeWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) # WM_CLOSE
+        Start-Sleep -Seconds 3
+        if (Find-SettingsWindow 2)
+        {
+            Save-FullScreenshot "E-FAIL-settings-stuck.png"
+            throw "断言失败（场景 E2）：WM_CLOSE 后设置窗未关闭"
+        }
+        if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -ne 1)
+        {
+            throw "断言失败（场景 E2）：关闭设置窗后进程退出——托盘驻留失效（关窗不应退进程）"
+        }
+        Write-Host "场景 E2 通过：设置窗 WM_CLOSE 关闭、进程驻留（关窗不退进程）"
+        # E3 托盘菜单 → Exit → 进程必须退出（Exit 唯一退出路径）
+        $opened2 = Invoke-TrayMenu 6 "Exit"
+        if (!$opened2)
+        {
+            Write-Host "::warning::第二次托盘菜单未弹出——Exit 路径转装机手验"
+        }
+        else
+        {
+            $exited = $false
+            $deadline = (Get-Date).AddSeconds(15)
+            while ((Get-Date) -lt $deadline)
+            {
+                if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -eq 0) { $exited = $true; break }
+                Start-Sleep -Milliseconds 500
+            }
+            if (!$exited)
+            {
+                Save-FullScreenshot "E-FAIL-exit-noop.png"
+                throw "断言失败（场景 E3）：托盘菜单 Exit 后 15s 进程未退出——Exit 路径回归"
+            }
+            Write-Host "场景 E3 通过：托盘 Exit 后进程退出（Exit 唯一退出路径实证）"
+        }
+    }
+}
+catch
+{
+    Save-FullScreenshot "E-FAIL-unexpected.png"
+    $failures.Add("场景 E：$($_.Exception.Message)")
+    Write-Host "::error::场景 E 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 F：无网启动缓存优先 + Last update 标注 + 自动刷新自愈 + 断网零弹窗 + 单条通知（todo 行 17/33/35/46 CI 代验）——
+try
+{
+    Write-ScenarioConfig $true
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    # F0 健康基线：38% 在案（mock 健康链，缓存由本轮首启填充）
+    $tiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($tiles.Count -lt 1)
+    {
+        Save-FullScreenshot "F-FAIL-no-tile-healthy.png"
+        throw "断言失败（场景 F0）：健康基线未见 GLM tile 窗"
+    }
+    $baseline = $false
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $tiles[0]
+        if (($texts | Where-Object { $_ -match '\d+\s*%' })) { $baseline = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$baseline) { throw "断言失败（场景 F0）：健康基线 30s 内无百分比读数——mock 健康链未走通"; }
     Stop-Beacon
-    Stop-MockServer
+    Stop-MockServer # 断网（端点不可达 = 无网语义）
+    Remove-Item (Join-Path $configDir "notifications.json") -Force -ErrorAction SilentlyContinue # 通知记录隔离，只认本场景新增
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 12
+    $tiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($tiles.Count -lt 1)
+    {
+        Save-FullScreenshot "F-FAIL-no-tile-offline.png"
+        throw "断言失败（场景 F1）：无网启动未见 tile 窗——离线白板回归"
+    }
+    # F2 断网降级标注：Last update ≤45s 内出现（首个刷新失败 → 离线，值取缓存 FetchedAt）
+    $sawLastUpdate = $false
+    $texts = @()
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $tiles[0]
+        if (($texts | Where-Object { $_ -like "*Last update*" })) { $sawLastUpdate = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$sawLastUpdate)
+    {
+        Save-FullScreenshot "F-FAIL-no-last-update.png"
+        throw "断言失败（场景 F2）：断网后 45s 内 tile 未出现「Last update」离线标注；实际文本：$($texts -join ' | ')"
+    }
+    Save-FullScreenshot "F-offline-last-update.png"
+    # F3 断网零弹窗：Beacon 进程名下不得有 #32770 对话框窗
+    $beaconPid = (Get-Process Beacon.App | Select-Object -First 1).Id
+    $dialogs = [WinEnum]::VisibleHandlesByClassAndPid("#32770", $beaconPid)
+    if ($dialogs.Count -gt 0)
+    {
+        Save-FullScreenshot "F-FAIL-dialog.png"
+        throw "断言失败（场景 F3）：断网期间 Beacon 进程弹出 $($dialogs.Count) 个对话框窗——降级弹窗回归"
+    }
+    Write-Host "场景 F1-F3 通过：无网启动有窗有数据、Last update 标注在案、零弹窗"
+    # F4 恢复自愈：mock 回来 ≤150s 内百分比读数重现（自动刷新闭环，无重启无人工；
+    # 断网期失败刷新会累积 backoff——15s 基数 ×10 封顶 150s，宽限取满，成功即提前退出）
+    Start-MockServer
+    $healed = $false
+    $deadline = (Get-Date).AddSeconds(150)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $tiles[0]
+        if (($texts | Where-Object { $_ -match '\d+\s*%' })) { $healed = $true; break }
+        Start-Sleep -Seconds 3
+    }
+    if (!$healed)
+    {
+        Save-FullScreenshot "F-FAIL-not-healed.png"
+        throw "断言失败（场景 F4）：网络恢复后 150s 内 tile 未自愈回百分比读数——自动刷新/自愈回归"
+    }
+    Save-FullScreenshot "F-recovered.png"
+    Write-Host "场景 F4 通过：网络恢复后 tile 自愈（自动刷新闭环实证）"
+    # F5 单条通知：connection-degraded 规则冷却去重——两次失败刷新后记录恰 1 条
+    Start-Sleep -Seconds 20 # 同窗口期再吃一轮失败刷新（冷却应拦住第二击）
+    $notifPath = Join-Path $configDir "notifications.json"
+    if (!(Test-Path $notifPath))
+    {
+        Save-FullScreenshot "F-FAIL-no-notifications.png"
+        throw "断言失败（场景 F5）：断网失败刷新后 notifications.json 未生成——通知记录缺失"
+    }
+    $records = @(Get-Content $notifPath -Raw | ConvertFrom-Json)
+    $mine = @($records | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
+    if ($mine.Count -ne 1)
+    {
+        throw "断言失败（场景 F5）：GLM 断网通知记录 $($mine.Count) 条（期望恰 1，冷却去重）——重复投递或缺失"
+    }
+    Write-Host "场景 F5 通过：断网降级通知恰 1 条（connection-degraded 冷却去重）；Toast 呈现面转装机"
+}
+catch
+{
+    Save-FullScreenshot "F-FAIL-unexpected.png"
+    $failures.Add("场景 F：$($_.Exception.Message)")
+    Write-Host "::error::场景 F 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 G：调色/动效全链（todo 行 49/50/51/52/53/58/59 CI 代验）——
+try
+{
+    # G1 colorOverride 仅该 tile 变色（#ff00ff 品红只落 GLM 状态灯，DeepSeek 零渗）
+    Write-GConfig "#ff00ff"
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($handles.Count -lt 2)
+    {
+        Save-FullScreenshot "G-FAIL-tiles.png"
+        throw "断言失败（场景 G1）：双 tile 未建窗（$($handles.Count) 个）"
+    }
+    $glmIndex = -1
+    for ($i = 0; $i -lt $handles.Count; $i++)
+    {
+        if ((Get-WindowUiaTexts $handles[$i]) -like "*GLM*") { $glmIndex = $i }
+    }
+    $dsIndex = -1
+    for ($i = 0; $i -lt $handles.Count; $i++)
+    {
+        if ((Get-WindowUiaTexts $handles[$i]) -like "*420.5*") { $dsIndex = $i }
+    }
+    if ($glmIndex -lt 0 -or $dsIndex -lt 0)
+    {
+        throw "断言失败（场景 G1）：GLM/DeepSeek tile 文本不可辨（GLM=$glmIndex ds=$dsIndex）"
+    }
+    $glmCrop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    Save-Zoom $glmCrop "G1-glm-override-closeup.png" 6
+    $glmMagenta = Count-ColorPixels $glmCrop 255 0 255 60
+    $glmCrop.Dispose()
+    $dsCrop = New-Crop ([WinEnum]::RectOf($handles[$dsIndex])) 0
+    $dsMagenta = Count-ColorPixels $dsCrop 255 0 255 60
+    $dsCrop.Dispose()
+    if ($glmMagenta -lt 12)
+    {
+        throw "断言失败（场景 G1）：GLM tile 品红覆盖像素 $glmMagenta（期望 ≥12）——colorOverride 未生效"
+    }
+    if ($dsMagenta -gt 4)
+    {
+        throw "断言失败（场景 G1）：DeepSeek tile 出现品红 $dsMagenta 像素——覆盖越界（应仅 GLM）"
+    }
+    Write-Host "场景 G1 通过：colorOverride 品红仅在 GLM（$glmMagenta px），DeepSeek 零渗（$dsMagenta px）"
+    # G2 非法颜色回退：不崩溃 + 渲染默认成功绿 + 重启后保持（两轮启动）
+    Write-GConfig "sent:---"
+    foreach ($round in @(1, 2))
+    {
+        Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+        Start-Sleep -Seconds 15
+        if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -lt 1)
+        {
+            Save-FullScreenshot "G-FAIL-invalid-crash.png"
+            throw "断言失败（场景 G2 第${round}轮）：非法 colorOverride 启动即崩"
+        }
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+        $glmIndex = -1
+        for ($i = 0; $i -lt $handles.Count; $i++)
+        {
+            if ((Get-WindowUiaTexts $handles[$i]) -like "*GLM*") { $glmIndex = $i }
+        }
+        if ($glmIndex -lt 0) { throw "断言失败（场景 G2 第${round}轮）：GLM tile 不可辨" }
+        $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+        Save-Zoom $crop "G2-invalid-round$round-closeup.png" 6
+        $magenta = Count-ColorPixels $crop 255 0 255 60
+        $green = Count-ColorPixels $crop 63 185 80 45
+        $crop.Dispose()
+        if ($magenta -gt 4) { throw "断言失败（场景 G2 第${round}轮）：非法值被当色渲染（品红 $magenta px）——回退失效" }
+        if ($green -lt 60) { throw "断言失败（场景 G2 第${round}轮）：默认成功绿未渲染（$green px）——回退后渲染缺失" }
+        Stop-Beacon
+        Write-Host "场景 G2 第${round}轮通过：非法色回退默认绿（品红 $magenta / 绿 $green px），进程存活"
+    }
+    Write-Host "场景 G2 通过：非法颜色回退不崩溃且重启保持"
+    # G3-G6 设置页驱动：改色即时生效+落盘、重置默认、动效档位/强度持久化、重启恢复选中
+    Write-GConfig ""
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings)
+    {
+        Save-FullScreenshot "G-FAIL-no-settings.png"
+        throw "断言失败（场景 G3）：--settings 启动未见「Beacon 设置」窗"
+    }
+    Start-Sleep -Seconds 10 # 双 tile 建窗
+    $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    $glmIndex = -1
+    for ($i = 0; $i -lt $handles.Count; $i++)
+    {
+        if ((Get-WindowUiaTexts $handles[$i]) -like "*GLM*") { $glmIndex = $i }
+    }
+    if ($glmIndex -lt 0) { throw "断言失败（场景 G3）：GLM tile 不可辨" }
+    $row = Find-UiaById $settings "module-appearance" 10
+    if (!$row) { throw "断言失败（场景 G3）：UIA 未找到 module-appearance" }
+    Invoke-Uia $row
+    Start-Sleep -Seconds 2
+    $motionBox = Find-UiaById $settings "appearance-motion-mode-box" 10
+    if (!$motionBox) { throw "断言失败（场景 G3）：UIA 未找到 appearance-motion-mode-box（锚点丢失？）" }
+    # G4 成功色改 #ff8800 → config 落盘 + tile 即时变橙（改色即时生效）
+    $successBox = Find-UiaById $settings "appearance-color-success" 10
+    if (!$successBox) { throw "断言失败（场景 G4）：UIA 未找到 appearance-color-success" }
+    ($successBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("#ff8800")
+    try { $motionBox.SetFocus() } catch { Invoke-Uia $row } # 移焦触发 LostFocus 落盘
+    Start-Sleep -Seconds 2
+    $appConfigNow = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($appConfigNow.appearance.severityColors.success)" -ne "#ff8800")
+    {
+        throw "断言失败（场景 G4）：config severityColors.success=$($appConfigNow.appearance.severityColors.success)（期望 #ff8800）——改色未落盘"
+    }
+    $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    Save-Zoom $crop "G4-glm-orange-live.png" 6
+    $orange = Count-ColorPixels $crop 255 136 0 45
+    $crop.Dispose()
+    if ($orange -lt 60)
+    {
+        throw "断言失败（场景 G4）：GLM tile 橙色像素 $orange（期望 ≥60）——改色即时生效失效（未重启就应换色）"
+    }
+    Write-Host "场景 G4 通过：设置改成功色 #ff8800 → config 落盘 + GLM tile 即时变橙（$orange px，无重启）"
+    # G5 重置默认一键还原
+    $reset = Find-UiaById $settings "appearance-reset-button" 10
+    if (!$reset) { throw "断言失败（场景 G5）：UIA 未找到 appearance-reset-button" }
+    Invoke-Uia $reset
+    Start-Sleep -Seconds 2
+    $appConfigNow = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    # severityColors 可能整键省略（=null）：@($null).Count 是 1 不是 0，必须先判空
+    $remaining = 0
+    if ($null -ne $appConfigNow.appearance.severityColors)
+    {
+        $remaining = @($appConfigNow.appearance.severityColors.PSObject.Properties).Count
+    }
+    if ($remaining -ne 0)
+    {
+        throw "断言失败（场景 G5）：重置后 severityColors 仍余 $remaining 项——一键还原回归"
+    }
+    $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    $green = Count-ColorPixels $crop 63 185 80 45
+    $crop.Dispose()
+    if ($green -lt 60) { throw "断言失败（场景 G5）：重置后默认绿未回渲染（$green px）" }
+    Write-Host "场景 G5 通过：重置默认 → severityColors 清空 + tile 即时回默认绿（$green px）"
+    # G6 动效档 off + 强度 1.5 落盘
+    Select-ComboItemById $settings $motionBox "motion-off"
+    Start-Sleep -Seconds 2
+    $slider = Find-UiaById $settings "appearance-motion-intensity" 10
+    if (!$slider) { throw "断言失败（场景 G6）：UIA 未找到 appearance-motion-intensity" }
+    ($slider.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)).SetValue(1.5)
+    Start-Sleep -Seconds 2
+    $appConfigNow = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($appConfigNow.appearance.motion.mode)" -ne "off" -or "$($appConfigNow.appearance.motion.intensity)" -ne "1.5")
+    {
+        throw "断言失败（场景 G6）：config motion.mode=$($appConfigNow.appearance.motion.mode) intensity=$($appConfigNow.appearance.motion.intensity)（期望 off/1.5）——动效设置未落盘"
+    }
+    Write-Host "场景 G6 通过：动效档 off + 强度 1.5 落盘"
+    # G6b 重启恢复选中态
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { throw "断言失败（场景 G6b）：重启后设置窗未开" }
+    Start-Sleep -Seconds 8
+    $row = Find-UiaById $settings "module-appearance" 10
+    Invoke-Uia $row
+    Start-Sleep -Seconds 2
+    $motionBox = Find-UiaById $settings "appearance-motion-mode-box" 10
+    if (!$motionBox) { throw "断言失败（场景 G6b）：重启后 motion combo 未找到" }
+    ($motionBox.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+    Start-Sleep -Seconds 1
+    $offItem = Find-UiaById $settings "motion-off" 8
+    if (!$offItem)
+    {
+        # 展开弹层可能是独立 HWND：退回桌面根子树找（同 Select-ComboItemById 口径）
+        $offItem = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "motion-off")))
+    }
+    if (!$offItem) { throw "断言失败（场景 G6b）：重启后 motion-off 选项未找到" }
+    $isSelected = ($offItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Current.IsSelected
+    ($motionBox.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse()
+    if (!$isSelected) { throw "断言失败（场景 G6b）：重启后动效档位未恢复「关闭」选中态——持久化回归" }
+    Write-Host "场景 G6b 通过：重启后动效档位恢复「关闭」选中（UIA IsSelected）"
+    # G7 mock 翻 95% Error：off 档全静止 / full 档呼吸可见 + 两 tile 独立更新
+    Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "error" -Encoding ASCII
+    $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    $glmIndex = -1
+    $dsIndex = -1
+    $deadline = (Get-Date).AddSeconds(75)
+    while ((Get-Date) -lt $deadline)
+    {
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+        $glmIndex = -1
+        $dsIndex = -1
+        for ($i = 0; $i -lt $handles.Count; $i++)
+        {
+            $t = Get-WindowUiaTexts $handles[$i]
+            if (($t | Where-Object { $_ -match '95' })) { $glmIndex = $i }
+            if (($t | Where-Object { $_ -like "*420.5*" })) { $dsIndex = $i }
+        }
+        if ($glmIndex -ge 0) { break }
+        Start-Sleep -Seconds 3
+    }
+    if ($glmIndex -lt 0) { throw "断言失败（场景 G7）：mock 翻档 75s 内 GLM 未变 95%——状态变化未反映到 tile" }
+    if ($dsIndex -lt 0) { throw "断言失败（场景 G7）：DeepSeek tile 420.5 不可辨——翻档后另一 tile 丢失" }
+    Write-Host "场景 G7a 通过：38%→95% 状态变化 ≤1 刷新周期反映到 GLM tile；DeepSeek 420.5 不受影响（两 tile 独立更新）"
+    $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    $red = Count-ColorPixels $crop 248 81 73 45
+    $crop.Dispose()
+    if ($red -lt 60) { throw "断言失败（场景 G7a）：Error 档位色未渲染（红 $red px）" }
+    # off 档静止：三帧差分应≈0
+    $crop1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    Start-Sleep -Milliseconds 900
+    $crop2 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    Start-Sleep -Milliseconds 900
+    $crop3 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    $offDiff = [Math]::Max((Count-FrameDiff $crop1 $crop2 12), [Math]::Max((Count-FrameDiff $crop2 $crop3 12), (Count-FrameDiff $crop1 $crop3 12)))
+    Save-Zoom $crop1 "G7-off-frame1.png" 4
+    Save-Zoom $crop3 "G7-off-frame3.png" 4
+    $crop1.Dispose(); $crop2.Dispose(); $crop3.Dispose()
+    if ($offDiff -gt 12) { throw "断言失败（场景 G7b）：off 档三帧差分 $offDiff px（期望 ≤12）——off 档仍有动画（功耗回归）" }
+    Write-Host "场景 G7b 通过：off 档三帧差分 $offDiff px——全静止"
+    # 切 full 档：呼吸在帧间现形
+    Select-ComboItemById $settings $motionBox "motion-full"
+    Start-Sleep -Seconds 2
+    $crop1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    Start-Sleep -Milliseconds 900
+    $crop2 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    Start-Sleep -Milliseconds 900
+    $crop3 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+    $fullDiff = [Math]::Max((Count-FrameDiff $crop1 $crop2 12), [Math]::Max((Count-FrameDiff $crop2 $crop3 12), (Count-FrameDiff $crop1 $crop3 12)))
+    Save-Zoom $crop1 "G7-full-frame1.png" 4
+    Save-Zoom $crop3 "G7-full-frame3.png" 4
+    $crop1.Dispose(); $crop2.Dispose(); $crop3.Dispose()
+    if ($fullDiff -lt 25) { throw "断言失败（场景 G7c）：full 档三帧差分 $fullDiff px（期望 ≥25）——呼吸灯不可见" }
+    Write-Host "场景 G7c 通过：full 档三帧差分 $fullDiff px——呼吸灯可见（改档即时生效，无重启）"
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Write-Host "场景 G 通过：调色即时生效/落盘/重置/回退 + 动效档持久化/静止呼吸两态"
+}
+catch
+{
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "G-FAIL-unexpected.png"
+    $failures.Add("场景 G：$($_.Exception.Message)")
+    Write-Host "::error::场景 G 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 H：悬浮位置还原 + Alt-Tab/任务栏结构 + 刷新不抢焦点 + panel/floating 二选一（todo 行 39/40/41/44 半项 CI 代验）——
+try
+{
+    Write-HConfig "floating"
+    foreach ($round in @(1, 2))
+    {
+        Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+        Start-Sleep -Seconds 15
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+        if ($handles.Count -lt 2)
+        {
+            Save-FullScreenshot "H-FAIL-tiles.png"
+            throw "断言失败（场景 H${round}）：双 tile 未建窗（$($handles.Count) 个）"
+        }
+        $glmHit = $false
+        $dsHit = $false
+        foreach ($h in $handles)
+        {
+            $r = [WinEnum]::RectOf($h)
+            if ([Math]::Abs($r.Left - 120) -le 4 -and [Math]::Abs($r.Top - 120) -le 4) { $glmHit = $true }
+            if ([Math]::Abs($r.Left - 260) -le 4 -and [Math]::Abs($r.Top - 220) -le 4) { $dsHit = $true }
+            $ex = [WinEnum]::ExStyleOf($h)
+            if (($ex -band 0x80) -eq 0) { throw "断言失败（场景 H${round}）：tile 缺 WS_EX_TOOLWINDOW（会进任务栏/Alt-Tab）" }
+            if (($ex -band 0x40000) -ne 0) { throw "断言失败（场景 H${round}）：tile 带 WS_EX_APPWINDOW（会进任务栏）" }
+        }
+        if (!$glmHit -or !$dsHit)
+        {
+            Save-FullScreenshot "H-FAIL-position.png"
+            throw "断言失败（场景 H${round}）：位置还原失败（GLM@120,120=$glmHit ds@260,220=$dsHit）——FloatingX/Y 启动恢复回归"
+        }
+        Write-Host "场景 H${round} 通过：双 tile 精确落位 120,120 / 260,220；TOOLWINDOW 置位、APPWINDOW 清位"
+        if ($round -eq 1)
+        {
+            # 刷新不抢焦点：38%→95% 翻档期间前台窗不变（NOACTIVATE 语义）
+            Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "error" -Encoding ASCII
+            $fgBefore = [WinEnum]::Foreground()
+            $changed = $false
+            $deadline = (Get-Date).AddSeconds(75)
+            while ((Get-Date) -lt $deadline)
+            {
+                $hit = $false
+                foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+                {
+                    if ((Get-WindowUiaTexts $h) | Where-Object { $_ -match '95' }) { $hit = $true; break }
+                }
+                if ($hit) { $changed = $true; break }
+                Start-Sleep -Seconds 3
+            }
+            Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+            if (!$changed) { throw "断言失败（场景 H1）：翻档 75s 内 tile 未变 95%——状态刷新链失效" }
+            $fgAfter = [WinEnum]::Foreground()
+            if ($fgAfter -ne $fgBefore)
+            {
+                Save-FullScreenshot "H-FAIL-focus-stolen.png"
+                throw "断言失败（场景 H1）：数据刷新改变了前台窗——更新抢焦点回归"
+            }
+            Write-Host "场景 H1 通过：状态刷新到 95% 期间前台窗未被打断（NOACTIVATE 语义）"
+        }
+        Stop-Beacon
+    }
+    Write-Host "场景 H 重启还原通过（两轮落位一致，config→窗口数据链）"
+    # H5 panel/floating 二选一
+    Write-HConfig "panel"
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $panel = [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")
+    $tiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($panel.Count -lt 1)
+    {
+        Save-FullScreenshot "H-FAIL-no-panel.png"
+        throw "断言失败（场景 H5）：panel 模式未见 Beacon Pinned 宿主窗"
+    }
+    if ($tiles.Count -gt 0)
+    {
+        throw "断言失败（场景 H5）：panel 模式残留 $($tiles.Count) 个悬浮 tile 窗——形态互斥回归"
+    }
+    Save-FullScreenshot "H-panel-mode.png"
+    Write-Host "场景 H5 通过：panel 模式宿主在、悬浮 tile 窗零（两形态二选一）"
+    Stop-Beacon
+}
+catch
+{
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "H-FAIL-unexpected.png"
+    $failures.Add("场景 H：$($_.Exception.Message)")
+    Write-Host "::error::场景 H 断言失败：$($_.Exception.Message)"
+}
+
+# —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
+Stop-Beacon
+Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+Stop-MockServer
+
+# —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
+try
+{
+    $setup = Get-ChildItem $env:GITHUB_WORKSPACE -Filter "*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (!$setup)
+    {
+        Write-Host "::warning::工作区未找到 *-setup.exe（visual-evidence 未运行在 Inno 步骤之后的通道）——安装/卸载验证跳过"
+    }
+    else
+    {
+        Write-Host "场景 J：静默安装 $($setup.Name)"
+        $proc = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru -Wait
+        if ($proc.ExitCode -ne 0)
+        {
+            Save-FullScreenshot "J-FAIL-install-exitcode.png"
+            throw "断言失败（场景 J）：静默安装退出码 $($proc.ExitCode)"
+        }
+        $installedExe = Join-Path $env:LOCALAPPDATA "Beacon\Beacon.App.exe"
+        if (!(Test-Path $installedExe))
+        {
+            Save-FullScreenshot "J-FAIL-not-installed.png"
+            throw "断言失败（场景 J）：$installedExe 未产出"
+        }
+        Write-Host "场景 J 安装通过：$installedExe 就位"
+        $unins = Join-Path $env:LOCALAPPDATA "Beacon\unins000.exe"
+        if (!(Test-Path $unins)) { throw "断言失败（场景 J）：卸载器 unins000.exe 缺失" }
+        $proc = Start-Process -FilePath $unins -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru -Wait
+        if ($proc.ExitCode -ne 0)
+        {
+            Save-FullScreenshot "J-FAIL-uninstall-exitcode.png"
+            throw "断言失败（场景 J）：静默卸载退出码 $($proc.ExitCode)"
+        }
+        Start-Sleep -Seconds 3
+        if (Test-Path $installedExe)
+        {
+            Save-FullScreenshot "J-FAIL-not-uninstalled.png"
+            throw "断言失败（场景 J）：卸载后 Beacon.App.exe 仍在——卸载清理回归"
+        }
+        if (Test-Path $configDir)
+        {
+            Write-Host "场景 J 卸载通过：程序文件清空，用户数据 %APPDATA%\Beacon 保留（设计口径：卸载不动用户数据）"
+        }
+        else
+        {
+            Write-Host "::warning::卸载连带清掉了用户数据 %APPDATA%\Beacon——与「数据随用户目录存续」口径不符，记录供裁决"
+        }
+    }
+}
+catch
+{
+    Save-FullScreenshot "J-FAIL-unexpected.png"
+    $failures.Add("场景 J：$($_.Exception.Message)")
+    Write-Host "::error::场景 J 断言失败：$($_.Exception.Message)"
 }
 
 Write-Host "视觉取证完成，产物："
