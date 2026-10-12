@@ -2156,6 +2156,93 @@ catch
     Write-Host "::error::场景 M 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 N：设置改热键 → 落盘 → 重启注册 → 触发（todo 行 18「可在设置改键并持久化」半项 CI 代验）——
+# 设置页无保存按钮，常规项在控件事件时落盘（SaveGeneral）：改热键框后两次切换「开机自启」开关，
+# 借其 Toggled→SaveGeneral 同一落盘链把新热键带出去，净态回 false（不留在自启，供 J 场景）。
+# 改键值 Ctrl+Alt+C：HotkeyService.TryParse 合法（modifiers+单字母），与 K1 的 Ctrl+Alt+B 区分。
+try
+{
+    Write-GConfig "" "off" 1.0 $false
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings)
+    {
+        Save-FullScreenshot "N-FAIL-no-settings.png"
+        throw "断言失败（场景 N）：--settings 启动 30s 内未见「Beacon 设置」窗口"
+    }
+    # 热键输入框：Edit 控件且当前值等于 config 里的 Ctrl+Alt+B（避免误取搜索框/动作框）
+    $edits = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    $hkBox = $null
+    foreach ($e in $edits)
+    {
+        try
+        {
+            $vp = $e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+            if ($vp.Current.Value -eq "Ctrl+Alt+B") { $hkBox = $e; break }
+        }
+        catch { }
+    }
+    if (!$hkBox)
+    {
+        Save-FullScreenshot "N-FAIL-no-hotkey-edit.png"
+        throw "断言失败（场景 N）：设置页未找到值为 Ctrl+Alt+B 的热键输入框"
+    }
+    $toggle = $settings.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "startup-toggle")))
+    if (!$toggle) { throw "断言失败（场景 N）：设置页未找到 startup-toggle（开关驱动落盘链）" }
+    $tg = $toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+    $hkValue = $hkBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+    $tg.Toggle()
+    Start-Sleep -Milliseconds 500
+    $hkValue.SetValue("Ctrl+Alt+C")
+    $tg.Toggle() # 新热键与开关同一次 SaveGeneral 落盘
+    Start-Sleep -Seconds 2
+    $cfgN = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($cfgN.hotkey)" -ne "Ctrl+Alt+C")
+    {
+        Save-FullScreenshot "N-FAIL-hotkey-not-saved.png"
+        throw "断言失败（场景 N1）：设置改键后 config.json hotkey=$($cfgN.hotkey)（期望 Ctrl+Alt+C）——改键未落盘"
+    }
+    if ("$($cfgN.launchOnStartup)" -ne "False")
+    {
+        throw "断言失败（场景 N1）：开关两次切换后 launchOnStartup=$($cfgN.launchOnStartup)（期望 False）——落盘链状态错乱"
+    }
+    Write-Host "场景 N1 通过：设置改键 Ctrl+Alt+B→Ctrl+Alt+C 落盘，开关双切净态 False"
+    Stop-Beacon
+    # 重启：读新配置 → 注册无失败日志 → 触发链仍通（与 K1 同入口）
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 12
+    $logN = Get-TodayLog
+    if ($logN -match 'RegisterHotKey.*failed') { throw "断言失败（场景 N2）：重启后新热键 Ctrl+Alt+C 注册失败（冲突/解析）" }
+    if ($logN -match 'Invalid hotkey string') { throw "断言失败（场景 N2）：重启后新热键字符串解析失败" }
+    Write-Host "场景 N2 通过：重启后新热键注册无失败日志（重绑定生效）"
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 N3）：托盘消息窗未找到" }
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY
+    $panelN = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $hs = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($hs.Count -ge 1) { $panelN = $hs[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panelN -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "N-FAIL-no-panel.png"
+        throw "断言失败（场景 N3）：重启后热键触发链失效——面板未出现"
+    }
+    Write-Host "场景 N3 通过：重启后新热键触发链可用（面板出现）"
+    Stop-Beacon
+    Write-Host "场景 N 通过：设置改键 → 落盘 → 重启注册 → 触发 全链"
+}
+catch
+{
+    Save-FullScreenshot "N-FAIL-unexpected.png"
+    $failures.Add("场景 N：$($_.Exception.Message)")
+    Write-Host "::error::场景 N 断言失败：$($_.Exception.Message)"
+}
+
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
 Stop-Beacon
 Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
