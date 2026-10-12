@@ -135,6 +135,23 @@ public static class WinEnum
     public static void Post(IntPtr h, uint msg, IntPtr w, IntPtr l) { PostMessageW(h, msg, w, l); }
     public static void SetCursor(int x, int y) { SetCursorPos(x, y); } // SetCursorPos import 复用第 69 行（拖拽批既有）
     public static void BringToFront(IntPtr h) { SetForegroundWindow(h); } // SetForegroundWindow 为 private import，PS 侧须经公开包装
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint a, uint b, bool attach);
+    // PS 进程自身不是前台时 BringToFront 对任意窗口都静默失败（前台授予要求调用方即前台进程，
+    // 38261911354 E2/E3 实证：BringToFront 后菜单仍不弹）。AttachThreadInput 挂到当前前台线程
+    // 共享前台权后再切，是无输入注入依赖的经典取前台手法（键盘注入在本 CI 会话不可达，K1 实证）。
+    public static void ForceForeground(IntPtr h)
+    {
+        var fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero || fg == h) { SetForegroundWindow(h); return; }
+        uint fgPid;
+        var fgThread = GetWindowThreadProcessId(fg, out fgPid);
+        var myThread = GetCurrentThreadId();
+        if (fgThread == myThread) { SetForegroundWindow(h); return; }
+        var attached = AttachThreadInput(myThread, fgThread, true);
+        try { SetForegroundWindow(h); }
+        finally { if (attached) { AttachThreadInput(myThread, fgThread, false); } }
+    }
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     public static uint PidOf(IntPtr h) { uint pid; GetWindowThreadProcessId(h, out pid); return pid; }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, StringBuilder s, int n);
@@ -472,14 +489,15 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
         $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") # 托盘消息窗是 message-only（HWND_MESSAGE），FindWindowW 搜顶层搜不到（38254521518 实证）
     }
     if ($msgWindow -eq [IntPtr]::Zero) { throw "未找到 BeaconMessageWindow（托盘消息窗，托盘未初始化？）" }
-    # TrackPopupMenu 需要 owner 进程在前台（否则菜单不显示，38256993295 实证）：先把 Beacon 的
-    # tile 置前台（WS_EX_NOACTIVATE 不拦程序性前台切换），让 app 内部对消息窗的
-    # SetForegroundWindow 成为同进程合法切换
+    # TrackPopupMenu 需要 owner 线程在前台（否则菜单不显示，38256993295/38261911354 实证）：
+    # PS 自身非前台时 BringToFront 静默失败（前台授予要求调用方即前台进程），改走
+    # AttachThreadInput 共享前台权（ForceForeground）。app 内部 SetForegroundWindow(消息窗)
+    # 本就必败（message-only 窗不可前台），菜单显示只依赖调用线程的前台归属。
     $fgFeed = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
     if ($fgFeed.Count -eq 0) { $fgFeed = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板") }
     if ($fgFeed.Count -gt 0)
     {
-        [WinEnum]::BringToFront($fgFeed[0])
+        [WinEnum]::ForceForeground($fgFeed[0])
         Start-Sleep -Milliseconds 300
     }
     [WinEnum]::SetCursor(300, 300) # 菜单弹在光标处，避开右上角 tile 级联区
@@ -1372,9 +1390,12 @@ try
     $dsCrop = New-Crop ([WinEnum]::RectOf($handles[$dsIndex])) 0
     $dsMagenta = Count-ColorPixels $dsCrop 255 0 255 60
     $dsCrop.Dispose()
-    if ($glmMagenta -lt 12)
+    # 阈值依据（38261911354 工件实测）：8DIP 状态灯同一几何，逐实例亚像素渲染位置不同 →
+    # 匹配像素漂移：品红 tol60 两次实测 44/24，绿 tol45 五实例底 10、另三轮 44；tol45=tol60
+    # （tol90 起误吞 icon 灰）。失效模式（覆盖未生效）=0 px。阈值取实测底之下 → 8。
+    if ($glmMagenta -lt 8)
     {
-        throw "断言失败（场景 G1）：GLM tile 品红覆盖像素 $glmMagenta（期望 ≥12）——colorOverride 未生效"
+        throw "断言失败（场景 G1）：GLM tile 品红覆盖像素 $glmMagenta（期望 ≥8）——colorOverride 未生效"
     }
     if ($dsMagenta -gt 4)
     {
@@ -1405,8 +1426,10 @@ try
         $green = Count-ColorPixels $crop 63 185 80 45
         $crop.Dispose()
         if ($magenta -gt 4) { throw "断言失败（场景 G2 第${round}轮）：非法值被当色渲染（品红 $magenta px）——回退失效" }
-        # 38% 填充下成功色实测约 44px（状态灯+条带，38254521518 首跑实测）；阈值 25 留双向余量
-        if ($green -lt 25) { throw "断言失败（场景 G2 第${round}轮）：默认成功绿未渲染（$green px）——回退后渲染缺失" }
+        # 实测口径修正（38261911354 工件逐像素取证）：GLM tile 无进度条（state.Progress 为空，
+        # bar 收起）——绿像素全部来自 8DIP 状态灯本体；同 Ø8 灯因亚像素位置不同实测 10~44 px
+        # （D 场景五实例 10、G2 三轮 44）。失效模式（回退后渲染缺失）=0 px → 阈值 8（实测底之下）。
+        if ($green -lt 8) { throw "断言失败（场景 G2 第${round}轮）：默认成功绿未渲染（$green px）——回退后渲染缺失" }
         Stop-Beacon
         Write-Host "场景 G2 第${round}轮通过：非法色回退默认绿（品红 $magenta / 绿 $green px），进程存活"
     }
@@ -1455,14 +1478,19 @@ try
         $orange = Count-ColorPixels $crop 255 136 0 45
         if ($orangeCrop) { $orangeCrop.Dispose() }
         $orangeCrop = $crop
-        if ($orange -ge 25) { break }
+        if ($orange -ge 8) { break }
         Start-Sleep -Seconds 3
     }
     Save-Zoom $orangeCrop "G4-glm-orange-live.png" 6
     $orangeCrop.Dispose()
-    if ($orange -lt 25)
+    # 阈值依据（38261911354 工件逐像素取证，修正 3be02b6 的「呼吸调光」误诊）：
+    # G4 两次 CI 实测橙 24/24 px，均 = Ø8 灯在半像素偏移下的正常渲染（精确核 16 + 0.89 覆盖率
+    # 均匀边缘环 8；呼吸灯只存在于 full 档，reduced/off 根本不启动——绿同灯三轮实测 44、
+    # D 场景五实例 10，纯亚像素几何差异，与动效/调光无关）。改色未生效的失效模式 = 0 px 橙。
+    # 阈值取实测底（10）之下、0 之上 → 8；轮询保留作渲染 tick 兜底。
+    if ($orange -lt 8)
     {
-        throw "断言失败（场景 G4）：20s 内 GLM tile 橙色像素 $orange（期望 ≥25）——改色后渲染链未用新色（palette 渲染时读 config 失效）"
+        throw "断言失败（场景 G4）：20s 内 GLM tile 橙色像素 $orange（期望 ≥8）——改色后渲染链未用新色（palette 渲染时读 config 失效）"
     }
     Write-Host "场景 G4 通过：设置改成功色 #ff8800 → config 落盘 + GLM tile 下一渲染 tick 换橙（$orange px，无重启）"
     # G5 重置默认一键还原
@@ -1489,10 +1517,11 @@ try
         $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
         $green = Count-ColorPixels $crop 63 185 80 45
         $crop.Dispose()
-        if ($green -ge 25) { break }
+        if ($green -ge 8) { break }
         Start-Sleep -Seconds 3
     }
-    if ($green -lt 25) { throw "断言失败（场景 G5）：20s 内重置默认绿未回渲染（$green px，期望 ≥25）" }
+    # 同 G2/G4 阈值依据：同 Ø8 灯亚像素实测 10~44 px，失效模式（重置未回渲染）=0 px → 8
+    if ($green -lt 8) { throw "断言失败（场景 G5）：20s 内重置默认绿未回渲染（$green px，期望 ≥8）" }
     Write-Host "场景 G5 通过：重置默认 → severityColors 清空 + tile 回默认绿（$green px）"
     # G6 动效档 off + 强度 1.5 落盘
     Select-ComboItemById $settings $motionBox "motion-off"
@@ -1559,8 +1588,10 @@ try
     $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
     $red = Count-ColorPixels $crop 248 81 73 45
     $crop.Dispose()
-    # 95% 填充 Error 色约为 38% 填充的 2.5 倍（首跑 38% 绿 44px 外推 ~92px），阈值 40 留余量
-    if ($red -lt 40) { throw "断言失败（场景 G7a）：Error 档位色未渲染（红 $red px，期望 ≥40）" }
+    # 阈值依据（同 G2/G4 逐像素取证口径）：GLM tile 无进度条，红像素全部来自 8DIP 状态灯，
+    # 亚像素位置不同实测区间 10~44 px（「95% 填充 2.5 倍外推 ~92px」系条带误设——G2 绿
+    # bbox 8×8 实证无条带）。G7 尚未在 CI 完整跑过（此前 G2/G4 先红），先按实测底标定 → 8。
+    if ($red -lt 8) { throw "断言失败（场景 G7a）：Error 档位色未渲染（红 $red px，期望 ≥8）" }
     # off 档静止：三帧差分应≈0
     $crop1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
     Start-Sleep -Milliseconds 900
@@ -1775,9 +1806,9 @@ try
         throw "断言失败（场景 K2）：断网打开面板无缓存读数（白屏回归）；实际文本：$($panelTexts -join ' | ')"
     }
     Write-Host "场景 K2 通过：断网打开面板显示缓存数据（缓存优先）"
-    # K3 Esc 键盘关闭（先 BringToFront 保证键盘焦点在面板）；键盘注入不可达时降级 warning
+    # K3 Esc 键盘关闭（先 ForceForeground 保证键盘焦点在面板）；键盘注入不可达时降级 warning
     # 并用二次热键 toggle 硬断言「面板可关」（Esc 半转装机）
-    [WinEnum]::BringToFront($panel)
+    [WinEnum]::ForceForeground($panel)
     Start-Sleep -Milliseconds 400
     [WinEnum]::SendVirtualKey(0x1B) # VK_ESCAPE
     $closed = $false
