@@ -68,7 +68,7 @@ Beacon.Core/
 │   ├── IClock.cs                      # 注入时钟，供退避/冷却单测
 │   ├── IEventBus.cs
 │   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）+ 记录落盘抽象 INotificationRecordStore
-├── Services/                           # 18 文件
+├── Services/                           # 19 文件
 │   ├── EventBus.cs                    # 线程安全的进程内发布/订阅
 │   ├── RefreshScheduler.cs            # (connection,tier,间隔覆盖) 合并轮询 + 抖动 + 退避
 │   ├── StatusAggregator.cs            # WidgetState* → 总体 Severity + 计数
@@ -83,7 +83,8 @@ Beacon.Core/
 │   ├── QuickPanelSections.cs          # L2 面板三分区判定（Warning+/过期/断连 → NEEDS ATTENTION，纯函数供单测）
 │   ├── DpiLayoutMath.cs               # DIP↔物理像素唯一换算口径（AppWindow 只认物理像素）
 │   ├── ContrastMath.cs                # WCAG 2.x 对比度数学（纯函数，Linux 门禁可测）
-│   └── HighContrastPalette.cs         # 高对比调色板（WCAG AA 4.5:1，配对经 Core.Tests 断言）
+│   ├── HighContrastPalette.cs         # 高对比调色板（WCAG AA 4.5:1，配对经 Core.Tests 断言）
+│   └── UpdateCheck.cs                 # 版本解析/比较/判定 + GitHub tag_name 提取（纯函数，Linux 门禁可测；App 侧只做网络与 UI）
 ├── Events/
 │   └── Events.cs                      # WidgetStateChanged / AggregateStatusChanged 等事件
 └── Json/
@@ -181,8 +182,9 @@ Beacon.App/
 │   ├── MonitorService.cs              # 显示器枚举/工作区/按像素定位（多屏）
 │   ├── NativeMethods.cs               # P/Invoke（NOTIFYICONDATA、窗口扩展样式、DPI、热键）
 │   └── Win32MessageWindow.cs          # 自驻留消息窗（托盘/热键/单实例事件回调）
-├── Services/                          # 14 文件
+├── Services/                          # 15 文件
 │   ├── BeaconRuntime.cs               # 运行时装配：Provider 解析器、调度、聚合、启停联动
+│   ├── UpdateCheckService.cs          # 检查更新（B-806）：GitHub releases/latest，10s 超时 + 进程内缓存 + 失败降级不抛异常
 │   ├── TrayIconService.cs             # Win32 Shell_NotifyIcon 自实现：菜单、按配置色着色、气泡
 │   ├── ToastNotificationService.cs    # Microsoft.Toolkit.Uwp.Notifications（Compat 激活路由、深链 L3）
 │   ├── TopmostGuard.cs                # 置顶哨兵（Watch 单窗 / WatchAll 动态窗集）
@@ -211,7 +213,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 910 个测试（Connections 575 / Core 277 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 958 个测试（Connections 575 / Core 325 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

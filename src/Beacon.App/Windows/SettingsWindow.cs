@@ -594,41 +594,87 @@ internal sealed class SettingsWindow : Window
         return page;
     }
 
-    /// <summary>「关于」（master-plan §10）：版本行 + 开源许可证 + 项目主页/检查更新入口——
-    /// §10 审计补记（2026-10-11）明确后两项未做，2026-10-12 巡检补齐。更新口径 = nightly 滚动 tag
-    /// （README 下载节同源）：不查正式版、不自动装，打开下载页人工覆盖；升级后需托盘 Exit 重启。</summary>
+    /// <summary>「关于」（master-plan §10）：版本行 + 检查更新（B-806 真比较）+ 开源许可证 + 项目主页。
+    /// 三行口径：当前版本 / 远程最新版本 / 检查结果（+ 最后检查时间）。启动约 20 秒自检一次并缓存
+    /// （GitHub 未认证 60 次/小时/IP），手动按钮强刷；失败一律「无法检查更新 + 时间」，不弹异常框。</summary>
     private UIElement BuildAboutSection()
     {
         var panel = new StackPanel { Spacing = 6 };
-        var informational = System.Reflection.Assembly.GetEntryAssembly()
-            ?.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+        var informational = Assembly.GetEntryAssembly()
+            ?.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
-        var text = string.IsNullOrEmpty(informational) ? "0.1.0（本地构建）" : informational;
         panel.Children.Add(new TextBlock
         {
-            Text = $"Beacon 版本：{text}",
+            Text = $"Beacon 版本：{string.IsNullOrEmpty(informational) ? UpdateCheckService.LocalVersion() : informational}",
             FontSize = 11,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
         });
-        panel.Children.Add(new TextBlock
+        var remoteText = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
+        var verdictText = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
+        var checkedText = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
+        panel.Children.Add(remoteText);
+        panel.Children.Add(verdictText);
+        panel.Children.Add(checkedText);
+
+        var downloadButton = AboutLinkButton("打开下载页", UpdateCheckService.DownloadPage);
+        downloadButton.Visibility = Visibility.Collapsed;
+
+        var checkButton = new Button { Content = "检查更新", HorizontalAlignment = HorizontalAlignment.Left };
+        checkButton.Click += async (_, _) =>
         {
-            Text = "开源许可证：Apache License 2.0（见仓库 LICENSE）",
-            FontSize = 11,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
-        });
+            checkButton.IsEnabled = false;
+            checkButton.Content = "检查中…";
+            try
+            {
+                Render(await _runtime.UpdateCheck.CheckAsync(force: true));
+            }
+            finally
+            {
+                checkButton.IsEnabled = true;
+                checkButton.Content = "检查更新";
+            }
+        };
 
         var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        links.Children.Add(checkButton);
+        links.Children.Add(downloadButton);
         links.Children.Add(AboutLinkButton("项目主页", "https://github.com/cuihairu/beacon"));
-        links.Children.Add(AboutLinkButton("检查更新", "https://github.com/cuihairu/beacon/releases/tag/nightly"));
         panel.Children.Add(links);
 
         panel.Children.Add(new TextBlock
         {
-            Text = "更新走 nightly 滚动构建（每日自动，无正式版本发布）；「检查更新」打开 nightly 下载页，覆盖安装后托盘 Exit 重启生效（单实例常驻）。",
+            Text = "检查更新走 GitHub Releases：仅正式发布参与比较（nightly 预发布不参与；每日构建日期版本恒视为已最新）。"
+                + "启动约 20 秒后自动查一次并缓存，结果仅供提示、不自动安装；升级 = 下载覆盖安装后托盘 Exit 重启（单实例常驻）。",
             FontSize = 11,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             TextWrapping = TextWrapping.Wrap,
         });
+
+        // 构建即渲染缓存（启动自检若已完成，打开设置直接看到结论）。
+        void Render(UpdateCheckOutcome? outcome)
+        {
+            if (outcome is null)
+            {
+                remoteText.Text = "远程最新版本：—（未检查）";
+                verdictText.Text = "检查结果：未检查（启动约 20 秒后自动查一次，也可手动）";
+                checkedText.Text = "最后检查：—";
+                downloadButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+            remoteText.Text = $"远程最新版本：{outcome.RemoteTag ?? "—"}";
+            checkedText.Text = $"最后检查：{outcome.CheckedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture)}";
+            verdictText.Text = outcome switch
+            {
+                { NetworkFailure: true } => $"检查结果：无法检查更新（{outcome.CheckedAt:HH:mm}）",
+                { Verdict: UpdateCheck.Verdict.UpToDate } => "检查结果：已是最新",
+                { Verdict: UpdateCheck.Verdict.UpdateAvailable } => $"检查结果：有新版本 {outcome.RemoteTag}",
+                _ => "检查结果：无法比较版本号",
+            };
+            downloadButton.Visibility = outcome.Verdict == UpdateCheck.Verdict.UpdateAvailable
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        Render(_runtime.UpdateCheck.Last);
         return panel;
     }
 

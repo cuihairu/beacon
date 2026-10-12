@@ -6,10 +6,11 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <RootNamespace>Beacon.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- B-804：程序集/文件版本（Explorer 属性页与卸载项展示用）；nightly 滚动构建不升版本号 -->
-    <Version>0.1.0</Version>
-    <FileVersion>0.1.0.0</FileVersion>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <!-- B-804/B-806：版本唯一权威基准（InformationalVersion 由它派生，关于页读这里）。
+         对齐仓库最新正式发布 v0.1.2；nightly 滚动构建由 daily-build 在发布时注入日期版本，不在此处维护。 -->
+    <Version>0.1.2</Version>
+    <FileVersion>0.1.2.0</FileVersion>
+    <AssemblyVersion>0.1.2.0</AssemblyVersion>
     <!-- exe 图标（Explorer/快捷方式/标题栏）；托盘图标另由 TrayIconService 按状态运行时绘制 -->
     <ApplicationIcon>Assets\beacon.ico</ApplicationIcon>
     <UseWinUI>true</UseWinUI>

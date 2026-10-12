@@ -36,6 +36,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
     public IReadOnlyDictionary<string, IConnectionProvider> ConnectionProviders { get; }
     /// <summary>诊断日志（文件通道，%APPDATA%\Beacon\logs）——UI 层（设置/面板）逐跳打点共用。</summary>
     public ILogger? Logger { get; }
+    /// <summary>检查更新服务（B-806）：GitHub releases/latest 与本地版本比较，进程内缓存结果。</summary>
+    public UpdateCheckService UpdateCheck { get; }
 
     /// <summary>
     /// DSL 声明动作（positioning §6，批3-补42）：配置里带 dsl_path 的连接 → YAML actions，
@@ -81,6 +83,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
         ActionRunner actions,
         DpapiSecretStore secrets,
         IReadOnlyDictionary<string, IConnectionProvider> connectionProviders,
+        UpdateCheckService updateCheck,
         ILogger? logger = null)
     {
         Bus = bus;
@@ -94,6 +97,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
         Actions = actions;
         Secrets = secrets;
         ConnectionProviders = connectionProviders;
+        UpdateCheck = updateCheck;
         Logger = logger;
     }
 
@@ -195,7 +199,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["herald"] = new HeraldConnectionProvider(),
         };
 
-        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders, logger);
+        return new BeaconRuntime(bus, config, cache, resolver, scheduler, host, aggregator, notifications, actions, secrets, connectionProviders, new UpdateCheckService(logger), logger);
     }
 
     /// <summary>手动全量刷新（托盘 Refresh All）：逐 Widget 立即拉取，随后组循环恢复常规节奏。</summary>

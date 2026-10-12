@@ -347,6 +347,21 @@ public partial class App : Application
         }
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");
+
+        // B-806：启动后延迟自检一次（GitHub 未认证 60 次/小时/IP，不做得更勤；
+        // 结果缓存进程生命周期，手动「检查更新」强刷；手动先查过 → 缓存命中不再打网络）
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(20));
+                await runtime.UpdateCheck.CheckAsync(force: false);
+            }
+            catch (Exception autoCheckFailure)
+            {
+                _logger.LogWarning(autoCheckFailure, "启动自检更新失败（已降级，不影响主流程）");
+            }
+        });
     }
 
     /// <summary>
