@@ -471,6 +471,16 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
         $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") # 托盘消息窗是 message-only（HWND_MESSAGE），FindWindowW 搜顶层搜不到（38254521518 实证）
     }
     if ($msgWindow -eq [IntPtr]::Zero) { throw "未找到 BeaconMessageWindow（托盘消息窗，托盘未初始化？）" }
+    # TrackPopupMenu 需要 owner 进程在前台（否则菜单不显示，38256993295 实证）：先把 Beacon 的
+    # tile 置前台（WS_EX_NOACTIVATE 不拦程序性前台切换），让 app 内部对消息窗的
+    # SetForegroundWindow 成为同进程合法切换
+    $fgFeed = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($fgFeed.Count -eq 0) { $fgFeed = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板") }
+    if ($fgFeed.Count -gt 0)
+    {
+        [WinEnum]::SetForegroundWindow($fgFeed[0])
+        Start-Sleep -Milliseconds 300
+    }
     [WinEnum]::SetCursor(300, 300) # 菜单弹在光标处，避开右上角 tile 级联区
     Start-Sleep -Milliseconds 200
     [WinEnum]::Post($msgWindow, 0x8100, [IntPtr]1, [IntPtr]0x0202) # WM_APP_TRAYICON=0x8100, IconId=1, WM_RBUTTONUP=0x0202
@@ -505,7 +515,8 @@ function Write-GConfig([string] $glmColorOverride = "")
   "numericFloatingEnabled": true,
   "numericFloatingResetDone": true,
   "showCapsule": false,
-  "settingsSidebarWidth": 400
+  "settingsSidebarWidth": 400,
+  "appearance": { "motion": { "mode": "off", "intensity": 1.0 } }
 }
 '@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     @'
@@ -1272,6 +1283,27 @@ try
         throw "断言失败（场景 F3）：断网期间 Beacon 进程弹出 $($dialogs.Count) 个对话框窗——降级弹窗回归"
     }
     Write-Host "场景 F1-F3 通过：无网启动有窗有数据、Last update 标注在案、零弹窗"
+    # F5 断网降级通知：connection-degraded 规则（severity ≥ Warning，冷却去重）——
+    # 记录应在断网窗口内落盘（缓存命中路径 severity 抬 Warning 后开火）
+    $notifPath = Join-Path $configDir "notifications.json"
+    $mine = @()
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (Test-Path $notifPath)
+        {
+            $records = @(Get-Content $notifPath -Raw | ConvertFrom-Json)
+            $mine = @($records | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
+            if ($mine.Count -ge 1) { break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    if ($mine.Count -ne 1)
+    {
+        Save-FullScreenshot "F-FAIL-notifications.png"
+        throw "断言失败（场景 F5）：断网窗口内 GLM 降级通知记录 $($mine.Count) 条（期望恰 1，冷却去重）——规则未开火或重复投递"
+    }
+    Write-Host "场景 F5 通过：断网降级通知恰 1 条（connection-degraded 冷却去重）；Toast 呈现面转装机"
     # F4 恢复自愈：mock 回来 ≤150s 内百分比读数重现（自动刷新闭环，无重启无人工；
     # 断网期失败刷新会累积 backoff——15s 基数 ×10 封顶 150s，宽限取满，成功即提前退出）
     Start-MockServer
@@ -1297,27 +1329,6 @@ try
     {
         throw "断言失败（场景 F5b）：恢复后 GLM 通知记录 $($mine.Count) 条（期望仍 1）——健康状态误报"
     }
-    # F5 断网降级通知：connection-degraded 规则（severity ≥ Warning，冷却去重）——
-    # 记录应在断网窗口内落盘（缓存命中路径 severity 抬 Warning 后开火）
-    $notifPath = Join-Path $configDir "notifications.json"
-    $mine = @()
-    $deadline = (Get-Date).AddSeconds(60)
-    while ((Get-Date) -lt $deadline)
-    {
-        if (Test-Path $notifPath)
-        {
-            $records = @(Get-Content $notifPath -Raw | ConvertFrom-Json)
-            $mine = @($records | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
-            if ($mine.Count -ge 1) { break }
-        }
-        Start-Sleep -Seconds 3
-    }
-    if ($mine.Count -ne 1)
-    {
-        Save-FullScreenshot "F-FAIL-notifications.png"
-        throw "断言失败（场景 F5）：断网窗口内 GLM 降级通知记录 $($mine.Count) 条（期望恰 1，冷却去重）——规则未开火或重复投递"
-    }
-    Write-Host "场景 F5 通过：断网降级通知恰 1 条（connection-degraded 冷却去重）；Toast 呈现面转装机"
 }
 catch
 {
