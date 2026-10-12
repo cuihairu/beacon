@@ -292,7 +292,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] 计数/事件与状态一致；右键 Pin 落库（本阶段无 UI 效果）
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-    - 计数半已由场景 O CI 代验（2026-10-13 run 38299509997：面板摘要/chip 三态往返与 Widget 状态一致）；Recent 事件流一致与右键 Pin 交互仍待装机。
+    - 计数半已由场景 O CI 代验（2026-10-13 run 38299509997：面板摘要/chip 三态往返与 Widget 状态一致）。
+    - Recent 事件流一致半已由场景 S CI 代验（2026-10-13 run 38315240633：x:Name→AutomationId 结构化树遍历分行取证——RecentList 事件行随状态翻转（95% 行新于 38% 行）、AttentionList 同现同摘要（两区同源）、恢复后状态区摘除而事件流保留（当前 vs 历史））。随行修复：OnStateChanged 原不重建状态区（唯一触发点 OnWidgetsInvalidated），面板常驻期间「需要关注」恒为开面板前旧影——已补现场重建。
+    - 右键 Pin 交互仍待装机（ContextFlyout 需真实右键，无 UIA 入口）。
 
 ### B-603 Detail Window（L3）
 - **依赖**：B-601、B-401
@@ -300,6 +302,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**：
   - [ ] 从 L2 事件一键打开对应详情；[Retry] 全链路可用
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - 2026-10-13 复核挂起条件未变：L3 开启唯一入口=ItemClick（DetailRequested 全仓唯一订阅在 App.xaml.cs，OnStateItemClick/OnRecentItemClick 均 ItemClick 驱动），UIA 无法可靠触发 ItemClick（WinUI ListViewItem 只暴露 SelectionItem/ScrollItem pattern）；L3 内部 Retry Failed Jobs/Cancel Run/Open 均 Button（Name 可 UIA InvokePattern）——缺的条件=无点击的 L3 开启面，补键盘/UIA 可达入口后即可整链转化。
 
 ---
 
