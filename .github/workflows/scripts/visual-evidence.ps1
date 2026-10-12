@@ -471,6 +471,12 @@ function Get-TodayLog
     return (Get-Content $logPath -Raw -Encoding UTF8)
 }
 
+# HKCU Run\Beacon 自启值（键/值缺失或读失败 → $null；场景 M 开机自启注册表对齐断言）
+function Get-BeaconRunValue
+{
+    try { return (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'Beacon' -ErrorAction Stop).Beacon } catch { return $null }
+}
+
 # 合成托盘右键菜单驱动：直发托盘回调消息（WM_APP_TRAYICON, IconId=1, WM_RBUTTONUP）绕过真实图标点击，
 # TrackPopupMenu 原生菜单（#32768）在应用消息线程模态弹出后键盘导航（DOWN×n + RETURN）选中。
 # 返回 $false = 菜单未弹出（调用方按降级口径处理，参考分隔条拖拽先例）。
@@ -521,7 +527,7 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
 }
 
 # G 场景配置：GLM（bigmodel 38% 健康）+ DeepSeek（420.5）双 tile；GLM 可带 colorOverride（合法/非法两态）
-function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0)
+function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0, [bool] $launchOnStartup = $false)
 {
     Stop-Beacon
     $appearance = '"appearance": { "motion": { "mode": "' + $motionMode + '", "intensity": ' + $motionIntensity + ' } }'
@@ -529,7 +535,7 @@ function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "
 {
   "configVersion": 1,
   "hotkey": "Ctrl+Alt+B",
-  "launchOnStartup": false,
+  "launchOnStartup": __STARTUP__,
   "theme": "dark",
   "pinDisplayMode": "floating",
   "numericFloatingEnabled": true,
@@ -538,7 +544,7 @@ function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "
   "settingsSidebarWidth": 400,
   __APPEARANCE__
 }
-'@.Replace("__APPEARANCE__", $appearance) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+'@.Replace("__STARTUP__", $launchOnStartup.ToString().ToLowerInvariant()).Replace("__APPEARANCE__", $appearance) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     @'
 [
   { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
@@ -2112,6 +2118,42 @@ catch
     Save-FullScreenshot "L-FAIL-unexpected.png"
     $failures.Add("场景 L：$($_.Exception.Message)")
     Write-Host "::error::场景 L 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 M：开机自启注册表对齐（todo 行 6「开关即时生效」的开机自启注册表半项 CI 代验）——
+# App 启动即 StartupService.SyncWith(config.launchOnStartup) 对齐 HKCU Run\Beacon：
+# true → 写入且指向 Beacon.App.exe；false → 清值。OS 重启生效半仍需装机。
+try
+{
+    Write-GConfig "" "off" 1.0 $true
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 12
+    $runVal = Get-BeaconRunValue
+    if ([string]::IsNullOrWhiteSpace($runVal) -or $runVal -notmatch 'Beacon\.App\.exe')
+    {
+        Save-FullScreenshot "M-FAIL-runkey-absent.png"
+        throw "断言失败（场景 M1）：launchOnStartup=true 启动后 HKCU Run\Beacon 未写入（值：'$runVal'）——开机自启注册表对齐回归"
+    }
+    Write-Host "场景 M1 通过：HKCU Run\Beacon = $runVal"
+    Stop-Beacon
+    Write-GConfig "" "off" 1.0 $false
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 12
+    $runVal2 = Get-BeaconRunValue
+    if (-not [string]::IsNullOrWhiteSpace($runVal2))
+    {
+        Save-FullScreenshot "M-FAIL-runkey-left.png"
+        throw "断言失败（场景 M2）：launchOnStartup=false 启动后 HKCU Run\Beacon 仍在（'$runVal2'）——SyncWith 未清值"
+    }
+    Write-Host "场景 M2 通过：launchOnStartup=false 后 Run\Beacon 已清"
+    Stop-Beacon
+    Write-Host "场景 M 通过：开机自启注册表随配置双向对齐（写入/清值）"
+}
+catch
+{
+    Save-FullScreenshot "M-FAIL-unexpected.png"
+    $failures.Add("场景 M：$($_.Exception.Message)")
+    Write-Host "::error::场景 M 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——

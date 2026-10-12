@@ -368,8 +368,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-701、B-706
 - **内容**（RFC §6.2.8）：Composition 属性动画五族——状态变色交叉过渡（~200ms×intensity）、提醒闪烁（状态变化后短促 2 次）、呼吸灯（full 档常驻）、Critical 脉冲（reduced 档默认，≤1Hz×intensity）、tile 滑入；`motion.mode=full/reduced/off` 三档 + `intensity` 0.5–2.0；窗口不可见/收起态暂停动画循环；动画只作用于对应 tile 视觉层不重建整窗。
 - **验收**：
-  - [ ] Success→Error 状态变化有平滑变色过渡（reduced 档）
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+  - [x] Success→Error 状态变化有平滑变色过渡（reduced 档）
+    - CI 代验（2026-10-13，run 38284623093，场景 L）：三轮翻档连拍均取到渐入中间态帧（与两端差分 ≥8px）；同色 tick 不闪灯（L1 连拍灯恒在）。渐入观感最终裁量仍可装机复核。
   - [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
   - [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）
