@@ -56,6 +56,6 @@
 3. ✅ M2 Core 内核（刷新调度 / 状态聚合 / 缓存 / 事件总线）
 4. ✅ M3 GitHub 闭环（PR / Actions Provider，ETag + 限额感知）
 5. ✅ M4 通知与面板（Action 执行器 / Toast / 通知中心 / 托盘着色）
-6. 🔨 M5 L0 悬浮组件 + Quick Panel = MVP（代码级完成；余 [B-803 真机走查](docs/acceptance-B803-e2e-walkthrough.md) + B-804 干净 VM 验收，待 Windows 机器执行）
+6. 🔨 M5 L0 悬浮组件 + Quick Panel = MVP（代码级完成；余 [装机验收执行清单 70 条](docs/acceptance-checklist.md)——每条含前置条件/验证步骤/预期结果，含 B-803 真机走查与 B-804 干净 VM 验收，待 Windows 机器执行）
 
 > 构建要求：Windows + .NET 10 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。
