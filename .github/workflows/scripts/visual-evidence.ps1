@@ -791,6 +791,26 @@ function Get-WindowUiaTexts([IntPtr] $handle)
     return $texts
 }
 
+# 结构化树遍历：按 x:Name→AutomationId 锚定单个列表，只收其子树行文本（滤除纯 HH:mm:ss 时间串）
+# ——事件行与状态行同出 MakeStateRow（点+时间+摘要），平铺 Name 列表分不开两区；场景 S 依此分行取证
+function Get-UiaListSummaries([System.Windows.Automation.AutomationElement] $root, [string] $listId)
+{
+    $list = Find-UiaById $root $listId 5
+    if (!$list) { return $null } # 收起整块可能不在 UIA 树（StatusPanel Collapsed）——调用方按「取不到=无行」解读
+    $found = $list.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $summaries = @()
+    foreach ($item in $found)
+    {
+        try
+        {
+            $name = $item.Current.Name
+            if ($name -and $name -notmatch '^\d{2}:\d{2}:\d{2}$') { $summaries += $name }
+        }
+        catch { }
+    }
+    return ,@($summaries)
+}
+
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
 {
     ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
@@ -2530,6 +2550,115 @@ catch
     Save-FullScreenshot "R-FAIL-unexpected.png"
     $failures.Add("场景 R：$($_.Exception.Message)")
     Write-Host "::error::场景 R 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 S：RECENT 事件流与当前状态区同源一致（todo 行 43「Recent 事件流一致」CI 代验；结构化树遍历）——
+# 事件行与状态行同出 MakeStateRow（点+时间+摘要），平铺 UIA Name 列表两区分不开——
+# 本场景按 x:Name→AutomationId 锚定 RecentList / AttentionList 各自子树取行文本（Get-UiaListSummaries 滤时间串）。
+# S1 基线：RecentList 有 GLM 健康事件行（「已用 38%」摘要，ci 档 15s 一轮 record:true 逐轮落事件）；
+# S2 注入 Error：RecentList 现事件行「已用 95%」且位次先于 38% 行（新→旧），AttentionList 同现 95%
+#   （状态区与事件流同源——OnStateChanged 现场重建状态区；修复前状态区仅 OnWidgetsInvalidated 重建，此断言必红）；
+# S3 恢复：状态区摘掉 95%（all clear 同证状态真翻；整块收起取不到=无行）而 RecentList 保留 95% 并补回 38%
+#   ——「状态区=当前、事件流=历史」语义分野实证。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 S 前置）：托盘消息窗未找到" }
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId（O1 同链路）
+    $panelHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $ph = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($ph.Count -ge 1) { $panelHandle = $ph[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panelHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "S-FAIL-no-panel.png"; throw "断言失败（场景 S 前置）：热键触发后 5s 内快速面板未出现" }
+    Start-Sleep -Seconds 2
+    $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+    # S1 基线：RecentList 有 GLM 健康事件行
+    $recent = @()
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $recent = Get-UiaListSummaries $panelEl "RecentList"
+        if ($recent -and @($recent | Where-Object { $_ -match '已用 38%' }).Count -ge 1) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$recent -or @($recent | Where-Object { $_ -match '已用 38%' }).Count -lt 1)
+    {
+        Save-FullScreenshot "S-FAIL-baseline.png"
+        throw "断言失败（场景 S1）：40s 内 RecentList 无 GLM 健康事件行（实际：$($recent -join ' | ')）"
+    }
+    Write-Host "场景 S1 通过：RecentList 基线事件行在列（$(@($recent).Count) 条行文本，含「已用 38%」）"
+    # S2 注入 Error：事件流现 95% 行且新于 38% 行 + 状态区同现 95%（同源）
+    Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "error" -Encoding ASCII
+    $recentHit = $false
+    $attentionHit = $false
+    $ordered = $false
+    $attention = @()
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline)
+    {
+        $recent = Get-UiaListSummaries $panelEl "RecentList"
+        $attention = Get-UiaListSummaries $panelEl "AttentionList"
+        if ($recent)
+        {
+            $i95 = -1
+            for ($i = 0; $i -lt @($recent).Count; $i++) { if (@($recent)[$i] -match '已用 95%') { $i95 = $i; break } }
+            $i38 = -1
+            for ($i = 0; $i -lt @($recent).Count; $i++) { if (@($recent)[$i] -match '已用 38%') { $i38 = $i; break } }
+            if ($i95 -ge 0)
+            {
+                $recentHit = $true
+                if ($i38 -ge 0 -and $i95 -lt $i38) { $ordered = $true } # 95% 行新于全部 38% 行（新→旧）
+            }
+        }
+        if ($attention -and @($attention | Where-Object { $_ -match '已用 95%' }).Count -ge 1) { $attentionHit = $true }
+        if ($recentHit -and $attentionHit -and $ordered) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$recentHit -or !$attentionHit -or !$ordered)
+    {
+        Save-FullScreenshot "S-FAIL-error-row.png"
+        throw "断言失败（场景 S2）：注入 Error 后 45s 内 事件流行=$recentHit / 状态区行=$attentionHit / 新旧位次=$ordered（Recent：$($recent -join ' | ')；Attention：$($attention -join ' | ')）"
+    }
+    Write-Host "场景 S2 通过：注入 Error 后 RecentList 现事件行（95% 行新于 38% 行）且 AttentionList 同现 95%——两区同源"
+    # S3 恢复：状态区摘掉 95%（all clear 同证状态真翻；整块收起=无行亦算摘掉）而事件流保留 95% 并补回 38%
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    $attentionClear = $false
+    $historyKept = $false
+    $texts = @()
+    $deadline = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $panelHandle
+        $recent = Get-UiaListSummaries $panelEl "RecentList"
+        $attention = Get-UiaListSummaries $panelEl "AttentionList"
+        if (($texts -contains "all clear") -and !($attention -and @($attention | Where-Object { $_ -match '已用 95%' }).Count -ge 1)) { $attentionClear = $true }
+        if ($recent -and @($recent | Where-Object { $_ -match '已用 95%' }).Count -ge 1 -and @($recent | Where-Object { $_ -match '已用 38%' }).Count -ge 1) { $historyKept = $true }
+        if ($attentionClear -and $historyKept) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$attentionClear -or !$historyKept)
+    {
+        Save-FullScreenshot "S-FAIL-recover.png"
+        throw "断言失败（场景 S3）：恢复后 45s 内 状态区摘除=$attentionClear / 事件流保留 95% 且补回 38%=$historyKept（Recent：$($recent -join ' | ')；Attention：$($attention -join ' | ')）"
+    }
+    Write-Host "场景 S3 通过：恢复后状态区摘掉 95%（当前）而 RecentList 保留 95% 并补回 38%（历史）——两区语义分野"
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # Toggle 再收，避免残留影响后续场景
+    Start-Sleep -Seconds 1
+    Write-Host "场景 S 通过：RECENT 事件流与状态区同源一致、新→旧有序、恢复历史往返（行 43 CI 面）"
+}
+catch
+{
+    Save-FullScreenshot "S-FAIL-unexpected.png"
+    $failures.Add("场景 S：$($_.Exception.Message)")
+    Write-Host "::error::场景 S 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——

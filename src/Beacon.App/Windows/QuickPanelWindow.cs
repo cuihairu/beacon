@@ -187,6 +187,7 @@ public sealed partial class QuickPanelWindow : Window
         }
         UpdateHeader();
         UpdateOverview();
+        RebuildStatus(); // 状态区随当前状态现场重建（原仅 OnWidgetsInvalidated 触达——面板常驻期间「需要关注」恒为开面板前旧影，场景 S 实证）
         RebuildRecent();
     }
 
