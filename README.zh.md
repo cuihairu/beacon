@@ -40,6 +40,12 @@
 
 **双击没反应？** → [故障排查手册](docs/troubleshooting.md)（SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志，一页说清）。
 
+## 代码签名政策
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+当前 v0.1.x 版本**未签名**——首次运行时 Windows SmartScreen 可能拦截，选「更多信息」→「仍要运行」。SignPath 申请获批后，从下一个版本 tag 起的所有正式版将由 CI 自动签名：构建产物先提交 SignPath 签名，上传的是签好的文件。nightly 滚动构建永不签名。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -47,6 +53,7 @@
 | [docs/mission.md](docs/mission.md) | 产品定位 / 核心概念 / 分期 / MVP 验收标准（原始方案见同目录摘录） |
 | [docs/rfc/RFC-001-technical-design.md](docs/rfc/RFC-001-technical-design.md) | 技术方案：架构 / 领域模型 / **显示层架构（L0 悬浮组件 + 四层交互）** / 刷新 / 通知 / 存储 / 风险 |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / 项目结构 / 依赖规则 / 脚手架命令（Windows 机器可执行） |
+| [docs/store-submission.md](docs/store-submission.md) | 商店提交前置清单：MSIX 打包 / 隐私政策页必填字段 / 商店素材（截图尺寸·描述·分类·年龄分级问卷） |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 个 MVP Issue（P0–P8，含验收标准与依赖关系） |
 
 ## 路线

@@ -46,6 +46,12 @@ On first launch the app settles into the system tray and shows the status capsul
 
 **Double-click does nothing?** → [Troubleshooting guide](docs/troubleshooting.md) (SmartScreen / tray with no main window / log locations / startup-failure dialog and crash logs — all on one page).
 
+## Code signing policy
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+Current releases (v0.1.x) are **not signed** — Windows SmartScreen may warn on first run; choose "More info" → "Run anyway". Once the SignPath application is approved, every release from the next version tag onward will be signed automatically: the CI pipeline submits the build artifacts to SignPath before publishing, and the signed files are what get uploaded. Nightly builds are never signed.
+
 ## Documentation
 
 | Document | Content |
@@ -56,6 +62,7 @@ On first launch the app settles into the system tray and shows the status capsul
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / project structure / dependency rules / scaffold commands (runnable on Windows machines) |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 MVP issues (P0–P8, with acceptance criteria and dependencies) |
 | [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 16 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
+| [docs/store-submission.md](docs/store-submission.md) | Store submission prerequisites: MSIX packaging / privacy policy page required fields / store assets (screenshots · description · category · age rating questionnaire) |
 
 ## Roadmap
 

@@ -38,6 +38,12 @@ jobs:
     name: Build & publish nightly (windows-x86_64)
     runs-on: windows-latest
     timeout-minutes: 60
+    # SignPath 代码签名凭据（骨架，等 token 即用）：未配置时版本通道打印提示并跳过
+    # 签名、发布未签名资产，run 不红——签名政策与取值位置见 README「Code signing policy」
+    # 与 docs/store-submission.md。
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -149,6 +155,68 @@ jobs:
           & $iscc "/DMyAppVersion=$version" "/DMyCommit=$env:GITHUB_SHA" packaging\beacon.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # ── SignPath 代码签名（仅版本 tag 通道；nightly 永不签名）──
+      # 链路：未签名 zip+exe → upload-artifact 拿 artifact-id → SignPath 提交签名
+      # （wait-for-completion）→ 签好的文件落回 signed/ → 发布步骤优先用 signed/ 的。
+      # 三个 slug 与 token 的取值位置（SignPath 控制台）：
+      #   api-token              组织设置 → API tokens（只读权限即可）
+      #   organization-id        组织 URL 或组织设置页
+      #   project-slug           项目 URL（如 https://app.signpath.io/Org/Project）
+      #   signing-policy-slug    项目 → Signing policies（如 release-signing）
+      #   artifact-configuration-slug  项目 → Artifact configurations（如 windows-binaries）
+      - name: Upload unsigned assets for signing
+        if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
+        id: sign-upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-assets
+          path: |
+            ${{ steps.ver.outputs.asset }}.zip
+            ${{ steps.ver.outputs.asset }}-setup.exe
+
+      - name: Submit to SignPath
+        if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: beacon
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-binaries
+          github-artifact-id: ${{ steps.sign-upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/
+
+      - name: Report signing status
+        if: ${{ steps.ver.outputs.channel == 'release' }}
+        shell: bash
+        run: |
+          if [[ -n "${SIGNPATH_API_TOKEN}" && -d signed && -n "$(ls -A signed 2>/dev/null)" ]]; then
+            echo "SignPath 签名完成：signed/ 内为签名后资产，发布将使用签名件"
+          else
+            echo "::notice::SignPath secrets 未配置（或签名被跳过）——本次发布未签名资产；签名政策见 README「Code signing policy」"
+          fi
+
+      # ── MSIX 打包（仅版本 tag 通道；商店前置产物，不阻发布）──
+      # 应用本体仍是 unpackaged 自包含（RFC §10），这里把 publish 输出整体包成 MSIX：
+      # 包内 Identity 提供商店所需标识。打包失败只降级为 warning（发布继续、无 .msix），
+      # 卡点如实记录在 docs/store-submission.md——不许假装完成。
+      - name: Pack MSIX (store submission package)
+        if: ${{ steps.ver.outputs.channel == 'release' }}
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          ASSET: ${{ steps.ver.outputs.asset }}
+        run: |
+          # MSIX 版本必须四段且与 v* tag 对齐（v0.1.3 -> 0.1.3.0）
+          $msixVersion = "$env:VERSION.0"
+          $msixOutput = "$env:ASSET.msix"
+          try {
+            & .github\workflows\scripts\msix-pack.ps1 -Version $msixVersion -Output $msixOutput
+          } catch {
+            Write-Host "::warning::MSIX 打包失败：$($_.Exception.Message)——本次发布不含 .msix（商店前置产物，不阻发布；卡点记录见 docs/store-submission.md）"
+          }
+
       # 发布：nightly 通道删旧重建（publishedAt=本次 run）；版本 tag 通道只传资产、
       # 不删不重建——作者手写的 release 说明原样保留。两条通道共用发布后硬断言。
       - name: Publish release assets
@@ -162,18 +230,38 @@ jobs:
           set -euo pipefail
           ZIP="${ASSET}.zip"
           SETUP="${ASSET}-setup.exe"
-          sha256sum "$ZIP" "$SETUP" > SHA256SUMS
+          MSIX="${ASSET}.msix"
+          # SignPath 签名产物优先：signed/ 里有签好的就用签好的；secrets 未配置时
+          # signed/ 不存在 → 用未签名原件（签名步骤已打印提示，run 不红）
+          ZIP_SRC="$ZIP"
+          SETUP_SRC="$SETUP"
+          [[ -f "signed/$ZIP" ]] && ZIP_SRC="signed/$ZIP"
+          [[ -f "signed/$SETUP" ]] && SETUP_SRC="signed/$SETUP"
+          # MSIX 仅版本 tag 通道产出；打包失败已降级 warning，按实际存在与否纳入资产
+          MSIX_SRC=""
+          [[ "$CHANNEL" == "release" && -f "$MSIX" ]] && MSIX_SRC="$MSIX"
+
+          if [[ -n "$MSIX_SRC" ]]; then
+            sha256sum "$ZIP_SRC" "$SETUP_SRC" "$MSIX_SRC" > SHA256SUMS
+          else
+            sha256sum "$ZIP_SRC" "$SETUP_SRC" > SHA256SUMS
+          fi
           stamp="$(date -u '+%Y-%m-%d %H:%M UTC')"
-          sz="$(du -h "$ZIP" | cut -f1)"
-          szs="$(du -h "$SETUP" | cut -f1)"
+          sz="$(du -h "$ZIP_SRC" | cut -f1)"
+          szs="$(du -h "$SETUP_SRC" | cut -f1)"
 
           if [[ "$CHANNEL" == "release" ]]; then
             TAG="v${VERSION}"
             if ! gh release view "$TAG" >/dev/null 2>&1; then
               gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
             fi
-            gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS --clobber
-            echo "版本发布：$TAG（说明文字不动，仅上传资产）"
+            if [[ -n "$MSIX_SRC" ]]; then
+              gh release upload "$TAG" "$ZIP_SRC" "$SETUP_SRC" "$MSIX_SRC" SHA256SUMS --clobber
+            else
+              gh release upload "$TAG" "$ZIP_SRC" "$SETUP_SRC" SHA256SUMS --clobber
+            fi
+            if [[ -n "${SIGNPATH_API_TOKEN}" && -f "signed/$ZIP" ]]; then signed="已签名"; else signed="未签名"; fi
+            echo "版本发布：$TAG（说明文字不动，仅上传资产；签名=${signed}，MSIX=$([[ -n "$MSIX_SRC" ]] && echo 已含 || echo 未含)）"
           else
             TAG=nightly
             {
@@ -202,7 +290,7 @@ jobs:
               echo
               echo "- 自包含（self-contained）：无需安装 .NET 运行时，解压后直接运行 \`Beacon.App.exe\`。"
               echo "- 安装包与便携 zip 内容相同：开始菜单启动，可选桌面快捷方式与开机自启；卸载走系统「添加或删除程序」。"
-              echo "- 产物未签名：首次运行 SmartScreen 可能提示，选「仍要运行」。"
+              echo "- 产物未签名（nightly 永不签名）：首次运行 SmartScreen 可能提示，选「仍要运行」。正式版签名政策：Free code signing provided by SignPath.io, certificate by SignPath Foundation（见 README「Code signing policy」）。"
               echo "- 每日构建只证明可构建 + 打包成功；完整质量门禁以仓库 CI（ci.yml）为准。"
             } > notes.md
             # 滚动 release 每次删旧重建（连 tag）：时间戳即交付凭证；concurrency 已串行化。
@@ -210,11 +298,11 @@ jobs:
             gh release create "$TAG" --target "$GITHUB_SHA" \
               --title "Nightly · 每日构建 ${stamp}" --notes-file notes.md \
               --prerelease --latest=false
-            gh release upload "$TAG" "$ZIP" "$SETUP" SHA256SUMS
+            gh release upload "$TAG" "$ZIP_SRC" "$SETUP_SRC" SHA256SUMS
           fi
 
           # ── 发布后硬断言：任一不过=本步失败（发布失败必须红，不许绿着不发货）──
-          # ①nightly 通道 publishedAt 必须 ≥ 本次 run 起始；②三资产 updatedAt 必须 ≥ 起始；
+          # ①nightly 通道 publishedAt 必须 ≥ 本次 run 起始；②各资产 updatedAt 必须 ≥ 起始；
           # ③远端 SHA256SUMS 下载回来与本地 diff——发出的就是本次构建的硬证明。
           sleep 5
           view="$(gh release view "$TAG" --json publishedAt,assets)"
@@ -226,7 +314,9 @@ jobs:
               exit 1
             fi
           fi
-          for f in "$ZIP" "$SETUP" SHA256SUMS; do
+          ASSERT_ASSETS="$ZIP $SETUP SHA256SUMS"
+          [[ -n "$MSIX_SRC" ]] && ASSERT_ASSETS="$ASSERT_ASSETS $MSIX"
+          for f in $ASSERT_ASSETS; do
             ts="$(echo "$view" | jq -r --arg n "$f" '.assets[] | select(.name == $n) | .updatedAt')"
             if [[ -z "$ts" || "$ts" < "$started" ]]; then
               echo "::error::发布断言失败：资产 ${f} 缺失或 updatedAt=${ts:-空} 早于本次 run 起始 ${started}"
@@ -238,5 +328,5 @@ jobs:
             echo "::error::发布断言失败：远端 SHA256SUMS 与本次构建不一致——传错/传漏资产"
             exit 1
           fi
-          echo "发布断言通过：TAG=${TAG}，三资产时间戳均为本次 run，SHA256SUMS 与本地构建一致"
+          echo "发布断言通过：TAG=${TAG}，资产时间戳均为本次 run，SHA256SUMS 与本地构建一致"
           echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"

@@ -1,0 +1,51 @@
+name: MSIX dry run
+
+# 商店前置 MSIX 打包的 Windows runner 试跑台。
+#
+# 为什么需要它：daily-build 的 MSIX 步骤只在 v* tag 通道跑，而版本 tag 由作者手动给出
+# （仓库红线：不打 tag）——没有 tag 就无法在 Windows runner 上验证 MSIX 打包是否跑得通。
+# 本工作流只建包、把 .msix 传成 run artifact，**不碰任何 release/tag**，验证结果记在
+# docs/store-submission.md。逻辑与 daily-build 共用 .github/workflows/scripts/msix-pack.ps1。
+#
+# 触发：Actions → MSIX dry run → Run workflow（手动）。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: msix-dry-run
+  cancel-in-progress: true
+
+jobs:
+  msix:
+    name: Pack MSIX (windows-x86_64, no release side effects)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish (self-contained win-x64)
+        shell: pwsh
+        run: |
+          # 试跑台用固定版本 0.0.0.0（不冒充任何 tag）；只验证打包链路本身
+          dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish -p:Version=0.0.0.0 "-p:InformationalVersion=0.0.0.0+$env:GITHUB_SHA"
+
+      - name: Pack MSIX (same script as daily-build release channel)
+        shell: pwsh
+        run: |
+          & .github\workflows\scripts\msix-pack.ps1 -Version 0.0.0.0 -Output beacon-msix-dryrun-windows-x86_64.msix
+
+      - name: Upload MSIX (run artifact, 14 days)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-dry-run
+          path: beacon-msix-dryrun-windows-x86_64.msix
+          if-no-files-found: error

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Beacon MSIX 清单（商店前置，daily-build 版本 tag 通道由 MakeAppx 打包）：
+  - 应用本体仍是 unpackaged 自包含（RFC §10，WindowsPackageType=None），本清单只把
+    publish 输出整体包成 MSIX 给商店提交——包内 Identity 提供商店所需的应用标识。
+  - Version 是 0.0.0.0 占位：工作流按 v* tag 四段化替换（v0.1.3 -> 0.1.3.0）。
+  - Name / Publisher 是占位：商店应用名在 Partner Center 预留后必须替换为预留值，
+    Publisher 须与提交时签名证书主题一致（详见 docs/store-submission.md）。
+  - 图标与本清单同目录（44/50/71/150/310x150/310x310，由 docs/img/logo.svg 光栅化）——镜像 MSIX 包内布局。
+-->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+  <Identity Name="Beacon.CuiHairu"
+            Publisher="CN=cuihairu"
+            Version="0.0.0.0"
+            ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Beacon</DisplayName>
+    <PublisherDisplayName>cuihairu</PublisherDisplayName>
+    <Logo>StoreLogo.png</Logo>
+  </Properties>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="zh-CN" />
+  </Resources>
+  <Capabilities>
+    <!-- 完整信任桌面应用（无沙箱）：与 unpackaged 运行形态一致，商店审核据此分类 -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+  <Applications>
+    <Application Id="Beacon" Executable="Beacon.App.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="Beacon"
+                          Description="Developer status and action center for Windows"
+                          BackgroundColor="transparent"
+                          Square150x150Logo="Square150x150Logo.png"
+                          Square44x44Logo="Square44x44Logo.png">
+        <uap:DefaultTile Square71x71Logo="Square71x71Logo.png"
+                         Wide310x150Logo="Wide310x150Logo.png"
+                         Square310x310Logo="Square310x310Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+</Package>
