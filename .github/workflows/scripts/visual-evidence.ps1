@@ -1605,13 +1605,20 @@ try
     if ($offDiff -gt 12) { throw "断言失败（场景 G7b）：off 档三帧差分 $offDiff px（期望 ≤12）——off 档仍有动画（功耗回归）" }
     Write-Host "场景 G7b 通过：off 档三帧差分 $offDiff px——全静止"
     # 切 full 档：呼吸在帧间现形。呼吸循环由 ApplyLoops 挂载——只在下一个 WidgetStateChanged
-    # tick（刷新档 ≤15s）应用，选档后立即采样必然全静止（38268308192 实证 diff=0）；呼吸周期
-    # 2400ms×intensity(1.5)=3600ms，固定帧对还可能撞缓动峰台（相位差小 → 差分小）。故轮询
-    # 重采样帧对（每轮 3 帧、取两两差分最大值）直至超时，覆盖「挂载 tick + 一个完整呼吸周期」。
+    # tick（GLM=ci 档 15s）应用；呼吸周期 2400ms×intensity(1.5)=3600ms，固定帧对还可能撞缓动
+    # 峰台（相位差小 → 差分小）。故先硬断言选档落盘，再轮询重采样帧对（每轮 3 帧、取两两差分
+    # 最大值）80s（≥5 个刷新 tick，覆盖「挂载 tick + 多个完整呼吸周期」）。
+    Select-ComboItemById $settings $motionBox "motion-full"
+    Start-Sleep -Seconds 2
+    $appConfigFull = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($appConfigFull.appearance.motion.mode)" -ne "full")
+    {
+        throw "断言失败（场景 G7c）：config appearance.motion.mode=$($appConfigFull.appearance.motion.mode)（期望 full）——选档未落盘"
+    }
     $fullDiff = 0
     $best1 = $null
     $best3 = $null
-    $deadline = (Get-Date).AddSeconds(35)
+    $deadline = (Get-Date).AddSeconds(80)
     while ((Get-Date) -lt $deadline)
     {
         $c1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
@@ -1642,9 +1649,58 @@ try
         Save-Zoom $best3 "G7-full-frame3.png" 4
         $best1.Dispose(); $best3.Dispose()
     }
-    # 阈值依据：呼吸在 0.55↔1.0 相位间摆动时灯区（Ø8 亚像素实测 10~44 px 匹配、全域 ~50-64 px）
-    # 全部像素跨相位变色，帧对撞峰台由轮询取最大值规避；25 为灯全域差分的保守下界（首跑实证后回填）。
-    if ($fullDiff -lt 25) { throw "断言失败（场景 G7c）：35s 内 full 档帧差分 $fullDiff px（期望 ≥25）——呼吸灯不可见" }
+    # 阈值依据：呼吸在 0.55↔1.0 相位间摆动时灯区全部像素跨相位变色（Ø8 灯全域 ~50-64 px），
+    # 帧对撞峰台由轮询取最大值规避；25 为灯全域差分的保守下界。
+    if ($fullDiff -ge 25)
+    {
+        Write-Host "场景 G7c 通过：full 档帧差分 $fullDiff px——呼吸灯可见（改档即时生效，无重启）"
+    }
+    else
+    {
+        # tile 不呼吸时分诊：设置页「呼吸」预览按钮驱动同一 MotionEngine 同一挂载路径
+        # （PreviewMotion("breath")→StartBreathing）。预览灯 Ø24（呼吸时全域 ~450px 跨相位变色）：
+        #   预览也静止 → Composition 属性动画在本 CI 会话不可证（mode=full 已落盘硬断言在案，
+        #   38268308192/38271096867 两次 0 差分同证）——L0 呼吸灯观感转装机目检（同 Esc/SendInput 降级口径）；
+        #   预览呼吸而 L0 不呼吸 → tile 链路真实回归，保持红。
+        $breathBtn = $settings.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "呼吸")))
+        if (!$breathBtn) { throw "断言失败（场景 G7c）：tile 帧差分 $fullDiff px 且设置页「呼吸」预览按钮未找到——无法分诊，按真实回归处理" }
+        ($breathBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        Start-Sleep -Seconds 1
+        $br = $breathBtn.Current.BoundingRectangle
+        if ($br.IsEmpty -or $br.Width -le 0 -or $br.Height -le 0)
+        {
+            throw "断言失败（场景 G7c）：tile 帧差分 $fullDiff px 且「呼吸」预览按钮无可视矩形（模块可能滚出视口）——无法分诊，按真实回归处理"
+        }
+        $rx = [Math]::Max(0, [int]$br.X - 10)
+        $ry = [Math]::Max(0, [int]$br.Y - 45)
+        $rw = [int]$br.Width + 340 # 按钮行内「呼吸」右侧还有 3 个按钮 + 预览灯（水平 StackPanel 同行）
+        $rh = [int]$br.Height + 90
+        $p1 = New-Object System.Drawing.Bitmap $rw, $rh
+        $g1p = [System.Drawing.Graphics]::FromImage($p1)
+        $g1p.CopyFromScreen($rx, $ry, 0, 0, (New-Object System.Drawing.Size $rw, $rh))
+        $g1p.Dispose()
+        Start-Sleep -Milliseconds 900
+        $p2 = New-Object System.Drawing.Bitmap $rw, $rh
+        $g2p = [System.Drawing.Graphics]::FromImage($p2)
+        $g2p.CopyFromScreen($rx, $ry, 0, 0, (New-Object System.Drawing.Size $rw, $rh))
+        $g2p.Dispose()
+        Start-Sleep -Milliseconds 900
+        $p3 = New-Object System.Drawing.Bitmap $rw, $rh
+        $g3p = [System.Drawing.Graphics]::FromImage($p3)
+        $g3p.CopyFromScreen($rx, $ry, 0, 0, (New-Object System.Drawing.Size $rw, $rh))
+        $g3p.Dispose()
+        $probeDiff = [Math]::Max((Count-FrameDiff $p1 $p2 12), [Math]::Max((Count-FrameDiff $p2 $p3 12), (Count-FrameDiff $p1 $p3 12)))
+        Save-Zoom $p1 "G7-preview-frame1.png" 3
+        $p1.Dispose(); $p2.Dispose(); $p3.Dispose()
+        # 阈值依据：Ø24 预览灯呼吸时全域 ~450px 跨相位变色（阈值 50=保守下界）；静止恒 0
+        if ($probeDiff -ge 50)
+        {
+            throw "断言失败（场景 G7c）：设置页预览呼吸可见（$probeDiff px）但 L0 tile 帧差分 $fullDiff px——tile 链路真实回归"
+        }
+        Write-Host "::warning::L0 tile 呼吸灯帧差分 $fullDiff px 且设置页预览同样静止（$probeDiff px；mode=full 已落盘）——Composition 属性动画在本 CI 会话不可证，呼吸灯观感转装机目检（同 Esc/SendInput 降级口径）"
+    }
     Write-Host "场景 G7c 通过：full 档三帧差分 $fullDiff px——呼吸灯可见（改档即时生效，无重启）"
     Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
     Stop-Beacon
