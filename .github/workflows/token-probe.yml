@@ -20,11 +20,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          tag="probe-$(date +%s)"
-          if gh release create "$tag" --draft --target "$GITHUB_SHA" --title probe --notes probe; then
+          # 复刻 daily-build 发布步的确切序列：delete(含 cleanup-tag) → create(非草稿，服务端建 ref)
+          tag="probe-nightly-$(date +%s)"
+          gh release delete "$tag" --yes --cleanup-tag || echo "DELETE_ABSENT(预期)"
+          if gh release create "$tag" --target "$GITHUB_SHA" --title probe --notes probe --prerelease --latest=false; then
             echo "CREATE_OK"
             sleep 2
-            gh release delete "$tag" --yes || echo "DELETE_FAILED"
+            gh release delete "$tag" --yes --cleanup-tag || echo "DELETE_FAILED"
           else
             echo "CREATE_FAILED"
           fi
