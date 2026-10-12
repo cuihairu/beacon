@@ -1,0 +1,29 @@
+name: token-probe
+
+# 临时诊断（patrol-20261013-A2）：daily-build 发布步 GITHUB_TOKEN 建 release 403，
+# 但同仓库 docs.yml（pages:write 抬升）与用户 PAT 均正常。本工作流以最小面
+# （ubuntu + contents:write + 草稿 release，草稿不建 tag、发布前对外不可见，随即删除）
+# 判别「workflow 级 contents:write 抬升」当前是否对该端点生效。结论落地后即删除本文件。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe draft release create with GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          tag="probe-$(date +%s)"
+          if gh release create "$tag" --draft --target "$GITHUB_SHA" --title probe --notes probe; then
+            echo "CREATE_OK"
+            sleep 2
+            gh release delete "$tag" --yes || echo "DELETE_FAILED"
+          else
+            echo "CREATE_FAILED"
+          fi
