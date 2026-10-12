@@ -94,6 +94,7 @@ internal sealed class PinTile
     private readonly MotionEngine _motion;
     private WidgetState? _lastState;
     private Severity? _lastSeverity;
+    private global::Windows.UI.Color? _lastFillColor; // 上次状态灯着色——变色过渡只在色变 tick 重放，同色 tick 直接填充不闪灯
     private bool _suspended; // 收起态暂停动画循环（B-707 验收：隐藏/收起无动画循环）
 
     private readonly Border _root = new()
@@ -291,11 +292,15 @@ internal sealed class PinTile
             }
 
             var color = _palette.SeverityColor(state.Severity, widgetOverride: _widget.ColorOverride);
+            // 变色过渡只属「色变」：同色 tick 直接填充——此前每 tick 都重放 0→1 淡入，
+            // reduced 档下状态灯每个刷新周期凭空灭一次再渐亮（违反「换色后亮度渐入」本意）。
+            var colorChanged = !_lastFillColor.HasValue || !_lastFillColor.Value.Equals(color);
+            _lastFillColor = color;
             var breathingOwnsOpacity = !_suspended
                 && _motion.Mode == MotionMode.Full && state.Severity != Severity.Critical;
-            if (_suspended || breathingOwnsOpacity)
+            if (_suspended || breathingOwnsOpacity || !colorChanged)
             {
-                _light.Fill = new SolidColorBrush(color); // 呼吸循环正占 Opacity，直接换色不打断
+                _light.Fill = new SolidColorBrush(color); // 呼吸循环正占 Opacity / 色未变，直接换色不打断循环
             }
             else
             {
@@ -315,6 +320,7 @@ internal sealed class PinTile
         else
         {
             _lastSeverity = null; // 降级后恢复视为新状态（闪烁重新可触发）
+            _lastFillColor = null; // 灰空心灯→实色灯的恢复算色变，恢复时同样走过渡渐入
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
             _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";

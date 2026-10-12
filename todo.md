@@ -10,6 +10,7 @@
 - **断网降级通知缓存命中路径永不开火**（2026-10-12 装机清单 CI 代验转化批3-补50，场景 F 首跑实证）：PublishStale 缓存命中时 severity 沿用缓存值（健康时=Success），NotificationEngine 入口 Success/Info 一律静默 → builtin.connection-degraded 只在「从无缓存首次失败」开火，真正的「有数据后断网」（规则名所指的降级）反而不通知。修复：缓存命中 stale 路径 severity 抬到 Max(cached, Warning)（与无缓存路径一致；tile 灰显由 ConnectionHealthy 驱动不受影响，恢复后 provider severity 自然回填）；补 WidgetHostTests 两例回归（Success 抬 Warning / Error 不动）。F5 断言相应移入断网窗口内 + F5b 恢复后记录恒 1。
 - **moonshot.balance 数值位补映射**（2026-10-12 巡检点火，用户倾向「补一行映射」→ 拍板落地，批3-补49）：payload 只有 `available_balance`，不在 `WidgetValueHint` 优先级链 → 数值位跌 `Summary[..7]+"…"` 截断，数字全没（「Moonshot · ¥110.00」→「Moonshot…」）——正是 hint 链立项要消灭的「数不出值」失败模式。**口径**：`¥{value}` 固定 CNY 符号（开放平台只按 CNY 计价，provider Summarize 已硬编码 ¥，不引 deepseek 式币种开关）；`0.00` 顶格形态，宽预算与 deepseek 同款 `¥99999.99`。同轮 hint 链全量自查另修两处：qwen 配额用尽路径补 `value_text="已用尽"`（比照 mimo「无额度口」显式文本先例）、machine.git 补 `value_text`（Summary 计数段同源，兜底截断把 ↑↓/改 计数全截没）。
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
+- **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
 ## MVP 待验/未修项（原样搬自 docs/mvp-issues.md，共 42 项，完成即改回该文件勾选）
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）——CI 已代验进程半（场景 E1：二次启动进程数恒 1 + 副实例退出日志硬断言）；唤起气泡是 OS Toast 面不可脚本取证【需装机（半）】
@@ -53,7 +54,7 @@
 - [ ] 设置改级别色 → L0 tile、胶囊、托盘图标同步变色——CI 已代验 tile 半（场景 G4：设置页 ValuePattern 改 #ff8800 → config 落盘 + tile 像素即时变橙）；胶囊与托盘图标像素不可脚本取证【需装机（半）】
 - [x] 某 Widget 设 colorOverride → 仅该 tile 变色，优先级正确【已由 CI 代验：场景 G1（GLM #ff00ff 品红 ≥8px 硬断言，DeepSeek 零渗 ≤4px）】
 - [x] 非法颜色值回退默认色不崩溃；重启后保持【已由 CI 代验：场景 G2 两轮启动（"sent:---" 非法值进程存活、品红 ≤4px、默认绿 ≥8px 硬断言）】
-- [ ] Success→Error 状态变化有平滑变色过渡（reduced 档）【需装机：reduced 档 300ms 色彩渐变观感判定，本轮未建帧取证（可循 G7 帧差分模式转化）】
+- [ ] Success→Error 状态变化有平滑变色过渡（reduced 档）——场景 L 已建（patrol-20261013-A1）：L1 同色 tick 不闪灯（连拍 22s 灯恒在 ≥8px）+ L2 交替翻档连拍找渐入中间态帧；待 CI run 实证后勾选；「平滑」观感的最终裁量仍属装机【需装机（半）：渐入观感人工复核】
 - [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调——CI 已代验三半（场景 G7b off 档三帧差分 ≤12px 全静止 + G7c full 档帧差分 32px 呼吸可见（38274507626 实证，轮询取帧对最大差分）+ G6 强度 1.5 落盘）；Critical 脉冲无注入面装机（同上条原因）【需装机（半）】
 - [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）——CI 已代验焦点半（场景 H1 前台不变硬断言）；发声与隐藏期动画循环需装机【需装机（半）】
 - [ ] 导出文件全文无 token；导入+重录密钥后行为与原机一致——单测半已证（ImportExportTests：导出全文无 token）；导入全流程依赖 WinUI 文件选择器（CI 会话不稳定，此前有先例）需装机【需装机（半）】

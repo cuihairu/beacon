@@ -521,9 +521,10 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
 }
 
 # G 场景配置：GLM（bigmodel 38% 健康）+ DeepSeek（420.5）双 tile；GLM 可带 colorOverride（合法/非法两态）
-function Write-GConfig([string] $glmColorOverride = "")
+function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0)
 {
     Stop-Beacon
+    $appearance = '"appearance": { "motion": { "mode": "' + $motionMode + '", "intensity": ' + $motionIntensity + ' } }'
     @'
 {
   "configVersion": 1,
@@ -535,9 +536,9 @@ function Write-GConfig([string] $glmColorOverride = "")
   "numericFloatingResetDone": true,
   "showCapsule": false,
   "settingsSidebarWidth": 400,
-  "appearance": { "motion": { "mode": "off", "intensity": 1.0 } }
+  __APPEARANCE__
 }
-'@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+'@.Replace("__APPEARANCE__", $appearance) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     @'
 [
   { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
@@ -642,6 +643,17 @@ function New-Crop([WinEnum+RECT] $rect, [int] $margin)
     $crop = New-Object System.Drawing.Bitmap $w, $h
     $g1 = [System.Drawing.Graphics]::FromImage($crop)
     $g1.CopyFromScreen($rect.Left - $margin, $rect.Top - $margin, 0, 0, (New-Object System.Drawing.Size $w, $h))
+    $g1.Dispose()
+    return $crop
+}
+
+# 状态灯条带裁图（20×18 @ tile 内偏移 x6/y10）：G2 工件实测灯 bbox x13-20/y15-22，留边避 icon/文字；
+# 360px 小图单帧扫描 ~5ms，支撑 ~15ms 周期连拍——过渡帧取证（场景 L）依赖高帧率小裁图
+function New-LightStrip([WinEnum+RECT] $rect)
+{
+    $crop = New-Object System.Drawing.Bitmap 20, 18
+    $g1 = [System.Drawing.Graphics]::FromImage($crop)
+    $g1.CopyFromScreen($rect.Left + 6, $rect.Top + 10, 0, 0, (New-Object System.Drawing.Size 20, 18))
     $g1.Dispose()
     return $crop
 }
@@ -1933,6 +1945,173 @@ catch
     Save-FullScreenshot "K-FAIL-unexpected.png"
     $failures.Add("场景 K：$($_.Exception.Message)")
     Write-Host "::error::场景 K 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 L：reduced 档变色过渡帧取证（todo 行 54「Success→Error 平滑变色过渡」CI 代验）——
+# L1 同色 tick 不闪灯：Update 曾每 tick 重放 TransitionFill（reduced 档状态灯每刷新周期灭一次
+#   再渐亮，违反「换色后亮度渐入」本意）；已改 _lastFillColor 门控只在色变 tick 过渡。
+#   连拍 22s（GLM ci 档 15s ≥1 tick），灯在帧（max(红,绿)）不得跌破 8px。
+# L2 色变渐入过渡：mock 翻 error/normal 交替，每轮 ~15ms 周期连拍至新色落定，环内找
+#   「与两端都差 ≥8px」的中间态帧。判据依据（代码+实测）：TransitionFill = 200ms×intensity(2.0)
+#   = 400ms，cubic-bezier(0.1,0.9) 前载缓动 → 部分透明可视窗 ~50ms； arrival 帧（tol45 红 ≥8
+#   ≈ opacity ≥0.79）本身就是部分透明帧，瞬时切换只可能出现端点帧——中间态帧是渐入的直接证据。
+#   可判定轮 = 到达帧之前有基线帧（环 >7）且采样最大间隔 ≤120ms；≥2 可判定轮零中间态 = 真回归（红）。
+try
+{
+    Write-GConfig "" "reduced" 2.0
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    $glmIndex = -1
+    for ($i = 0; $i -lt $handles.Count; $i++)
+    {
+        if ((Get-WindowUiaTexts $handles[$i]) -like "*GLM*") { $glmIndex = $i }
+    }
+    if ($glmIndex -lt 0) { throw "断言失败（场景 L）：GLM tile 不可辨" }
+    $glmRect = [WinEnum]::RectOf($handles[$glmIndex])
+    $green = 0
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $c = New-LightStrip $glmRect
+        $green = Count-ColorPixels $c 63 185 80 45
+        $c.Dispose()
+        if ($green -ge 8) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($green -lt 8) { throw "断言失败（场景 L）：GLM 状态灯绿未渲染（$green px，期望 ≥8）" }
+    Write-Host "场景 L 基线：GLM 绿 $green px（reduced 档 intensity 2.0）"
+    # L1 同色 tick 不闪灯
+    $l1Min = 999
+    $l1Low = 0
+    $l1MaxGap = 0.0
+    $l1Prev = [DateTime]::UtcNow
+    $deadline = (Get-Date).AddSeconds(22)
+    while ((Get-Date) -lt $deadline)
+    {
+        $c = New-LightStrip $glmRect
+        $red = Count-ColorPixels $c 248 81 73 45
+        $g = Count-ColorPixels $c 63 185 80 45
+        $c.Dispose()
+        $now = [DateTime]::UtcNow
+        $gap = ($now - $l1Prev).TotalMilliseconds
+        if ($gap -gt $l1MaxGap) { $l1MaxGap = $gap }
+        $l1Prev = $now
+        $present = [Math]::Max($red, $g)
+        if ($present -lt $l1Min) { $l1Min = $present }
+        if ($present -lt 8) { $l1Low++ }
+    }
+    Write-Host "场景 L1 连拍 22s：灯在帧最小值 $l1Min px，跌破 8px 帧数 $l1Low，最大采样间隔 $([int]$l1MaxGap) ms"
+    if ($l1Low -gt 0)
+    {
+        Save-FullScreenshot "L-FAIL-tick-blink.png"
+        throw "断言失败（场景 L1）：reduced 档同色 tick 期间状态灯 $l1Low 帧跌破 8px（最小 $l1Min px）——过渡被每 tick 重放（闪灯回归）"
+    }
+    Write-Host "场景 L1 通过：同色 tick 期间灯恒在（最小 $l1Min px，最大间隔 $([int]$l1MaxGap) ms）——无闪灯"
+    # L2 色变渐入过渡（交替翻档至多 5 轮，取 3 轮可判定）
+    $caught = 0
+    $conclusive = 0
+    $attempt = 0
+    while ($conclusive -lt 3 -and $attempt -lt 5)
+    {
+        $attempt++
+        $toError = ($attempt % 2) -eq 1
+        if ($toError)
+        {
+            Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "error" -Encoding ASCII
+            $tR = 248; $tG = 81; $tB = 73
+        }
+        else
+        {
+            Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+            $tR = 63; $tG = 185; $tB = 80
+        }
+        $ring = New-Object System.Collections.ArrayList
+        $maxGap = 0.0
+        $prev = [DateTime]::UtcNow
+        $arrived = $false
+        $deadline = (Get-Date).AddSeconds(30)
+        while ((Get-Date) -lt $deadline)
+        {
+            $c = New-LightStrip $glmRect
+            $now = [DateTime]::UtcNow
+            $gap = ($now - $prev).TotalMilliseconds
+            if ($gap -gt $maxGap) { $maxGap = $gap }
+            $prev = $now
+            $hit = Count-ColorPixels $c $tR $tG $tB 45
+            if ($hit -ge 8)
+            {
+                [void]$ring.Add($c)
+                for ($k = 0; $k -lt 6; $k++)
+                {
+                    Start-Sleep -Milliseconds 60
+                    $c2 = New-LightStrip $glmRect
+                    [void]$ring.Add($c2) # 补 6 帧取真·终态（淡入尾段 0.8→1.0 仍可辨）
+                }
+                $arrived = $true
+                break
+            }
+            [void]$ring.Add($c)
+            if ($ring.Count -gt 24) { $old = $ring[0]; $ring.RemoveAt(0); $old.Dispose() }
+        }
+        if (!$arrived)
+        {
+            foreach ($b in $ring) { $b.Dispose() }
+            throw "断言失败（场景 L2 第${attempt}轮）：mock 翻档 30s 内状态灯未落定——色变未反映到 tile"
+        }
+        $hadBaseline = ($ring.Count -gt 7)
+        if (!$hadBaseline -or $maxGap -gt 120)
+        {
+            foreach ($b in $ring) { $b.Dispose() }
+            Write-Host "::warning::场景 L2 第${attempt}轮不可判定（基线帧缺失=$(-not $hadBaseline)，最大间隔 $([int]$maxGap) ms）——加翻一轮"
+            continue
+        }
+        $conclusive++
+        $first = $ring[0]
+        $last = $ring[$ring.Count - 1]
+        $mid = -1
+        for ($m = 1; $m -lt $ring.Count - 1; $m++)
+        {
+            $d1 = Count-FrameDiff $ring[$m] $first 12
+            $d2 = Count-FrameDiff $ring[$m] $last 12
+            if ($d1 -ge 8 -and $d2 -ge 8) { $mid = $m; break }
+        }
+        if ($mid -ge 0)
+        {
+            $caught++
+            Save-Zoom $ring[$mid] "L2-round$attempt-mid-frame.png" 8
+            Write-Host "场景 L2 第${attempt}轮：取到中间态帧（环位 $mid/$($ring.Count)，与两端差分均 ≥8px）——渐入过渡可见"
+        }
+        else
+        {
+            Write-Host "场景 L2 第${attempt}轮：环内未见中间态（$($ring.Count) 帧，最大间隔 $([int]$maxGap) ms）"
+        }
+        foreach ($b in $ring) { $b.Dispose() }
+        Start-Sleep -Seconds 3
+    }
+    if ($caught -eq 0 -and $conclusive -ge 2)
+    {
+        Save-FullScreenshot "L-FAIL-no-transition.png"
+        throw "断言失败（场景 L2）：$conclusive 轮可判定翻档均只见端点帧——reduced 档色变无平滑过渡（瞬时切换回归）"
+    }
+    if ($caught -gt 0)
+    {
+        Write-Host "场景 L2 通过：$caught/$conclusive 轮取到渐入中间态帧——Success↔Error 平滑变色过渡（reduced 档）实证"
+    }
+    else
+    {
+        Write-Host "::warning::场景 L2 未取得可判定帧序列（连拍空洞/未逮到 ~50ms 渐入窗）——reduced 档过渡观感转装机目检（同 G7c 降级口径）"
+    }
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Write-Host "场景 L 通过：同色 tick 不闪灯 + 色变渐入过渡帧取证"
+}
+catch
+{
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "L-FAIL-unexpected.png"
+    $failures.Add("场景 L：$($_.Exception.Message)")
+    Write-Host "::error::场景 L 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
