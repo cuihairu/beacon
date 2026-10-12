@@ -7,7 +7,7 @@ Beacon 本体仍是 **unpackaged 自包含**（RFC §10，`WindowsPackageType=No
 | 项 | 状态 |
 |---|---|
 | SignPath 免费签名 | 申请待获批。workflow 骨架已就位；secrets 未配置时版本通道打印提示、跳过签名、发布未签名资产（run 不红）。政策见 README「代码签名政策」 |
-| MSIX 打包 | **已在 Windows runner 验证通过**（2026-10-12 dry run，run 38230149697）：MakeAppx 找到、清单被接受、包产出并作为 run artifact 下载成功。打包逻辑与 daily-build 版本 tag 通道共用 `.github/workflows/scripts/msix-pack.ps1` |
+| MSIX 打包 | **已在 Windows runner 验证通过并字节级验包**（2026-10-12 两轮 dry run 全绿，包内 manifest 版本替换实测发生）：MakeAppx 就位、清单被接受、约 66 MB 包产出。打包逻辑与 daily-build 版本 tag 通道共用 `.github/workflows/scripts/msix-pack.ps1` |
 | 商店应用预留 | 未开始。Partner Center 预留应用名后才确定 `appxmanifest` 的 `Identity Name` / `Publisher` |
 | 隐私政策页 | **已就绪**：<https://cuihairu.github.io/beacon/privacy-policy/>（`docs/privacy-policy.md`，随 docs 工作流发布；字段对照见第 1 节） |
 | 商店素材 | 图标已备；截图 / 说明 / 分类 / 分级问卷未备（见第 2 节） |
@@ -60,10 +60,11 @@ publish/（自包含输出）+ packaging/msix/appxmanifest.xml（版本按 tag �
 - **版本对齐**：manifest 里 `Version="0.0.0.0"` 是占位，工作流按 `v*` tag 四段化替换（`v0.1.3` → `0.1.3.0`）；exe 自身的 `Version` 由 publish 步骤注入同一 tag 版本，两者恒等。
 - **未签名 MSIX 是有意为之**：商店提交阶段由 Microsoft 代签，本地不签。sideload 测试需自备开发证书（`makeappx pack /o` + 自签证书），属提交前的本地验证步骤，不在 CI 里做。
 - **提交前必须替换的占位**：`Identity Name="Beacon.CuiHairu"` → Partner Center 预留的应用名；`Publisher="CN=cuihairu"` → 提交证书主题（与 `PublisherDisplayName` 一致）。
-- **Windows runner 实测（2026-10-12，run 38230149697 全绿）**：
+- **Windows runner 实测（2026-10-12，两轮 dry run 全绿：38230149697 + 38233094172）**：
   - MakeAppx 在 runner 上就位：`C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\makeappx.exe`
   - 手写清单被 MakeAppx 接受（命名空间 / `uap:VisualElements` / `uap:DefaultTile` / `rescap:runFullTrust` 全部有效），打包约 10s 完成
-  - 包内负载正确（`Assets\tray-error.ico` 等随 publish 进入，`.msix` 成功上传为 run artifact）
+  - 包级字节验证（产物下载回本地解包）：zip 容器有效，约 66 MB / 502 条目；`AppxManifest.xml` + 6 张 Logo 全在包根且字节数与仓库文件逐一吻合；`Beacon.App.exe` 与 `Assets\` 随 publish 进包
+  - 版本替换路径实测（run 38233094172，试跑台故意传 9.9.9.9 ≠ 占位）：包内 Identity 实际变为 `Version="9.9.9.9"`、占位 `0.0.0.0` 消失——「版本与 v* tag 对齐」机制被证明真实发生，不是空替换
 - **当时唯一的卡点是「没法试跑」**：MSIX 步骤只在 `v*` tag 通道跑，而版本 tag 由作者手动给出（仓库红线：不打 tag），用已有 tag 试跑会往已发布 release 上传别的 commit 的资产，属交付完整性违规。解法是抽共享脚本 `.github/workflows/scripts/msix-pack.ps1` + 只建包不碰 release/tag 的 `.github/workflows/msix-dry-run.yml` 试跑台。
 
 如果打包链路将来出问题，替代方案（按推荐顺序）：
