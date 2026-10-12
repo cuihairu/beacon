@@ -182,7 +182,10 @@ public sealed class WidgetHost : IAsyncDisposable
                 IsStale = true,
                 ConnectionHealthy = false,
             }
-            : cached with { IsStale = true, ConnectionHealthy = false };
+            // 陈旧至少抬到 Warning（与无缓存路径一致）：缓存命中时 severity 沿用 Success 的话，
+            // builtin.connection-degraded 在真正的「连接降级」（有数据后断网）路径永不开火
+            // （场景 F 首跑实证）。tile 灰显由 ConnectionHealthy 驱动，不受 severity 抬升影响。
+            : cached with { IsStale = true, ConnectionHealthy = false, Severity = cached.Severity.Max(Severity.Warning) };
         _bus.Publish(new WidgetStateChanged(state));
     }
 

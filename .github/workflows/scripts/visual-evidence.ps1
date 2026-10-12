@@ -125,6 +125,8 @@ public static class WinEnum
     // —— 场景 E/F/G/H（2026-10-12 巡检点火批）新增：单实例/托盘/离线/调色/形态结构取证面 ——
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string cls, string title);
     public static IntPtr FindByClass(string cls) { return FindWindowW(cls, null); }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string cls, string title);
+    public static IntPtr FindByClassMsgOnly(string cls) { return FindWindowExW((IntPtr)(-3), IntPtr.Zero, cls, null); } // HWND_MESSAGE=-3：message-only 窗口不在顶层枚举里
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr h, int index);
     public static long ExStyleOf(IntPtr h) { return (long)(uint)GetWindowLong(h, -20); } // GWL_EXSTYLE=-20
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
@@ -441,6 +443,10 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
         Start-Sleep -Milliseconds 400
     }
     $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero)
+    {
+        $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") # 托盘消息窗是 message-only（HWND_MESSAGE），FindWindowW 搜顶层搜不到（38254521518 实证）
+    }
     if ($msgWindow -eq [IntPtr]::Zero) { throw "未找到 BeaconMessageWindow（托盘消息窗，托盘未初始化？）" }
     [WinEnum]::SetCursor(300, 300) # 菜单弹在光标处，避开右上角 tile 级联区
     Start-Sleep -Milliseconds 200
@@ -1261,19 +1267,32 @@ try
     }
     Save-FullScreenshot "F-recovered.png"
     Write-Host "场景 F4 通过：网络恢复后 tile 自愈（自动刷新闭环实证）"
-    # F5 单条通知：connection-degraded 规则冷却去重——两次失败刷新后记录恰 1 条
-    Start-Sleep -Seconds 20 # 同窗口期再吃一轮失败刷新（冷却应拦住第二击）
-    $notifPath = Join-Path $configDir "notifications.json"
-    if (!(Test-Path $notifPath))
-    {
-        Save-FullScreenshot "F-FAIL-no-notifications.png"
-        throw "断言失败（场景 F5）：断网失败刷新后 notifications.json 未生成——通知记录缺失"
-    }
+    # F5b 恢复后无新告警：健康链不再发降级通知（GLM 记录恒 1）
     $records = @(Get-Content $notifPath -Raw | ConvertFrom-Json)
     $mine = @($records | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
     if ($mine.Count -ne 1)
     {
-        throw "断言失败（场景 F5）：GLM 断网通知记录 $($mine.Count) 条（期望恰 1，冷却去重）——重复投递或缺失"
+        throw "断言失败（场景 F5b）：恢复后 GLM 通知记录 $($mine.Count) 条（期望仍 1）——健康状态误报"
+    }
+    # F5 断网降级通知：connection-degraded 规则（severity ≥ Warning，冷却去重）——
+    # 记录应在断网窗口内落盘（缓存命中路径 severity 抬 Warning 后开火）
+    $notifPath = Join-Path $configDir "notifications.json"
+    $mine = @()
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (Test-Path $notifPath)
+        {
+            $records = @(Get-Content $notifPath -Raw | ConvertFrom-Json)
+            $mine = @($records | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
+            if ($mine.Count -ge 1) { break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    if ($mine.Count -ne 1)
+    {
+        Save-FullScreenshot "F-FAIL-notifications.png"
+        throw "断言失败（场景 F5）：断网窗口内 GLM 降级通知记录 $($mine.Count) 条（期望恰 1，冷却去重）——规则未开火或重复投递"
     }
     Write-Host "场景 F5 通过：断网降级通知恰 1 条（connection-degraded 冷却去重）；Toast 呈现面转装机"
 }
@@ -1351,7 +1370,8 @@ try
         $green = Count-ColorPixels $crop 63 185 80 45
         $crop.Dispose()
         if ($magenta -gt 4) { throw "断言失败（场景 G2 第${round}轮）：非法值被当色渲染（品红 $magenta px）——回退失效" }
-        if ($green -lt 60) { throw "断言失败（场景 G2 第${round}轮）：默认成功绿未渲染（$green px）——回退后渲染缺失" }
+        # 38% 填充下成功色实测约 44px（状态灯+条带，38254521518 首跑实测）；阈值 25 留双向余量
+        if ($green -lt 25) { throw "断言失败（场景 G2 第${round}轮）：默认成功绿未渲染（$green px）——回退后渲染缺失" }
         Stop-Beacon
         Write-Host "场景 G2 第${round}轮通过：非法色回退默认绿（品红 $magenta / 绿 $green px），进程存活"
     }
@@ -1394,9 +1414,9 @@ try
     Save-Zoom $crop "G4-glm-orange-live.png" 6
     $orange = Count-ColorPixels $crop 255 136 0 45
     $crop.Dispose()
-    if ($orange -lt 60)
+    if ($orange -lt 25)
     {
-        throw "断言失败（场景 G4）：GLM tile 橙色像素 $orange（期望 ≥60）——改色即时生效失效（未重启就应换色）"
+        throw "断言失败（场景 G4）：GLM tile 橙色像素 $orange（期望 ≥25）——改色即时生效失效（未重启就应换色）"
     }
     Write-Host "场景 G4 通过：设置改成功色 #ff8800 → config 落盘 + GLM tile 即时变橙（$orange px，无重启）"
     # G5 重置默认一键还原
@@ -1418,7 +1438,7 @@ try
     $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
     $green = Count-ColorPixels $crop 63 185 80 45
     $crop.Dispose()
-    if ($green -lt 60) { throw "断言失败（场景 G5）：重置后默认绿未回渲染（$green px）" }
+    if ($green -lt 25) { throw "断言失败（场景 G5）：重置后默认绿未回渲染（$green px，期望 ≥25）" }
     Write-Host "场景 G5 通过：重置默认 → severityColors 清空 + tile 即时回默认绿（$green px）"
     # G6 动效档 off + 强度 1.5 落盘
     Select-ComboItemById $settings $motionBox "motion-off"
@@ -1485,7 +1505,8 @@ try
     $crop = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
     $red = Count-ColorPixels $crop 248 81 73 45
     $crop.Dispose()
-    if ($red -lt 60) { throw "断言失败（场景 G7a）：Error 档位色未渲染（红 $red px）" }
+    # 95% 填充 Error 色约为 38% 填充的 2.5 倍（首跑 38% 绿 44px 外推 ~92px），阈值 40 留余量
+    if ($red -lt 40) { throw "断言失败（场景 G7a）：Error 档位色未渲染（红 $red px，期望 ≥40）" }
     # off 档静止：三帧差分应≈0
     $crop1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
     Start-Sleep -Milliseconds 900

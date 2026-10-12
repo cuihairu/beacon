@@ -105,6 +105,45 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task ConnectionException_CachedSuccess_EscalatesSeverityToWarning()
+    {
+        // 连接降级兜底（builtin.connection-degraded）依赖 severity ≥ Warning：
+        // 缓存命中路径若沿用 Success，「有数据后断网」的真降级永不开火（CI 场景 F 实证）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        fixture.Cache.SaveState("conn-1", TestData.State(severity: Severity.Success, summary: "cached"));
+        fixture.Provider.Handler = (_, _, _, _) =>
+            throw new ConnectionException("network down", ConnectionHealthState.Offline);
+
+        await host.RefreshWidgetAsync("w-1");
+
+        var state = Assert.Single(fixture.States).State;
+        Assert.True(state.IsStale);
+        Assert.False(state.ConnectionHealthy);
+        Assert.Equal(Severity.Warning, state.Severity); // 抬到 Warning，通知规则可开火
+        Assert.Equal("cached", state.Summary);
+    }
+
+    [Fact]
+    public async Task ConnectionException_CachedError_SeverityPreserved()
+    {
+        // 已是 Warning 以上的缓存只陈旧不降级也不升级
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        fixture.Cache.SaveState("conn-1", TestData.State(severity: Severity.Error, summary: "cached"));
+        fixture.Provider.Handler = (_, _, _, _) =>
+            throw new ConnectionException("network down", ConnectionHealthState.Offline);
+
+        await host.RefreshWidgetAsync("w-1");
+
+        var state = Assert.Single(fixture.States).State;
+        Assert.True(state.IsStale);
+        Assert.Equal(Severity.Error, state.Severity);
+    }
+
+    [Fact]
     public async Task OfflineThenRecovery_StaleAnnotationPreserved_FreshReplaces()
     {
         // B-206 全周期：断网 → 陈旧态重发布（Last update = 原 FetchedAt 不丢）→ 恢复 → 自动刷新清标注
