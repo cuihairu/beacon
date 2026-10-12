@@ -238,8 +238,9 @@ internal sealed class FloatingTileHost
         private const int CascadeStepDips = 36;
         private const int EdgeMarginPx = 8;
 
-        // 窗宽按组件推算（MachineTileSizing：machine 按所选展示项最坏值行，其余 168 下限）——
-        // 2026-10-12 用户令「宽度按最长一行数值文本能完整显示自己算」，替代拍脑袋的全局 168
+        // 窗宽按组件推算（TileSizing：全类型逐列字宽预算——数值列按各类型最坏 ValueHint 文本、
+        // machine 值行按所选展示项构造，168 只当下限）——
+        // 2026-10-12 用户令「宽度按最长一行数值文本能完整显示自己算，不要拍脑袋」二修：扩到全部 tile
         private readonly int _tileWidthDips;
 
         private readonly FloatingTileHost _host;
@@ -267,7 +268,7 @@ internal sealed class FloatingTileHost
             _host = host;
             _widget = widget;
             _fallbackMonitor = fallbackMonitor;
-            _tileWidthDips = MachineTileSizing.TileWidthDips(widget);
+            _tileWidthDips = TileSizing.TileWidthDips(widget);
             CascadeIndex = cascadeIndex;
             _tile = new PinTile(widget, palette, motion, connectionType);
             _tile.Root.PointerPressed += OnPointerPressed;

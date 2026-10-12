@@ -424,7 +424,7 @@
 
 ---
 
-## 附：本地自动化覆盖注记（2026-10-10 分诊 commit 4b04205 + 批3-补39/42/47 增补，当前 958/958 绿）
+## 附：本地自动化覆盖注记（2026-10-10 分诊 commit 4b04205 + 批3-补39/42/45/47/48 增补，当前 990/990 绿）
 
 Windows 运行时表现以本清单装机走查为准；以下记录本机已证面，回执时避免重复排查：
 
@@ -440,3 +440,4 @@ Windows 运行时表现以本清单装机走查为准；以下记录本机已证
   - B-401/B-404：ActionRunnerTests 15 例（路由/确认/超时/取消/重试六态）+ LocalCommandExecutorTests（超时杀进程+落盘）——弹窗与反馈 UI 半待真机。
   - 批3-补42 DSL：ProviderDslTests 46 例（解析/校验/缓存/MappingValue/端到端）+ ActionRunner 重试 6 例——dsl_path 真机配置与动作点击半待真机。
   - 批3-补47 检查更新：UpdateCheckTests 48 例（版本解析形态与拒绝表、SemVer 12 组比较含预发布规则、Evaluate 含 nightly 日期口径、限流降级体）——GitHub 真端点半（三行展示、按钮语义、断网降级）待真机。
+  - 批3-补48 tile 字宽预算 + 多窗口额度：TileSizingTests 32 例（字宽模型逐类/每类型最坏值行→合计宽/标签优先级对齐 PinTile/machine show 联动）+ WidgetValueHintTests 多窗口 8 例（三窗/双窗/乱序/剩余口径/单窗不进/读数收起判定）——真机悬浮框数值列不再裁字的目视半待装机走查。

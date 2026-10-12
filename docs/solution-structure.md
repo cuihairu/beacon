@@ -78,7 +78,7 @@ Beacon.Core/
 │   ├── WidgetHost.cs  TemplateRenderer.cs  PaletteResolver.cs  PinLayoutMath.cs
 │   ├── SvgPathParser.cs               # SVG path d → 中性几何（品牌图标渲染前置层，纯函数供单测）
 │   ├── BrandIcons.cs                  # Simple Icons CC0 品牌 path 字典 + 连接类型别名归一（纯字符串零依赖，供单测；未收录由 App 字形兜底）
-│   ├── WidgetValueHint.cs             # 悬浮 tile 数值位短文本（各家额度源 payload 键 → 主数值映射，纯函数供单测）
+│   ├── WidgetValueHint.cs             # 悬浮 tile 数值位短文本（各家额度源 payload 键 → 主数值映射 + 多窗口额度「NN%/窗」拼接，纯函数供单测）
 │   ├── WidgetTypeNames.cs             # 组件类型 → 短显示名（tile 标签/L2 分组 chip 共用，纯函数供单测）
 │   ├── QuickPanelSections.cs          # L2 面板三分区判定（Warning+/过期/断连 → NEEDS ATTENTION，纯函数供单测）
 │   ├── DpiLayoutMath.cs               # DIP↔物理像素唯一换算口径（AppWindow 只认物理像素）
@@ -94,7 +94,8 @@ Beacon.Core/
 ### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
 
 ```text
-Beacon.Connections/                    # 32 文件
+Beacon.Connections/                    # 33 文件
+├── TileSizing.cs                      # 全类型 tile 宽度字宽预算（逐列最坏文本：标签/数值/读数 + 固定件 + 间距，下限 168；纯函数供单测，2026-10-12 二修）
 ├── GitHub 6 文件
 │   ├── GitHubConnectionProvider.cs    # PAT 认证、连接测试、rate-limit 感知
 │   ├── GitHubApiClient.cs             # 手写 REST 客户端（不引 Octokit）+ ETag 条件请求 + 限额感知
@@ -107,7 +108,7 @@ Beacon.Connections/                    # 32 文件
 ├── Machine 4 文件（本机数据，零凭据零网络）
 │   ├── MachineNetProvider.cs          # type: machine.net（IP/↑↓速率/累计流量，差分算速率）+ MachineWidgetDescriptors + MachineConnectionProvider（同文件）
 │   ├── MachineLocalProvider.cs        # type: machine.local（CPU/内存/磁盘，CPU 差分同速率口径；Linux /proc + Windows API 注入抽象）
-│   ├── MachineShowOptions.cs          # config["show"] 可选展示项解析（缺省全选/未知键 fail-loud）+ MachineTileSizing 按最坏值行推算 tile 宽（2026-10-12 用户令）
+│   ├── MachineShowOptions.cs          # config["show"] 可选展示项解析（缺省全选/未知键 fail-loud；宽度推算在 TileSizing）
 │   └── GitWorkspaceProvider.cs        # type: machine.git（本地 Git 工作区 ↑↓·改·stash，git CLI 只读）
 ├── Herald 1 文件（用户自有项目 cuihairu/herald：统一订阅与投递中枢）
 │   └── HeraldProvider.cs              # type: herald.incidents（事件台账 open 亮黄/critical 亮红）+ herald.feed（RSS 未读基线，token 走 DPAPI）+ herald.deliveries（投递失败 failed 即黄）+ HeraldConnectionProvider（同文件）
@@ -213,7 +214,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 958 个测试（Connections 575 / Core 325 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 990 个测试（Connections 599 / Core 333 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 

@@ -28,6 +28,10 @@ public static class WidgetValueHint
         {
             return $"{open} open"; // github.pull_requests
         }
+        if (MultiWindow(payload) is { } windows)
+        {
+            return windows; // 多窗口额度（2026-10-12 用户令）：bigmodel/ark 已用、kimi 剩余
+        }
         if (Text(payload, "percent") is { } percent)
         {
             return $"{percent}%"; // bigmodel.usage / ark.usage / http.quota（最差窗口已用）
@@ -88,6 +92,43 @@ public static class WidgetValueHint
     /// <summary>取非空 payload 值；缺失/空串统一按「无此键」走下一优先级。</summary>
     private static string? Text(IReadOnlyDictionary<string, string> payload, string key)
         => payload.TryGetValue(key, out var value) && value.Length > 0 ? value : null;
+
+    // —— 多窗口额度（2026-10-12 用户令「多窗口额度展示」，最初需求的补落）——
+
+    /// <summary>已用口径三窗（bigmodel.usage / ark.usage）：键 → 窗标。</summary>
+    private static readonly (string Key, string Label)[] UsedWindows =
+        [("rolling_percent", "5h"), ("weekly_percent", "w"), ("monthly_percent", "M")];
+
+    /// <summary>剩余口径三窗（kimi.coding）：键 → 窗标（monthly 预留，接口今天只给 rolling/weekly）。</summary>
+    private static readonly (string Key, string Label)[] RemainingWindows =
+        [("rolling_remaining_percent", "5h"), ("weekly_remaining_percent", "w"), ("monthly_remaining_percent", "M")];
+
+    /// <summary>
+    /// 多窗口形态：同一口径的窗口键任意两个以上非空 → 「5%/5h 7%/w 8%/M」（剩余口径前缀「剩」，
+    /// 窗序 5h → 周 → 月，只出实际存在的窗口）；单窗或全缺 → null 走既有单窗优先级链。
+    /// 进度条语义不在此处：仍取最小可用窗口（provider 现有 Progress 同源，不变）。
+    /// </summary>
+    public static string? MultiWindow(IReadOnlyDictionary<string, string> payload)
+        => Join(payload, RemainingWindows, "剩") ?? Join(payload, UsedWindows, "");
+
+    private static string? Join(IReadOnlyDictionary<string, string> payload, (string Key, string Label)[] windows, string prefix)
+    {
+        List<string> segments = [];
+        foreach (var (key, label) in windows)
+        {
+            if (Text(payload, key) is { } value)
+            {
+                segments.Add($"{prefix}{value}%/{label}");
+            }
+        }
+        return segments.Count >= 2 ? string.Join(" ", segments) : null;
+    }
+
+    /// <summary>
+    /// 多窗口形态下 tile 是否收起「NN%」进度读数：数值文本已含主位（最小可用）窗口的百分比，
+    /// 读数是重复占宽（2026-10-12 用户令）；单窗形态维持读数常驻（现状不变）。
+    /// </summary>
+    public static bool SuppressProgressReadout(WidgetState state) => MultiWindow(state.Payload) is not null;
 
     /// <summary>token 短格式：1.2M / 45.6K / 890（Invariant，悬浮窗数值列不溢出）。</summary>
     private static string FormatCount(long value) => value switch

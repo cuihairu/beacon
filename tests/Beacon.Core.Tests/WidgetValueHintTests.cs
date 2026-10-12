@@ -53,6 +53,19 @@ public sealed class WidgetValueHintTests
         { State("MiMo · 大数", new() { ["total_calls"] = "1234567" }), "1.2M 次" },
         // mimo.usage：无计数源时 provider 显式 value_text（模型数降 Summary 次行）
         { State("MiMo · 官方无额度接口 · 8 模型可用", new() { ["value_text"] = "无额度口", ["models"] = "8" }), "无额度口" },
+        // 多窗口额度（2026-10-12 用户令）：两窗以上拼「NN%/窗」——已用口径（bigmodel/ark）
+        { State("GLM · 三窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "70", ["monthly_percent"] = "80" }), "5%/5h 70%/w 80%/M" },
+        // 只出实际存在的窗口（空串 = 缺，provider 对空窗写 ""）；月窗缺失
+        { State("方舟 · 双窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "70.5", ["monthly_percent"] = "" }), "5%/5h 70.5%/w" },
+        // 窗序固定 5h→周→月（与 payload 书写序无关）
+        { State("GLM · 乱序", new() { ["monthly_percent"] = "80", ["rolling_percent"] = "5", ["weekly_percent"] = "70" }), "5%/5h 70%/w 80%/M" },
+        // kimi 剩余口径同规则（前缀「剩」）
+        { State("Kimi · 双窗", new() { ["rolling_remaining_percent"] = "95", ["weekly_remaining_percent"] = "80" }), "剩95%/5h 剩80%/w" },
+        // 单窗不进多窗口形态，走既有单窗链（bigmodel/ark 主窗 = percent；kimi = 剩余键）
+        { State("Kimi · 单窗", new() { ["rolling_remaining_percent"] = "95", ["weekly_remaining_percent"] = "" }), "剩95%" },
+        { State("GLM · 单窗", new() { ["percent"] = "5" }), "5%" },
+        // 优先级：value_text（provider 显式）压过多窗口
+        { State("MiMo · 显式", new() { ["value_text"] = "无额度口", ["rolling_percent"] = "5", ["weekly_percent"] = "70" }), "无额度口" },
         // 优先级：percent 压过 models
         { State("x", new() { ["percent"] = "50", ["models"] = "9" }), "50%" },
         // stale 优先于 Summary 兜底，但压不过已有数值
@@ -76,5 +89,20 @@ public sealed class WidgetValueHintTests
     {
         // provider 对空值写空串（claude cost 无成本时 ""）：不能渲染成 "$"
         Assert.Equal("Kimi · …", WidgetValueHint.Of(State("Kimi · 无数据", new() { ["cost"] = "" })));
+    }
+
+    [Fact]
+    public void SuppressProgressReadout_MultiWindowTrue_SingleWindowFalse()
+    {
+        // 多窗口：数值文本已含主位窗口百分比 → 读数收起（bigmodel 已用口径与 kimi 剩余口径同规则）
+        var multi = State("GLM", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "70" });
+        Assert.True(WidgetValueHint.SuppressProgressReadout(multi));
+        var kimi = State("Kimi", new() { ["rolling_remaining_percent"] = "95", ["weekly_remaining_percent"] = "80" });
+        Assert.True(WidgetValueHint.SuppressProgressReadout(kimi));
+        // 单窗：读数维持常驻（现状不变）
+        var single = State("GLM", new() { ["percent"] = "5" });
+        Assert.False(WidgetValueHint.SuppressProgressReadout(single));
+        // 无额度键的组件（machine/github）：读数逻辑不受影响
+        Assert.False(WidgetValueHint.SuppressProgressReadout(State("本机", new() { ["cpu_percent"] = "12" })));
     }
 }

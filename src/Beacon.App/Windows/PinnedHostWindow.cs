@@ -180,14 +180,15 @@ internal sealed class PinTile
 
     public string WidgetId { get; }
 
-    /// <summary>本 tile 推算宽（DIP）：machine 类型按所选展示项最坏值行算（MachineTileSizing），
-    /// 其余类型维持旧全局宽——面板列宽取钉选 tile 的最大值，值行恒不裁（2026-10-12 用户令）。</summary>
+    /// <summary>本 tile 推算宽（DIP）：所有类型同一路径逐列字宽预算（TileSizing——数值列按各类型最坏
+    /// ValueHint 文本、machine 值行按所选展示项构造），面板列宽取钉选 tile 的最大值，值行恒不裁
+    /// （2026-10-12 用户令二修：真字宽预算扩到全部 tile）。</summary>
     public int TileWidthDips { get; }
 
     public PinTile(WidgetConfig widget, UiPalette palette, MotionEngine motion, string? connectionType = null)
     {
         WidgetId = widget.Id;
-        TileWidthDips = MachineTileSizing.TileWidthDips(widget);
+        TileWidthDips = TileSizing.TileWidthDips(widget);
         _widget = widget;
         _palette = palette;
         _motion = motion;
@@ -358,7 +359,11 @@ internal sealed class PinTile
 
         var fraction = Math.Clamp(progress, 0, 1);
         _progressText.Text = $"{Math.Round(fraction * 100)}%";
-        _progressText.Visibility = Visibility.Visible;
+        // 多窗口额度（bigmodel/ark 三窗全拼）：数值文本已含主位窗口百分比，读数重复占宽，收起
+        // （2026-10-12 用户令；单窗形态维持常驻，与 tile 宽预算同口径——TileSizing 不预算该列）
+        _progressText.Visibility = WidgetValueHint.SuppressProgressReadout(state)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         if (_barMode)
         {
@@ -615,7 +620,7 @@ internal sealed class PinnedHostWindow
         }
         // UI/UX 审计：单列竖排在 tile 超工作区高时底部被裁且无任何提示——超阈值改双列
         // （18×32=576 DIP 起切），面板宽随列数翻倍，行高仍 32 不挤压 tile。
-        // 列宽按钉选 tile 的推算宽取最大（machine 按值行、其余 168），三处（列定义/PanelPxSize/HitWidthPx）同源。
+        // 列宽按钉选 tile 的推算宽取最大（全类型逐列字宽预算），三处（列定义/PanelPxSize/HitWidthPx）同源。
         var columns = placed.Count > TwoColumnThreshold ? 2 : 1;
         var rows = Math.Max(1, (placed.Count + columns - 1) / columns);
         for (var i = 0; i < columns; i++)
@@ -734,10 +739,10 @@ internal sealed class PinnedHostWindow
         _runtime.Config.SavePins();
     }
 
-    /// <summary>面板列宽（DIP）：钉选 tile 推算宽（PinTile.TileWidthDips，machine 按所选展示项最坏值行、
-    /// 其余 168）取最大；零钉选退 168。列定义/PanelPxSize/HitWidthPx 三处唯一口径。</summary>
+    /// <summary>面板列宽（DIP）：钉选 tile 推算宽（PinTile.TileWidthDips，全类型逐列字宽预算）取最大；
+    /// 零钉选退 TileSizing.FloorDips。列定义/PanelPxSize/HitWidthPx 三处唯一口径。</summary>
     private int PanelWidthDips()
-        => _tiles.Count == 0 ? MachineTileSizing.FloorDips : _tiles.Values.Max(tile => tile.TileWidthDips);
+        => _tiles.Count == 0 ? TileSizing.FloorDips : _tiles.Values.Max(tile => tile.TileWidthDips);
 
     /// <summary>面板物理尺寸（ApplyLayout 与 WM_NCHITTEST 唯一口径）：列数随 tile 数切换，
     /// DIP 设计值只在 Win32 边界换算一次；总高一次四舍五入而非逐行（DPI 修复单 2026-10-10）。</summary>

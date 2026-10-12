@@ -3,10 +3,9 @@ using Beacon.Core.Models;
 namespace Beacon.Connections.Tests;
 
 /// <summary>
-/// machine 可选展示项（2026-10-12 用户令「本地组件可选展示项」）与按值行推算的 tile 宽度：
+/// machine 可选展示项（2026-10-12 用户令「本地组件可选展示项」）：
 /// show 解析（缺省 = 默认全选 / 大小写不敏感去重按规范序 / 未知键 fail-loud / 选空 fail-loud /
-/// ResolveOrAll 宽松退默认）、宽度模型（非 machine 维持 168 / local·net 默认宽逐字符可复算 /
-/// 窄选择落 168 下限 / disk_path 加长算进宽 / 标签配置算进宽）。
+/// ResolveOrAll 宽松退默认）。tile 宽度测试在 TileSizingTests（全类型同一路径）。
 /// </summary>
 public sealed class MachineShowOptionsTests
 {
@@ -19,8 +18,6 @@ public sealed class MachineShowOptionsTests
         }
         return widget;
     }
-
-    // —— show 解析 ——
 
     [Fact]
     public void Resolve_MissingOrBlank_DefaultsToAll()
@@ -64,61 +61,5 @@ public sealed class MachineShowOptionsTests
         // sizing 在 UI 侧不能炸：未知键退默认全选（全选是最宽口径，按它算宽恒安全）
         Assert.Equal(MachineShowOptions.NetKeys, MachineShowOptions.ResolveOrAll(
             MachineWidgetDescriptors.NetType, Widget(MachineWidgetDescriptors.NetType, ("show", "nonsense"))));
-    }
-
-    // —— tile 宽度（模型逐字符可复算：ASCII=7、CJK=11、空格=4、%=10、箭头/·=11、标签 ASCII=8/CJK=12，
-    //    固定件 74（padding 20 + 灯 8 + icon 16 + 列间距 30）+ 取整余量 4，下限 168） ——
-
-    [Fact]
-    public void ValueTextWidth_ModelPerCharacter()
-        => Assert.Equal(56, MachineTileSizing.ValueTextWidthDips("CPU 100%")); // 21+4+(3×7+10)
-
-    [Fact]
-    public void TileWidth_NonMachine_KeepsLegacyFloor()
-        => Assert.Equal(168, MachineTileSizing.TileWidthDips(Widget("http.status")));
-
-    [Fact]
-    public void TileWidth_LocalDefault_FitsWorstValueLine()
-    {
-        // 值行 = "CPU 100% · 内存 100% · C: 100%" = 56+19+57+19+49 = 200；标签「本机」= 24
-        Assert.Equal(302, MachineTileSizing.TileWidthDips(Widget(MachineWidgetDescriptors.LocalType)));
-    }
-
-    [Fact]
-    public void TileWidth_NetDefault_RatesFormIsTheWorst()
-    {
-        // 值行形态二选一取宽者：速率行 "↓999.9 MB/s ↑999.9 MB/s" = 78+4+78 = 160（IP 行 105 不并排出现）
-        Assert.Equal(262, MachineTileSizing.TileWidthDips(Widget(MachineWidgetDescriptors.NetType)));
-    }
-
-    [Fact]
-    public void TileWidth_NarrowSelection_LandsOnFloor()
-    {
-        // 只留 CPU：「CPU 100%」= 56，74+4+24+56 = 158 < 168 → 下限兜底
-        Assert.Equal(168, MachineTileSizing.TileWidthDips(Widget(
-            MachineWidgetDescriptors.LocalType, ("show", "cpu_percent"))));
-    }
-
-    [Fact]
-    public void TileWidth_LongDiskPath_CountsIntoWidth()
-    {
-        // disk_path 进磁盘段前缀（与 Provider 的 diskHead 同构）："/mnt/data" = 9×7 = 63
-        Assert.Equal(351, MachineTileSizing.TileWidthDips(Widget(
-            MachineWidgetDescriptors.LocalType, ("disk_path", "/mnt/data"))));
-    }
-
-    [Fact]
-    public void TileWidth_LabelConfig_CountsIntoWidth()
-    {
-        // 标签配置进宽（标签列不再挨裁）：「工位机」= 3×12 = 36
-        Assert.Equal(314, MachineTileSizing.TileWidthDips(Widget(
-            MachineWidgetDescriptors.LocalType, ("label", "工位机"))));
-    }
-
-    [Fact]
-    public void TileWidth_NetIpOnly_FitsAddress()
-    {
-        Assert.Equal(207, MachineTileSizing.TileWidthDips(Widget(
-            MachineWidgetDescriptors.NetType, ("show", "ip"))));
     }
 }
