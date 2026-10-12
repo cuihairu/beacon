@@ -158,7 +158,9 @@ public static class TileSizing
     /// 取所选形态里的最宽者，不把互斥形态相加。</summary>
     private static string NetWorstValue(IReadOnlyList<string> show)
     {
-        const string ratesForm = "↓999.9 MB/s ↑999.9 MB/s"; // FormatRate 最大长度形态（999.9 顶格）；速率对单空格并排（与 Summary 同构）
+        // FormatRate 档内尾数上限 1023.9（≥1024 才换档，"0.0" 一位小数），非 999.9——千兆/万兆网卡
+        // MB/KB 档 6 位尾数真实可达；速率对单空格并排（与 Summary 同构）
+        const string ratesForm = "↓1023.9 MB/s ↑1023.9 MB/s";
         const string ipForm = "255.255.255.255";
         return show.Contains("down_bps") || show.Contains("up_bps") ? ratesForm
             : show.Contains("ip") ? ipForm

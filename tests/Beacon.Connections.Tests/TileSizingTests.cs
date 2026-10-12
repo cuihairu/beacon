@@ -163,8 +163,9 @@ public sealed class TileSizingTests
     [Fact]
     public void TileWidth_NetDefault_RatesFormIsTheWorst()
     {
-        // 值行 "↓999.9 MB/s ↑999.9 MB/s" = 18 ASCII×0.62 + 3 空格×0.36 + 2 箭头×1.0 = 14.24em×11 = 156.64 → 157
-        Assert.Equal(247, TileSizing.TileWidthDips(Widget(MachineWidgetDescriptors.NetType)));
+        // 值行 "↓1023.9 MB/s ↑1023.9 MB/s"（FormatRate 尾数上限 1023.9，非 999.9）：
+        // 22 ASCII×0.62 + 3 空格×0.36 + 2 箭头×1.0 = 15.48em×11 = 170.28 → 171 → 44+24+171+18+4 = 261
+        Assert.Equal(261, TileSizing.TileWidthDips(Widget(MachineWidgetDescriptors.NetType)));
     }
 
     [Fact]
