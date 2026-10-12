@@ -163,6 +163,7 @@ jobs:
       # 重置默认还原、动效档持久化重启恢复选中、off 档全静止/full 档呼吸帧差分断言、状态翻档两 tile 独立）；
       # H=悬浮位置还原（FloatingX/Y 两轮重启精确落位、TOOLWINDOW 置位不进 Alt-Tab、
       # 刷新不抢焦点、panel/floating 二选一）；
+      # K=全局热键 Ctrl+Alt+B 唤起快速面板（SendInput 和弦）+ 断网打开走缓存无白屏 + Esc 键盘关闭；
       # J=静默安装/卸载（setup.exe /VERYSILENT 装卸，程序文件清空、用户数据保留）。
       # 断言失败=红构建不发版——渲染、连接链与常驻行为回归从此在这里现形。
       - name: Visual evidence (tile icon + providers + zero-residue screenshots)

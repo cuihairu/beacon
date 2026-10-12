@@ -50,6 +50,7 @@ public sealed partial class QuickPanelWindow : Window
     public QuickPanelWindow(BeaconRuntime runtime, IUiDispatcher dispatcher)
     {
         InitializeComponent();
+        Title = "Beacon 快速面板"; // 窗口标题仅作取证/自动化锚点（边框已隐，UI 不可见；同 Beacon Tile 口径）
         // RFC §6.4：Flyout 语义——WinUI 栈规范「Acrylic 用于 flyout/瞬态面」，系统亚克力背板
         SystemBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
         _runtime = runtime;

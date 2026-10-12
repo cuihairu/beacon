@@ -168,6 +168,29 @@ public static class WinEnum
         SendInput(1, new[] { up }, size);
         System.Threading.Thread.Sleep(120);
     }
+    // 单键按下/抬起分离（全局热键和弦用，如 Ctrl+Alt+B：MOD 修饰键按住期间敲主键）
+    public static void SendKeyDown(ushort vk)
+    {
+        var down = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0000 } } };
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { down }, size);
+        System.Threading.Thread.Sleep(60);
+    }
+    public static void SendKeyUp(ushort vk)
+    {
+        var up = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0002 } } };
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { up }, size);
+        System.Threading.Thread.Sleep(60);
+    }
+    // 全局热键和弦（如 Ctrl+Alt+B）：修饰键按下 → 主键敲击 → 修饰键抬起
+    public static void SendChord(ushort modifier, ushort key)
+    {
+        SendKeyDown(modifier);
+        SendKeyDown(key);
+        SendKeyUp(key);
+        SendKeyUp(modifier);
+    }
     // 单击注入（前景不被打断断言用）：绝对坐标 move+down+up
     public static void ClickAt(int x, int y)
     {
@@ -1631,6 +1654,90 @@ catch
     Save-FullScreenshot "H-FAIL-unexpected.png"
     $failures.Add("场景 H：$($_.Exception.Message)")
     Write-Host "::error::场景 H 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 K：全局热键唤起 L2 快速面板 + 缓存优先 + Esc 键盘关闭（todo 行14/36 半项 CI 代验）——
+try
+{
+    Write-ScenarioConfig $true
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    # 前置：缓存已填充（tile 百分比在）——面板缓存取同一份 states 落盘
+    $tiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    if ($tiles.Count -lt 1)
+    {
+        Save-FullScreenshot "K-FAIL-no-tile.png"
+        throw "断言失败（场景 K 前置）：tile 窗未建"
+    }
+    $texts = @()
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = Get-WindowUiaTexts $tiles[0]
+        if (($texts | Where-Object { $_ -match '\d+\s*%' })) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!($texts | Where-Object { $_ -match '\d+\s*%' })) { throw "断言失败（场景 K 前置）：缓存未填充（30s 无百分比读数）" }
+    Stop-MockServer # 断网：面板打开必须走缓存（「无网络等待白屏」的反证）
+    # K1 全局热键 Ctrl+Alt+B（RegisterHotKey 全局生效，与前台无关）→ 面板窗出现
+    $before = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count
+    if ($before -ne 0) { throw "断言失败（场景 K1）：面板在热键前已可见（$before）" }
+    [WinEnum]::SendChord(0x11, 0x42) # VK_CONTROL + VK_B
+    $panel = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($handles.Count -ge 1) { $panel = $handles[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panel -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "K-FAIL-no-panel.png"
+        throw "断言失败（场景 K1）：Ctrl+Alt+B 后 5s 内快速面板未出现——热键注册/触发链回归"
+    }
+    Save-FullScreenshot "K-panel-open-offline.png"
+    Write-Host "场景 K1 通过：全局热键 Ctrl+Alt+B 唤起快速面板（runner 前台是 pwsh 控制台，全局注册语义实证；真实第三方前台多样性留装机）"
+    # K2 缓存优先：断网状态下面板有数据（百分比读数在，无白屏）；<100ms 精确计时留装机（CI 时钟分辨率不够）
+    $panelTexts = @()
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelTexts = Get-WindowUiaTexts $panel
+        if (($panelTexts | Where-Object { $_ -match '\d+\s*%' })) { break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!($panelTexts | Where-Object { $_ -match '\d+\s*%' }))
+    {
+        Save-FullScreenshot "K-FAIL-panel-blank.png"
+        throw "断言失败（场景 K2）：断网打开面板无缓存读数（白屏回归）；实际文本：$($panelTexts -join ' | ')"
+    }
+    Write-Host "场景 K2 通过：断网打开面板显示缓存数据（缓存优先）"
+    # K3 Esc 键盘关闭（先 SetForegroundWindow 保证键盘焦点在面板）
+    [WinEnum]::SetForegroundWindow($panel)
+    Start-Sleep -Milliseconds 400
+    [WinEnum]::SendVirtualKey(0x1B) # VK_ESCAPE
+    $closed = $false
+    $deadline = (Get-Date).AddSeconds(4)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -eq 0) { $closed = $true; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if (!$closed)
+    {
+        Save-FullScreenshot "K-FAIL-esc.png"
+        throw "断言失败（场景 K3）：Esc 后面板未关闭——键盘操作链回归"
+    }
+    Write-Host "场景 K3 通过：Esc 键盘关闭面板"
+    Start-MockServer # 还原 mock（后续场景/收尾统一管理）
+}
+catch
+{
+    try { Start-MockServer } catch { } # 失败路径也还原 mock，别让 J/收尾连带红
+    Save-FullScreenshot "K-FAIL-unexpected.png"
+    $failures.Add("场景 K：$($_.Exception.Message)")
+    Write-Host "::error::场景 K 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
