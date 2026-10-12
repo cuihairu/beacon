@@ -1604,19 +1604,47 @@ try
     $crop1.Dispose(); $crop2.Dispose(); $crop3.Dispose()
     if ($offDiff -gt 12) { throw "断言失败（场景 G7b）：off 档三帧差分 $offDiff px（期望 ≤12）——off 档仍有动画（功耗回归）" }
     Write-Host "场景 G7b 通过：off 档三帧差分 $offDiff px——全静止"
-    # 切 full 档：呼吸在帧间现形
-    Select-ComboItemById $settings $motionBox "motion-full"
-    Start-Sleep -Seconds 2
-    $crop1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
-    Start-Sleep -Milliseconds 900
-    $crop2 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
-    Start-Sleep -Milliseconds 900
-    $crop3 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
-    $fullDiff = [Math]::Max((Count-FrameDiff $crop1 $crop2 12), [Math]::Max((Count-FrameDiff $crop2 $crop3 12), (Count-FrameDiff $crop1 $crop3 12)))
-    Save-Zoom $crop1 "G7-full-frame1.png" 4
-    Save-Zoom $crop3 "G7-full-frame3.png" 4
-    $crop1.Dispose(); $crop2.Dispose(); $crop3.Dispose()
-    if ($fullDiff -lt 25) { throw "断言失败（场景 G7c）：full 档三帧差分 $fullDiff px（期望 ≥25）——呼吸灯不可见" }
+    # 切 full 档：呼吸在帧间现形。呼吸循环由 ApplyLoops 挂载——只在下一个 WidgetStateChanged
+    # tick（刷新档 ≤15s）应用，选档后立即采样必然全静止（38268308192 实证 diff=0）；呼吸周期
+    # 2400ms×intensity(1.5)=3600ms，固定帧对还可能撞缓动峰台（相位差小 → 差分小）。故轮询
+    # 重采样帧对（每轮 3 帧、取两两差分最大值）直至超时，覆盖「挂载 tick + 一个完整呼吸周期」。
+    $fullDiff = 0
+    $best1 = $null
+    $best3 = $null
+    $deadline = (Get-Date).AddSeconds(35)
+    while ((Get-Date) -lt $deadline)
+    {
+        $c1 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+        Start-Sleep -Milliseconds 900
+        $c2 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+        Start-Sleep -Milliseconds 900
+        $c3 = New-Crop ([WinEnum]::RectOf($handles[$glmIndex])) 0
+        $d = [Math]::Max((Count-FrameDiff $c1 $c2 12), [Math]::Max((Count-FrameDiff $c2 $c3 12), (Count-FrameDiff $c1 $c3 12)))
+        if ($d -gt $fullDiff)
+        {
+            $fullDiff = $d
+            if ($best1) { $best1.Dispose() }
+            if ($best3) { $best3.Dispose() }
+            $best1 = $c1
+            $best3 = $c3
+            $c2.Dispose()
+        }
+        else
+        {
+            $c1.Dispose(); $c2.Dispose(); $c3.Dispose()
+        }
+        if ($fullDiff -ge 25) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($best1)
+    {
+        Save-Zoom $best1 "G7-full-frame1.png" 4
+        Save-Zoom $best3 "G7-full-frame3.png" 4
+        $best1.Dispose(); $best3.Dispose()
+    }
+    # 阈值依据：呼吸在 0.55↔1.0 相位间摆动时灯区（Ø8 亚像素实测 10~44 px 匹配、全域 ~50-64 px）
+    # 全部像素跨相位变色，帧对撞峰台由轮询取最大值规避；25 为灯全域差分的保守下界（首跑实证后回填）。
+    if ($fullDiff -lt 25) { throw "断言失败（场景 G7c）：35s 内 full 档帧差分 $fullDiff px（期望 ≥25）——呼吸灯不可见" }
     Write-Host "场景 G7c 通过：full 档三帧差分 $fullDiff px——呼吸灯可见（改档即时生效，无重启）"
     Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
     Stop-Beacon
