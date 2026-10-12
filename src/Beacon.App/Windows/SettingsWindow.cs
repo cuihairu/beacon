@@ -594,20 +594,61 @@ internal sealed class SettingsWindow : Window
         return page;
     }
 
-    /// <summary>版本信息：nightly exe 盖 yyyy.M.d 日期+commit（daily-build publish 步），本地构建 0.1.0——
-    /// 装机排障先对构建日期，别再猜装的哪版。</summary>
-    private static UIElement BuildAboutSection()
+    /// <summary>「关于」（master-plan §10）：版本行 + 开源许可证 + 项目主页/检查更新入口——
+    /// §10 审计补记（2026-10-11）明确后两项未做，2026-10-12 巡检补齐。更新口径 = nightly 滚动 tag
+    /// （README 下载节同源）：不查正式版、不自动装，打开下载页人工覆盖；升级后需托盘 Exit 重启。</summary>
+    private UIElement BuildAboutSection()
     {
+        var panel = new StackPanel { Spacing = 6 };
         var informational = System.Reflection.Assembly.GetEntryAssembly()
             ?.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
         var text = string.IsNullOrEmpty(informational) ? "0.1.0（本地构建）" : informational;
-        return new TextBlock
+        panel.Children.Add(new TextBlock
         {
             Text = $"Beacon 版本：{text}",
             FontSize = 11,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "开源许可证：Apache License 2.0（见仓库 LICENSE）",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+        });
+
+        var links = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        links.Children.Add(AboutLinkButton("项目主页", "https://github.com/cuihairu/beacon"));
+        links.Children.Add(AboutLinkButton("检查更新", "https://github.com/cuihairu/beacon/releases/tag/nightly"));
+        panel.Children.Add(links);
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "更新走 nightly 滚动构建（每日自动，无正式版本发布）；「检查更新」打开 nightly 下载页，覆盖安装后托盘 Exit 重启生效（单实例常驻）。",
+            FontSize = 11,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            TextWrapping = TextWrapping.Wrap,
+        });
+        return panel;
+    }
+
+    /// <summary>关于页外链按钮：系统默认浏览器打开（与 open.url Action 同 UseShellExecute 口径）；
+    /// 打不开落运行日志不弹窗（无上下文反馈面，日志足够定位）。</summary>
+    private Button AboutLinkButton(string label, string url)
+    {
+        var button = new Button { Content = label, HorizontalAlignment = HorizontalAlignment.Left };
+        button.Click += (_, _) =>
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch (Exception exception)
+            {
+                _runtime.Logger?.LogWarning(exception, "关于页外链打开失败：{Url}", url);
+            }
         };
+        return button;
     }
 
     // —— 页面：外观 ——

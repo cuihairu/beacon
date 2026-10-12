@@ -1193,3 +1193,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **①可选展示项**：组件 config `show` 逗号分隔多选（local：cpu_percent/mem_percent/disk_percent；net：down_bps/up_bps/ip），留空 = 全显（默认版式逐字节不变，存量零迁移）。解析在 `MachineShowOptions`（大小写不敏感/去重/规范序；未知键与选空 fail-loud Degraded，与阈值同口径）。三处同源的根在 Provider：未选中的键不出 payload——悬浮 tile 数值位（新增 `value_text`，WidgetValueHint 首优先键）、快捷面板 Summary、详情页 payload 表自然一致省略；原始台账键（mem_used/total_sent 等）不参与选择恒留详情页；超线判黄只看选中项。DetailWindow 跳过 value_text 行（tile 提示键不重复占行）。改 show 下次刷新即生效免重启（ReloadTiles 对已存悬浮窗补排尺寸）。
 - **②宽度按值行推算**：`MachineTileSizing` 按所选展示项的最坏值行（百分比顶格 100、速率顶格「999.9 MB/s」= FormatRate 最大长度形态、IP 顶格 15 位；net 数值位速率行/IP 行互斥取宽者）× 保守字宽模型（ASCII=7、CJK=11、%=10、箭头/·=11、空格=4）+ 固定件 74（padding 20/灯 8/icon 16/列间距 30）+ 标签实测宽 + 取整余量 4，下限 168。同口径三处一次改齐：面板列定义 / PanelPxSize / WM_NCHITTEST HitWidthPx（`PanelWidthDips()` 取钉选 tile 最大值）与独立悬浮窗 ApplyDesignSize（按组件各算）。默认全选下 local = **302 DIP**、net = **262 DIP**（原 168）。
 - **验收**：新增 MachineShowOptionsTests 13 例 + local/net provider show 过滤 9 例（未选中不占位/不判黄/value_text 同源/首刷占位符/无网卡提示）；全绿 910（Connections 575，553+22 逐项复核）。
+
+### 批3-补46 「关于」页补全：许可证 + 项目主页/检查更新入口（2026-10-12 巡检续批·优先席位）
+- **立项依据**：master-plan §10 审计补记（2026-10-11）明确「开源许可证、检查更新/项目主页入口未做」——设置界面四类内容里唯一未落地面，不需要 Windows 真机即可实现。同轮排查其余「未做」标记：指纹级去重/事件合并（§5.4 注记）已由用户令「待真机验收后排期」挂账不动；第二阶段冻结面维持冻结；通知点击深链（§6.3「点击定位到事件」）已落地（ToastActivation widget→L3 + DetailUrl 兜底）。
+- **内容**：设置 → 关于 = 版本行（原有）+「开源许可证：Apache License 2.0（见仓库 LICENSE）」+「项目主页」「检查更新」两枚外链按钮（`github.com/cuihairu/beacon` 与 `/releases/tag/nightly`，Process.Start UseShellExecute 系统浏览器，与 open.url Action 同口径；失败落运行日志不弹窗）+ nightly 滚动更新说明行（无正式版发布、覆盖安装后托盘 Exit 重启）。检查更新口径 = 打开 nightly 下载页人工比对，不自动下载安装（版本发布红线：正式版由用户手动触发）。
+- **验收**：App 程序集 Linux 不可编译（既有口径），编译门 CI windows-latest；本机 4 测试项目全绿 910。
