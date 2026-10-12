@@ -12,21 +12,19 @@ permissions:
 
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
       - name: Probe draft release create with GITHUB_TOKEN
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          # 复刻 daily-build 发布步的确切序列：delete(含 cleanup-tag) → create(非草稿，服务端建 ref)
-          tag="probe-nightly-$(date +%s)"
-          gh release delete "$tag" --yes --cleanup-tag || echo "DELETE_ABSENT(预期)"
-          if gh release create "$tag" --target "$GITHUB_SHA" --title probe --notes probe --prerelease --latest=false; then
+          # 复刻 daily-build 发布步：windows runner + delete(含 cleanup-tag) → create nightly（非草稿，服务端建 ref）
+          gh release delete nightly --yes --cleanup-tag || echo "DELETE_ABSENT(预期)"
+          if gh release create nightly --target "$GITHUB_SHA" --title "Nightly · probe" --notes probe --prerelease --latest=false; then
             echo "CREATE_OK"
-            sleep 2
-            gh release delete "$tag" --yes --cleanup-tag || echo "DELETE_FAILED"
           else
             echo "CREATE_FAILED"
           fi
