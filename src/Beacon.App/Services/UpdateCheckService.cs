@@ -5,8 +5,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Beacon.App.Services;
 
-/// <summary>一次检查的落点：远程 tag（失败为 null）、时间、判定、是否网络层失败。</summary>
-internal sealed record UpdateCheckOutcome(
+/// <summary>一次检查的落点：远程 tag（失败为 null）、时间、判定、是否网络层失败。（public：UpdateCheckService.Last/CheckAsync 的公开返回形态，CS0053/CS0050）</summary>
+public sealed record UpdateCheckOutcome(
     string? RemoteTag, DateTimeOffset CheckedAt, UpdateCheck.Verdict Verdict, bool NetworkFailure)
 {
     /// <summary>网络/HTTP/解析失败的统一降级落点（Offline 口径：不抛异常，只记录）。</summary>
@@ -19,7 +19,7 @@ internal sealed record UpdateCheckOutcome(
 /// 限流口径：GitHub 未认证 60 次/小时/IP——进程生命周期内只缓存一次结果，手动「检查更新」强制刷新；
 /// 所有失败（断网/超时/非 200/限流体）都折返 Failure 落点，绝不向 UI 抛异常。
 /// </summary>
-internal sealed class UpdateCheckService
+public sealed class UpdateCheckService
 {
     private const string LatestApiUrl = "https://api.github.com/repos/cuihairu/beacon/releases/latest";
     private const string DownloadPageUrl = "https://github.com/cuihairu/beacon/releases/latest";
