@@ -13,7 +13,7 @@
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
-## MVP 待验/未修项（原样搬自 docs/mvp-issues.md，共 42 项，完成即改回该文件勾选）
+## MVP 待验/未修项（原样搬自 docs/mvp-issues.md 当时未完成 42 项，完成即改回该文件勾选；本表后续批次补录已勾项，现共 49 项 = 16 勾 / 33 未勾，2026-10-13 清点）
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）——CI 已代验进程半（场景 E1：二次启动进程数恒 1 + 副实例退出日志硬断言）；唤起气泡是 OS Toast 面不可脚本取证【需装机（半）】
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出【已由 CI 代验：场景 E2 设置窗 WM_CLOSE 后进程驻留 + E3 托盘菜单 Exit 后进程退出（菜单驱动失败时降级 warning 转装机，见 run 日志）】
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱【需装机：胶囊（L0）位置持久化与真实 DPI 拓扑切换需物理显示器；悬浮 tile 半已由场景 H 代验】
