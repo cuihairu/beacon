@@ -9,7 +9,7 @@ Beacon 本体仍是 **unpackaged 自包含**（RFC §10，`WindowsPackageType=No
 | SignPath 免费签名 | 申请待获批。workflow 骨架已就位；secrets 未配置时版本通道打印提示、跳过签名、发布未签名资产（run 不红）。政策见 README「代码签名政策」 |
 | MSIX 打包 | **已在 Windows runner 验证通过**（2026-10-12 dry run，run 38230149697）：MakeAppx 找到、清单被接受、包产出并作为 run artifact 下载成功。打包逻辑与 daily-build 版本 tag 通道共用 `.github/workflows/scripts/msix-pack.ps1` |
 | 商店应用预留 | 未开始。Partner Center 预留应用名后才确定 `appxmanifest` 的 `Identity Name` / `Publisher` |
-| 隐私政策页 | 未开始。**需要一个公开可访问的 URL**（字段清单见第 1 节） |
+| 隐私政策页 | **已就绪**：<https://cuihairu.github.io/beacon/privacy-policy/>（`docs/privacy-policy.md`，随 docs 工作流发布；字段对照见第 1 节） |
 | 商店素材 | 图标已备；截图 / 说明 / 分类 / 分级问卷未备（见第 2 节） |
 
 ## 1. 隐私政策页必填字段
@@ -29,7 +29,7 @@ Beacon 本体仍是 **unpackaged 自包含**（RFC §10，`WindowsPackageType=No
 
 落地要求：
 
-- [ ] 需要一个**公开 URL**——GitHub Pages 即可（如 `https://cuihairu.github.io/beacon/privacy`，在本仓库 docs 里加一页并由 docs 工作流发布）
+- [x] 公开 URL 已就绪：`https://cuihairu.github.io/beacon/privacy-policy/`（`docs/privacy-policy.md`，docs 工作流发布，提交页直接填它）
 - [ ] 提交前该 URL 必须已可访问（商店会抓取）
 - [ ] 不能是 `localhost` / 内网地址 / 需登录才能看的页面
 
