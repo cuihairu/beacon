@@ -34,13 +34,14 @@ jobs:
       - name: Publish (self-contained win-x64)
         shell: pwsh
         run: |
-          # 试跑台用固定版本 0.0.0.0（不冒充任何 tag）；只验证打包链路本身
-          dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish -p:Version=0.0.0.0 "-p:InformationalVersion=0.0.0.0+$env:GITHUB_SHA"
+          # 试跑台用固定版本 9.9.9.9（不冒充任何 tag）；故意与清单占位 0.0.0.0 不同，
+          # 让版本替换路径被真正练到（包内 manifest 出现 9.9.9.9 即证明替换发生）
+          dotnet publish src/Beacon.App/Beacon.App.csproj -c Release -r win-x64 --self-contained true -o publish -p:Version=9.9.9.9 "-p:InformationalVersion=9.9.9.9+$env:GITHUB_SHA"
 
       - name: Pack MSIX (same script as daily-build release channel)
         shell: pwsh
         run: |
-          & .github\workflows\scripts\msix-pack.ps1 -Version 0.0.0.0 -Output beacon-msix-dryrun-windows-x86_64.msix
+          & .github\workflows\scripts\msix-pack.ps1 -Version 9.9.9.9 -Output beacon-msix-dryrun-windows-x86_64.msix
 
       - name: Upload MSIX (run artifact, 14 days)
         if: always()
