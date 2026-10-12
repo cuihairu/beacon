@@ -38,9 +38,11 @@ jobs:
     name: Build & publish nightly (windows-x86_64)
     runs-on: windows-latest
     timeout-minutes: 60
-    # SignPath 代码签名凭据（骨架，等 token 即用）：未配置时版本通道打印提示并跳过
-    # 签名、发布未签名资产，run 不红——签名政策与取值位置见 README「Code signing policy」
-    # 与 docs/store-submission.md。
+    # SignPath 代码签名凭据：api-token 与 organization-id 走仓库 Secrets
+    # （SIGNPATH_API_TOKEN / SIGNPATH_ORGANIZATION_ID，均已配置），绝不硬编码。
+    # secrets 未配置时版本通道打印提示并跳过签名、发布未签名资产（run 不红）；
+    # 已配置时签名步真实执行，失败即红（fail closed，不静默发未签名正式版）。
+    # 政策见 README「Code signing policy」与 docs/store-submission.md。
     env:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
       SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
@@ -158,12 +160,13 @@ jobs:
       # ── SignPath 代码签名（仅版本 tag 通道；nightly 永不签名）──
       # 链路：未签名 zip+exe → upload-artifact 拿 artifact-id → SignPath 提交签名
       # （wait-for-completion）→ 签好的文件落回 signed/ → 发布步骤优先用 signed/ 的。
-      # 三个 slug 与 token 的取值位置（SignPath 控制台）：
-      #   api-token              组织设置 → API tokens（只读权限即可）
-      #   organization-id        组织 URL 或组织设置页
-      #   project-slug           项目 URL（如 https://app.signpath.io/Org/Project）
-      #   signing-policy-slug    项目 → Signing policies（如 release-signing）
-      #   artifact-configuration-slug  项目 → Artifact configurations（如 windows-binaries）
+      # 参数真值（2026-10-12 用户提供）：
+      #   api-token / organization-id  走仓库 Secrets（不硬编码）
+      #   project-slug: beacon、signing-policy-slug: beacon
+      #   artifact-configuration-slug  可选参数，省略 = 用项目默认 Artifact Configuration
+      #     （用户在控制台建 Portable Executable + deep signing 配置后，如需指定再回来填）
+      # 用户侧待办（不由 CI 代做）：在 SignPath 控制台把 API token 所属用户加进
+      # signing policy「beacon」的 Submitters 列表；未做前版本 tag 构建会在签名步红（fail closed）。
       - name: Upload unsigned assets for signing
         if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
         id: sign-upload
@@ -181,8 +184,9 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: beacon
-          signing-policy-slug: release-signing
-          artifact-configuration-slug: windows-binaries
+          signing-policy-slug: beacon
+          # artifact-configuration-slug 为可选参数，省略 = 用项目默认 Artifact Configuration
+          # （用户在控制台建 Portable Executable + deep signing 配置后，如需指定再回来填）
           github-artifact-id: ${{ steps.sign-upload.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: signed/

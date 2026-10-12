@@ -6,7 +6,7 @@ Beacon 本体仍是 **unpackaged 自包含**（RFC §10，`WindowsPackageType=No
 
 | 项 | 状态 |
 |---|---|
-| SignPath 免费签名 | 申请待获批。workflow 骨架已就位；secrets 未配置时版本通道打印提示、跳过签名、发布未签名资产（run 不红）。政策见 README「代码签名政策」 |
+| SignPath 免费签名 | **参数已接真**（2026-10-12）：`api-token` 与 `organization-id` 走仓库 Secrets（`SIGNPATH_API_TOKEN` / `SIGNPATH_ORGANIZATION_ID`，不硬编码），`project-slug: beacon`、`signing-policy-slug: beacon`；`artifact-configuration-slug` 为可选参数，省略 = 用项目默认 Artifact Configuration（用户在控制台建 Portable Executable + deep signing 配置后如需指定可再填）。**剩用户侧一步（不由 agent 代做）**：在 SignPath 控制台把 API token 所属用户加进 signing policy「beacon」的 **Submitters** 列表——做完后下一次 `v*` tag 起自动签名；未做前版本 tag 构建会在签名步红（fail closed，不静默发未签名正式版）。政策见 README「代码签名政策」 |
 | MSIX 打包 | **已在 Windows runner 验证通过并字节级验包**（2026-10-12 两轮 dry run 全绿，包内 manifest 版本替换实测发生）：MakeAppx 就位、清单被接受、约 66 MB 包产出。打包逻辑与 daily-build 版本 tag 通道共用 `.github/workflows/scripts/msix-pack.ps1` |
 | 商店应用预留 | 未开始。Partner Center 预留应用名后才确定 `appxmanifest` 的 `Identity Name` / `Publisher` |
 | 隐私政策页 | **已就绪**：<https://cuihairu.github.io/beacon/privacy-policy/>（`docs/privacy-policy.md`，随 docs 工作流发布；字段对照见第 1 节） |
