@@ -76,6 +76,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**:
   - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - 位置还原半场景 R 已建（2026-10-13 patrol-20261013-A2：预设 %APPDATA%\Beacon\shell-state.json capsuleLayout（TopLeft，offsetDips 40,40）→ 启动落位 ±4px → 重启落位一致，与场景 H tile 位置还原同口径），待 run 实证；拖动保存与跨 DPI 仍待装机。
 
 ### B-103 全局热键 Ctrl+Alt+B
 - **依赖**：B-101

@@ -2482,6 +2482,56 @@ catch
     Write-Host "::error::场景 Q 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 R：胶囊位置预设还原 + 重启一致（todo 行 20「重启后胶囊回到上次位置」半项 CI 代验）——
+# 胶囊位置复用 PinLayout（%APPDATA%\Beacon\shell-state.json capsuleLayout：monitor+anchor+offsetDips），
+# RestorePosition TopLeft 语义 = work.Left+40 / work.Top+40（96dpi DIP=px，工作区原点 (0,0) 已由
+# 场景 H tile 落位 120,120 旁证），与 tile floatingX/Y 同一「预设→启动恢复→重启仍一致」取证口径；
+# 拖动保存半需手势注入（CI 合成拖拽不可靠先例），仍属装机。monitor 名「ci」必不匹配 → 回落主屏（确定性）。
+try
+{
+    Write-GConfig "" "off" 1.0 $false $true
+    $shellDir = Join-Path $env:APPDATA "Beacon"
+    New-Item -ItemType Directory -Force -Path $shellDir | Out-Null
+    # WriteAllText = 无 BOM（JsonDocument 拒 BOM 的先例口径）
+    [System.IO.File]::WriteAllText((Join-Path $shellDir "shell-state.json"),
+        '{ "capsuleLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 40, "y": 40 }, "collapsed": false } }')
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $capsule = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($capsule.Count -lt 1)
+    {
+        Save-FullScreenshot "R-FAIL-no-capsule.png"
+        throw "断言失败（场景 R）：未见「Beacon Status」胶囊窗"
+    }
+    $r = [WinEnum]::RectOf($capsule[0])
+    if ([Math]::Abs($r.Left - 40) -gt 4 -or [Math]::Abs($r.Top - 40) -gt 4)
+    {
+        Save-FullScreenshot "R-FAIL-position.png"
+        throw "断言失败（场景 R1）：胶囊落位 $($r.Left),$($r.Top)（期望 40,40 ±4）——shell-state.json 布局未生效"
+    }
+    Write-Host "场景 R1 通过：胶囊按预设布局落位 $($r.Left),$($r.Top)（TopLeft 40,40 DIP）"
+    # 重启一致：布局文件不动，二次启动落位仍一致
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $capsule = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($capsule.Count -lt 1) { throw "断言失败（场景 R）：重启后未见胶囊窗" }
+    $r = [WinEnum]::RectOf($capsule[0])
+    if ([Math]::Abs($r.Left - 40) -gt 4 -or [Math]::Abs($r.Top - 40) -gt 4)
+    {
+        Save-FullScreenshot "R-FAIL-restart-position.png"
+        throw "断言失败（场景 R2）：重启后胶囊落位 $($r.Left),$($r.Top)（期望 40,40 ±4）——位置还原不一致"
+    }
+    Write-Host "场景 R2 通过：重启后胶囊落位一致（40,40 ±4）——位置还原跨重启"
+    Stop-Beacon
+}
+catch
+{
+    Save-FullScreenshot "R-FAIL-unexpected.png"
+    $failures.Add("场景 R：$($_.Exception.Message)")
+    Write-Host "::error::场景 R 断言失败：$($_.Exception.Message)"
+}
+
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
 Stop-Beacon
 Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
