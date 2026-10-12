@@ -5,7 +5,7 @@
 > 2026-10-12 装机清单 CI 代验转化（批3-补50）：daily-build 视觉取证新增场景 E（单实例+托盘驻留+Exit）、F（无网启动+Last update+自愈+零弹窗+单条通知）、G（调色即时生效/非法回退/重置/动效持久化/帧差分静止呼吸/两 tile 独立）、H（悬浮位置两轮还原+TOOLWINDOW+刷新不抢焦点+panel/floating 二选一）、J（静默安装/卸载）；安装包步骤前置到取证之前。下表「已由 CI 代验」均指此批场景，证据在 Actions `visual-evidence` 工件；断言失败=红构建。
 > 2026-10-12 批3-补51：G 系色彩断言阈值按 38261911354 工件逐像素实测重标定（状态灯亚像素渲染漂移 10~44px，详见决策记录）；托盘菜单驱动改 AttachThreadInput 取前台（ForceForeground）。
 > 2026-10-13 patrol-20261013-A1：场景 L（行54 reduced 档变色过渡：L1 同色 tick 不闪灯 + L2 三轮翻档渐入中间态帧，38284623093）+ 修复 Update 每 tick 重放过渡导致的同色闪灯缺陷；场景 M（行6 开机自启注册表 HKCU Run\Beacon 双向断言，38287590006）；行70 热键条注记修正（K1 已代验应用侧链）；行40 补托盘图标像素不可取证的实际原因（溢出折叠区）。
-> 2026-10-13 patrol-20261013-A2：场景 N（行18 设置改热键持久化，38297713667 实证：改键落盘 + 重启注册 + 触发链全绿）；场景 O（行41 面板计数一致性，38299509997 实证：三态往返全绿）；场景 P（行51 收起态还原：panel 模式 collapsed=true 细条宽启动 + 重启还原 + 展开对照，38302150211 待实证）；场景 Q（行42 胶囊计数/离线横幅：2 ok ↔ 1 ok · 1 err ↔ Last update + stale 2 warn，38302150211 待实证）；场景 R（行20 胶囊位置还原：shell-state.json 预设 TopLeft 40,40 落位 ±4 + 重启一致，38302872742 待实证）。另记：38297713667/38299509997 场景全绿但发布步 403——仓库 default workflow permissions 被置 read、GITHUB_TOKEN 建 nightly release 被拒（nightly release 已被删待重建）；已改回 write 并重发 38302150211，见卡点回报。
+> 2026-10-13 patrol-20261013-A2：场景 N（行18 设置改热键持久化，38297713667 实证：改键落盘 + 重启注册 + 触发链全绿）；场景 O（行41 面板计数一致性，38299509997 实证：三态往返全绿）；场景 P（行51 收起态还原：panel 模式 collapsed=true 细条宽启动 + 重启还原 + 展开对照，38302150211 待实证）；场景 Q（行42 胶囊计数/离线横幅：2 ok ↔ 1 ok · 1 err ↔ Last update + stale 2 warn，38303355372 实证全绿）；场景 R（行20 胶囊位置还原：shell-state.json 预设 TopLeft 40,40 落位 ±4 + 重启一致，38303355372 实证全绿）。另记：38297713667/38299509997/38302150211 场景全绿但发布步 403——仓库 default workflow permissions 被置 read、workflow 级 contents:write 抬升对 release 端点不生效（nightly release/tag 被删悬空）；已改回 write（生效有传播延迟），38303355372 发布断言通过（nightly 重建、SHA256SUMS 一致），诊断用临时 probe 工作流已删（cfcd97c），详见卡点回报。
 
 ## 决策记录
 
@@ -14,10 +14,10 @@
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
-## MVP 待验/未修项（原样搬自 docs/mvp-issues.md 当时未完成 42 项，完成即改回该文件勾选；本表后续批次补录已勾项，现共 49 项 = 16 勾 / 33 未勾，2026-10-13 清点）
+## MVP 待验/未修项（原样搬自 docs/mvp-issues.md 当时未完成 42 项，完成即改回该文件勾选；本表后续批次补录已勾项，现共 49 项 = 17 勾 / 32 未勾，2026-10-13 patrol-A2 清点）
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）——CI 已代验进程半（场景 E1：二次启动进程数恒 1 + 副实例退出日志硬断言）；唤起气泡是 OS Toast 面不可脚本取证【需装机（半）】
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出【已由 CI 代验：场景 E2 设置窗 WM_CLOSE 后进程驻留 + E3 托盘菜单 Exit 后进程退出（菜单驱动失败时降级 warning 转装机，见 run 日志）】
-- [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱——位置还原半场景 R 已建（patrol-20261013-A2：预设 %APPDATA%\Beacon\shell-state.json capsuleLayout TopLeft 40,40 → 胶囊落位 ±4px + 重启一致，与场景 H tile floatingX/Y 同口径，待 run 实证）；拖动保存半（手势注入不可达）与跨 DPI 拖动（物理显示器）需装机【需装机（半）】
+- [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱——位置还原半已由场景 R 代验（38303355372：预设 shell-state.json capsuleLayout TopLeft 40,40 → 胶囊落位 40,40 ±4 + 重启一致，与场景 H tile floatingX/Y 同口径）；拖动保存半（手势注入不可达）与跨 DPI 拖动（物理显示器）需装机【需装机（半）】
 - [ ] 任意前台应用下热键生效；可在设置改键并持久化——CI 已代验应用侧链（场景 K1：启动日志无 RegisterHotKey 失败 = 注册成功；SendInput 和弦优先，环境不可达时 WM_HOTKEY 直驱同入口验证 → 面板窗出现硬断言）与改键持久化半（场景 N，38297713667 实证：设置页改 Ctrl+Alt+B→Ctrl+Alt+C 落盘 config.json + 开关双切净态 False；重启后新键注册无失败日志（RegisterHotKey/Invalid hotkey string 双断言）；WM_HOTKEY 直驱触发面板出现）；真实键盘在任意第三方前台的 OS 级唤起需装机（SendInput 键盘注入 CI 会话不可达，与鼠标手势同限制）【需装机（半）】
 - [ ] 开关即时生效（重启验证）；卸载清理——CI 已代验卸载半（场景 J：静默安装/卸载、程序文件清空、用户数据保留）+ 开机自启注册表半（场景 M：launchOnStartup true/false 双向断言 HKCU Run\Beacon 写入/清值，38287590006 实证）；OS 重启生效需装机【需装机（半）】
 - [ ] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口【需装机：应用无故障注入开关，加注入点属代码变更另立项】
@@ -39,7 +39,7 @@
 - [x] 规则引擎表驱动单测（含冷却）（NotificationEngineTests 17 例：阈值 TheoryData 表驱动/冷却抑制与到期放行/跨越重臂/停用与过滤）
 - [ ] 手动：注入 Failed 状态收到且仅收到一条 Toast——CI 已代验记录半（场景 F5：断网降级通知恰 1 条，connection-degraded 冷却去重，notifications.json 硬断言）；Toast 呈现面是 OS UI 需装机目检【需装机（半）】
 - [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘【需装机：托盘图标像素在通知区域不可脚本取证（托盘图标确随 severity 换色——SetSeverity 运行时绘制；但全新会话图标默认落溢出折叠区不可见，需注册表 IsPromoted+重启 Explorer 才能取证，版本强依赖不做）；同链路 tile 层已由场景 G7a 代验（38%→95% ≤75s 反映）】
-- [ ] 断网显示 Offline+时间；计数与实际 Widget 状态一致——CI 已代验 tile 半（场景 F2：Last update 离线标注硬断言）与面板计数半（场景 O，38299509997 实证：O1 双健康 all clear + chip 智谱 1/DeepSeek 1；O2 注入 Error 翻「0 warn · 1 error」chip 计数保持；O3 清档回 all clear 三态往返）；胶囊半场景 Q 已建（patrol-20261013-A2：showCapsule=true 读「Beacon Status」UIA 文本，2 ok → 1 ok · 1 err → 断网 Last update 横幅 + stale 抬档 2 warn，待 run 实证）【需装机（半）】
+- [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致【已由 CI 代验三面：tile 半场景 F2（断网 Last update 离线标注硬断言）；面板半场景 O（38299509997：all clear ↔ 0 warn · 1 error 三态往返 + chip 智谱 1/DeepSeek 1）；胶囊半场景 Q（38303355372：2 ok ↔ 1 ok · 1 err ↔ 断网 Last update 横幅 + stale 抬档 2 warn，UIA 文本断言不碰像素；胶囊观感仍可装机复核）】
 - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭——CI 已代验两半（场景 K2：断网 Stop mock 后热键开面板、缓存百分比读数在即无白屏；K3：Esc 关闭优先、键盘注入不可达时降级 warning 并以热键 toggle 硬断言面板可关）；Esc 键盘半与 <100ms 精确计时需装机【需装机（半）】
 - [ ] 计数/事件与状态一致；右键 Pin 落库（本阶段无 UI 效果）——面板标题锚点已补（「Beacon 快速面板」，场景 K 用）；计数半已由场景 O 代验（38299509997：摘要/chip 三态往返与 Widget 状态一致）；Recent 事件流一致与右键 Pin 交互需装机【需装机：面板行点击/右键交互流未建场景】
 - [ ] 从 L2 事件一键打开对应详情；[Retry] 全链路可用【需装机：面板行点击→详情窗交互流未建场景（锚点已具备，可后续转化）】

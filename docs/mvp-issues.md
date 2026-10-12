@@ -76,7 +76,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **验收**:
   - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-    - 位置还原半场景 R 已建（2026-10-13 patrol-20261013-A2：预设 %APPDATA%\Beacon\shell-state.json capsuleLayout（TopLeft，offsetDips 40,40）→ 启动落位 ±4px → 重启落位一致，与场景 H tile 位置还原同口径），待 run 实证；拖动保存与跨 DPI 仍待装机。
+    - 位置还原半已由场景 R CI 代验（2026-10-13 run 38303355372：预设 %APPDATA%\Beacon\shell-state.json capsuleLayout（TopLeft，offsetDips 40,40）→ 启动落位 40,40 ±4px → 重启落位一致，与场景 H tile 位置还原同口径）；拖动保存与跨 DPI 仍待装机。
 
 ### B-103 全局热键 Ctrl+Alt+B
 - **依赖**：B-101
@@ -270,9 +270,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-205、B-102
 - **内容**：胶囊显示真实分级计数；Offline 横幅（Last update）；点击打开 L2。
 - **验收**：
-  - [ ] 断网显示 Offline+时间；计数与实际 Widget 状态一致
+  - [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-    - CI 已代验 tile 半（2026-10-12 场景 F2：断网 45s 内「Last update」离线标注）与面板计数半（2026-10-13 run 38299509997 场景 O：all clear ↔ 0 warn · 1 error 三态往返，chip 计数随状态）；胶囊半场景 Q 已建（2 ok ↔ 1 ok · 1 err ↔ 断网 Last update 横幅 + stale 抬档 2 warn，UIA 文本断言不碰像素），待 run 实证。
+    - 已由 CI 代验三面（2026-10-13 patrol-20261013-A2）：tile 半场景 F2（断网 45s 内「Last update」离线标注）；面板半场景 O（run 38299509997：all clear ↔ 0 warn · 1 error 三态往返，chip 计数随状态）；胶囊半场景 Q（run 38303355372：2 ok ↔ 1 ok · 1 err ↔ 断网 Last update 横幅 + stale 抬档 2 warn，UIA 文本断言不碰像素；胶囊观感仍可装机复核）。
 
 ---
 
