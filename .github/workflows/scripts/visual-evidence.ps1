@@ -577,9 +577,11 @@ function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "
 }
 
 # H 场景配置：双 tile 带预置悬浮位置（pinLayout.floatingX/Y，DIP=px @96dpi），panel 模式切位用
-function Write-HConfig([string] $displayMode = "floating")
+# $collapsed：pins.json/widgets.json 的 layout.collapsed 双写（场景 P 收起态还原用）
+function Write-HConfig([string] $displayMode = "floating", [bool] $collapsed = $false)
 {
     Stop-Beacon
+    $collapsedJson = $collapsed.ToString().ToLowerInvariant()
     $config = @'
 {
   "configVersion": 1,
@@ -603,19 +605,19 @@ function Write-HConfig([string] $displayMode = "floating")
     @'
 [
   { "id": "bigmodel.usage:GLM", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "pinned": true, "config": { "label": "GLM" },
-    "pinLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 120, "floatingY": 120 } },
+    "pinLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": __COLLAPSED__, "floatingX": 120, "floatingY": 120 } },
   { "id": "deepseek.balance:ds", "type": "deepseek.balance", "connectionId": "ds-main", "refreshTier": "ci", "pinned": true, "config": {},
-    "pinLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 260, "floatingY": 220 } }
+    "pinLayout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": __COLLAPSED__, "floatingX": 260, "floatingY": 220 } }
 ]
-'@ | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
+'@.Replace("__COLLAPSED__", $collapsedJson) | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
     @'
 {
   "tiles": [
-    { "widgetId": "bigmodel.usage:GLM", "layout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 120, "floatingY": 120 } },
-    { "widgetId": "deepseek.balance:ds", "layout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": false, "floatingX": 260, "floatingY": 220 } }
+    { "widgetId": "bigmodel.usage:GLM", "layout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": __COLLAPSED__, "floatingX": 120, "floatingY": 120 } },
+    { "widgetId": "deepseek.balance:ds", "layout": { "monitor": "ci", "anchor": 0, "offsetDips": { "x": 16, "y": 16 }, "collapsed": __COLLAPSED__, "floatingX": 260, "floatingY": 220 } }
   ]
 }
-'@ | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
+'@.Replace("__COLLAPSED__", $collapsedJson) | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
     $secretsPath = Join-Path $configDir "secrets.bin"
     $store = @{}
     if (Test-Path $secretsPath)
@@ -2324,6 +2326,72 @@ catch
     Save-FullScreenshot "O-FAIL-unexpected.png"
     $failures.Add("场景 O：$($_.Exception.Message)")
     Write-Host "::error::场景 O 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 P：panel 模式收起态（吸边细条）跨重启还原（todo 行 51「重启后位置/收起态还原」半项 CI 代验）——
+# P1 收起态还原：pins.json 首条 layout.collapsed=true → 宿主窗按 CollapseStripDips(12 DIP) 细条宽启动
+#   （ApplyLayout strip 分支：宽度换细条宽、高度仍取整面板高，细条=展开面板锚边窄条）；重启后仍细条
+#   = 收起态经 pins.json 往返（RestoreLayout 读首条 pinned 布局的 Collapsed）。
+# P2 对照（非空洞）：同配置 collapsed=false → 宽度回整面板宽（TileSizing.FloorDips=168 DIP 底），
+#   细条断言才有意义——否则宿主恒窄会被误判成细条。
+try
+{
+    Write-HConfig "panel" $true
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $panel = [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")
+    if ($panel.Count -lt 1)
+    {
+        Save-FullScreenshot "P-FAIL-no-panel.png"
+        throw "断言失败（场景 P1）：panel 模式未见 Beacon Pinned 宿主窗"
+    }
+    $r = [WinEnum]::RectOf($panel[0])
+    $w1 = $r.Right - $r.Left + 1
+    if ($w1 -gt 20)
+    {
+        Save-FullScreenshot "P-FAIL-not-collapsed.png"
+        throw "断言失败（场景 P1）：collapsed=true 启动后宿主宽 $w1 px（期望 ≤20，12 DIP 细条 @96dpi）——收起态未生效"
+    }
+    Write-Host "场景 P1 通过：collapsed=true 启动宿主宽 $w1 px（12 DIP 细条）"
+    # 重启还原：收起态经 pins.json 持久化，二次启动仍细条
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $panel = [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")
+    if ($panel.Count -lt 1) { throw "断言失败（场景 P1）：重启后未见 Beacon Pinned 宿主窗" }
+    $r = [WinEnum]::RectOf($panel[0])
+    $w2 = $r.Right - $r.Left + 1
+    if ($w2 -gt 20)
+    {
+        Save-FullScreenshot "P-FAIL-restore-expanded.png"
+        throw "断言失败（场景 P1）：重启后宿主宽 $w2 px（期望 ≤20）——收起态未随 pins.json 还原"
+    }
+    Write-Host "场景 P1 通过：重启后宿主仍细条（$w2 px）——收起态跨重启还原"
+    # P2 对照：collapsed=false 同配置 → 整面板宽（细条断言非空洞）
+    Write-HConfig "panel" $false
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $panel = [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")
+    if ($panel.Count -lt 1) { throw "断言失败（场景 P2）：对照轮未见 Beacon Pinned 宿主窗" }
+    $r = [WinEnum]::RectOf($panel[0])
+    $w3 = $r.Right - $r.Left + 1
+    if ($w3 -lt 100)
+    {
+        Save-FullScreenshot "P-FAIL-expanded-narrow.png"
+        throw "断言失败（场景 P2）：collapsed=false 宿主宽 $w3 px（期望 ≥100，面板宽底 168 DIP）——展开态未生效，P1 细条断言无对照"
+    }
+    if ($w3 -le 3 * $w1)
+    {
+        throw "断言失败（场景 P2）：展开宽 $w3 未达细条宽 $w1 的 3 倍——两态不可辨"
+    }
+    Write-Host "场景 P2 通过：collapsed=false 宿主宽 $w3 px（细条 $w1 px 的 $([int]($w3 / $w1)) 倍）——两态可辨"
+    Stop-Beacon
+}
+catch
+{
+    Save-FullScreenshot "P-FAIL-unexpected.png"
+    $failures.Add("场景 P：$($_.Exception.Message)")
+    Write-Host "::error::场景 P 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
