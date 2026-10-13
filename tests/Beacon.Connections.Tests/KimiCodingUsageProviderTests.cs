@@ -80,6 +80,7 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal("2026-10-08T15:00:00Z", usage.Rolling.ResetTime);
         Assert.Equal(55, usage.Weekly!.RemainingPercent!.Value, 5); // 顶层 usage = 周限额兜底
         Assert.Equal("2026-10-12T00:00:00Z", usage.Weekly.ResetTime);
+        Assert.Null(usage.Plan); // 旧形状无 totalQuota → 无套餐窗
         Assert.Equal(25, usage.WorstRemainingPercent!.Value, 5);
     }
 
@@ -159,7 +160,8 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal(100, usage.Total!.Limit);
         Assert.Equal(41, usage.Total.Used);
         Assert.Equal(59, usage.Total.Remaining);
-        Assert.Equal(100, usage.WorstRemainingPercent!.Value, 5);
+        Assert.Equal(59, usage.Plan!.RemainingPercent!.Value, 5); // 套餐窗 = totalQuota 换算
+        Assert.Equal(59, usage.WorstRemainingPercent!.Value, 5); // 套餐剩 59% 最差（窗口全剩 100%）
     }
 
     [Fact]
@@ -182,6 +184,99 @@ public sealed class KimiCodingUsageProviderTests
     public void ParseUsages_RealShape_EmptyUsages_ReturnsNull()
     {
         Assert.Null(KimiCodingUsageProvider.ParseUsages("""{ "usages": [] }"""));
+    }
+
+    // ---- 社区口形状（2026-10-13 实抓：顶层 usages 对象 = 各窗 used_ratio，顶层 usage = 套餐）----
+
+    [Fact]
+    public void ParseUsages_CommunityShape_UsagesObjectWindowsAndPlan()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 1000, "used": 620, "remaining": 380, "resetTime": "2026-10-18T00:38:30Z" },
+              "usages": {
+                "limit_5h": { "used_ratio": 0.0, "reset_time": "2026-10-13T09:38:29Z" },
+                "limit_7d": { "used_ratio": 0.62, "reset_time": "2026-10-18T00:38:30Z" }
+              },
+              "user": { "membership": { "level": "Pro" } }
+            }
+            """)!;
+
+        Assert.Equal("Pro", usage.Level);
+        Assert.Equal(100, usage.Rolling!.RemainingPercent!.Value, 5); // used_ratio 0 → 剩 100%
+        Assert.Equal("2026-10-13T09:38:29Z", usage.Rolling.ResetTime);
+        Assert.Equal(38, usage.Weekly!.RemainingPercent!.Value, 5); // used_ratio 0.62 → 剩 38%
+        Assert.Equal(38, usage.Plan!.RemainingPercent!.Value, 5); // 顶层 usage = 套餐（不再当周窗）
+        Assert.Equal(380, usage.Plan.Remaining);
+        Assert.Equal("2026-10-18T00:38:30Z", usage.Plan.ResetTime); // resetTime 一并入套餐窗
+        Assert.Equal(38, usage.WorstRemainingPercent!.Value, 5); // 周与套餐并列 38%，周优先
+    }
+
+    [Fact]
+    public void ParseUsages_CommunityShape_StringDurationStillMaps5h()
+    {
+        // 根因回归：duration 为字符串 "300" 时 5h 窗不能被整条丢掉
+        // （旧码 durationElement.TryGetInt32 只认 JSON number → 5h 窗消失 → 周窗静默夺最差位）
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 100, "used": 85, "remaining": 15, "resetTime": "2026-10-18T00:38:30Z" },
+              "limits": [
+                { "window": { "duration": "300", "timeUnit": "MINUTE" },
+                  "detail": { "limit": 100, "remaining": 0, "resetTime": "2026-10-13T09:38:30Z" } }
+              ],
+              "usages": {
+                "limit_5h": { "used_ratio": 1.0, "reset_time": "2026-10-13T09:38:29Z" },
+                "limit_7d": { "used_ratio": 0.8498, "reset_time": "2026-10-18T00:38:30Z" }
+              }
+            }
+            """)!;
+
+        Assert.Equal(0, usage.Rolling!.RemainingPercent!.Value, 5); // 5h 窗在
+        Assert.Equal(100, usage.Rolling.Limit); // limits[] detail 补数值源
+        Assert.Equal(0, usage.Rolling.Remaining);
+        Assert.Equal(15.02, usage.Weekly!.RemainingPercent!.Value, 2); // used_ratio 0.8498 → 剩 15.02%
+        Assert.Equal(15, usage.Plan!.RemainingPercent!.Value, 5);
+    }
+
+    [Fact]
+    public void ParseUsages_CommunityShape_UsedRatioBeatsLimitsDetail()
+    {
+        // 权威口径：used_ratio 与 limits[] detail 冲突时取 used_ratio，detail 只补 limit/remaining
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 100, "used": 50, "remaining": 50 },
+              "limits": [
+                { "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },
+                  "detail": { "limit": 200, "remaining": 200, "resetTime": "2026-10-13T09:00:00Z" } }
+              ],
+              "usages": { "limit_5h": { "used_ratio": 1.0, "reset_time": "2026-10-13T09:38:29Z" } }
+            }
+            """)!;
+
+        Assert.Equal(0, usage.Rolling!.RemainingPercent!.Value, 5); // used_ratio 1.0 赢过 detail 剩 100%
+        Assert.Equal(200, usage.Rolling.Limit); // detail 补数值
+        Assert.Equal("2026-10-13T09:38:29Z", usage.Rolling.ResetTime); // reset 取 ratio 源
+        Assert.Null(usage.Weekly); // 无 limit_7d
+        Assert.Equal(50, usage.Plan!.RemainingPercent!.Value, 5);
+    }
+
+    [Fact]
+    public void ParseUsages_CommunityShape_UnrecognizedWindowKeyIgnored()
+    {
+        // 窗口名后缀非 5h/7d 的键不入摘要（不误标）
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 100, "used": 40, "remaining": 60 },
+              "usages": {
+                "limit_1h": { "used_ratio": 0.9 },
+                "limit_30d": { "used_ratio": 0.4 }
+              }
+            }
+            """)!;
+
+        Assert.Null(usage.Rolling);
+        Assert.Null(usage.Weekly);
+        Assert.Equal(60, usage.Plan!.RemainingPercent!.Value, 5);
     }
 
     // ---- 级别阈值（剩余口径：越低越差）----
@@ -215,20 +310,47 @@ public sealed class KimiCodingUsageProviderTests
             new KimiCodingUsageProvider.QuotaWindow(0, 100, 0, "2026-10-13"),
             new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
             null);
-        var both = KimiCodingUsageProvider.Summarize(usageBoth, usageBoth.WorstWindow());
+        var both = KimiCodingUsageProvider.Summarize(usageBoth);
 
-        Assert.Contains("5h 已用尽", both);
-        Assert.Contains("周 已用尽", both);
+        Assert.Contains("5h 窗口已用尽", both);
+        Assert.Contains("周 窗口已用尽", both);
 
         var usageMixed = new KimiCodingUsageProvider.KimiUsage(
             "pro",
             new KimiCodingUsageProvider.QuotaWindow(74, 100, 74, null),
             new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
             null);
-        var mixed = KimiCodingUsageProvider.Summarize(usageMixed, usageMixed.WorstWindow());
+        var mixed = KimiCodingUsageProvider.Summarize(usageMixed);
 
-        Assert.Contains("5h 已用26%", mixed); // 有余量的窗按已用=100−剩余 反推
-        Assert.Contains("周 已用尽", mixed);
+        Assert.Contains("5h 窗口已用26%", mixed); // 有余量的窗按已用=100−剩余 反推
+        Assert.Contains("周 窗口已用尽", mixed);
+    }
+
+    [Fact]
+    public void Summarize_ThreeWindows_NaturalOrderWithWindowWording()
+    {
+        // 三窗齐显（2026-10-13 用户令）：窗序固定 5h → 周 → 套餐，窗口带「窗口」字样，套餐用「剩%」标注
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro",
+            new KimiCodingUsageProvider.QuotaWindow(100, 200, 200, "2026-10-13T09:38:29Z"),
+            new KimiCodingUsageProvider.QuotaWindow(38, 1000, 380, "2026-10-18T00:38:30Z"),
+            new KimiCodingUsageProvider.TotalQuota(1000, 620, 380, "2026-10-18T00:38:30Z"));
+
+        Assert.Equal(" · 5h 窗口已用0% · 周 窗口已用62% · 套餐 剩38%",
+            KimiCodingUsageProvider.Summarize(usage));
+    }
+
+    [Fact]
+    public void Summarize_PlanExhausted_SaysExhausted()
+    {
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro",
+            new KimiCodingUsageProvider.QuotaWindow(50, 200, 100, null),
+            new KimiCodingUsageProvider.QuotaWindow(20, 1000, 200, null),
+            new KimiCodingUsageProvider.TotalQuota(100, 100, 0, "2026-10-18T00:38:30Z"));
+
+        Assert.Equal(" · 5h 窗口已用50% · 周 窗口已用80% · 套餐 已用尽",
+            KimiCodingUsageProvider.Summarize(usage));
     }
 
     // ---- 端到端 ----
@@ -242,7 +364,7 @@ public sealed class KimiCodingUsageProviderTests
 
         Assert.Equal(Severity.Warning, state!.Severity); // 级别按剩余：5h 剩 25% ≤ 30（口径分野：卡面/进度条=已用）
         Assert.Equal(LifecycleState.Running, state.Lifecycle);
-        Assert.Equal("Pro · 5h 已用75% · 周 已用45%", state.Summary);
+        Assert.Equal("Pro · 5h 窗口已用75% · 周 窗口已用45%", state.Summary);
         Assert.Equal(0.75, state.Progress!.Value, 5); // 进度条=已用占比（主窗 5h），与各家 provider 同语义
         Assert.Equal("Pro", state.Payload["level"]);
         Assert.Equal("75", state.Payload["rolling_percent"]); // 已用=剩余反推（payload 原始剩余键并存）
@@ -285,7 +407,7 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal(0.95, state.Progress!.Value, 5); // 进度条=最差窗已用（周 95%）
         Assert.Equal("95", state.Payload["percent"]);
         Assert.Equal("weekly", state.Payload["worst_window"]);
-        Assert.Equal("Pro · 周 已用95% · 5h 已用5%", state.Summary); // 最差窗打头标窗名
+        Assert.Equal("Pro · 5h 窗口已用5% · 周 窗口已用95%", state.Summary); // 三窗自然序（主数值/进度条另取最差窗）
     }
 
     [Fact]
@@ -333,7 +455,7 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal(1.0, state.Progress!.Value, 5);
         Assert.Equal("100", state.Payload["percent"]);
         Assert.Equal("rolling", state.Payload["worst_window"]);
-        Assert.Equal("Pro · 5h 已用尽 · 周 已用尽", state.Summary);
+        Assert.Equal("Pro · 5h 窗口已用尽 · 周 窗口已用尽", state.Summary);
     }
 
     [Fact]
@@ -345,8 +467,11 @@ public sealed class KimiCodingUsageProviderTests
 
         Assert.Equal(Severity.Success, state!.Severity); // 窗口全剩 100%（级别按剩余不变）
         Assert.Equal(LifecycleState.Success, state.Lifecycle);
-        Assert.Equal("Kimi · 5h 已用0% · 周 已用0%", state.Summary); // 无 level → head 默认 Kimi
-        Assert.Equal(0.0, state.Progress!.Value, 5); // 进度条=已用占比：全剩 → 0
+        Assert.Equal("Kimi · 5h 窗口已用0% · 周 窗口已用0% · 套餐 剩59%", state.Summary); // 无 level → head 默认 Kimi
+        Assert.Equal(0.41, state.Progress!.Value, 5); // 进度条=最差窗（套餐剩 59%）已用 41%
+        Assert.Equal("41", state.Payload["percent"]);
+        Assert.Equal("plan", state.Payload["worst_window"]);
+        Assert.Equal("59", state.Payload["plan_remaining_percent"]);
         Assert.Equal("100", state.Payload["total_limit"]);
         Assert.Equal("41", state.Payload["total_used"]);
         Assert.Equal("59", state.Payload["total_remaining"]);
@@ -393,7 +518,111 @@ public sealed class KimiCodingUsageProviderTests
         var state = await provider.GetStateAsync(widget, Connection(), Ctx(), CancellationToken.None);
 
         Assert.Equal(Severity.Success, state!.Severity); // 25 > 20（级别按剩余判定不变）
-        Assert.Equal("Kimi · 5h 已用75% · 周 已用45%", state.Summary);
+        Assert.Equal("Kimi · 5h 窗口已用75% · 周 窗口已用45%", state.Summary);
+    }
+
+    // ---- 社区口三窗端到端（2026-10-13 缺陷单：5h 已用满必须赢过周窗）----
+
+    [Fact]
+    public async Task GetStateAsync_DefectFixture_5hFullUsed_WinsOverWeekly()
+    {
+        // 缺陷单夹具（2026-10-13 实抓）：5h used_ratio=1.0（已用满）、周 84.98%、套餐剩 15%
+        // ——卡面必须显示 5h（已用 100%），不能显示周 85%
+        var body = """
+            {
+              "usage": { "limit": 100, "used": 85, "remaining": 15, "resetTime": "2026-10-18T00:38:30Z" },
+              "limits": [
+                { "window": { "duration": 300, "timeUnit": "MINUTE" },
+                  "detail": { "limit": 100, "remaining": 0, "resetTime": "2026-10-13T09:38:30Z" } }
+              ],
+              "usages": {
+                "limit_5h": { "used_ratio": 1.0, "reset_time": "2026-10-13T09:38:29Z" },
+                "limit_7d": { "used_ratio": 0.8498, "reset_time": "2026-10-18T00:38:30Z" }
+              },
+              "user": { "membership": { "level": "Pro" } }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity); // 5h 剩 0% ≤ error 10
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(1.0, state.Progress!.Value, 5); // 进度条 = 最差窗（5h）已用 100%
+        Assert.Equal("100", state.Payload["percent"]); // 主数值 = 5h 已用 100%
+        Assert.Equal("rolling", state.Payload["worst_window"]);
+        Assert.Equal("Pro · 5h 窗口已用尽 · 周 窗口已用85% · 套餐 剩15%", state.Summary); // 三窗齐显
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ThreeWindowsUnequal_WorstDrivesMainValue()
+    {
+        // 三窗不等值（2026-10-13 用户令）：5h 已用 0%、周 已用 62%、套餐剩 38%
+        // ——主数值/进度条取最差窗（周 62%），不能让用户看到 0% 以为额度归零
+        var body = """
+            {
+              "usage": { "limit": 1000, "used": 620, "remaining": 380, "resetTime": "2026-10-18T00:38:30Z" },
+              "usages": {
+                "limit_5h": { "used_ratio": 0.0, "reset_time": "2026-10-13T09:38:29Z" },
+                "limit_7d": { "used_ratio": 0.62, "reset_time": "2026-10-18T00:38:30Z" }
+              },
+              "user": { "membership": { "level": "Pro" } }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Success, state!.Severity); // 最差剩 38% > warn 30
+        Assert.Equal(0.62, state.Progress!.Value, 5); // 进度条 = 周已用 62%
+        Assert.Equal("62", state.Payload["percent"]);
+        Assert.Equal("weekly", state.Payload["worst_window"]);
+        Assert.Equal("Pro · 5h 窗口已用0% · 周 窗口已用62% · 套餐 剩38%", state.Summary);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_PlanStrictlyWorst_PlanDrivesMainValue()
+    {
+        var body = """
+            {
+              "usage": { "limit": 100, "used": 95, "remaining": 5, "resetTime": "2026-10-18T00:38:30Z" },
+              "usages": {
+                "limit_5h": { "used_ratio": 0.5, "reset_time": "2026-10-13T09:38:29Z" },
+                "limit_7d": { "used_ratio": 0.8, "reset_time": "2026-10-18T00:38:30Z" }
+              }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity); // 套餐剩 5% ≤ error 10
+        Assert.Equal(0.95, state.Progress!.Value, 5);
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal("plan", state.Payload["worst_window"]);
+        Assert.Equal("Kimi · 5h 窗口已用50% · 周 窗口已用80% · 套餐 剩5%", state.Summary);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_PlanExhausted_SaysExhausted()
+    {
+        var body = """
+            {
+              "usage": { "limit": 100, "used": 100, "remaining": 0, "resetTime": "2026-10-18T00:38:30Z" },
+              "usages": {
+                "limit_5h": { "used_ratio": 0.1, "reset_time": "2026-10-13T09:38:29Z" },
+                "limit_7d": { "used_ratio": 0.2, "reset_time": "2026-10-18T00:38:30Z" }
+              }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(1.0, state.Progress!.Value, 5);
+        Assert.Equal("plan", state.Payload["worst_window"]);
+        Assert.Equal("Kimi · 5h 窗口已用10% · 周 窗口已用20% · 套餐 已用尽", state.Summary);
     }
 
     [Fact]

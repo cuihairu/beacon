@@ -28,6 +28,10 @@ public static class WidgetValueHint
         {
             return $"{open} open"; // github.pull_requests
         }
+        if (IsKimiPayload(payload) && KimiWindows(payload) is { } kimi)
+        {
+            return kimi; // kimi.coding 三窗（2026-10-13 用户令）：窗口带「窗口」字样 + 套餐「剩%」标注
+        }
         if (MultiWindow(payload) is { } windows)
         {
             return windows; // 多窗口额度（2026-10-12 用户令；2026-10-13 起统一已用口径）
@@ -105,6 +109,38 @@ public static class WidgetValueHint
         [("rolling_percent", "5h"), ("weekly_percent", "w"), ("monthly_percent", "M")];
 
     /// <summary>
+    /// kimi 专属判别：kimi payload 独有「*_remaining_percent」剩余口径键（rolling/weekly/plan 至少一个非空）。
+    /// bigmodel/ark 也有 rolling_percent+weekly_percent（level 键两家都有，不可作判别），无此键——
+    /// 不加门禁 kimi 三窗链会把它们的周窗+月窗形态劫持成「窗口」字样并吞掉月窗（Core 测试实测）。
+    /// </summary>
+    private static bool IsKimiPayload(IReadOnlyDictionary<string, string> payload)
+        => Text(payload, "rolling_remaining_percent") is not null
+            || Text(payload, "weekly_remaining_percent") is not null
+            || Text(payload, "plan_remaining_percent") is not null;
+
+    /// <summary>
+    /// kimi.coding 三窗（2026-10-13 用户令）：5h/周 已用% 带「窗口」字样（避免与套餐混淆），
+    /// 套餐 totalQuota 换算剩% 以「剩」前缀标注（非窗口口径）；≥2 段才进形态，否则 null 走后续链。
+    /// </summary>
+    private static string? KimiWindows(IReadOnlyDictionary<string, string> payload)
+    {
+        List<string> segments = [];
+        if (Text(payload, "rolling_percent") is { } rolling)
+        {
+            segments.Add($"{rolling}%/5h窗口");
+        }
+        if (Text(payload, "weekly_percent") is { } weekly)
+        {
+            segments.Add($"{weekly}%/w窗口");
+        }
+        if (Text(payload, "plan_remaining_percent") is { } plan)
+        {
+            segments.Add($"剩{plan}%/套餐");
+        }
+        return segments.Count >= 2 ? string.Join(" ", segments) : null;
+    }
+
+    /// <summary>
     /// 多窗口形态：同一口径的窗口键任意两个以上非空 → 「5%/5h 7%/w 8%/M」（全部已用口径无前缀，
     /// 窗序 5h → 周 → 月，只出实际存在的窗口）；单窗或全缺 → null 走既有单窗优先级链。
     /// 进度条语义不在此处：仍取 provider 的 Progress 同源（kimi 现为已用占比，与各家一致）。
@@ -126,10 +162,12 @@ public static class WidgetValueHint
     }
 
     /// <summary>
-    /// 多窗口形态下 tile 是否收起「NN%」进度读数：数值文本已含主位（最小可用）窗口的百分比，
-    /// 读数是重复占宽（2026-10-12 用户令）；单窗形态维持读数常驻（现状不变）。
+    /// tile 是否收起「NN%」进度读数：多窗口形态（数值文本已含主位窗口百分比，2026-10-12 用户令）
+    /// 或 provider 显式 value_text（数值位文本即最终口径，读数是重复占宽——sensenova 池名+窗名+已用%，
+    /// 2026-10-13）。machine 三家 Progress 恒 null（早退收起）不受影响；mimo 读数重复「45.5%|46%」就此消除。
     /// </summary>
-    public static bool SuppressProgressReadout(WidgetState state) => MultiWindow(state.Payload) is not null;
+    public static bool SuppressProgressReadout(WidgetState state)
+        => MultiWindow(state.Payload) is not null || Text(state.Payload, "value_text") is not null;
 
     /// <summary>token 短格式：1.2M / 45.6K / 890（Invariant，悬浮窗数值列不溢出）。</summary>
     private static string FormatCount(long value) => value switch

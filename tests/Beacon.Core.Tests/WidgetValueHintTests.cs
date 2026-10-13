@@ -62,8 +62,12 @@ public sealed class WidgetValueHintTests
         { State("方舟 · 双窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "70.5", ["monthly_percent"] = "" }), "5%/5h 70.5%/w" },
         // 窗序固定 5h→周→月（与 payload 书写序无关）
         { State("GLM · 乱序", new() { ["monthly_percent"] = "80", ["rolling_percent"] = "5", ["weekly_percent"] = "70" }), "5%/5h 70%/w 80%/M" },
-        // kimi 已用口径同规则（无前缀，2026-10-13 用户令）
-        { State("Kimi · 双窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "20" }), "5%/5h 20%/w" },
+        // kimi 三窗形态（2026-10-13 用户令）：窗口带「窗口」字样 + 套餐「剩%」前缀（非窗口口径）；
+        // 门禁 = kimi 独有 *_remaining_percent 键（bigmodel/ark 同有 rolling/weekly 键，不可劫持）
+        { State("Kimi · 三窗", new() { ["rolling_percent"] = "0", ["rolling_remaining_percent"] = "100", ["weekly_percent"] = "62", ["weekly_remaining_percent"] = "38", ["plan_remaining_percent"] = "38" }), "0%/5h窗口 62%/w窗口 剩38%/套餐" },
+        { State("Kimi · 双窗", new() { ["rolling_percent"] = "5", ["rolling_remaining_percent"] = "95", ["weekly_percent"] = "20", ["weekly_remaining_percent"] = "80" }), "5%/5h窗口 20%/w窗口" },
+        // kimi 单窗不进三窗形态（段数 <2），走既有单窗链
+        { State("Kimi · 单窗", new() { ["rolling_percent"] = "5", ["rolling_remaining_percent"] = "95", ["weekly_percent"] = "" }), "5%" },
         // 单窗不进多窗口形态，走既有单窗链（bigmodel/ark 主窗 = percent；kimi = *_percent 已用键）
         { State("Kimi · 单窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "" }), "5%" },
         { State("GLM · 单窗", new() { ["percent"] = "5" }), "5%" },
@@ -107,5 +111,15 @@ public sealed class WidgetValueHintTests
         Assert.False(WidgetValueHint.SuppressProgressReadout(single));
         // 无额度键的组件（machine/github）：读数逻辑不受影响
         Assert.False(WidgetValueHint.SuppressProgressReadout(State("本机", new() { ["cpu_percent"] = "12" })));
+    }
+
+    [Fact]
+    public void SuppressProgressReadout_ExplicitValueText_Suppressed()
+    {
+        // provider 显式 value_text（sensenova 池名+窗名+已用% / mimo 45.5%）：数值位文本即最终口径，
+        // 自动读数是重复占宽 → 收起（2026-10-13）
+        Assert.True(WidgetValueHint.SuppressProgressReadout(State("商汤", new() { ["value_text"] = "Flash-Lite池 5h 已用100%" })));
+        // value_text 与 Progress 缺一不可：无 Progress 的类型本就走收起早退，不受此键影响
+        Assert.False(WidgetValueHint.SuppressProgressReadout(State("GLM", new() { ["total"] = "42.5" })));
     }
 }
