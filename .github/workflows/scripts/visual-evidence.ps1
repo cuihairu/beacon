@@ -2759,16 +2759,21 @@ try
     if (Test-Path $tLogPath) { $logText = [System.IO.File]::ReadAllText($tLogPath, [System.Text.Encoding]::UTF8) }
     if ($logText -notmatch "配置读取失败：widgets\.json") { Save-FullScreenshot "T-FAIL-no-log.png"; throw "断言失败（场景 T1）：日志无「配置读取失败：widgets.json」" }
     Write-Host "场景 T1 通过：损坏配置启动不崩、无 #32770 对话框、corrupt 归档+日志留痕"
-    # T1e .bak 回滚兜底：GLM tile 以 .bak 配置出数（O 前置口径）
+    # T1e .bak 回滚兜底：GLM tile 以 .bak 配置出数（O 前置口径）。
+    # GLM tile 拾取不按 [0]：EnumWindows 首个=Z 序顶窗，不保证是 GLM（38325074321 实证 [0]=DeepSeek
+    # 而 GLM 带着恢复数据在下层）——遍历全部 Beacon Tile 按 UIA 文本认窗。
     $tTile = [IntPtr]::Zero
-    $deadline = (Get-Date).AddSeconds(40)
-    while ((Get-Date) -lt $deadline)
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline -and $tTile -eq [IntPtr]::Zero)
     {
-        $tHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
-        if ($tHandles.Count -ge 1) { $tTile = $tHandles[0]; break }
-        Start-Sleep -Seconds 2
+        foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+        {
+            $tTexts = Get-WindowUiaTexts $h
+            if (@($tTexts | Where-Object { $_ -match 'GLM' }).Count -ge 1) { $tTile = $h; break }
+        }
+        if ($tTile -eq [IntPtr]::Zero) { Start-Sleep -Seconds 2 }
     }
-    if ($tTile -eq [IntPtr]::Zero) { Save-FullScreenshot "T-FAIL-no-tile.png"; throw "断言失败（场景 T1e）：40s 内 Beacon Tile 未出现" }
+    if ($tTile -eq [IntPtr]::Zero) { Save-FullScreenshot "T-FAIL-no-tile.png"; throw "断言失败（场景 T1e）：60s 内未见 GLM tile（Beacon Tile 有 $(([WinEnum]::VisibleHandlesByTitle("Beacon Tile")).Count) 个但无一含 GLM 文本）" }
     $tTexts = @()
     $deadline = (Get-Date).AddSeconds(40)
     while ((Get-Date) -lt $deadline)
