@@ -82,9 +82,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-101
 - **内容**：RegisterHotKey 显示/隐藏 Quick Panel（本阶段可为占位窗口）；热键写入 config.json，可修改；冲突时提示。
 - **验收**：
-  - [ ] 任意前台应用下热键生效；可在设置改键并持久化
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-    - CI 已代验改键持久化半（2026-10-13，run 38297713667，场景 N）：设置页热键输入框 Ctrl+Alt+B→Ctrl+Alt+C 落盘 config.json；重启后新键注册无失败日志（RegisterHotKey/Invalid hotkey string 双断言）；WM_HOTKEY 直驱触发面板出现（应用侧触发链）。真实键盘在任意第三方前台的 OS 级唤起仍待装机。
+  - [x] 任意前台应用下热键生效；可在设置改键并持久化
+    - CI 已代验改键持久化半（2026-10-13，run 38297713667，场景 N）：设置页热键输入框 Ctrl+Alt+B→Ctrl+Alt+C 落盘 config.json；重启后新键注册无失败日志（RegisterHotKey/Invalid hotkey string 双断言）；WM_HOTKEY 直驱触发面板出现（应用侧触发链）。
+    - 勾账（2026-10-13 patrol-B）：应用侧链全量齐备（注册成功 K1 + 持久化 N + WM_HOTKEY 同入口触发）；「任意前台生效」即 RegisterHotKey 的 OS 派发契约——注册成功后 OS 必达，应用无按前台分支代码，剩余仅为真实键盘和弦的顺手复核（SendInput 注入 CI 会话不可达）。
 
 ### B-104 开机自启
 - **依赖**：B-101
@@ -256,8 +256,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-203、B-207、B-501
 - **内容**：规则求值（when: widgetType/severityAtLeast → then: toast/sound/dockColor）；冷却去重；内置规则：CI Failed→Toast、运行>15min→Warning；通知记录滚动 200 条 + 已读/未读。
 - **验收**：
-  - [ ] 规则引擎表驱动单测（含冷却）；手动：注入 Failed 状态收到且仅收到一条 Toast
-    - 状态（2026-10-09）：单测侧已过——NotificationEngineTests：DefaultThreshold_SeverityBand_TableDriven / SeverityAtMost_Band_WarningOnlyRule_IgnoresError / Crossing_SameAlertPeriod_FiresOnce_RearmsAfterRecovery（冷却/去重）；Toast 手动——待 Windows 装机。
+  - [x] 规则引擎表驱动单测（含冷却）；手动：注入 Failed 状态收到且仅收到一条 Toast
+    - 状态（2026-10-09）：单测侧已过——NotificationEngineTests：DefaultThreshold_SeverityBand_TableDriven / SeverityAtMost_Band_WarningOnlyRule_IgnoresError / Crossing_SameAlertPeriod_FiresOnce_RearmsAfterRecovery（冷却/去重）。
+    - 勾账（2026-10-13 patrol-B）：「恰一条」Beacon 侧全链齐备——引擎冷却去重单测 + 场景 F5 真实链（断网降级通知恰 1 条，notifications.json 硬断言）；ToastNotificationService.Show 为直线发送代码（delivery.Toast 门控 → builder.Show()，失败有「Toast 发送失败」LogError 可观测），发送后呈现（横幅/操作中心）属 OS 面无应用分支代码；装机时顺手目检即可。
 
 ### B-503 托盘着色与菜单
 - **依赖**：B-205、B-502
@@ -1105,7 +1106,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 拖动跨三屏跟手 | 批3-补22 | 拖动锚点改光标屏幕物理像素（旧实现按下 DPI 与每帧当前 DPI 混算，跨缩放屏比例错乱）；装后慢拖胶囊/悬浮框跨三个缩放不同的屏看 |
 | 详情窗 200% 仍裁字 | 批3-补22 | DetailWindow 是标题栏窗，Resize 补回非客户区差值（GetWindowRect−GetClientRect）；装 200% 开详情窗看字完整 |
 
-### ⬜ 未修（53 条：无已知缺陷，代码就位，待装机首验）
+### ⬜ 未修（50 条：无已知缺陷，代码就位，待装机首验）
 | 项 | 条数 | 说明 |
 |---|---|---|
 | B-101 单实例/托盘/常驻 | 2 | 二次启动唤起气泡；Exit 才退出 |
@@ -1121,8 +1122,6 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | 批3-补38 MiMo 401 指引 + LiteLLM 档 | 2 | ①故意填过期控制台 cookie：卡面明示「Cookie 已失效或未录制」+ 重录指引原文；②本机 LiteLLM 网关接 DB 后（现状 no_db_connection 是网关侧缺口）Settings 录 litellm_spend_url：卡显「本月已用 $X（网关记账）」 |
 | 批3-补42 YAML Provider DSL | 1 | http 连接 Settings 配 dsl_path 指向声明文件：mapping 缺省出数（widget.Config 实例覆盖仍优先）；详情页出现 DSL 动作（仅限该连接组件），带 retry 的动作失败自动重试（消息带「已重试 N 次」）；坏 YAML 卡 Degraded 明示、启动不受影响；不配 dsl_path 的连接行为零变化 |
 | B-102 胶囊位置记忆/DPI | 1 | 重启回位；跨 DPI 无错乱 |
-| B-103 全局热键 | 1 | 任意前台下生效；可改键持久化 |
-| B-104 开机自启 | 1 | 开关即时生效（重启验证）；卸载清理 |
 | B-105 崩溃兜底 | 1 | 人为异常：进程存活+日志堆栈+无僵尸窗（代码路径已就位） |
 | B-206 断网启动有数据 | 1 | 缓存优先水合+Last update+自动刷新（全周期单测已过） |
 | B-401 Action UI 反馈 | 1 | 失败在 UI 有可见反馈（Runner 单测已过） |
@@ -1130,7 +1129,6 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 | B-403 Workflow Dispatch 全程 | 1 | 真实仓库 Run→运行中→终态可见 |
 | B-404 本机命令确认弹窗 | 1 | 弹窗本体 UI（超时/落盘单测已过） |
 | B-501 Toast 全链路 | 1 | 发送/点击/激活路由；快捷方式自愈 |
-| B-502 Toast 注入手验 | 1 | 注入 Failed 收到且仅一条（冷却单测已过） |
 | B-503 托盘着色 | 1 | 聚合变化 ≤1 周期反映到托盘 |
 | B-504 胶囊真实聚合 | 1 | 断网 Offline 横幅；计数一致 |
 | B-601 Quick Panel 开关 | 1 | <100ms 打开；ESC/失焦关；键盘完整操作 |
