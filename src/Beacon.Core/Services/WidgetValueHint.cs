@@ -11,7 +11,7 @@ namespace Beacon.Core.Services;
 /// </summary>
 public static class WidgetValueHint
 {
-    /// <summary>取 provider 主数值：按「显式文本 → 计数 → 已用% → 剩余% → 套餐 → 金额 → token」优先级链。</summary>
+    /// <summary>取 provider 主数值：按「显式文本 → 计数 → 多窗已用% → 单窗已用% → 套餐 → 金额 → token」优先级链。</summary>
     public static string Of(WidgetState state)
     {
         var payload = state.Payload;
@@ -30,19 +30,19 @@ public static class WidgetValueHint
         }
         if (MultiWindow(payload) is { } windows)
         {
-            return windows; // 多窗口额度（2026-10-12 用户令）：bigmodel/ark 已用、kimi 剩余
+            return windows; // 多窗口额度（2026-10-12 用户令；2026-10-13 起统一已用口径）
         }
         if (Text(payload, "percent") is { } percent)
         {
             return $"{percent}%"; // bigmodel.usage / ark.usage / http.quota（最差窗口已用）
         }
-        if (Text(payload, "weekly_remaining_percent") is { } weekly)
+        if (Text(payload, "rolling_percent") is { } rolling)
         {
-            return $"剩{weekly}%"; // kimi.coding（与卡面剩余口径一致）
+            return $"{rolling}%"; // kimi.coding：5h 已用（2026-10-13 用户令，卡面与 bigmodel/ark 统一已用口径）
         }
-        if (Text(payload, "rolling_remaining_percent") is { } rolling)
+        if (Text(payload, "weekly_percent") is { } weekly)
         {
-            return $"剩{rolling}%"; // kimi.coding：仅剩滚动窗口时退而取之
+            return $"{weekly}%"; // kimi.coding：仅周窗在报时
         }
         if (Text(payload, "premium_interactions_entitlement") is { } entitlement
             && Text(payload, "premium_interactions_remaining") is { } remaining
@@ -97,32 +97,29 @@ public static class WidgetValueHint
     private static string? Text(IReadOnlyDictionary<string, string> payload, string key)
         => payload.TryGetValue(key, out var value) && value.Length > 0 ? value : null;
 
-    // —— 多窗口额度（2026-10-12 用户令「多窗口额度展示」，最初需求的补落）——
+    // —— 多窗口额度（2026-10-12 用户令「多窗口额度展示」；2026-10-13 用户令统一已用口径——
+    //    kimi 原剩余口径前缀「剩」撤销，provider 改产 *_percent 已用键，链表只剩已用一族）——
 
-    /// <summary>已用口径三窗（bigmodel.usage / ark.usage）：键 → 窗标。</summary>
+    /// <summary>已用口径三窗（bigmodel.usage / ark.usage / kimi.coding）：键 → 窗标。</summary>
     private static readonly (string Key, string Label)[] UsedWindows =
         [("rolling_percent", "5h"), ("weekly_percent", "w"), ("monthly_percent", "M")];
 
-    /// <summary>剩余口径三窗（kimi.coding）：键 → 窗标（monthly 预留，接口今天只给 rolling/weekly）。</summary>
-    private static readonly (string Key, string Label)[] RemainingWindows =
-        [("rolling_remaining_percent", "5h"), ("weekly_remaining_percent", "w"), ("monthly_remaining_percent", "M")];
-
     /// <summary>
-    /// 多窗口形态：同一口径的窗口键任意两个以上非空 → 「5%/5h 7%/w 8%/M」（剩余口径前缀「剩」，
+    /// 多窗口形态：同一口径的窗口键任意两个以上非空 → 「5%/5h 7%/w 8%/M」（全部已用口径无前缀，
     /// 窗序 5h → 周 → 月，只出实际存在的窗口）；单窗或全缺 → null 走既有单窗优先级链。
-    /// 进度条语义不在此处：仍取最小可用窗口（provider 现有 Progress 同源，不变）。
+    /// 进度条语义不在此处：仍取 provider 的 Progress 同源（kimi 现为已用占比，与各家一致）。
     /// </summary>
     public static string? MultiWindow(IReadOnlyDictionary<string, string> payload)
-        => Join(payload, RemainingWindows, "剩") ?? Join(payload, UsedWindows, "");
+        => Join(payload, UsedWindows);
 
-    private static string? Join(IReadOnlyDictionary<string, string> payload, (string Key, string Label)[] windows, string prefix)
+    private static string? Join(IReadOnlyDictionary<string, string> payload, (string Key, string Label)[] windows)
     {
         List<string> segments = [];
         foreach (var (key, label) in windows)
         {
             if (Text(payload, key) is { } value)
             {
-                segments.Add($"{prefix}{value}%/{label}");
+                segments.Add($"{value}%/{label}");
             }
         }
         return segments.Count >= 2 ? string.Join(" ", segments) : null;

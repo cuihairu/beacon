@@ -177,7 +177,7 @@ actions:                          # 可选：声明动作（进详情页动作�
 | bigmodel | bigmodel.usage | 5h 滚动窗占主位，周限、月度次之（窗口上限无绝对 token 口，监控接口只给百分比） | 监控接口 quota/limit。rolling → weekly → monthly 优先级取主数值 |
 | claude | claude.usage | 窗口内 token 与成本（costUSD 存在才计成本，不自行估价） | 读本机 `~/.claude/projects/**/*.jsonl`，零凭据零网络。设了 daily_cost_limit 才按用量升级别 |
 | codex | codex.usage | 近 N 天 token（每会话文件取最后一条累计值求和，如实标注「本地统计，非官方口径」） | 读本机 `~/.codex/sessions/**/rollout-*.jsonl`。官方口需 OAuth，落本地统计档 |
-| kimi | kimi.coding | 5h 窗 + 周限的剩余百分比，最差者判级（余 0% 显示「已用尽」） | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
+| kimi | kimi.coding | 卡面/进度条=已用%（剩余反推），级别仍按剩余判（余 0% 显示「已用尽」） | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
 | moonshot | moonshot.balance | 余额金额（¥），余额 ≤ warn_below（默认 20）→ Warning、≤ error_below（默认 5）→ Error | GET /v1/users/me/balance（Bearer）。响应不含余额数据按 Degraded 处理 |
 | deepseek | deepseek.balance | 余额金额（CNY/USD），total ≤ 阈值判级 | GET /user/balance。is_available=false 直接 Error |
 | mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；无 Cookie 且录了 litellm_spend_url → 「本月已用 $X（网关记账）」（网关无额度分母，只显已用量，如实不造）；否则本机计数；再否则如实「无额度口」 | 四档降级：控制台 API → LiteLLM 网关记账 → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充）。控制台 401/403 卡面明示「Cookie 已失效或未录制」+ 重录指引（Degraded 中止，不静默降档）。控制台响应真身 2026-10-11 实抓：data.monthUsage/usage 块 + items[]，percent 字段是 **0-1 比例**（used/limit 自算精确百分比，≥90% Warn / ≥100% Error）。LiteLLM 响应兼容 根数组 / response[] / results[] / summarize 汇总对象 四形 |
@@ -190,7 +190,7 @@ actions:                          # 可选：声明动作（进详情页动作�
 | http | http.status / http.quota | 自定义：状态词映射或 JSONPath 数值卡 | 任意 HTTP JSON 接口，字段路径全部可配 |
 | herald | herald.incidents / herald.feed / herald.deliveries | 非额度：事件台账（未决/已认领/已解决/全部计数 + 最新一条）+ 订阅源（RSS 条目/未读数）+ 投递失败（失败计数 + 最新一条去向与错误） | incidents：`/api/v1/incidents?status=…`（默认 open，乱填 fail-loud），open>0 亮黄、含 critical 亮红、回看口径（acked/resolved）恒 Info；feed：公开类目 `/feeds/{category}.xml`（slug 校验防注入）或私密 `/feeds/private/{token}.xml`（token 即凭据走 DPAPI，不落 widgets.json 不进 payload；类目优先）；未读=自上一次刷新新增 guid（按组件记基线，首刷只记基线不出未读）；deliveries：`/api/v1/logs?status=failed&limit=200[&provider=X]`，failed>0 亮黄（送信没送达要人管；重试耗尽 dead 在日志层也写 failed，不区分；shadow 被 status=failed 天然排除，pending 是瞬态不报），计数取响应 total（全窗口过滤总数），可按提供方筛选；RFC1123Z 时间戳剥星期名解析（invariant globalization 兼容） |
 
-**多窗口额度展示**（2026-10-12）：bigmodel/ark/kimi 的 tile 数值位在两个以上窗口同时有值时拼成 `5%/5h 70%/w 80%/M` 形态（只出实际存在的窗口，窗序 5h → 周 → 月；kimi 为剩余口径，前缀「剩」，如 `剩95%/5h 剩80%/w`）。进度条与判级口径不变——仍取最小可用窗口（与 provider 现有 Progress 同源）；多窗口形态下 tile 收起重复的「NN%」进度读数（数值文本已含该百分比），单窗形态维持现状。tile 宽度按各类型最坏值行字宽预算（`TileSizing`），数值列恒不裁字。
+**多窗口额度展示**（2026-10-12；2026-10-13 用户令统一已用口径）：bigmodel/ark/kimi 的 tile 数值位在两个以上窗口同时有值时拼成 `5%/5h 70%/w 80%/M` 形态（全部已用口径无前缀，只出实际存在的窗口，窗序 5h → 周 → 月；kimi 的已用=剩余反推）。进度条各家同为已用占比（provider Progress 同源）；kimi 判级口径不变——仍按剩余百分比过阈值。多窗口形态下 tile 收起重复的「NN%」进度读数（数值文本已含该百分比），单窗形态维持现状。tile 宽度按各类型最坏值行字宽预算（`TileSizing`），数值列恒不裁字。
 
 ## 组件（widgets.json）
 
@@ -261,7 +261,7 @@ codex.usage：
 |---|---|---|
 | days | `7` | 统计窗口（天） |
 
-kimi.coding（余量口径，与上面相反）：
+kimi.coding（阈值按余量判，卡面/进度条显示已用%）：
 
 | 字段 | 默认 | 说明 |
 |---|---|---|

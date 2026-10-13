@@ -37,7 +37,9 @@ public static class KimiWidgetDescriptors
 /// 响应顶层 usages[]（按 scope=FEATURE_CODING 选条目）——条目级 detail = 周期窗（约一周），
 /// limits[] = 5h 滚动窗（window:{duration,timeUnit} 归一化），totalQuota = 总额度；数值为字符串。
 /// 旧形状（顶层 usage 对象 + 顶层 limits[] + user.membership.level，数字值）兼容兜底。
-/// 级别按窗口剩余百分比最差者判：≤ error_percent → Error，≤ warn_percent → Warning，否则 Success。
+/// 级别按窗口剩余百分比最差者判：≤ error_percent → Error，≤ warn_percent → Warning，否则 Success（不变）。
+/// 卡面/多窗口/进度条为**已用口径**（2026-10-13 用户令，与 bigmodel/ark 统一）：已用 = 100 − 剩余
+/// （接口只给 remaining/limit，反推来源）；阈值判定语义仍按剩余，字段说明保持「余量低于此值」。
 /// </summary>
 public sealed class KimiCodingUsageProvider : IWidgetProvider
 {
@@ -86,12 +88,18 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
-            Progress = null,
+            // 进度条与其他 provider 同语义（已用占比；bigmodel/ark/mimo/qwen/http.quota 同口径）。
+            // 主窗=5h 滚动，缺则周窗；级别判定与此无关（仍按剩余最差窗，MapSeverity 未动）。
+            Progress = (usage.Rolling?.RemainingPercent ?? usage.Weekly?.RemainingPercent) is { } primaryRemaining
+                ? Math.Clamp(UsedPercent(primaryRemaining), 0, 100) / 100.0
+                : null,
             Summary = head + Summarize(usage),
             DetailUrl = "https://www.kimi.com/code",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["level"] = usage.Level ?? "",
+                ["rolling_percent"] = usage.Rolling?.RemainingPercent is { } rollingUsed ? UsedPercent(rollingUsed).ToString("0.#", CultureInfo.InvariantCulture) : "",
+                ["weekly_percent"] = usage.Weekly?.RemainingPercent is { } weeklyUsed ? UsedPercent(weeklyUsed).ToString("0.#", CultureInfo.InvariantCulture) : "",
                 ["rolling_remaining_percent"] = usage.Rolling?.RemainingPercent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_remaining_percent"] = usage.Weekly?.RemainingPercent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_limit"] = usage.Weekly?.Limit?.ToString("0.##", CultureInfo.InvariantCulture) ?? "",
@@ -302,20 +310,24 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
             : worst <= warnPercent ? Severity.Warning
             : Severity.Success;
 
-    /// <summary>摘要尾巴：紧凑窗口余量列表（“ · 5h 剩74% · 周 剩55%”）；余 0% 显示「已用尽」（bug 批9 措辞对齐）。</summary>
+    /// <summary>摘要尾巴：紧凑窗口已用列表（“ · 5h 已用26% · 周 已用45%”，已用=剩余反推，2026-10-13 用户令）；
+    /// 余 0%（已用 100%）显示「已用尽」（bug 批9 措辞保留）。</summary>
     internal static string Summarize(KimiUsage usage)
     {
         var parts = new List<string>();
         if (usage.Rolling?.RemainingPercent is { } rolling)
         {
-            parts.Add(rolling <= 0 ? "5h 已用尽" : $"5h 剩{Format(rolling)}%");
+            parts.Add(rolling <= 0 ? "5h 已用尽" : $"5h 已用{Format(UsedPercent(rolling))}%");
         }
         if (usage.Weekly?.RemainingPercent is { } weekly)
         {
-            parts.Add(weekly <= 0 ? "周 已用尽" : $"周 剩{Format(weekly)}%");
+            parts.Add(weekly <= 0 ? "周 已用尽" : $"周 已用{Format(UsedPercent(weekly))}%");
         }
         return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
     }
+
+    /// <summary>已用% = 100 − 剩余%（接口只给 remaining/limit，反推即来源；钳 0..100 防脏数据）。</summary>
+    private static double UsedPercent(double remainingPercent) => Math.Clamp(100 - remainingPercent, 0, 100);
 
     private static string Format(double value) => value.ToString("0.#", CultureInfo.InvariantCulture);
 }

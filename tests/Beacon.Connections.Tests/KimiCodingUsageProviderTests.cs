@@ -205,7 +205,7 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal(expected, KimiCodingUsageProvider.MapSeverity(worstRemaining, warn, error));
     }
 
-    // ---- 措辞对齐（bug 批9：余 0% 显示「已用尽」而非「剩0%」） ----
+    // ---- 措辞对齐（bug 批9：余 0% 显示「已用尽」；2026-10-13 用户令卡面已用口径=剩余反推） ----
 
     [Fact]
     public void Summarize_ZeroRemaining_SaysExhausted()
@@ -225,7 +225,7 @@ public sealed class KimiCodingUsageProviderTests
             new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
             null));
 
-        Assert.Contains("5h 剩74%", mixed); // 有余量的窗维持原口径
+        Assert.Contains("5h 已用26%", mixed); // 有余量的窗按已用=100−剩余 反推
         Assert.Contains("周 已用尽", mixed);
     }
 
@@ -238,10 +238,13 @@ public sealed class KimiCodingUsageProviderTests
 
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
-        Assert.Equal(Severity.Warning, state!.Severity); // 5h 剩 25% ≤ 30
+        Assert.Equal(Severity.Warning, state!.Severity); // 级别按剩余：5h 剩 25% ≤ 30（口径分野：卡面/进度条=已用）
         Assert.Equal(LifecycleState.Running, state.Lifecycle);
-        Assert.Equal("Pro · 5h 剩25% · 周 剩55%", state.Summary);
+        Assert.Equal("Pro · 5h 已用75% · 周 已用45%", state.Summary);
+        Assert.Equal(0.75, state.Progress!.Value, 5); // 进度条=已用占比（主窗 5h），与各家 provider 同语义
         Assert.Equal("Pro", state.Payload["level"]);
+        Assert.Equal("75", state.Payload["rolling_percent"]); // 已用=剩余反推（payload 原始剩余键并存）
+        Assert.Equal("45", state.Payload["weekly_percent"]);
         Assert.Equal("25", state.Payload["rolling_remaining_percent"]);
         Assert.Equal("55", state.Payload["weekly_remaining_percent"]);
         Assert.Equal("1000", state.Payload["weekly_limit"]);
@@ -262,9 +265,10 @@ public sealed class KimiCodingUsageProviderTests
 
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
-        Assert.Equal(Severity.Success, state!.Severity); // 窗口全剩 100%
+        Assert.Equal(Severity.Success, state!.Severity); // 窗口全剩 100%（级别按剩余不变）
         Assert.Equal(LifecycleState.Success, state.Lifecycle);
-        Assert.Equal("Kimi · 5h 剩100% · 周 剩100%", state.Summary); // 无 level → head 默认 Kimi
+        Assert.Equal("Kimi · 5h 已用0% · 周 已用0%", state.Summary); // 无 level → head 默认 Kimi
+        Assert.Equal(0.0, state.Progress!.Value, 5); // 进度条=已用占比：全剩 → 0
         Assert.Equal("100", state.Payload["total_limit"]);
         Assert.Equal("41", state.Payload["total_used"]);
         Assert.Equal("59", state.Payload["total_remaining"]);
@@ -310,8 +314,8 @@ public sealed class KimiCodingUsageProviderTests
 
         var state = await provider.GetStateAsync(widget, Connection(), Ctx(), CancellationToken.None);
 
-        Assert.Equal(Severity.Success, state!.Severity); // 25 > 20
-        Assert.Equal("Kimi · 5h 剩25% · 周 剩55%", state.Summary);
+        Assert.Equal(Severity.Success, state!.Severity); // 25 > 20（级别按剩余判定不变）
+        Assert.Equal("Kimi · 5h 已用75% · 周 已用45%", state.Summary);
     }
 
     [Fact]

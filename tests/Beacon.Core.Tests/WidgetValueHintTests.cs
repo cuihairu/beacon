@@ -30,9 +30,9 @@ public sealed class WidgetValueHintTests
         // bigmodel.usage / ark.usage / http.quota：最差窗口已用%
         { State("GLM · 42% 已用", new() { ["percent"] = "42" }), "42%" },
         { State("方舟 · 5h 77%", new() { ["percent"] = "77" }), "77%" },
-        // kimi.coding：剩余%（卡面同口径）
-        { State("Kimi · 周剩 30%", new() { ["weekly_remaining_percent"] = "30" }), "剩30%" },
-        { State("Kimi · 滚动剩 88.5%", new() { ["rolling_remaining_percent"] = "88.5" }), "剩88.5%" },
+        // kimi.coding：已用%（2026-10-13 用户令，与 bigmodel/ark 统一已用口径）
+        { State("Kimi · 周已用 70%", new() { ["weekly_percent"] = "70" }), "70%" },
+        { State("Kimi · 滚动已用 11.5%", new() { ["rolling_percent"] = "11.5" }), "11.5%" },
         // copilot.usage：premium 请求 已用/含额（1500 含额 - 1499 剩余 = 1）
         { State("Copilot · Pro", new() { ["premium_interactions_entitlement"] = "1500", ["premium_interactions_remaining"] = "1499" }), "1/1500" },
         // opencode.usage：自然月消费
@@ -61,10 +61,10 @@ public sealed class WidgetValueHintTests
         { State("方舟 · 双窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "70.5", ["monthly_percent"] = "" }), "5%/5h 70.5%/w" },
         // 窗序固定 5h→周→月（与 payload 书写序无关）
         { State("GLM · 乱序", new() { ["monthly_percent"] = "80", ["rolling_percent"] = "5", ["weekly_percent"] = "70" }), "5%/5h 70%/w 80%/M" },
-        // kimi 剩余口径同规则（前缀「剩」）
-        { State("Kimi · 双窗", new() { ["rolling_remaining_percent"] = "95", ["weekly_remaining_percent"] = "80" }), "剩95%/5h 剩80%/w" },
-        // 单窗不进多窗口形态，走既有单窗链（bigmodel/ark 主窗 = percent；kimi = 剩余键）
-        { State("Kimi · 单窗", new() { ["rolling_remaining_percent"] = "95", ["weekly_remaining_percent"] = "" }), "剩95%" },
+        // kimi 已用口径同规则（无前缀，2026-10-13 用户令）
+        { State("Kimi · 双窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "20" }), "5%/5h 20%/w" },
+        // 单窗不进多窗口形态，走既有单窗链（bigmodel/ark 主窗 = percent；kimi = *_percent 已用键）
+        { State("Kimi · 单窗", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "" }), "5%" },
         { State("GLM · 单窗", new() { ["percent"] = "5" }), "5%" },
         // 优先级：value_text（provider 显式）压过多窗口
         { State("MiMo · 显式", new() { ["value_text"] = "无额度口", ["rolling_percent"] = "5", ["weekly_percent"] = "70" }), "无额度口" },
@@ -96,10 +96,10 @@ public sealed class WidgetValueHintTests
     [Fact]
     public void SuppressProgressReadout_MultiWindowTrue_SingleWindowFalse()
     {
-        // 多窗口：数值文本已含主位窗口百分比 → 读数收起（bigmodel 已用口径与 kimi 剩余口径同规则）
+        // 多窗口：数值文本已含主位窗口百分比 → 读数收起（各家统一已用口径同规则）
         var multi = State("GLM", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "70" });
         Assert.True(WidgetValueHint.SuppressProgressReadout(multi));
-        var kimi = State("Kimi", new() { ["rolling_remaining_percent"] = "95", ["weekly_remaining_percent"] = "80" });
+        var kimi = State("Kimi", new() { ["rolling_percent"] = "5", ["weekly_percent"] = "20" });
         Assert.True(WidgetValueHint.SuppressProgressReadout(kimi));
         // 单窗：读数维持常驻（现状不变）
         var single = State("GLM", new() { ["percent"] = "5" });
