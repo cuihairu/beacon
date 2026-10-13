@@ -173,11 +173,11 @@ actions:                          # 可选：声明动作（进详情页动作�
 
 | 连接 | 组件类型 | 额度口径 | 数据源与降级行为 |
 |---|---|---|---|
-| ark | ark.usage | 5h 滚动窗 + 周窗 + 月窗三窗已用百分比，5h 窗占主位 | 管控面 OpenAPI（V4 签名）。任一窗 100% 整卡显示「额度用尽（窗名，重置时间）」；收到 429 配额耗尽码（AccountQuotaExceeded 等）直接按该窗已尽处理并带重置时间；纯限流 429 不翻转 |
-| bigmodel | bigmodel.usage | 5h 滚动窗占主位，周限、月度次之（窗口上限无绝对 token 口，监控接口只给百分比） | 监控接口 quota/limit。rolling → weekly → monthly 优先级取主数值 |
+| ark | ark.usage | 5h 滚动窗 + 周窗 + 月窗三窗已用百分比；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取已用最高窗并标窗名，warn/error 阈值仍作用在最差窗已用 % 上 | 管控面 OpenAPI（V4 签名）。任一窗 100% 整卡显示「额度用尽（窗名，重置时间）」；收到 429 配额耗尽码（AccountQuotaExceeded 等）直接按该窗已尽处理并带重置时间；纯限流 429 不翻转 |
+| bigmodel | bigmodel.usage | 5h 滚动窗 + 周窗 + 月窗已用百分比（窗口上限无绝对 token 口，监控接口只给百分比）；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取已用最高窗并标窗名，阈值仍作用在最差窗已用 % 上 | 监控接口 quota/limit。主数值不再按 rolling → weekly → monthly 可用性兜底，改取已用最高窗 |
 | claude | claude.usage | 窗口内 token 与成本（costUSD 存在才计成本，不自行估价） | 读本机 `~/.claude/projects/**/*.jsonl`，零凭据零网络。设了 daily_cost_limit 才按用量升级别 |
 | codex | codex.usage | 近 N 天 token（每会话文件取最后一条累计值求和，如实标注「本地统计，非官方口径」） | 读本机 `~/.codex/sessions/**/rollout-*.jsonl`。官方口需 OAuth，落本地统计档 |
-| kimi | kimi.coding | 卡面/进度条=已用%（剩余反推），级别仍按剩余判（余 0% 显示「已用尽」） | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
+| kimi | kimi.coding | 卡面/进度条=已用%（剩余反推），级别仍按剩余判（余 0% 显示「已用尽」）；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取剩余最低（=已用最高）窗并标窗名，阈值仍按剩余百分比 | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
 | moonshot | moonshot.balance | 余额金额（¥），余额 ≤ warn_below（默认 20）→ Warning、≤ error_below（默认 5）→ Error | GET /v1/users/me/balance（Bearer）。响应不含余额数据按 Degraded 处理 |
 | deepseek | deepseek.balance | 余额金额（CNY/USD），total ≤ 阈值判级 | GET /user/balance。is_available=false 直接 Error |
 | mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；无 Cookie 且录了 litellm_spend_url → 「本月已用 $X（网关记账）」（网关无额度分母，只显已用量，如实不造）；否则本机计数；再否则如实「无额度口」 | 四档降级：控制台 API → LiteLLM 网关记账 → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充）。控制台 401/403 卡面明示「Cookie 已失效或未录制」+ 重录指引（Degraded 中止，不静默降档）。控制台响应真身 2026-10-11 实抓：data.monthUsage/usage 块 + items[]，percent 字段是 **0-1 比例**（used/limit 自算精确百分比，≥90% Warn / ≥100% Error）。LiteLLM 响应兼容 根数组 / response[] / results[] / summarize 汇总对象 四形 |

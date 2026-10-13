@@ -40,6 +40,8 @@ public static class ArkWidgetDescriptors
 /// Region 可在连接 Settings 里覆盖（默认 cn-beijing）。
 /// 响应 Result.QuotaUsage[]：Level=session（5h 窗）/weekly/monthly，Percent 为已用百分比（0-100，
 /// 可能是字符串；控制台的请求次数/token 绝对数不经此接口），ResetTimestamp 秒级 epoch（0/-1=暂无重置）。
+/// 多窗口口径（2026-10-13 用户令）：级别/进度条/主数值一律取**已用最高的窗口**并标窗名（最差窗口优先），
+/// 任一窗 ≥100% → 已尽恒定 Error；warn/error 阈值仍作用在**最差窗口**的已用 % 上，语义不变。
 /// 签名规范：docs.volcengine.com/docs/6369/67269；三份社区实现交叉验证
 /// （KS-OTO/tracking-llm-plan-usage、farion1231/cc-switch、nguyenphutrong/quotio）。
 /// </summary>
@@ -205,11 +207,12 @@ public sealed class ArkUsageProvider : IWidgetProvider
             };
         }
 
-        // 5h session 窗口为主口径（2026-10-09 bug 批3：方舟 coding 是 5 小时窗口额度——
-        // 旧码主数值取最差窗口，周/月数字冒充了当前窗口；周/月仍留 payload 供 L3 详情查）
-        var primary = usage.Session ?? new ArkUsageWindow(usage.WorstPercent, null);
-        var severity = MapSeverity(primary.Percent, warnPercent, errorPercent);
-        var resetText = primary.ResetSeconds is { } reset ? FormatReset(reset) : "待重置";
+        // 最差窗口优先（2026-10-13 用户令，覆盖 2026-10-09 的 5h 主口径）：级别/进度条/主数值
+        // 一律取已用最高的窗口并标窗名——周/月高用量不得被新 5h 窗的低用量掩盖（用户实测：
+        // 5h 5% 周/月近满仍显绿）；摘要行保留三窗明细，重置时间取最差窗口。
+        var (worstKey, worstLabel, worstWindow) = usage.WorstWindow();
+        var severity = MapSeverity(worstWindow.Percent, warnPercent, errorPercent);
+        var resetText = worstWindow.ResetSeconds is { } reset ? $"重置 {FormatReset(reset)}" : "待重置";
         return new WidgetState
         {
             WidgetId = widget.Id,
@@ -219,20 +222,40 @@ public sealed class ArkUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
-            // 数值卡进度条：5h 窗口用量（与级别判定同源）
-            Progress = Math.Clamp(primary.Percent, 0, 100) / 100.0,
-            Summary = $"{head} · 5h {Format(primary.Percent)}% · 重置 {resetText}",
+            // 数值卡进度条：最差窗口已用（与级别判定同源）
+            Progress = Math.Clamp(worstWindow.Percent, 0, 100) / 100.0,
+            Summary = $"{head} · {worstLabel} {Format(worstWindow.Percent)}%{WindowDetail(usage, worstWindow)} · {resetText}",
             DetailUrl = ConsoleUrl,
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["percent"] = Format(primary.Percent), // tile 主数值（5h 窗口已用 %）
+                ["percent"] = Format(worstWindow.Percent), // tile 主数值（最差窗口已用 %）
+                ["worst_window"] = worstKey,
                 ["rolling_percent"] = usage.Session is { } s ? Format(s.Percent) : "",
                 ["weekly_percent"] = usage.Weekly is { } w ? Format(w.Percent) : "",
                 ["monthly_percent"] = usage.Monthly is { } m ? Format(m.Percent) : "",
-                ["reset_iso"] = primary.ResetSeconds is { } epoch ? FormatReset(epoch) : "",
+                ["reset_iso"] = worstWindow.ResetSeconds is { } epoch ? FormatReset(epoch) : "",
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
+    }
+
+    /// <summary>摘要三窗明细（5h X% · 周 Y% · 月 Z%，只出实际存在的窗口；最差窗口已在打头位不重复）。</summary>
+    private static string WindowDetail(ArkPlanUsage usage, ArkUsageWindow worstWindow)
+    {
+        var parts = new List<string>();
+        if (usage.Session is { } session && !ReferenceEquals(session, worstWindow))
+        {
+            parts.Add($"5h {Format(session.Percent)}%");
+        }
+        if (usage.Weekly is { } weekly && !ReferenceEquals(weekly, worstWindow))
+        {
+            parts.Add($"周 {Format(weekly.Percent)}%");
+        }
+        if (usage.Monthly is { } monthly && !ReferenceEquals(monthly, worstWindow))
+        {
+            parts.Add($"月 {Format(monthly.Percent)}%");
+        }
+        return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
     }
 
     private const string DescriptorType = ArkWidgetDescriptors.UsageType;
@@ -287,6 +310,28 @@ public sealed class ArkUsageProvider : IWidgetProvider
                 }
                 return worst;
             }
+        }
+
+        /// <summary>
+        /// 最差窗口（已用最高；并列按 5h→周→月取先）——worst-window 规则的唯一口径
+        /// （2026-10-13 用户令）：级别/进度条/主数值/摘要打头都取它，窗名随 payload worst_window 出。
+        /// 调用方保证至少一窗非空（HasPlan 且非全空耗尽兜底分支之后）。
+        /// </summary>
+        public (string Key, string Label, ArkUsageWindow Window) WorstWindow()
+        {
+            (string Key, string Label, ArkUsageWindow Window)? worst = null;
+            foreach (var (key, label, window) in new[] { ("session", "5h", Session), ("weekly", "周", Weekly), ("monthly", "月", Monthly) })
+            {
+                if (window is not { } candidate)
+                {
+                    continue;
+                }
+                if (worst is null || candidate.Percent > worst.Value.Window.Percent)
+                {
+                    worst = (key, label, candidate);
+                }
+            }
+            return worst!.Value;
         }
     }
 

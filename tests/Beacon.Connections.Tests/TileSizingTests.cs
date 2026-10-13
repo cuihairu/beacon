@@ -50,9 +50,10 @@ public sealed class TileSizingTests
     }
 
     [Fact]
-    public void TileWidth_Kimi_RemainingTwoWindows_NoProgressChrome()
+    public void TileWidth_Kimi_UsedTwoWindows_PoolWithoutReadout()
     {
-        // 值行 "剩100%/5h 剩100%/w" = 121（Progress 恒 null 无池/读数）；标签 Kimi 32；4 列间距 18
+        // 值行 "100%/5h 100%/w" = 99（2026-10-13 统一已用口径）；Progress = 最差窗已用占比 → 池 16；
+        // 双窗形态读数被收起；标签 Kimi 32；5 列间距 24 → 44+32+99+16+24+4 = 219
         Assert.Equal(219, TileSizing.TileWidthDips(Widget(KimiWidgetDescriptors.CodingType)));
     }
 

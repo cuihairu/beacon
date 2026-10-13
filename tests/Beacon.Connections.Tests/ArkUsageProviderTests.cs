@@ -379,7 +379,7 @@ public sealed class ArkUsageProviderTests
     }
 
     [Fact]
-    public void ToState_SessionWindowDrivesSeverityProgressAndPayload()
+    public void ToState_WorstWindowDrivesSeverityProgressAndPayload()
     {
         var usage = ArkUsageProvider.ParseUsage(Body)!;
 
@@ -390,16 +390,17 @@ public sealed class ArkUsageProviderTests
             ["error_percent"] = "90",
         }), Connection(), usage);
 
-        // 5h session 窗口为主口径（bug 批3：周/月不得冒充当前窗口驱动主数值/级别）
-        Assert.Equal(Severity.Success, state.Severity); // session 42.5 < warn 60（周/月不参与判定）
-        Assert.Equal(LifecycleState.Success, state.Lifecycle);
-        Assert.Equal(0.425, state.Progress!.Value, 5);
-        Assert.Equal("方舟 · 5h 42.5% · 重置 " + ResetDisplay, state.Summary);
-        Assert.Equal("42.5", state.Payload["percent"]);
+        // worst-window 规则（2026-10-13 用户令）：月 92 已用最高 → 级别/进度条/主数值全跟月窗
+        Assert.Equal(Severity.Error, state.Severity); // 月 92 ≥ error 90
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(0.92, state.Progress!.Value, 5);
+        Assert.Equal("方舟 · 月 92% · 5h 42.5% · 周 8% · 待重置", state.Summary); // 三窗明细保留，重置取最差窗（月无重置）
+        Assert.Equal("92", state.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["worst_window"]);
         Assert.Equal("42.5", state.Payload["rolling_percent"]);
         Assert.Equal("8", state.Payload["weekly_percent"]);
         Assert.Equal("92", state.Payload["monthly_percent"]);
-        Assert.Equal(ResetDisplay, state.Payload["reset_iso"]); // session 重置优先（1771000000）
+        Assert.Equal("", state.Payload["reset_iso"]); // 月窗 ResetTimestamp=0 → 无重置
     }
 
     [Fact]
@@ -410,14 +411,17 @@ public sealed class ArkUsageProviderTests
 
         var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
 
-        Assert.Equal("30", state.Payload["percent"]); // 无 session 时退回最差窗口，不空转
-        Assert.Contains("5h 30%", state.Summary);
+        Assert.Equal("30", state.Payload["percent"]); // 无 session 时退回最差窗口（唯一窗），不空转
+        Assert.Equal("weekly", state.Payload["worst_window"]);
+        Assert.Contains("周 30%", state.Summary);
     }
 
     [Fact]
     public void ToState_CustomThresholdsApply()
     {
-        var usage = ArkUsageProvider.ParseUsage(Body)!; // session = 42.5
+        // 单窗（session 42.5）下阈值作用在最差窗已用 % 上，语义不变
+        var usage = ArkUsageProvider.ParseUsage(
+            """{"Result":{"QuotaUsage":[{"Level":"session","Percent":42.5,"ResetTimestamp":1771000000}]}}""")!;
 
         var warnState = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "40" }), Connection(), usage);
         var okState = ArkUsageProvider.ToState(Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "95", ["error_percent"] = "99" }), Connection(), usage);
@@ -491,7 +495,7 @@ public sealed class ArkUsageProviderTests
     }
 
     [Theory]
-    [InlineData("99.9", "10")] // 未到 100：正常路径（5h session 主口径）
+    [InlineData("99.9", "99.9")] // 未到 100：正常路径（最差窗=周 99.9，主数值跟它）
     [InlineData("100", "100")] // 恰 100：判尽
     public void ToState_ExhaustionBoundaryAt100(string weeklyPercentText, string expectedPercent)
     {
@@ -502,6 +506,71 @@ public sealed class ArkUsageProviderTests
         var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
 
         Assert.Equal(expectedPercent, state.Payload["percent"]);
+    }
+
+    [Fact]
+    public void ToState_WeeklyAndMonthlyAt100_SessionFresh_ExhaustedError()
+    {
+        // 用户令测试形态：5h 5%、周 100%、月 100%——任一窗 ≥100 走已尽分支（恒定 Error + 满格，周/月皆尽取最早重置）
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"session","Percent":5,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":100,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":100,"ResetTimestamp":1771500000}]}}
+            """);
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal(1.0, state.Progress!.Value, 5);
+        Assert.Equal("100", state.Payload["percent"]); // 已尽窗已用 %
+        Assert.Equal("月", state.Payload["exhausted_window"]); // 月重置更早（1771500000 < 1772000000）
+        Assert.Equal("月,周", state.Payload["exhausted_windows"]);
+    }
+
+    [Fact]
+    public void ToState_WeeklyNearFullWhileSessionFresh_ErrorNotGreen()
+    {
+        // 用户实测形态：5h 5%、周 95%、月 80%——旧码按 5h 判级显绿，修复后周窗驱动 Error
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"session","Percent":5,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":95,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":80,"ResetTimestamp":0}]}}
+            """);
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(Severity.Error, state.Severity); // 周 95 ≥ error 90
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(0.95, state.Progress!.Value, 5);
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal("weekly", state.Payload["worst_window"]);
+        Assert.Equal($"方舟 · 周 95% · 5h 5% · 月 80% · 重置 {WeeklyResetDisplay}", state.Summary);
+    }
+
+    [Fact]
+    public void ToState_AllWindowsLow_Success()
+    {
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"session","Percent":10,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":20,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":30,"ResetTimestamp":0}]}}
+            """);
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(Severity.Success, state.Severity);
+        Assert.Equal(0.3, state.Progress!.Value, 5); // 最差窗=月 30%
+        Assert.Equal("30", state.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["worst_window"]);
+    }
+
+    [Fact]
+    public void ToState_OnlyMonthlyOver_Error()
+    {
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"session","Percent":10,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":20,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":95,"ResetTimestamp":0}]}}
+            """);
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal(0.95, state.Progress!.Value, 5);
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["worst_window"]);
     }
 
     [Fact]

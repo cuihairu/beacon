@@ -63,24 +63,30 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(1770000000000, usage.Rolling.ResetMs);
         Assert.Equal(8, usage.Weekly!.Percent);
         Assert.Equal(3, usage.Monthly!.Percent);
-        Assert.Equal(42.5, usage.Primary!.Percent); // 主位 = 5h 窗（用户令 2026-10-10）
+        Assert.Equal("5h", usage.Worst()!.Value.Key); // 最差窗口 = 已用最高（42.5）
     }
 
     [Fact]
-    public void PrimaryWindow_FallsBackWeeklyThenMonthly_NeverJumpsAhead()
+    public void WorstWindow_PicksHighestPercent_NotFirstAvailable()
     {
-        // 主位优先级 rolling → weekly → monthly：5h 缺失才降级，月度不抢主位
+        // worst-window 规则（2026-10-13 用户令）：已用最高者胜，不再按 5h→周→月可用性兜底
         var rollingOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":10}]}""")!;
-        Assert.Equal(10, rollingOnly.Primary!.Percent);
+        Assert.Equal("5h", rollingOnly.Worst()!.Value.Key);
+        Assert.Equal(10, rollingOnly.Worst()!.Value.Window.Percent);
 
         var weeklyOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20}]}""")!;
-        Assert.Equal(20, weeklyOnly.Primary!.Percent);
+        Assert.Equal("weekly", weeklyOnly.Worst()!.Value.Key);
 
         var monthlyOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TIME_LIMIT","percentage":30}]}""")!;
-        Assert.Equal(30, monthlyOnly.Primary!.Percent);
+        Assert.Equal("monthly", monthlyOnly.Worst()!.Value.Key);
+
+        // 关键回归：5h 低、周高 → 周窗胜出（旧主位口径会错取 5h）
+        var weeklyHigher = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":5},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":95},{"type":"TIME_LIMIT","percentage":80}]}""")!;
+        Assert.Equal("weekly", weeklyHigher.Worst()!.Value.Key);
+        Assert.Equal(95, weeklyHigher.Worst()!.Value.Window.Percent);
 
         var all = BigModelUsageProvider.ParseUsage(Body)!;
-        Assert.Same(all.Rolling, all.Primary);
+        Assert.Same(all.Rolling, all.Worst()!.Value.Window);
     }
 
     [Fact]
@@ -168,9 +174,9 @@ public sealed class BigModelUsageProviderTests
     }
 
     [Fact]
-    public async Task GetStateAsync_MonthlyOnly_MainSlotTakesMonthlyNotWorst()
+    public async Task GetStateAsync_MonthlyOnly_WorstIsMonthly()
     {
-        // 只有月度窗口时主位才落到月度（现有实现曾取三窗最差，用户令：月维度不占主位）
+        // 只有月度窗口时最差窗即月度（worst-window 规则下唯一窗胜出）
         var body = """{"data":{"level":"Lite","limits":[{"type":"TIME_LIMIT","percentage":3,"nextResetTime":1771000000000}]}}""";
         var (provider, _) = Faked(HttpStatusCode.OK, body);
 
@@ -181,8 +187,73 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(0.03, state.Progress!.Value, 5);
         var expectedReset = DateTimeOffset.FromUnixTimeMilliseconds(1771000000000).ToLocalTime()
             .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Contains($"月 3%", state.Summary);
+        Assert.Contains($"月 窗口已用 3%", state.Summary);
         Assert.Contains($"{expectedReset} 重置", state.Summary);
+    }
+
+    // ---- worst-window 口径（2026-10-13 用户令：级别/进度条/主数值取已用最高窗并标窗名） ----
+
+    [Fact]
+    public async Task GetStateAsync_WeeklyHighest_SeverityProgressAndMainValueFollowWeekly()
+    {
+        // 用户实测形态：5h 5%、周 95%、月 80%——旧码按 5h 判级显绿，修复后周窗驱动 Error + 满格
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":5},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":95},{"type":"TIME_LIMIT","percentage":80}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity); // 95 ≥ error 90（最差窗）
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(0.95, state.Progress!.Value, 5);
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal("weekly", state.Payload["percent_window"]);
+        Assert.StartsWith("GLM · 周 窗口已用 95%", state.Summary);
+        Assert.Contains("5h 5%", state.Summary); // 三窗明细保留
+        Assert.Contains("月 80%", state.Summary);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_AllLow_Success()
+    {
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":10},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20},{"type":"TIME_LIMIT","percentage":30}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Success, state!.Severity);
+        Assert.Equal(0.3, state.Progress!.Value, 5); // 最差窗=月 30%
+        Assert.Equal("30", state.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["percent_window"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_OnlyMonthlyOver_Error()
+    {
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":10},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20},{"type":"TIME_LIMIT","percentage":95}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(0.95, state.Progress!.Value, 5);
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["percent_window"]);
+        Assert.StartsWith("GLM · 月 窗口已用 95%", state.Summary);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_WeeklyAndMonthlyAt100_ErrorFullBar()
+    {
+        // 用户令测试形态：5h 5%、周 100%、月 100%——最差窗 100% ≥ error 90 → Error + 满格（bigmodel 无已尽分支）
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":5},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":100},{"type":"TIME_LIMIT","percentage":100}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(1.0, state.Progress!.Value, 5);
+        Assert.Equal("100", state.Payload["percent"]); // 最差窗已用 %
+        Assert.Equal("weekly", state.Payload["percent_window"]);
     }
 
     [Fact]
@@ -201,10 +272,10 @@ public sealed class BigModelUsageProviderTests
         var usage = BigModelUsageProvider.ParseUsage(realSample)!;
 
         Assert.Equal("pro", usage.Level);
-        Assert.Equal(59, usage.Rolling!.Percent); // 5h 窗主位
+        Assert.Equal(59, usage.Rolling!.Percent);
         Assert.Equal(1791604507943, usage.Rolling.ResetMs);
-        Assert.Equal(32, usage.Monthly!.Percent); // MCP 月度口径，降次行
-        Assert.Same(usage.Rolling, usage.Primary);
+        Assert.Equal(32, usage.Monthly!.Percent); // MCP 月度口径
+        Assert.Same(usage.Rolling, usage.Worst()!.Value.Window); // 5h 窗已用最高即最差窗
     }
 
     [Fact]

@@ -40,6 +40,8 @@ public static class KimiWidgetDescriptors
 /// 级别按窗口剩余百分比最差者判：≤ error_percent → Error，≤ warn_percent → Warning，否则 Success（不变）。
 /// 卡面/多窗口/进度条为**已用口径**（2026-10-13 用户令，与 bigmodel/ark 统一）：已用 = 100 − 剩余
 /// （接口只给 remaining/limit，反推来源）；阈值判定语义仍按剩余，字段说明保持「余量低于此值」。
+/// 多窗口口径（2026-10-13 用户令）：进度条/主数值/摘要打头一律取**已用最高的窗口**（= 剩余最低的窗）
+/// 并标窗名（最差窗口优先），级别判定本就按剩余最差窗——三处同源，语义不变。
 /// </summary>
 public sealed class KimiCodingUsageProvider : IWidgetProvider
 {
@@ -77,6 +79,7 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
         var warnPercent = widget.Config.TryGetValue("warn_percent", out var warnRaw) && double.TryParse(warnRaw, CultureInfo.InvariantCulture, out var warn) ? warn : 30;
         var errorPercent = widget.Config.TryGetValue("error_percent", out var errorRaw) && double.TryParse(errorRaw, CultureInfo.InvariantCulture, out var error) ? error : 10;
         var severity = MapSeverity(usage.WorstRemainingPercent, warnPercent, errorPercent);
+        var worst = usage.WorstWindow();
         var head = widget.Config.GetValueOrDefault("label") ?? usage.Level ?? "Kimi";
 
         return new WidgetState
@@ -89,14 +92,16 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
             // 进度条与其他 provider 同语义（已用占比；bigmodel/ark/mimo/qwen/http.quota 同口径）。
-            // 主窗=5h 滚动，缺则周窗；级别判定与此无关（仍按剩余最差窗，MapSeverity 未动）。
-            Progress = (usage.Rolling?.RemainingPercent ?? usage.Weekly?.RemainingPercent) is { } primaryRemaining
-                ? Math.Clamp(UsedPercent(primaryRemaining), 0, 100) / 100.0
+            // 最差窗口优先（2026-10-13 用户令）：取剩余最低窗的已用占比——级别判定同源（WorstRemainingPercent）。
+            Progress = worst?.Window.RemainingPercent is { } worstRemaining
+                ? Math.Clamp(UsedPercent(worstRemaining), 0, 100) / 100.0
                 : null,
-            Summary = head + Summarize(usage),
+            Summary = head + Summarize(usage, worst),
             DetailUrl = "https://www.kimi.com/code",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["percent"] = worst?.Window.RemainingPercent is { } remainingUsed ? UsedPercent(remainingUsed).ToString("0.#", CultureInfo.InvariantCulture) : "",
+                ["worst_window"] = worst?.Key ?? "",
                 ["level"] = usage.Level ?? "",
                 ["rolling_percent"] = usage.Rolling?.RemainingPercent is { } rollingUsed ? UsedPercent(rollingUsed).ToString("0.#", CultureInfo.InvariantCulture) : "",
                 ["weekly_percent"] = usage.Weekly?.RemainingPercent is { } weeklyUsed ? UsedPercent(weeklyUsed).ToString("0.#", CultureInfo.InvariantCulture) : "",
@@ -137,6 +142,25 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
                 }
                 return worst;
             }
+        }
+
+        /// <summary>最差窗口（剩余最低 = 已用最高；并列按 5h→周取先）——worst-window 规则唯一口径
+        /// （2026-10-13 用户令）：进度条/主数值/摘要打头都取它，Key = rolling/weekly（payload worst_window 值）。</summary>
+        public (string Key, string Label, QuotaWindow Window)? WorstWindow()
+        {
+            (string Key, string Label, QuotaWindow Window)? worst = null;
+            foreach (var (key, label, window) in new[] { ("rolling", "5h", Rolling), ("weekly", "周", Weekly) })
+            {
+                if (window?.RemainingPercent is not { } remaining)
+                {
+                    continue;
+                }
+                if (worst is null || remaining < worst.Value.Window.RemainingPercent)
+                {
+                    worst = (key, label, window);
+                }
+            }
+            return worst;
         }
     }
 
@@ -310,20 +334,33 @@ public sealed class KimiCodingUsageProvider : IWidgetProvider
             : worst <= warnPercent ? Severity.Warning
             : Severity.Success;
 
-    /// <summary>摘要尾巴：紧凑窗口已用列表（“ · 5h 已用26% · 周 已用45%”，已用=剩余反推，2026-10-13 用户令）；
+    /// <summary>摘要尾巴：最差窗口打头标窗名（2026-10-13 用户令 worst-window 规则），其余窗口随后；
+    /// 紧凑窗口已用列表（“ · 周 已用45% · 5h 已用26%”，已用=剩余反推）；
     /// 余 0%（已用 100%）显示「已用尽」（bug 批9 措辞保留）。</summary>
-    internal static string Summarize(KimiUsage usage)
+    internal static string Summarize(KimiUsage usage, (string Key, string Label, QuotaWindow Window)? worst)
     {
         var parts = new List<string>();
-        if (usage.Rolling?.RemainingPercent is { } rolling)
+        if (worst is { } w)
         {
-            parts.Add(rolling <= 0 ? "5h 已用尽" : $"5h 已用{Format(UsedPercent(rolling))}%");
+            parts.Add(WindowText(w.Label, w.Window));
         }
-        if (usage.Weekly?.RemainingPercent is { } weekly)
+        foreach (var (label, window) in new[] { ("5h", usage.Rolling), ("周", usage.Weekly) })
         {
-            parts.Add(weekly <= 0 ? "周 已用尽" : $"周 已用{Format(UsedPercent(weekly))}%");
+            if (window?.RemainingPercent is { } remaining && !ReferenceEquals(window, worst?.Window))
+            {
+                parts.Add(WindowText(label, window));
+            }
         }
         return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
+    }
+
+    private static string WindowText(string label, QuotaWindow window)
+    {
+        if (window.RemainingPercent is not { } remaining)
+        {
+            return $"{label} 窗口"; // 无剩余数据不硬造数字（摘要路径只收有剩余的窗，防御兜底）
+        }
+        return remaining <= 0 ? $"{label} 已用尽" : $"{label} 已用{Format(UsedPercent(remaining))}%";
     }
 
     /// <summary>已用% = 100 − 剩余%（接口只给 remaining/limit，反推即来源；钳 0..100 防脏数据）。</summary>

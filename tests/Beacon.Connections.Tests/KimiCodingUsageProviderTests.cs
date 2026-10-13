@@ -210,20 +210,22 @@ public sealed class KimiCodingUsageProviderTests
     [Fact]
     public void Summarize_ZeroRemaining_SaysExhausted()
     {
-        var both = KimiCodingUsageProvider.Summarize(new KimiCodingUsageProvider.KimiUsage(
+        var usageBoth = new KimiCodingUsageProvider.KimiUsage(
             "pro",
             new KimiCodingUsageProvider.QuotaWindow(0, 100, 0, "2026-10-13"),
             new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
-            null));
+            null);
+        var both = KimiCodingUsageProvider.Summarize(usageBoth, usageBoth.WorstWindow());
 
         Assert.Contains("5h 已用尽", both);
         Assert.Contains("周 已用尽", both);
 
-        var mixed = KimiCodingUsageProvider.Summarize(new KimiCodingUsageProvider.KimiUsage(
+        var usageMixed = new KimiCodingUsageProvider.KimiUsage(
             "pro",
             new KimiCodingUsageProvider.QuotaWindow(74, 100, 74, null),
             new KimiCodingUsageProvider.QuotaWindow(0, 1000, 0, "2026-10-20"),
-            null));
+            null);
+        var mixed = KimiCodingUsageProvider.Summarize(usageMixed, usageMixed.WorstWindow());
 
         Assert.Contains("5h 已用26%", mixed); // 有余量的窗按已用=100−剩余 反推
         Assert.Contains("周 已用尽", mixed);
@@ -256,6 +258,82 @@ public sealed class KimiCodingUsageProviderTests
         Assert.True(hasAuth);
         Assert.Equal("Bearer sk-kimi-demo", string.Join(",", authorization!));
         Assert.Equal(KimiCodingUsageProvider.DefaultEndpoint, http.Requests[0].RequestUri!.ToString());
+    }
+
+    // ---- worst-window 口径（2026-10-13 用户令：进度条/主数值/摘要打头取已用最高窗=剩余最低窗并标窗名） ----
+
+    [Fact]
+    public async Task GetStateAsync_WeeklyRemainingLowest_ProgressAndSummaryFollowWeekly()
+    {
+        // 5h 剩 95%（已用 5%）、周 剩 5%（已用 95%）——旧码进度条跟 5h，修复后周窗驱动
+        var body = """
+            {
+              "usage": { "limit": 1000, "used": 950, "remaining": 50, "resetTime": "2026-10-12T00:00:00Z" },
+              "limits": [
+                { "window": { "duration": 5, "timeUnit": "TIME_UNIT_HOUR" },
+                  "detail": { "limit": 200, "used": 10, "remaining": 190, "resetTime": "2026-10-08T15:00:00Z" } }
+              ],
+              "user": { "membership": { "level": "Pro" } }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity); // 周剩 5% ≤ error 10（级别按剩余最差窗，不变）
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(0.95, state.Progress!.Value, 5); // 进度条=最差窗已用（周 95%）
+        Assert.Equal("95", state.Payload["percent"]);
+        Assert.Equal("weekly", state.Payload["worst_window"]);
+        Assert.Equal("Pro · 周 已用95% · 5h 已用5%", state.Summary); // 最差窗打头标窗名
+    }
+
+    [Fact]
+    public async Task GetStateAsync_AllRemainingHigh_Success()
+    {
+        var body = """
+            {
+              "usage": { "limit": 1000, "used": 50, "remaining": 950, "resetTime": "2026-10-12T00:00:00Z" },
+              "limits": [
+                { "window": { "duration": 5, "timeUnit": "TIME_UNIT_HOUR" },
+                  "detail": { "limit": 200, "used": 10, "remaining": 190, "resetTime": "2026-10-08T15:00:00Z" } }
+              ],
+              "user": { "membership": { "level": "Pro" } }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Success, state!.Severity); // 5h 剩 95%、周剩 95% → 全低
+        Assert.Equal(0.05, state.Progress!.Value, 5); // 最差窗=5h（并列取先）已用 5%
+        Assert.Equal("5", state.Payload["percent"]);
+        Assert.Equal("rolling", state.Payload["worst_window"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_AllRemainingZero_ErrorFullBar()
+    {
+        // 双窗剩 0%（已用 100%）→ Error + 满格；并列取先（5h），「已用尽」措辞保留
+        var body = """
+            {
+              "usage": { "limit": 1000, "used": 1000, "remaining": 0, "resetTime": "2026-10-12T00:00:00Z" },
+              "limits": [
+                { "window": { "duration": 5, "timeUnit": "TIME_UNIT_HOUR" },
+                  "detail": { "limit": 200, "used": 200, "remaining": 0, "resetTime": "2026-10-08T15:00:00Z" } }
+              ],
+              "user": { "membership": { "level": "Pro" } }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(1.0, state.Progress!.Value, 5);
+        Assert.Equal("100", state.Payload["percent"]);
+        Assert.Equal("rolling", state.Payload["worst_window"]);
+        Assert.Equal("Pro · 5h 已用尽 · 周 已用尽", state.Summary);
     }
 
     [Fact]

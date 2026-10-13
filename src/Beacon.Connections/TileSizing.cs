@@ -73,12 +73,12 @@ public static class TileSizing
     /// <summary>有进度语义的类型（Provider 会给非空 Progress → 池/读数列可能出现）。</summary>
     private static readonly HashSet<string> ProgressTypes =
         [HttpWidgetDescriptors.QuotaType, BigModelWidgetDescriptors.UsageType, ArkWidgetDescriptors.UsageType,
-         QwenWidgetDescriptors.UsageType, MiMoWidgetDescriptors.UsageType];
+         QwenWidgetDescriptors.UsageType, MiMoWidgetDescriptors.UsageType, KimiWidgetDescriptors.CodingType];
 
-    /// <summary>最坏值行 = 多窗口形态的类型：三窗全拼时读数被收起（WidgetValueHint.SuppressProgressReadout），
-    /// 预算不含读数列；单窗形态值行骤窄，腾出的宽远多于读数所需（147→31 vs +34+6）。</summary>
+    /// <summary>最坏值行 = 多窗口形态的类型：同口径窗口键 ≥2 个非空时读数被收起（WidgetValueHint.SuppressProgressReadout
+    /// 的 ≥2 窗判据），预算不含读数列；单窗形态值行骤窄，腾出的宽远多于读数所需（147→31 vs +34+6）。</summary>
     private static readonly HashSet<string> MultiWindowWorstTypes =
-        [BigModelWidgetDescriptors.UsageType, ArkWidgetDescriptors.UsageType];
+        [BigModelWidgetDescriptors.UsageType, ArkWidgetDescriptors.UsageType, KimiWidgetDescriptors.CodingType];
 
     /// <summary>每类组件数值列的最坏 ValueHint 文本（WidgetValueHint.Of 优先级链可达形态的并集取最宽；
     /// 预算只需 ≥ 实际，取 generous 上界——数值列必须完整，宁可宽几 DIP）。</summary>
@@ -86,9 +86,9 @@ public static class TileSizing
     {
         // 多窗口全拼（三窗 100% 顶格；两窗/单窗都是其子集形态）
         BigModelWidgetDescriptors.UsageType or ArkWidgetDescriptors.UsageType => "100%/5h 100%/w 100%/M",
-        // kimi 剩余口径双窗（Progress 恒 null，无池/读数）；RemainingWindows 预留的月窗键今天
-        // provider 不产出（接口只给 rolling/weekly），预算按现状双窗，接口加月窗时同步抬一行
-        KimiWidgetDescriptors.CodingType => "剩100%/5h 剩100%/w",
+        // kimi 已用口径双窗（2026-10-13 统一已用口径，Progress = 最差窗已用占比 → 池列预算、
+        // 读数被多窗口收起）；接口只给 rolling/weekly 无月窗键，接口加月窗时同步抬一行
+        KimiWidgetDescriptors.CodingType => "100%/5h 100%/w",
         // machine 按所选展示项构造最坏值行（数值位 = value_text 同构）
         MachineWidgetDescriptors.LocalType => LocalWorstValue(MachineShowOptions.ResolveOrAll(widget.Type, widget), widget),
         MachineWidgetDescriptors.NetType => NetWorstValue(MachineShowOptions.ResolveOrAll(widget.Type, widget)),
