@@ -175,6 +175,22 @@ public static class WinEnum
         }, IntPtr.Zero);
         return found;
     }
+    // 标题前缀匹配（L3 详情窗标题 Beacon · {summary} 动态，无法精确匹配）；prefix 由调用方传入
+    public static List<IntPtr> VisibleHandlesByTitlePrefix(string prefix)
+    {
+        var found = new List<IntPtr>();
+        EnumWindows((h, l) =>
+        {
+            if (IsWindowVisible(h))
+            {
+                var sb = new StringBuilder(512);
+                GetWindowText(h, sb, 512);
+                if (sb.ToString().StartsWith(prefix, StringComparison.Ordinal)) { found.Add(h); }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
     // 键盘注入（托盘原生菜单导航）：dwFlags=0 按下 / 2 抬起
     public static void SendVirtualKey(ushort vk)
     {
@@ -2650,6 +2666,67 @@ try
         throw "断言失败（场景 S3）：恢复后 45s 内 状态区摘除=$attentionClear / 事件流保留 95% 且补回 38%=$historyKept（Recent：$($recent -join ' | ')；Attention：$($attention -join ' | ')）"
     }
     Write-Host "场景 S3 通过：恢复后状态区摘掉 95%（当前）而 RecentList 保留 95% 并补回 38%（历史）——两区语义分野"
+    # S4 UIA 激活试探（todo 行 46 实测补证，R7：未测不落账）：RecentList 首行经 UIA pattern 激活能否打开 L3 详情窗。
+    # 行 46 唯一门=ItemClick（DetailRequested 唯一订阅），此前仅有源码侧推断「WinUI ListViewItem 只暴露
+    # SelectionItem/ScrollItem」——本步实测 Invoke / LegacyIAccessible / SelectionItem 三 pattern：
+    # 任一打开 L3（新窗标题 Beacon · *，VisibleHandlesByTitlePrefix 计数超基线）→ 硬断言记回归门；
+    # 全不中 → ::warning:: 实测记录（行 46 点击门坐实：UIA 不可达须装机人手点），不算失败。
+    $s4Before = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
+    $s4Opened = $false
+    $s4Detail = @()
+    $recentListEl = $null
+    try { $recentListEl = Find-UiaById $panelEl "RecentList" 5 } catch { }
+    if ($recentListEl)
+    {
+        $firstItem = $recentListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+        if ($firstItem)
+        {
+            foreach ($attempt in @("InvokePattern", "LegacyIAccessiblePattern", "SelectionItemPattern"))
+            {
+                try
+                {
+                    if ($attempt -eq "InvokePattern")
+                    {
+                        $firstItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                        $s4Detail += "Invoke:invoked"
+                    }
+                    elseif ($attempt -eq "LegacyIAccessiblePattern")
+                    {
+                        $firstItem.GetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern).DoDefaultAction()
+                        $s4Detail += "LegacyIAccessible:DoDefaultAction"
+                    }
+                    else
+                    {
+                        $firstItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+                        $s4Detail += "SelectionItem:Select"
+                    }
+                }
+                catch
+                {
+                    $s4Detail += "$attempt:unsupported"
+                    continue
+                }
+                $deadline = (Get-Date).AddSeconds(6)
+                while ((Get-Date) -lt $deadline)
+                {
+                    $s4Hits = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
+                    if ($s4Hits.Count -gt $s4Before.Count) { $s4Opened = $true; break }
+                    Start-Sleep -Milliseconds 500
+                }
+                if ($s4Opened) { break }
+            }
+        }
+    }
+    if ($s4Opened)
+    {
+        $s4Hits = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
+        foreach ($h in $s4Hits) { [WinEnum]::Post($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) } # WM_CLOSE 收掉试探窗，避免残留影响后续场景
+        Write-Host "场景 S4 通过：UIA 激活（$(@($s4Detail | Select-Object -Last 1))）打开 L3 详情窗（Beacon · * 计数 $($s4Before.Count)→$($s4Hits.Count)）——行 46 UIA 触达面成立"
+    }
+    else
+    {
+        Write-Host "::warning::场景 S4：UIA 激活试探（$($s4Detail -join '；')）未打开 L3 详情窗（6s×3 实测）——行 46 唯一门=ItemClick 坐实，点击须装机人手"
+    }
     [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # Toggle 再收，避免残留影响后续场景
     Start-Sleep -Seconds 1
     Write-Host "场景 S 通过：RECENT 事件流与状态区同源一致、新→旧有序、恢复历史往返（行 43 CI 面）"
@@ -2659,6 +2736,87 @@ catch
     Save-FullScreenshot "S-FAIL-unexpected.png"
     $failures.Add("场景 S：$($_.Exception.Message)")
     Write-Host "::error::场景 S 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 T：故障韧性（todo 行 24 的外部可触发面 CI 代验：配置损坏不崩 + 日志留痕 + .bak 兜底 + 网络断不崩）——
+# Beacon 侧路径全数覆盖：JsonConfigurationStore.LoadFile 损坏归档(*.corrupt)+.bak 回滚 → LoadErrors →
+# 启动日志「配置读取失败」（托盘气泡同源，日志面即 CI 面）；WidgetHost 刷新异常 LogWarning（含堆栈）且进程不倒。
+# 剩余装机面（真实未处理异常崩溃路）由 App.xaml.cs:37-53 三兜底接住，外部不可注入——留装机清单。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Copy-Item (Join-Path $configDir "widgets.json") (Join-Path $configDir "widgets.json.bak") -Force
+    Set-Content -Path (Join-Path $configDir "widgets.json") -Value "{ broken" -Encoding ASCII
+    $tLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $tProc = Get-Process Beacon.App -ErrorAction SilentlyContinue
+    if (!$tProc) { Save-FullScreenshot "T-FAIL-crash.png"; throw "断言失败（场景 T1）：损坏 widgets.json 启动后进程不在（崩溃兜底失效）" }
+    $dialogs = [WinEnum]::VisibleHandlesByClassAndPid("#32770", $tProc.Id)
+    if ($dialogs.Count -gt 0) { Save-FullScreenshot "T-FAIL-dialog.png"; throw "断言失败（场景 T1）：损坏配置触发系统对话框（$($dialogs.Count) 个 #32770）" }
+    if (!(Test-Path (Join-Path $configDir "widgets.json.corrupt"))) { Save-FullScreenshot "T-FAIL-no-archive.png"; throw "断言失败（场景 T1）：widgets.json.corrupt 未归档" }
+    $logText = ""
+    if (Test-Path $tLogPath) { $logText = [System.IO.File]::ReadAllText($tLogPath, [System.Text.Encoding]::UTF8) }
+    if ($logText -notmatch "配置读取失败：widgets\.json") { Save-FullScreenshot "T-FAIL-no-log.png"; throw "断言失败（场景 T1）：日志无「配置读取失败：widgets.json」" }
+    Write-Host "场景 T1 通过：损坏配置启动不崩、无 #32770 对话框、corrupt 归档+日志留痕"
+    # T1e .bak 回滚兜底：GLM tile 以 .bak 配置出数（O 前置口径）
+    $tTile = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+        if ($tHandles.Count -ge 1) { $tTile = $tHandles[0]; break }
+        Start-Sleep -Seconds 2
+    }
+    if ($tTile -eq [IntPtr]::Zero) { Save-FullScreenshot "T-FAIL-no-tile.png"; throw "断言失败（场景 T1e）：40s 内 Beacon Tile 未出现" }
+    $tTexts = @()
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tTexts = Get-WindowUiaTexts $tTile
+        if (@($tTexts | Where-Object { $_ -match '已用 38%' }).Count -ge 1) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (@($tTexts | Where-Object { $_ -match '已用 38%' }).Count -lt 1) { Save-FullScreenshot "T-FAIL-no-recovery.png"; throw "断言失败（场景 T1e）：.bak 回滚后 GLM tile 未出 38%（实际：$($tTexts -join ' | ')）" }
+    Write-Host "场景 T1e 通过：.bak 回滚兜底生效（GLM tile 38% 出数）"
+    # T2 网络断：WidgetHost 刷新失败走 LogWarning（含堆栈），进程不倒，mock 恢复后回 38%
+    # 尾部口径：偏移取在停 mock 前——F 等先前场景已在同一日志留过堆栈行，全量匹配会空过（虚证）
+    $logOffset = (Get-Item $tLogPath).Length
+    Stop-MockServer
+    $deadline = (Get-Date).AddSeconds(75)
+    $tWarn = $false
+    while ((Get-Date) -lt $deadline)
+    {
+        Start-Sleep -Seconds 5
+        if (!(Test-Path $tLogPath)) { continue }
+        $tail = [System.IO.File]::ReadAllText($tLogPath, [System.Text.Encoding]::UTF8)
+        if ($tail.Length -le $logOffset) { continue }
+        $tail = $tail.Substring($logOffset)
+        if ($tail -match "\[Warning\]" -and $tail -match "refresh failed" -and $tail -match "   at ") { $tWarn = $true; break }
+    }
+    if (!$tWarn) { Save-FullScreenshot "T-FAIL-no-warning.png"; throw "断言失败（场景 T2）：断网 75s 内日志未现 refresh failed [Warning]（含堆栈）" }
+    if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -eq 0) { Save-FullScreenshot "T-FAIL-dead.png"; throw "断言失败（场景 T2）：断网期间进程退出" }
+    Write-Host "场景 T2 通过：断网期间 WidgetHost 刷新失败 LogWarning 含堆栈且进程不倒"
+    Start-MockServer
+    $tRecovered = $false
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tTexts = Get-WindowUiaTexts $tTile
+        if (@($tTexts | Where-Object { $_ -match '已用 38%' }).Count -ge 1) { $tRecovered = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$tRecovered) { Save-FullScreenshot "T-FAIL-no-recover.png"; throw "断言失败（场景 T2）：mock 恢复后 60s 内 GLM tile 未回 38%" }
+    if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -eq 0) { throw "断言失败（场景 T2）：恢复期进程退出" }
+    Write-Host "场景 T2 通过：mock 恢复后 GLM tile 回 38%，进程存活——故障往返闭环（行 24 外部可触发面）"
+    Remove-Item (Join-Path $configDir "widgets.json.bak") -Force -ErrorAction SilentlyContinue # 损坏演练残留清理
+}
+catch
+{
+    try { Start-MockServer } catch { }
+    Save-FullScreenshot "T-FAIL-unexpected.png"
+    $failures.Add("场景 T：$($_.Exception.Message)")
+    Write-Host "::error::场景 T 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
