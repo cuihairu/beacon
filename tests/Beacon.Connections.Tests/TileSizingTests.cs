@@ -57,6 +57,15 @@ public sealed class TileSizingTests
         Assert.Equal(219, TileSizing.TileWidthDips(Widget(KimiWidgetDescriptors.CodingType)));
     }
 
+    [Fact]
+    public void TileWidth_Sensenova_PoolNameWindowPercent()
+    {
+        // 值行最坏 = 夹具形态「Flash-Lite池 5h 已用100%」= 154（10 ASCII×0.62 + 池/已用 3.0 + 空格 0.36×2 +
+        // 5h 1.24 + 100 1.86 + % 0.9 = 13.92em×11 上取整）；Progress = 最差窗已用占比 → 池 16；
+        // value_text 已自带百分比 → 读数收起；标签「商汤」CJK 24；5 列间距 24 → 44+24+154+16+24+4 = 266
+        Assert.Equal(266, TileSizing.TileWidthDips(Widget(SenseNovaWidgetDescriptors.UsageType)));
+    }
+
     // —— 单百分比额度类：读数 + 池都预算 ——
 
     [Fact]

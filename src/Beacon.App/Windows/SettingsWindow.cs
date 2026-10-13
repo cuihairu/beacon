@@ -134,6 +134,7 @@ internal sealed class SettingsWindow : Window
             new ModuleDef("copilot", "GitHub Copilot", "套餐配额 · 高级请求", "\uE99B", "copilot"),
             new ModuleDef("opencode", "OpenCode Go", "Console Budgets · 月度用量", "\uEA8F", "opencode"),
             new ModuleDef("qwen", "阿里千问", "百炼 Token Plan · 额度/重置", "\uE753", "qwen"),
+            new ModuleDef("sensenova", "商汤", "Token Plan 积分池 · 5h/7d", "\uE706", "sensenova"),
             new ModuleDef("http", "自定义 HTTP", "任意状态接口 · 点路径映射", "\ue774", "http"),
             new ModuleDef("actions", "自定义动作", "HTTP · Webhook · 本机命令", "\ue945", null), // UI/UX 审计：原与诊断/导入导出/通知规则堆一页，动作编辑器占首屏把后半压到视口外
             new ModuleDef("advanced", "高级", "诊断 · 导入导出 · 通知规则", "\ue90f", null),
@@ -459,6 +460,7 @@ internal sealed class SettingsWindow : Window
             "deepseek" => SeverityPalette.Rgb(255, 77, 107, 254), // DeepSeek 蓝 #4D6BFE
             "mimo" => SeverityPalette.Rgb(255, 255, 105, 0), // 小米橙 #FF6900
             "qwen" => SeverityPalette.Rgb(255, 255, 106, 0), // 阿里橙 #FF6A00（Simple Icons qwen）
+            "sensenova" => SeverityPalette.Rgb(255, 0, 100, 188), // 商汤蓝 #0064BC（SenseCore 品牌深蓝）
             "codex" => SeverityPalette.Rgb(255, 16, 22, 34), // OpenAI 黑（近墨）
             "copilot" => SeverityPalette.Rgb(255, 142, 78, 198), // Copilot 紫渐变主色 #8E4EC6
             "opencode" => SeverityPalette.Rgb(255, 13, 148, 136), // OpenCode 青 #0D9488
@@ -526,7 +528,7 @@ internal sealed class SettingsWindow : Window
         => AllWidgetDescriptors().Where(d => d.Type.StartsWith(connectionType + ".", StringComparison.Ordinal)).ToList();
 
     private static IReadOnlyList<WidgetTypeDescriptor> AllWidgetDescriptors()
-        => [.. GitHubWidgetDescriptors.All, .. JenkinsWidgetDescriptors.All, .. MachineWidgetDescriptors.All, .. GitWorkspaceDescriptors.All, .. HeraldWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MoonshotWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
+        => [.. GitHubWidgetDescriptors.All, .. JenkinsWidgetDescriptors.All, .. MachineWidgetDescriptors.All, .. GitWorkspaceDescriptors.All, .. HeraldWidgetDescriptors.All, .. HttpWidgetDescriptors.All, .. BigModelWidgetDescriptors.All, .. ArkWidgetDescriptors.All, .. ClaudeWidgetDescriptors.All, .. DeepSeekWidgetDescriptors.All, .. KimiWidgetDescriptors.All, .. MoonshotWidgetDescriptors.All, .. MiMoWidgetDescriptors.All, .. QwenWidgetDescriptors.All, .. SenseNovaWidgetDescriptors.All, .. CodexWidgetDescriptors.All, .. CopilotWidgetDescriptors.All, .. OpenCodeWidgetDescriptors.All];
 
     private static TextBlock Hint(string text) => new()
     {
@@ -1075,6 +1077,7 @@ internal sealed class SettingsWindow : Window
         "copilot" => "尚无连接——填 GitHub PAT（github.com/settings/tokens 创建并勾选 copilot scope，官方扩展同款配额端点自动带默认地址）。卡片直读套餐配额（Pro 1500 高级请求/月、聊天/补全无限）与额度重置日；续费信息在 github.com/settings/copilot 查看。",
         "opencode" => "尚无连接——填 OpenCode Key（oc_sk，opencode.ai Console Keys 创建；读 Budgets 需 All 权限，inference-only Key 读不了）。卡片直读官方 Console Budgets 用量（本月消费/月度上限/重置日）。",
         "qwen" => "尚无连接——填百炼 Token Plan 专属 Key（bailian.console.aliyun.com 我的订阅页创建，sk-sp- 前缀）。官方额度查询 REST 口未开放（专属 Key 实测只授权模型调用），卡片默认显示模型目录真数据；有网关/代理用量口可在下方「用量端点」填入（GET + Bearer，响应含 percent/reset 即出额度+重置日）。",
+        "sensenova" => "尚无连接——填商汤控制台会话令牌（platform.sensenova.cn 登录后 F12 → 网络任一请求的 Authorization 头 Bearer 后段，是会话 JWT 不是 API Key；有有效期，过期卡面会提示重取）。积分池额度接口自动带默认端点。多账号 = 建多条连接各填一个令牌。",
         _ => "尚无连接——填局域网/内部接口地址（可空凭据）；状态词表/额度字段映射在组件向导里配。",
     };
 
@@ -1535,6 +1538,7 @@ internal sealed class SettingsWindow : Window
         "deepseek" => "deepseek",
         "mimo" => "mimo-main",
         "qwen" => "qwen-main",
+        "sensenova" => "sensenova-main",
         "codex" => "codex-local",
         "copilot" => "copilot-main",
         "opencode" => "opencode-main",
@@ -1555,6 +1559,7 @@ internal sealed class SettingsWindow : Window
         "deepseek" => "Endpoint（可空 = 官方余额接口）",
         "mimo" => "Endpoint（可空 = 推理域 token-plan-cn.xiaomimimo.com/v1）",
         "qwen" => "Endpoint（可空 = 百炼兼容口 token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1）",
+        "sensenova" => "Endpoint（可空 = 官方积分池接口）",
         "codex" => "会话目录（可空 = 默认 ~/.codex/sessions）",
         "copilot" => "Endpoint（可空 = 官方配额端点 copilot_internal/user）",
         "opencode" => "Endpoint（可空 = 官方 Console Budgets 接口）",
@@ -1573,6 +1578,7 @@ internal sealed class SettingsWindow : Window
         "deepseek" => "https://api.deepseek.com/user/balance",
         "mimo" => "https://token-plan-cn.xiaomimimo.com/v1",
         "qwen" => "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        "sensenova" => "https://platform.sensenova.cn/lite/console/v1/tokenplan/pool-usage",
         "codex" => "C:\\Users\\me\\.codex\\sessions",
         "copilot" => "https://api.github.com/copilot_internal/user",
         "opencode" => "https://opencode.ai/console/api/v2/budgets/members",
@@ -1594,6 +1600,7 @@ internal sealed class SettingsWindow : Window
         "deepseek" => "API Key（只写 DPAPI）",
         "mimo" => "API Key（只写 DPAPI；Bearer 直传）",
         "qwen" => "API Key（sk-sp- 专属 Key，只写 DPAPI；Bearer 直传）",
+        "sensenova" => "控制台 JWT（会话令牌，非 API Key；只写 DPAPI；过期卡面提示重取）",
         "codex" => "无需凭据（留空）",
         "copilot" => "PAT（需 copilot scope，只写 DPAPI）",
         "opencode" => "API Key（oc_sk，只写 DPAPI；读 Budgets 需 All 权限）",

@@ -129,6 +129,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             [CopilotWidgetDescriptors.UsageType] = new CopilotUsageProvider(), // AI Usage 第八家：GitHub Copilot（官方扩展同款配额端点直连）
             [OpenCodeWidgetDescriptors.UsageType] = new OpenCodeUsageProvider(), // AI Usage 第九家：OpenCode Go（官方 Console Budgets API 直连）
             [QwenWidgetDescriptors.UsageType] = new QwenUsageProvider(), // AI Usage 第十家：阿里千问（百炼 Token Plan，用量口未开放→目录真数据+自定义端点）
+            [SenseNovaWidgetDescriptors.UsageType] = new SenseNovaUsageProvider(), // AI Usage 第十二家：商汤 Token Plan 积分池（2026-10-13 用户令）
             [JenkinsWidgetDescriptors.BuildType] = new JenkinsBuildProvider(), // 开源 CI 打包工具槽位（master-plan §13）：标准 JSON API
             [MoonshotWidgetDescriptors.BalanceType] = new MoonshotBalanceProvider(), // AI Usage 第十一家：Moonshot 开放平台余额（区别于 Kimi For Coding 套餐）
             [MachineWidgetDescriptors.NetType] = new MachineNetProvider(), // 本机网络（2026-10-11 用户拍板：IP/速率/流量，零凭据）
@@ -195,6 +196,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             ["codex"] = new CodexConnectionProvider(),
             ["copilot"] = new CopilotConnectionProvider(),
             ["opencode"] = new OpenCodeConnectionProvider(),
+            ["sensenova"] = new SenseNovaConnectionProvider(),
             ["machine"] = new MachineConnectionProvider(),
             ["herald"] = new HeraldConnectionProvider(),
         };
