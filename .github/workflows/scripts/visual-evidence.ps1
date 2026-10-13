@@ -3061,6 +3061,161 @@ catch
     Write-Host "::error::场景 U 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 V：Critical 与崩溃注入（todo 行 71 注入面落地，解锁行 24 注入半 / 行 55 / 行 61 Critical 半）——
+# BEACON_DEBUG_SEVERITY=critical：WidgetHost 刷新成功路径改判 Critical（DebugInjection）→ L0 状态灯
+#   渲染 Critical 默认色 #ff3b30（V1 像素硬断言；与 Error #f85149 G/B 通道差 22/25，tol12 互不误吞）+
+#   Critical 脉冲自 reduced 档挂载（V2 帧差分尽力取证；Composition 属性动画 CI 会话不可证时 ::warning
+#   转装机——G7c 同口径，色断言不受降级影响）。
+# BEACON_DEBUG_CRASH=90：90s 后 UI 线程抛未处理异常 → XAML UnhandledException 三兜底（V3 硬断言：
+#   日志「XAML unhandled exception」+堆栈「   at 」、进程数 1、零 #32770 对话框、tile 窗仍在、
+#   崩溃行之后仍有「refreshed ok」——刷新循环不因兜底中断）。若 TryEnqueue 回调异常不进 XAML 兜底
+#   （进程退出/零日志），V3 红 = 行 24「人为抛异常」半的真实发现，按回归回报。
+# 两注入均为环境变量门控、Start-Process 后即撤——后续场景与安装链零泄漏。
+try
+{
+    Stop-Beacon
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    # 前置自愈：V 依赖 mock 在场（U 尾态已停 Beacon 但 mock 存活；T/U 前序失败时可能停在停 mock 后）
+    $probeStatus = $null
+    try { $probeStatus = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 5).StatusCode } catch { }
+    if (!$probeStatus) { Start-MockServer }
+    # reduced 档：Critical 脉冲自 reduced 起（off 档 StartPulse 直接 return，G7b 已证 off 全静止）
+    Write-GConfig "" "reduced" 1.0
+    $vLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    $env:BEACON_DEBUG_SEVERITY = "critical"
+    $env:BEACON_DEBUG_CRASH = "90"
+    $vProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -PassThru
+    Remove-Item Env:\BEACON_DEBUG_SEVERITY -ErrorAction SilentlyContinue
+    Remove-Item Env:\BEACON_DEBUG_CRASH -ErrorAction SilentlyContinue
+    # V1 Critical 变色：GLM tile（38%/5h 健康数据 + 注入改判）状态灯 Critical 色 #ff3b30 硬断言
+    $vTile = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline -and $vTile -eq [IntPtr]::Zero)
+    {
+        foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+        {
+            if (@((Get-WindowUiaTexts $h)) | Where-Object { $_ -match '38%/5h' }) { $vTile = $h; break }
+        }
+        if ($vTile -eq [IntPtr]::Zero) { Start-Sleep -Seconds 2 }
+    }
+    if ($vTile -eq [IntPtr]::Zero) { Save-FullScreenshot "V-FAIL-no-tile.png"; throw "断言失败（场景 V1）：40s 内未见 GLM tile（38%/5h）" }
+    $crop = New-Crop ([WinEnum]::RectOf($vTile)) 0
+    $critPx = Count-ColorPixels $crop 255 59 48 12
+    $errPx = Count-ColorPixels $crop 248 81 73 12
+    Save-Zoom $crop "V-critical-tile.png" 3
+    $crop.Dispose()
+    # 阈值同 G 系实测底（10 之下取 8）；Error 负控 ≤4：G/B 通道差 22/25 > tol12，Critical 灯不会误吞进 Error 桶
+    if ($critPx -lt 8) { Save-FullScreenshot "V-FAIL-no-critical.png"; throw "断言失败（场景 V1）：Critical 档位色未渲染（#ff3b30 $critPx px，期望 ≥8）——注入未达 L0 或调色回归" }
+    if ($errPx -gt 4) { Save-FullScreenshot "V-FAIL-error-leak.png"; throw "断言失败（场景 V1）：Error 色 $errPx px 渗漏（期望 ≤4）——注入判级错档（Critical 误判 Error）" }
+    Write-Host "场景 V1 通过：注入 Critical → tile 状态灯 #ff3b30（$critPx px），Error 色 $errPx px 无渗漏"
+    # V2 Critical 脉冲（尽力取证）：脉冲 = Scale 1.0→1.35→1.0 周期 1000ms，三帧 700ms 间隔必跨相位；
+    # 灯 Ø8→Ø10.8 环域 ~40px²，阈值 8 为保守下界。差分不成 → ::warning 转装机（G7c 降级同口径，非红）
+    $pulseDiff = 0
+    $best1 = $null
+    $best3 = $null
+    $deadline = (Get-Date).AddSeconds(25)
+    while ((Get-Date) -lt $deadline)
+    {
+        $c1 = New-Crop ([WinEnum]::RectOf($vTile)) 0
+        Start-Sleep -Milliseconds 700
+        $c2 = New-Crop ([WinEnum]::RectOf($vTile)) 0
+        Start-Sleep -Milliseconds 700
+        $c3 = New-Crop ([WinEnum]::RectOf($vTile)) 0
+        $d = [Math]::Max((Count-FrameDiff $c1 $c2 12), [Math]::Max((Count-FrameDiff $c2 $c3 12), (Count-FrameDiff $c1 $c3 12)))
+        if ($d -gt $pulseDiff)
+        {
+            $pulseDiff = $d
+            if ($best1) { $best1.Dispose() }
+            if ($best3) { $best3.Dispose() }
+            $best1 = $c1
+            $best3 = $c3
+            $c2.Dispose()
+        }
+        else
+        {
+            $c1.Dispose(); $c2.Dispose(); $c3.Dispose()
+        }
+        if ($pulseDiff -ge 8) { break }
+        Start-Sleep -Milliseconds 300
+    }
+    if ($pulseDiff -ge 8)
+    {
+        if ($best1)
+        {
+            Save-Zoom $best1 "V-pulse-frame1.png" 4
+            Save-Zoom $best3 "V-pulse-frame3.png" 4
+            $best1.Dispose(); $best3.Dispose()
+        }
+        Write-Host "场景 V2 通过：Critical 脉冲帧差分 $pulseDiff px——脉冲可见"
+    }
+    else
+    {
+        if ($best1) { $best1.Dispose() }
+        if ($best3) { $best3.Dispose() }
+        Write-Host "::warning::场景 V2：Critical 脉冲帧差分 $pulseDiff px（期望 ≥8）——Composition 属性动画在本 CI 会话不可证（G7c/L2 同口径），Critical 脉冲观感转装机目检；V1 色断言不受影响"
+    }
+    # V3 崩溃兜底（注入点 = 启动后 90s）：等「XAML unhandled exception」落日志（进程若先退出，此处红 = 行 24 真实发现）
+    $crashIdx = -1
+    $vLog = ""
+    $deadline = (Get-Date).AddSeconds(100)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ($vProc.HasExited) { Save-FullScreenshot "V-FAIL-crash-exit.png"; throw "断言失败（场景 V3）：崩溃注入后进程退出——XAML UnhandledException Handled=true 兜底未生效（行 24 发现面）" }
+        if (Test-Path $vLogPath)
+        {
+            $vLog = [System.IO.File]::ReadAllText($vLogPath, [System.Text.Encoding]::UTF8)
+            $crashIdx = $vLog.IndexOf("XAML unhandled exception")
+            if ($crashIdx -ge 0) { break }
+        }
+        Start-Sleep -Seconds 2
+    }
+    if ($crashIdx -lt 0) { Save-FullScreenshot "V-FAIL-no-crash-log.png"; throw "断言失败（场景 V3）：100s 内日志未见「XAML unhandled exception」——注入异常未进 XAML 兜底链（DispatcherQueue 回调路由 = 行 24 发现面）" }
+    if ($vLog.Substring($crashIdx) -notmatch "   at ")
+    {
+        Save-FullScreenshot "V-FAIL-no-stack.png"
+        throw "断言失败（场景 V3）：崩溃日志无堆栈行（「   at 」）——LogError 未携带异常对象"
+    }
+    if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -ne 1)
+    {
+        Save-FullScreenshot "V-FAIL-proc-count.png"
+        throw "断言失败（场景 V3）：Beacon 进程数 $((@(Get-Process Beacon.App -ErrorAction SilentlyContinue)).Count)（期望 1）"
+    }
+    $dialogs = [WinEnum]::VisibleHandlesByClassAndPid("#32770", $vProc.Id)
+    if ($dialogs.Count -gt 0) { Save-FullScreenshot "V-FAIL-dialog.png"; throw "断言失败（场景 V3）：崩溃注入后弹 $($dialogs.Count) 个系统对话框——僵尸窗口" }
+    if ([WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count -lt 1)
+    {
+        Save-FullScreenshot "V-FAIL-tile-gone.png"
+        throw "断言失败（场景 V3）：崩溃注入后 tile 窗丢失——悬浮窗被兜底连带"
+    }
+    # 刷新循环不因兜底中断：崩溃行之后仍出现「refreshed ok」（ci 档 15s 一跳，40s 窗 ≥2 跳）
+    $recovered = $false
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $vLog = [System.IO.File]::ReadAllText($vLogPath, [System.Text.Encoding]::UTF8)
+        if ($vLog.Substring($crashIdx) -match "refreshed ok") { $recovered = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$recovered)
+    {
+        Save-FullScreenshot "V-FAIL-no-refresh-after-crash.png"
+        throw "断言失败（场景 V3）：崩溃行后 40s 未见「refreshed ok」——刷新循环被兜底中断"
+    }
+    Save-FullScreenshot "V-crash-survived.png"
+    Write-Host "场景 V3 通过：崩溃注入 → 日志堆栈留痕 + 进程存活 + 零 #32770 + tile 仍在 + 刷新循环续跑"
+    Stop-Beacon
+    Write-Host "场景 V 通过：Critical 注入（L0 变色硬断言 + 脉冲取证）与崩溃注入（三兜底全链）——行 71 注入面"
+}
+catch
+{
+    Remove-Item Env:\BEACON_DEBUG_SEVERITY -ErrorAction SilentlyContinue
+    Remove-Item Env:\BEACON_DEBUG_CRASH -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Save-FullScreenshot "V-FAIL-unexpected.png"
+    $failures.Add("场景 V：$($_.Exception.Message)")
+    Write-Host "::error::场景 V 断言失败：$($_.Exception.Message)"
+}
+
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
 Stop-Beacon
 Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue

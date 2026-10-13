@@ -132,6 +132,7 @@ public sealed class WidgetHost : IAsyncDisposable
                 PublishHealth(connection.Id, ConnectionHealthState.Healthy);
                 return true;
             }
+            state = DebugInjection.OverrideSeverity(state); // debug 注入面：BEACON_DEBUG_SEVERITY=critical 时改判（缓存/事件/聚合全下游同判）
             _cache.SaveState(connection.Id, state);
             PublishHealth(connection.Id, ConnectionHealthState.Healthy);
             _bus.Publish(new WidgetStateChanged(state));

@@ -87,6 +87,34 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// debug 崩溃注入（todo 行 71，环境变量门控，缺省零行为）：<c>BEACON_DEBUG_CRASH=&lt;秒&gt;</c> 时
+    /// 延迟在 UI 线程抛未处理异常——预期走 ctor 的 XAML <see cref="Application.UnhandledException"/> 兜底
+    /// （日志含堆栈 + Handled=true），进程存活、悬浮窗不丢（行 24「人为抛异常」半的注入面）。
+    /// 与 Core 侧 BEACON_DEBUG_SEVERITY（状态注入）同族，只进 CI 场景与装机演练，不进设置 UI。
+    /// </summary>
+    private void ScheduleDebugCrashInjection()
+    {
+        var raw = Environment.GetEnvironmentVariable("BEACON_DEBUG_CRASH");
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return;
+        }
+        if (!double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds) || seconds <= 0)
+        {
+            return; // 非法值静默跳过：注入面不得反噬正常启动
+        }
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(seconds)).ConfigureAwait(false);
+            // Dispatcher 回 UI 线程抛：TryEnqueue 回调里的异常走 XAML UnhandledException 兜底链
+            // （Handled=true 保进程）。若路由不符（进程退出/零日志），场景 V3 即红——本身就是行 24 的发现。
+            Dispatcher.TryEnqueue(() => throw new InvalidOperationException(
+                $"Beacon debug crash injection (BEACON_DEBUG_CRASH={raw}s) — expect XAML fallback handlers to log and keep the process alive."));
+        });
+    }
+
     private void Startup()
     {
         Dispatcher = DispatcherQueue.GetForCurrentThread();
@@ -195,6 +223,7 @@ public partial class App : Application
         capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
         _activePollInterval = runtime.Config.App.PollIntervalSeconds; // 与调度器在用值对齐（设置改动检测基线）
+        ScheduleDebugCrashInjection(); // debug 注入面：BEACON_DEBUG_CRASH=<秒> 延迟抛未处理异常（行 24 崩溃兜底演练），缺省零行为
 
         // B-701：L0 悬浮组件（主屏单实例宿主或独立悬浮框两形态；多显示器分配随 B-703 位置持久化）。
         // 数量悬浮窗默认开（2026-10-11 用户令翻转，2026-10-08 的一次性强制置关迁移已随默认撤除）
