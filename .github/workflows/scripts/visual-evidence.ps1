@@ -2703,7 +2703,7 @@ try
                 }
                 catch
                 {
-                    $s4Detail += "$attempt:unsupported"
+                    $s4Detail += "${attempt}:unsupported" # ${} 限定：$attempt: 会被 PS 解析成作用域语法
                     continue
                 }
                 $deadline = (Get-Date).AddSeconds(6)
