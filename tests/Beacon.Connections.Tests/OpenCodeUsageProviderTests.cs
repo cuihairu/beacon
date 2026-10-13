@@ -12,7 +12,7 @@ public sealed class OpenCodeUsageProviderTests
 {
     /// <summary>实测形状（2026-10-09 本机 200）：个人工作区单成员、无上限、本月零消费、11-01 重置。</summary>
     private const string BudgetsBody = """
-        [{"user_id":"user_01M3VJV5VMQ8Y43AGPEW2K0CN0","email":"chuihairu@gmail.com","limit_micro_cents":null,"spent_micro_cents":"0","exceeded":false,"resets_at":"2026-11-01T00:00:00.000Z","source":null,"updated_at":null}]
+        [{"user_id":"user_01M3VJV5VMQ8Y43AGPEW2K0CN0","email":"chuihairu@gmail.com","limit_micro_cents":null,"spent_micro_cents":"0","exceeded":false,"resets_at":"2026-11-01T00:00:00.000Z","source":null,"updated_at":null,"additional_budget_rules":[]}]
         """;
 
     /// <summary>$100.00 上限（官方口径 1 美元 = 1 亿 micro-cents）。</summary>
@@ -175,7 +175,7 @@ public sealed class OpenCodeUsageProviderTests
             return new FakeHttpResponse(HttpStatusCode.OK, BudgetsBody);
         });
 
-        await provider.GetStateAsync(Widget(), Connection("https://opencode.internal/console/api/v1/budgets/members"), Ctx("oc_sk-test"), CancellationToken.None);
+        await provider.GetStateAsync(Widget(), Connection("https://opencode.internal/console/api/v2/budgets/members"), Ctx("oc_sk-test"), CancellationToken.None);
 
         Assert.Equal("opencode.internal", captured!.RequestUri!.Host);
     }

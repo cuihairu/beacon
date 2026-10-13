@@ -1575,7 +1575,7 @@ internal sealed class SettingsWindow : Window
         "qwen" => "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
         "codex" => "C:\\Users\\me\\.codex\\sessions",
         "copilot" => "https://api.github.com/copilot_internal/user",
-        "opencode" => "https://opencode.ai/console/api/v1/budgets/members",
+        "opencode" => "https://opencode.ai/console/api/v2/budgets/members",
         "http" => "http://192.168.1.10:8080/api/status",
         _ => "https://api.github.com",
     };

@@ -111,7 +111,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | qwen | token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1 | 百炼 Token Plan 专属 Key（sk-sp- 前缀） | GET /models |
 | codex | 无（读本机） | 留空 | 本机 sessions 目录可读 |
 | copilot | api.github.com/copilot_internal/user | GitHub PAT（需 copilot scope） | 同款请求头直连配额端点 |
-| opencode | opencode.ai/console/api/v1/budgets/members | OpenCode Key（oc_sk 前缀，读 Budgets 需 All 权限） | GET budgets/members |
+| opencode | opencode.ai/console/api/v2/budgets/members | OpenCode Key（oc_sk 前缀，读 Budgets 需 All 权限） | GET budgets/members |
 | http | 必填 | API Key（可选） | GET Endpoint，2xx 即健康 |
 
 ### 通用 Settings 键

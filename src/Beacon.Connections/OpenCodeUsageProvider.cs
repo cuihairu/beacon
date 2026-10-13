@@ -30,16 +30,18 @@ public static class OpenCodeWidgetDescriptors
 
 /// <summary>
 /// opencode.usage（AI Usage 第九家）：OpenCode Go 套餐用量——**档①官方 Console API 直连**（文档面正式接口，
-/// 2026-10-09 实测 200）：`GET opencode.ai/console/api/v1/budgets/members`（oc_sk Key Bearer，Console
+/// 官方已公告 v1→v2 迁移）：`GET opencode.ai/console/api/v2/budgets/members`（oc_sk Key Bearer，Console
 /// Budgets API，v2 docs/console/api/budgets）。响应按成员给 `limit_micro_cents`（null=无上限）、
 /// `spent_micro_cents`、`exceeded`、`resets_at`——金额为 micro-cents 十进制字符串（1 美元 = 1 亿 micro-cents，
-/// 官方口径防精度丢失）。个人工作区单成员；多成员聚合（消费求和、任一 null 即无上限、任一 exceeded 即超）。
+/// 官方口径防精度丢失）。v2 成员对象新增 `additional_budget_rules`（共享/模型专项预算规则数组）——
+/// 本 provider 只取主预算四字段，未知字段经 JsonDocument+TryGetProperty 自然容忍（不 strict，官方加字段不破解析）。
+/// 个人工作区单成员；多成员聚合（消费求和、任一 null 即无上限、任一 exceeded 即超）。
 /// 卡面「Go $10/月」为展示层套餐标注（用户订阅口径）；API 只产用量数字，payload 不掺展示层信息。
 /// 级别：exceeded → Error；否则已用百分比过阈值（默认 80/95 可配）；无上限 → Success 基线。
 /// </summary>
 public sealed class OpenCodeUsageProvider : IWidgetProvider
 {
-    public const string DefaultEndpoint = "https://opencode.ai/console/api/v1/budgets/members";
+    public const string DefaultEndpoint = "https://opencode.ai/console/api/v2/budgets/members";
 
     /// <summary>官方口径：100,000,000 micro-cents = 1 美元。</summary>
     public const long MicroCentsPerDollar = 100_000_000;
@@ -62,7 +64,7 @@ public sealed class OpenCodeUsageProvider : IWidgetProvider
         return ToState(widget, connection, budgets);
     }
 
-    /// <summary>成员预算：GET console/api/v1/budgets/members（Bearer oc_sk Key）。</summary>
+    /// <summary>成员预算：GET console/api/v2/budgets/members（Bearer oc_sk Key）。</summary>
     public async Task<IReadOnlyList<OpenCodeBudget>> FetchBudgetsAsync(
         ConnectionConfig connection,
         ConnectionContext context,

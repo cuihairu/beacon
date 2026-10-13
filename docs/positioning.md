@@ -210,9 +210,12 @@ Codex    71% used   weekly 8h 后重置
   含额）按已用百分比过阈值（默认 80/95 可配），聊天/补全 unlimited 显 ∞；Pro 月付标官方价 $10/月，
   `quota_reset_date` 为**额度重置日**（订阅续费日本接口不返回，不编造）；401/403/404→Degraded、5xx→Offline；
 - **OpenCode Go 用量（AI Usage 第九家）**：组件类型 `opencode.usage`——官方 Console Budgets API 直连
-  （文档面正式接口，v2 docs/console/api/budgets）：`GET opencode.ai/console/api/v1/budgets/members`
-  （oc_sk Key Bearer，读 Budgets 需 All 权限）。金额为 micro-cents 十进制字符串（1 美元=1 亿，官方防精度口径），
+  （文档面正式接口，v2 docs/console/api/budgets）：`GET opencode.ai/console/api/v2/budgets/members`
+  （oc_sk Key Bearer，读 Budgets 需 All 权限；v1 已迁 v2，官方公告 v1 过渡期后下线）。
+  金额为 micro-cents 十进制字符串（1 美元=1 亿，官方防精度口径），
   `limit_micro_cents` null=无上限；多成员聚合（消费求和/任一 null 即无上限/任一 exceeded 即超）；
+  v2 成员对象新增 `additional_budget_rules`（共享/模型专项预算规则数组）——provider 只取主预算四字段
+  （limit/spent/exceeded/resets_at），未知字段解析自然容忍（JsonDocument+TryGetProperty 不 strict）；
   官方 `exceeded` 一票 Error；`resets_at` 按 UTC 自然月；卡面「Go $10/月」为展示层套餐标注（用户订阅口径），
   payload 只存 API 真数字；401/403/404→Degraded、5xx→Offline；
 - **阿里千问 百炼 Token Plan（AI Usage 第十家，2026-10-09）**：组件类型 `qwen.usage`——Token Plan
