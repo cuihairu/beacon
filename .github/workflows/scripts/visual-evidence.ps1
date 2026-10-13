@@ -375,6 +375,7 @@ function Start-MockServer
 {
     # netsh 尽力而为（runner 已提权，通常不需要）；失败不阻断
     netsh http add urlacl url=http://127.0.0.1:18081/ user=Everyone 2>$null | Out-Null
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-stop.txt") -Force -ErrorAction SilentlyContinue # 清残留停止标记（防新作业首轮即自停）
     $script:mockJob = Start-Job -ScriptBlock {
         $listener = New-Object System.Net.HttpListener
         $listener.Prefixes.Add("http://127.0.0.1:18081/")
@@ -397,11 +398,19 @@ function Start-MockServer
         $qwenUsage = '{"percent":42.5,"remaining_credits":1150,"total_credits":2000,"reset_at":"2026-10-19T00:00:00+08:00"}'
         # GitHub Actions 固定失败 run（场景 U L3 动作链）：id 12345 → rerun POST 路径精确可断
         $ghRuns = '{"total_count":1,"workflow_runs":[{"id":12345,"name":"ci","status":"completed","conclusion":"failure","head_branch":"main","html_url":"https://github.com/cuihairu/beacon/actions/runs/12345","run_started_at":"2026-10-13T10:00:00Z","updated_at":"2026-10-13T10:05:00Z"}]}'
+        $stopFile = Join-Path $env:TEMP "beacon-mock-stop.txt"
         while ($listener.IsListening)
         {
-            $ctx = $listener.GetContext()
+            if (Test-Path $stopFile)
+            {
+                Remove-Item $stopFile -Force -ErrorAction SilentlyContinue
+                $listener.Stop() # 显式停监听=HTTP.SYS 注册即时释放，不靠 GC 兜底（悬空注册=后续 Start 撞 existing registration）
+                break
+            }
+            $ctx = $null
             try
             {
+                $ctx = $listener.GetContext()
                 $path = $ctx.Request.Url.AbsolutePath
                 switch ($path)
                 {
@@ -435,7 +444,9 @@ function Start-MockServer
             }
             catch
             {
-                try { $ctx.Response.Abort() } catch { }
+                # GetContext 自身异常也吞掉续循环——作业线程死掉=监听悬空，后续 Start 必撞端口
+                if ($ctx -ne $null) { try { $ctx.Response.Abort() } catch { } }
+                Start-Sleep -Milliseconds 100
             }
         }
     }
@@ -453,8 +464,12 @@ function Stop-MockServer
 {
     if (Get-Variable mockJob -Scope Script -ErrorAction SilentlyContinue)
     {
+        # 停止标记：作业内循环见标即 Stop() 显式释放注册（GC 兜底太慢=悬空注册，
+        # 后续 Start 撞 existing registration——38440205547 U/V 连红根因）
+        Set-Content -Path (Join-Path $env:TEMP "beacon-mock-stop.txt") -Value "stop" -Encoding ASCII
         Stop-Job $script:mockJob -ErrorAction SilentlyContinue
         Remove-Job $script:mockJob -Force -ErrorAction SilentlyContinue
+        Remove-Item (Join-Path $env:TEMP "beacon-mock-stop.txt") -Force -ErrorAction SilentlyContinue
     }
     # Stop-Job 只终止作业线程，HttpListener 的 urlacl/端口释放是异步的：紧接着的
     # Start-MockServer 会撞「Failed to listen on prefix … conflicts with an existing
@@ -467,6 +482,28 @@ function Stop-MockServer
         if (!$stillUp) { return }
         Start-Sleep -Milliseconds 500
     }
+}
+
+function Ensure-MockServer
+{
+    # 幂等拉起：先探针（重试 3 次吸收瞬断/单线程作业卡顿），仍败则经 Stop-MockServer 收净
+    # （内含端口释放轮询）再拉起；Start 撞 existing registration 时退避重试——38440205547
+    # U/V 连红根因=探针失败后盲目 Start 撞未释注册。全场景统一走本助手，不再裸调 Start-MockServer 自愈。
+    for ($i = 0; $i -lt 3; $i++)
+    {
+        $probeStatus = $null
+        try { $probeStatus = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 3).StatusCode } catch { }
+        if ($probeStatus) { return }
+        Start-Sleep -Seconds 1
+    }
+    Stop-MockServer
+    $started = $false
+    for ($i = 0; $i -lt 5; $i++)
+    {
+        try { Start-MockServer; $started = $true; break }
+        catch { Start-Sleep -Seconds 2 }
+    }
+    if (!$started) { throw "mock HTTP server 拉起失败（Stop 后重试 5 次仍失败）" }
 }
 
 # —— 场景 E/F/G/H 取证助手（2026-10-12 巡检点火批：需装机清单 CI 代验转化） ——
@@ -897,7 +934,7 @@ function Assert-DropdownHasItem([System.Windows.Automation.AutomationElement] $s
 }
 
 # —— 场景 A：数量悬浮窗开 ——悬浮框必须在桌面，icon 近景留证
-Start-MockServer # 提前到 A 前：GLM tile 走 mock 健康链（38%），D 场景复用同一实例（二次启动会同端口冲突）
+Ensure-MockServer # 提前到 A 前：GLM tile 走 mock 健康链（38%），D 场景复用同一实例（幂等：已在场则直接返回）
 try
 {
     Write-ScenarioConfig $true
@@ -1421,7 +1458,7 @@ try
     Write-Host "场景 F5 通过：断网降级通知恰 1 条（connection-degraded 冷却去重）；Toast 呈现面转装机"
     # F4 恢复自愈：mock 回来 ≤150s 内百分比读数重现（自动刷新闭环，无重启无人工；
     # 断网期失败刷新会累积 backoff——15s 基数 ×10 封顶 150s，宽限取满，成功即提前退出）
-    Start-MockServer
+    Ensure-MockServer
     $healed = $false
     $deadline = (Get-Date).AddSeconds(150)
     while ((Get-Date) -lt $deadline)
@@ -2021,11 +2058,11 @@ try
     {
         Write-Host "场景 K3 通过：Esc 键盘关闭面板（键盘注入可用，全链实证）"
     }
-    Start-MockServer # 还原 mock（后续场景/收尾统一管理）
+    Ensure-MockServer # 还原 mock（后续场景/收尾统一管理）
 }
 catch
 {
-    try { Start-MockServer } catch { } # 失败路径也还原 mock，别让 J/收尾连带红
+    try { Ensure-MockServer } catch { } # 失败路径也还原 mock，别让 J/收尾连带红
     Save-FullScreenshot "K-FAIL-unexpected.png"
     $failures.Add("场景 K：$($_.Exception.Message)")
     Write-Host "::error::场景 K 断言失败：$($_.Exception.Message)"
@@ -2541,7 +2578,7 @@ try
         if ($banner -and $warned) { break }
         Start-Sleep -Seconds 3
     }
-    Start-MockServer # 还原 mock（J/收尾统一管理，但失败路径也不能把后续拖红）
+    Ensure-MockServer # 还原 mock（J/收尾统一管理，但失败路径也不能把后续拖红）
     if (!$banner)
     {
         Save-FullScreenshot "Q-FAIL-no-banner.png"
@@ -2557,7 +2594,7 @@ try
 }
 catch
 {
-    try { Start-MockServer } catch { } # 失败路径也还原 mock，别让 J/收尾连带红
+    try { Ensure-MockServer } catch { } # 失败路径也还原 mock，别让 J/收尾连带红
     Save-FullScreenshot "Q-FAIL-unexpected.png"
     $failures.Add("场景 Q：$($_.Exception.Message)")
     Write-Host "::error::场景 Q 断言失败：$($_.Exception.Message)"
@@ -2855,7 +2892,7 @@ try
     if (!$tWarn) { Save-FullScreenshot "T-FAIL-no-warning.png"; throw "断言失败（场景 T2）：断网 75s 内日志未现 refresh failed [Warning]（含堆栈）" }
     if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -eq 0) { Save-FullScreenshot "T-FAIL-dead.png"; throw "断言失败（场景 T2）：断网期间进程退出" }
     Write-Host "场景 T2 通过：断网期间 WidgetHost 刷新失败 LogWarning 含堆栈且进程不倒"
-    Start-MockServer
+    Ensure-MockServer
     # 恢复窗口按退避策略数学标定（RFC §7.1：ci 档 15s，乘数 2^连续失败 钳到 MaxBackoffMultiplier=10，
     # JitterFraction 0.2 → 单次最坏 15×10×1.2=180s；75s 断网约 5 次失败后乘数已钳满）。
     # 38333593739 实测：mock 02:22:32 起，60s 窗口内 tile 停在「Last update 02:21」陈旧态——窗口结构性偏紧。
@@ -2875,7 +2912,7 @@ try
 }
 catch
 {
-    try { Start-MockServer } catch { }
+    try { Ensure-MockServer } catch { }
     Save-FullScreenshot "T-FAIL-unexpected.png"
     $failures.Add("场景 T：$($_.Exception.Message)")
     Write-Host "::error::场景 T 断言失败：$($_.Exception.Message)"
@@ -2892,10 +2929,8 @@ try
     Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-hit.txt") -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-mode.txt") -Force -ErrorAction SilentlyContinue
     Stop-Beacon
-    # 前置自愈：U 依赖 mock 在场（T 失败路径可能停在停 mock 后）——探针失败即拉起
-    $probeStatus = $null
-    try { $probeStatus = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/repos/cuihairu/beacon/actions/workflows/ci.yml/runs" -TimeoutSeconds 5).StatusCode } catch { }
-    if (!$probeStatus) { Start-MockServer }
+    # 前置自愈：U 依赖 mock 在场（T 失败路径可能停在停 mock 后）——探针重试 + 收净后拉起
+    Ensure-MockServer
     @'
 {
   "configVersion": 1,
@@ -3087,9 +3122,7 @@ try
     Stop-Beacon
     Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
     # 前置自愈：V 依赖 mock 在场（U 尾态已停 Beacon 但 mock 存活；T/U 前序失败时可能停在停 mock 后）
-    $probeStatus = $null
-    try { $probeStatus = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 5).StatusCode } catch { }
-    if (!$probeStatus) { Start-MockServer }
+    Ensure-MockServer
     # reduced 档：Critical 脉冲自 reduced 起（off 档 StartPulse 直接 return，G7b 已证 off 全静止）
     Write-GConfig "" "reduced" 1.0
     $vLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
