@@ -2209,22 +2209,28 @@ try
         Save-FullScreenshot "N-FAIL-no-settings.png"
         throw "断言失败（场景 N）：--settings 启动 30s 内未见「Beacon 设置」窗口"
     }
-    # 热键输入框：Edit 控件且当前值等于 config 里的 Ctrl+Alt+B（避免误取搜索框/动作框）
-    $edits = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    # 热键输入框：Edit 控件且当前值等于 config 里的 Ctrl+Alt+B（避免误取搜索框/动作框）。
+    # 内容构建晚于窗口出现（38333593739 实测设置窗全黑未渲染，30s 窗口只到标题栏）——找到为止轮询 45s。
     $hkBox = $null
-    foreach ($e in $edits)
+    $hkDeadline = (Get-Date).AddSeconds(45)
+    while ($hkBox -eq $null -and (Get-Date) -lt $hkDeadline)
     {
-        try
+        $edits = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+        foreach ($e in $edits)
         {
-            $vp = $e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-            if ($vp.Current.Value -eq "Ctrl+Alt+B") { $hkBox = $e; break }
+            try
+            {
+                $vp = $e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+                if ($vp.Current.Value -eq "Ctrl+Alt+B") { $hkBox = $e; break }
+            }
+            catch { }
         }
-        catch { }
+        if ($hkBox -eq $null) { Start-Sleep -Seconds 3 }
     }
     if (!$hkBox)
     {
         Save-FullScreenshot "N-FAIL-no-hotkey-edit.png"
-        throw "断言失败（场景 N）：设置页未找到值为 Ctrl+Alt+B 的热键输入框"
+        throw "断言失败（场景 N）：设置页 45s 内未找到值为 Ctrl+Alt+B 的热键输入框"
     }
     $toggle = $settings.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "startup-toggle")))
     if (!$toggle) { throw "断言失败（场景 N）：设置页未找到 startup-toggle（开关驱动落盘链）" }
@@ -2805,15 +2811,19 @@ try
     if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -eq 0) { Save-FullScreenshot "T-FAIL-dead.png"; throw "断言失败（场景 T2）：断网期间进程退出" }
     Write-Host "场景 T2 通过：断网期间 WidgetHost 刷新失败 LogWarning 含堆栈且进程不倒"
     Start-MockServer
+    # 恢复窗口按退避策略数学标定（RFC §7.1：ci 档 15s，乘数 2^连续失败 钳到 MaxBackoffMultiplier=10，
+    # JitterFraction 0.2 → 单次最坏 15×10×1.2=180s；75s 断网约 5 次失败后乘数已钳满）。
+    # 38333593739 实测：mock 02:22:32 起，60s 窗口内 tile 停在「Last update 02:21」陈旧态——窗口结构性偏紧。
+    # 240s = 最坏 180s + 刷新/渲染余量（非放宽断言：仍要求自动恢复，不手动 Kick）。
     $tRecovered = $false
-    $deadline = (Get-Date).AddSeconds(60)
+    $deadline = (Get-Date).AddSeconds(240)
     while ((Get-Date) -lt $deadline)
     {
         $tTexts = Get-WindowUiaTexts $tTile
         if (@($tTexts | Where-Object { $_ -match '38%/5h' }).Count -ge 1) { $tRecovered = $true; break }
         Start-Sleep -Seconds 2
     }
-    if (!$tRecovered) { Save-FullScreenshot "T-FAIL-no-recover.png"; throw "断言失败（场景 T2）：mock 恢复后 60s 内 GLM tile 未回 38%" }
+    if (!$tRecovered) { Save-FullScreenshot "T-FAIL-no-recover.png"; throw "断言失败（场景 T2）：mock 恢复后 240s 内 GLM tile 未回 38%" }
     if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -eq 0) { throw "断言失败（场景 T2）：恢复期进程退出" }
     Write-Host "场景 T2 通过：mock 恢复后 GLM tile 回 38%，进程存活——故障往返闭环（行 24 外部可触发面）"
     Remove-Item (Join-Path $configDir "widgets.json.bak") -Force -ErrorAction SilentlyContinue # 损坏演练残留清理
