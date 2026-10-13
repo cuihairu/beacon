@@ -34,7 +34,7 @@ public static class WidgetValueHint
         }
         if (Text(payload, "percent") is { } percent)
         {
-            return $"{percent}%"; // bigmodel.usage / ark.usage / http.quota（最差窗口已用）
+            return $"{percent}%"; // bigmodel.usage / ark.usage / http.quota（最差窗口已用）/ opencode.usage（月度限额换算已用）
         }
         if (Text(payload, "rolling_percent") is { } rolling)
         {

@@ -38,6 +38,8 @@ public static class OpenCodeWidgetDescriptors
 /// 个人工作区单成员；多成员聚合（消费求和、任一 null 即无上限、任一 exceeded 即超）。
 /// 卡面「Go $10/月」为展示层套餐标注（用户订阅口径）；API 只产用量数字，payload 不掺展示层信息。
 /// 级别：exceeded → Error；否则已用百分比过阈值（默认 80/95 可配）；无上限 → Success 基线。
+/// 卡面/进度条（2026-10-13 用户令）：有限额时 payload 带 percent（限额换算已用%，进 WidgetValueHint
+/// percent 链）、Progress=已用占比 0-1（与 ark/bigmodel 同语义）；exceeded 进度条满格；无上限不编数。
 /// </summary>
 public sealed class OpenCodeUsageProvider : IWidgetProvider
 {
@@ -153,26 +155,42 @@ public sealed class OpenCodeUsageProvider : IWidgetProvider
         var resetsAt = budgets.Select(budget => budget.ResetsAt).FirstOrDefault(reset => reset is not null);
 
         Severity severity;
+        double? usedPercent = null;
         if (exceeded)
         {
-            severity = Severity.Error;
+            severity = Severity.Error; // 官方 exceeded 一票 Error（以官方口径为准；进度条给满格）
         }
-        else if (limitMicroCents is long limit)
+        else if (limitMicroCents is long limit && limit > 0)
         {
-            var usedPercent = limit > 0 ? spentMicroCents * 100.0 / limit : 0;
-            severity = usedPercent >= errorPercent ? Severity.Error
-                : usedPercent >= warnPercent ? Severity.Warning
+            var percent = spentMicroCents * 100.0 / limit; // 限额换算已用%（级别判定与卡面/进度条同源）
+            usedPercent = percent;
+            severity = percent >= errorPercent ? Severity.Error
+                : percent >= warnPercent ? Severity.Warning
                 : Severity.Success;
         }
         else
         {
-            severity = Severity.Success;
+            severity = Severity.Success; // 无上限：Success 基线，不编百分比
         }
 
         var spentDisplay = DollarsDisplay(spentMicroCents);
         var budgetPart = limitMicroCents is long bounded
             ? $"{spentDisplay} / {DollarsDisplay(bounded)}"
             : $"{spentDisplay} · 无上限";
+        var payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["usage_source"] = "api", // 档①官方 Console Budgets API 直连
+            ["spent_micro_cents"] = spentMicroCents.ToString("0", CultureInfo.InvariantCulture),
+            ["spent_usd"] = Dollars(spentMicroCents).ToString("0.00", CultureInfo.InvariantCulture),
+            ["limit_micro_cents"] = limitMicroCents?.ToString("0", CultureInfo.InvariantCulture) ?? "",
+            ["exceeded"] = exceeded ? "true" : "false",
+            ["members"] = budgets.Count.ToString("0", CultureInfo.InvariantCulture),
+        };
+        if (usedPercent is { } percentValue)
+        {
+            // tile 主数值（限额换算已用%）：WidgetValueHint percent 链取用（bigmodel/ark 同键同语义）
+            payload["percent"] = percentValue.ToString("0.#", CultureInfo.InvariantCulture);
+        }
         return new WidgetState
         {
             WidgetId = widget.Id,
@@ -182,15 +200,10 @@ public sealed class OpenCodeUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed : LifecycleState.Success,
             Summary = $"{head} · {budgetPart}{ResetDisplay(resetsAt)}",
             DetailUrl = "https://opencode.ai/console",
-            Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["usage_source"] = "api", // 档①官方 Console Budgets API 直连
-                ["spent_micro_cents"] = spentMicroCents.ToString("0", CultureInfo.InvariantCulture),
-                ["spent_usd"] = Dollars(spentMicroCents).ToString("0.00", CultureInfo.InvariantCulture),
-                ["limit_micro_cents"] = limitMicroCents?.ToString("0", CultureInfo.InvariantCulture) ?? "",
-                ["exceeded"] = exceeded ? "true" : "false",
-                ["members"] = budgets.Count.ToString("0", CultureInfo.InvariantCulture),
-            },
+            // 数值卡进度条=已用占比 0-1（与 ark/bigmodel 同语义）：exceeded 满格（对齐 ark「已尽=满格」）、
+            // 有限额换算已用%、无上限不编数（Progress 缺省沿用旧面）
+            Progress = exceeded ? 1.0 : usedPercent is { } boundedPercent ? Math.Clamp(boundedPercent, 0, 100) / 100.0 : null,
+            Payload = payload,
             FetchedAt = DateTimeOffset.UtcNow,
         };
     }

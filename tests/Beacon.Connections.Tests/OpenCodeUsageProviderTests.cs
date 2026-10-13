@@ -103,6 +103,8 @@ public sealed class OpenCodeUsageProviderTests
         Assert.Equal("api", state.Payload["usage_source"]); // 档①官方 Console API 直连
         Assert.Equal("0.00", state.Payload["spent_usd"]);
         Assert.Equal("", state.Payload["limit_micro_cents"]);
+        Assert.False(state.Progress.HasValue); // 无上限不编数：进度条缺省（2026-10-13 用户令）
+        Assert.False(state.Payload.ContainsKey("percent")); // 无限额就不给百分比键
         Assert.Equal("Bearer", captured!.Headers.Authorization?.Scheme);
         Assert.Equal("oc_sk-test", captured.Headers.Authorization?.Parameter);
     }
@@ -118,6 +120,8 @@ public sealed class OpenCodeUsageProviderTests
         Assert.Equal(Severity.Success, state!.Severity);
         Assert.Contains("$25.00 / $100.00", state.Summary);
         Assert.Equal("10000000000", state.Payload["limit_micro_cents"]);
+        Assert.Equal("25", state.Payload["percent"]); // 限额换算已用%（卡面 percent 链取用，2026-10-13 用户令）
+        Assert.Equal(0.25, state.Progress!.Value, 5); // 进度条=已用占比 0-1，与 ark/bigmodel 同语义
     }
 
     [Theory]
@@ -143,6 +147,8 @@ public sealed class OpenCodeUsageProviderTests
         Assert.NotNull(state);
         Assert.Equal(Severity.Error, state!.Severity); // 官方 exceeded 一票 Error（以官方口径为准）
         Assert.Equal("true", state.Payload["exceeded"]);
+        Assert.Equal(1.0, state.Progress!.Value, 5); // 已尽=满格，对齐 ark（2026-10-13 用户令）
+        Assert.False(state.Payload.ContainsKey("percent")); // 超限不给换算百分比，满格进度条已表意
     }
 
     [Fact]

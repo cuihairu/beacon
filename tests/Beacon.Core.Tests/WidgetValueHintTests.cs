@@ -35,7 +35,8 @@ public sealed class WidgetValueHintTests
         { State("Kimi · 滚动已用 11.5%", new() { ["rolling_percent"] = "11.5" }), "11.5%" },
         // copilot.usage：premium 请求 已用/含额（1500 含额 - 1499 剩余 = 1）
         { State("Copilot · Pro", new() { ["premium_interactions_entitlement"] = "1500", ["premium_interactions_remaining"] = "1499" }), "1/1500" },
-        // opencode.usage：自然月消费
+        // opencode.usage：有限额=限额换算已用%（2026-10-13 用户令）；无上限=消费金额兜底
+        { State("OpenCode · 25/100", new() { ["spent_usd"] = "25.00", ["percent"] = "25" }), "25%" },
         { State("OpenCode · 12.34/无上限", new() { ["spent_usd"] = "12.34" }), "$12.34" },
         // deepseek.balance：余额（币种符号自适应）
         { State("DeepSeek · ¥110.00", new() { ["total"] = "110.00", ["currency"] = "CNY" }), "¥110.00" },

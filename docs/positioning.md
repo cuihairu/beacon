@@ -219,6 +219,8 @@ Codex    71% used   weekly 8h 后重置
   （limit/spent/exceeded/resets_at），未知字段解析自然容忍（JsonDocument+TryGetProperty 不 strict）；
   官方 `exceeded` 一票 Error；`resets_at` 按 UTC 自然月；卡面「Go $10/月」为展示层套餐标注（用户订阅口径），
   payload 只存 API 真数字；401/403/404→Degraded、5xx→Offline；
+  卡面/进度条（2026-10-13 用户令）：有限额时 payload 带 percent（限额换算已用%）且 Progress=已用占比 0-1
+  （与 ark/bigmodel 同语义）；exceeded 进度条满格（对齐 ark「已尽=满格」）；无上限沿用 `$spent · 无上限` 不编百分比；
 - **阿里千问 百炼 Token Plan（AI Usage 第十家，2026-10-09）**：组件类型 `qwen.usage`——Token Plan
   （Coding Plan 专属 Key `sk-sp-` 前缀，Base URL `token-plan.cn-beijing.maas.aliyuncs.com`，OpenAI 兼容口
   `/compatible-mode/v1` + Anthropic 兼容口 `/apps/anthropic`）。**官方额度查询 REST 口未开放**（FAQ 只有控制台
