@@ -29,6 +29,7 @@ public static class WidgetTypeNames
             "codex" => "Codex",
             "copilot" => "Copilot",
             "opencode" => "OpenCode",
+            "sensenova" => "商汤",
             _ => widgetType.Split('.')[^1], // 未知类型：退类型尾段（旧行为兜底）
         };
     }
