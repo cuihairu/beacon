@@ -475,7 +475,7 @@ public sealed partial class QuickPanelWindow : Window
             var queue = DispatcherQueue;
             if (queue is not null && !queue.HasThreadAccess)
             {
-                queue.TryEnqueue(() => InvokeRequested?.Invoke()); // UIA 调用可能来自非 UI 线程，转回 UI 线程
+                queue.EnqueueGuarded(() => InvokeRequested?.Invoke()); // UIA 调用可能来自非 UI 线程，转回 UI 线程
             }
             else
             {

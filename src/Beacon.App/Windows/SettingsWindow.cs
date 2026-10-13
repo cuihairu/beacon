@@ -305,14 +305,20 @@ internal sealed class SettingsWindow : Window
     private void SetLeftColumnWidth(double width)
         => _leftColumn.Width = new GridLength(Math.Clamp(width, LeftColumnMin, LeftColumnMax));
 
-    /// <summary>窗口尺寸记忆：连续 SizeChanged 防抖 800ms 后按 Bounds（DIP）落盘，构造器启动恢复。</summary>
+    /// <summary>窗口尺寸记忆：连续 SizeChanged 防抖 800ms 后按 Bounds（DIP）落盘，构造器启动恢复。
+    /// Tick 走 DispatcherQueueGuard.RunGuarded——tick 与 TryEnqueue 同骑派发循环，异常同无系统级路由。</summary>
     private void ScheduleWindowSizeSave()
     {
         _windowSizeSave ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _windowSizeSave.Stop();
-        _windowSizeSave.Tick -= SaveWindowSizeNow; // 成对 -=/+=：多次进入也只挂一个 handler
-        _windowSizeSave.Tick += SaveWindowSizeNow;
+        _windowSizeSave.Tick -= OnWindowSizeSaveTick; // 成对 -=/+=：多次进入也只挂一个 handler
+        _windowSizeSave.Tick += OnWindowSizeSaveTick;
         _windowSizeSave.Start();
+    }
+
+    private void OnWindowSizeSaveTick(object? sender, object e)
+    {
+        DispatcherQueueGuard.RunGuarded(() => SaveWindowSizeNow(sender, e));
     }
 
     private void SaveWindowSizeNow(object? sender, object e)

@@ -77,7 +77,7 @@ internal sealed class FloatingTileHost
         var dispatcherQueue = DispatcherQueue.GetForCurrentThread()
             ?? throw new InvalidOperationException("FloatingTileHost.Initialize 必须在 UI 线程调用");
         _subscriptions.Add(_runtime.Bus.Subscribe<WidgetStateChanged>(evt =>
-            dispatcherQueue.TryEnqueue(() =>
+            dispatcherQueue.EnqueueGuarded(() =>
             {
                 _latest[evt.State.WidgetId] = evt.State;
                 if (_windows.TryGetValue(evt.State.WidgetId, out var window))

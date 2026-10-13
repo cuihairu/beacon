@@ -568,7 +568,7 @@ internal sealed class PinnedHostWindow
         _dispatcherQueue = _window.DispatcherQueue; // EventBus.Publish 在刷新线程，UI 对象必须回 UI 线程碰
 
         _subscriptions.Add(_runtime.Bus.Subscribe<WidgetStateChanged>(evt =>
-            _dispatcherQueue.TryEnqueue(() =>
+            _dispatcherQueue.EnqueueGuarded(() =>
             {
                 _latest[evt.State.WidgetId] = evt.State;
                 UpdateTile(evt.State);

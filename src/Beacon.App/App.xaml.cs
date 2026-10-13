@@ -89,8 +89,10 @@ public partial class App : Application
 
     /// <summary>
     /// debug 崩溃注入（todo 行 71，环境变量门控，缺省零行为）：<c>BEACON_DEBUG_CRASH=&lt;秒&gt;</c> 时
-    /// 延迟在 UI 线程抛未处理异常——预期走 ctor 的 XAML <see cref="Application.UnhandledException"/> 兜底
-    /// （日志含堆栈 + Handled=true），进程存活、悬浮窗不丢（行 24「人为抛异常」半的注入面）。
+    /// 延迟在 UI 线程抛未处理异常——经 <see cref="Beacon.App.Services.DispatcherQueueGuard"/> 兜底落日志（含堆栈），
+    /// 进程存活、悬浮窗不丢（行 24「人为抛异常」半的注入面）。历史：最初裸 TryEnqueue 派发并预期走
+    /// XAML UnhandledException，nightly 38459944253 场景 V3 证实 WinUI 3 无此路由（无
+    /// DispatcherQueue.HandlerException 事件，进程直接退出）——该发现催生了 DispatcherQueueGuard。
     /// 与 Core 侧 BEACON_DEBUG_SEVERITY（状态注入）同族，只进 CI 场景与装机演练，不进设置 UI。
     /// </summary>
     private void ScheduleDebugCrashInjection()
@@ -108,10 +110,10 @@ public partial class App : Application
         _ = Task.Run(async () =>
         {
             await Task.Delay(TimeSpan.FromSeconds(seconds)).ConfigureAwait(false);
-            // Dispatcher 回 UI 线程抛：TryEnqueue 回调里的异常走 XAML UnhandledException 兜底链
-            // （Handled=true 保进程）。若路由不符（进程退出/零日志），场景 V3 即红——本身就是行 24 的发现。
-            Dispatcher.TryEnqueue(() => throw new InvalidOperationException(
-                $"Beacon debug crash injection (BEACON_DEBUG_CRASH={raw}s) — expect XAML fallback handlers to log and keep the process alive."));
+            // Dispatcher 回 UI 线程抛：EnqueueGuarded 兜底落日志保进程（原裸 TryEnqueue 派发在
+            // WinUI 3 无任何异常路由——38459944253 V3 红即此发现，详见 DispatcherQueueGuard 头注）。
+            Dispatcher.EnqueueGuarded(() => throw new InvalidOperationException(
+                $"Beacon debug crash injection (BEACON_DEBUG_CRASH={raw}s) — expect the dispatcher guard to log and keep the process alive."));
         });
     }
 
@@ -120,11 +122,12 @@ public partial class App : Application
         Dispatcher = DispatcherQueue.GetForCurrentThread();
         Services = BuildServices();
         _logger = Services.GetRequiredService<ILogger<App>>();
+        DispatcherQueueGuard.SetLogger(_logger); // 派发兜底日志面（此前 CrashLog 独立兜底）
 
         // B-501：Toast 基础设施——激活路由要在任何窗口创建前注册（支持 Toast 冷启动回放）
         var toast = Services.GetRequiredService<ToastNotificationService>();
         toast.Initialize();
-        toast.Activated += activation => Dispatcher.TryEnqueue(() => OpenToastTarget(activation));
+        toast.Activated += activation => Dispatcher.EnqueueGuarded(() => OpenToastTarget(activation));
 
         var guard = Services.GetRequiredService<SingleInstanceGuard>();
         if (!guard.IsPrimary)
@@ -136,7 +139,7 @@ public partial class App : Application
             return;
         }
 
-        guard.OnActivate(() => Dispatcher.TryEnqueue(() =>
+        guard.OnActivate(() => Dispatcher.EnqueueGuarded(() =>
             Services.GetRequiredService<TrayIconService>().ShowBalloon("Beacon", "Beacon 已在运行。")));
 
         // B-504/B-602：运行时先行装配，L2 Quick Panel 直接消费事件流（缓存优先，打开零等待）
@@ -163,14 +166,14 @@ public partial class App : Application
             runtime.Config.SaveApp();
             if (runtime.Config.App.KeepQuickPanelOpen)
             {
-                Dispatcher.TryEnqueue(quickPanel.Show);
+                Dispatcher.EnqueueGuarded(quickPanel.Show);
             }
         };
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
-        quickPanel.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
+        quickPanel.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
         // B-503：Notifications 入口 → L2 通知中心视图（148c3bd 落地）；Refresh All 已接 runtime.RefreshAll
-        tray.NotificationsRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
-        tray.ExitRequested += () => Dispatcher.TryEnqueue(ShutdownApp);
+        tray.NotificationsRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
+        tray.ExitRequested += () => Dispatcher.EnqueueGuarded(ShutdownApp);
         tray.Initialize();
         // 托盘常驻无主窗口：启动即给可见反馈，避免被当成「点了没反应」
         tray.ShowBalloon("Beacon", "已启动并常驻托盘——状态胶囊在屏幕右下角，点胶囊或托盘图标打开面板。");
@@ -185,15 +188,15 @@ public partial class App : Application
         // B-504：胶囊/托盘接真实聚合
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
         _capsule = capsule; // 退出清理用
-        capsule.OpenPanelRequested += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
-        runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.TryEnqueue(() => capsule.NoteFetch(evt.State.FetchedAt)));
-        runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.TryEnqueue(() =>
+        capsule.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
+        runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.EnqueueGuarded(() => capsule.NoteFetch(evt.State.FetchedAt)));
+        runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.EnqueueGuarded(() =>
         {
             capsule.UpdateStatus(status);
             tray.SetSeverity(status.Overall);
             tray.SetTip(BuildTrayTip(status));
         }));
-        tray.RefreshAllRequested += () => Dispatcher.TryEnqueue(runtime.RefreshAll);
+        tray.RefreshAllRequested += () => Dispatcher.EnqueueGuarded(runtime.RefreshAll);
 
         // master-plan §9 睡眠唤醒自愈：挂起期间轮询停摆，唤醒（PBT_APMRESUMEAUTOMATIC 必发）立即补一轮刷新，
         // 不等下个周期；message-only 窗收不到电源广播，走 RegisterSuspendResumeNotification 定向注册。
@@ -206,7 +209,7 @@ public partial class App : Application
             if (msg == Infrastructure.NativeMethods.WM_POWERBROADCAST
                 && wParam.ToInt64() == Infrastructure.NativeMethods.PBT_APMRESUMEAUTOMATIC)
             {
-                Dispatcher.TryEnqueue(runtime.RefreshAll);
+                Dispatcher.EnqueueGuarded(runtime.RefreshAll);
             }
         };
 
@@ -233,7 +236,7 @@ public partial class App : Application
             {
                 // 独立悬浮框：每钉选组件一窗，桌面任意拖放、位置按组件各记
                 _floatingHost = new Windows.FloatingTileHost(runtime, primaryMonitor, toast);
-                _floatingHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
+                _floatingHost.TileActivated += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
                 _floatingHost.Initialize();
                 // 产品拍板：数值/额度类不上悬浮窗（信息密度低）——悬浮形态下同时挂宿主面板承载这些钉选（数据不删）；
                 // 信息密集组件（FloatingSupported，趋势图/灯组）上线后悬浮窗与面板混排。
@@ -245,14 +248,14 @@ public partial class App : Application
                         floatingEligible: _floatingHost.IsFloatingEligible(w.Type))))
                 {
                     _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
-                    _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle);
+                    _pinnedHost.TileActivated += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
                     _pinnedHost.Initialize();
                 }
             }
             else
             {
                 _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
-                _pinnedHost.TileActivated += () => Dispatcher.TryEnqueue(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
+                _pinnedHost.TileActivated += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
                 _pinnedHost.Initialize();
             }
         }
@@ -354,7 +357,7 @@ public partial class App : Application
                 settingsWindow = new Windows.SettingsWindow(runtime);
                 settingsWindow.Closed += (_, _) => settingsWindow = null;
                 settingsWindow.SettingsApplied += ApplySettingsEffects;
-                settingsWindow.PinsChanged += () => Dispatcher.TryEnqueue(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); });
+                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); });
                 settingsWindow.Activate();
             }
             catch (Exception exception)
@@ -365,14 +368,14 @@ public partial class App : Application
                 tray.ShowBalloon("设置窗口打开失败", exception.Message);
             }
         }
-        tray.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings);
+        tray.SettingsRequested += () => Dispatcher.EnqueueGuarded(OpenSettings);
         // master-plan §3.1：胶囊右键直达设置（批3-补28）——须在 OpenSettings/hotkey 声明之后挂（CS0165）
-        capsule.SettingsRequested += () => Dispatcher.TryEnqueue(OpenSettings);
+        capsule.SettingsRequested += () => Dispatcher.EnqueueGuarded(OpenSettings);
 
         // --settings 启动参数：装配完成即开设置页（CI 视觉取证/装机排查入口，与托盘入口同一 OpenSettings 路径）
         if (Environment.GetCommandLineArgs().Any(a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
         {
-            Dispatcher.TryEnqueue(OpenSettings);
+            Dispatcher.EnqueueGuarded(OpenSettings);
         }
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");

@@ -3112,10 +3112,10 @@ catch
 #   渲染 Critical 默认色 #ff3b30（V1 像素硬断言；与 Error #f85149 G/B 通道差 22/25，tol12 互不误吞）+
 #   Critical 脉冲自 reduced 档挂载（V2 帧差分尽力取证；Composition 属性动画 CI 会话不可证时 ::warning
 #   转装机——G7c 同口径，色断言不受降级影响）。
-# BEACON_DEBUG_CRASH=90：90s 后 UI 线程抛未处理异常 → XAML UnhandledException 三兜底（V3 硬断言：
-#   日志「XAML unhandled exception」+堆栈「   at 」、进程数 1、零 #32770 对话框、tile 窗仍在、
-#   崩溃行之后仍有「refreshed ok」——刷新循环不因兜底中断）。若 TryEnqueue 回调异常不进 XAML 兜底
-#   （进程退出/零日志），V3 红 = 行 24「人为抛异常」半的真实发现，按回归回报。
+# BEACON_DEBUG_CRASH=90：90s 后 UI 线程抛未处理异常 → DispatcherQueueGuard 兜底（V3 硬断言：
+#   日志「DispatcherQueue unhandled exception」+堆栈「   at 」、进程数 1、零 #32770 对话框、tile 窗仍在、
+#   崩溃行之后仍有「refreshed ok」——刷新循环不因兜底中断）。历史：裸 TryEnqueue 回调异常在 WinUI 3
+#   无系统路由（38459944253 V3 红实证，进程直接退出），由此建 EnqueueGuarded 全量接管 UI 派发。
 # 两注入均为环境变量门控、Start-Process 后即撤——后续场景与安装链零泄漏。
 try
 {
@@ -3198,22 +3198,23 @@ try
         if ($best3) { $best3.Dispose() }
         Write-Host "::warning::场景 V2：Critical 脉冲帧差分 $pulseDiff px（期望 ≥8）——Composition 属性动画在本 CI 会话不可证（G7c/L2 同口径），Critical 脉冲观感转装机目检；V1 色断言不受影响"
     }
-    # V3 崩溃兜底（注入点 = 启动后 90s）：等「XAML unhandled exception」落日志（进程若先退出，此处红 = 行 24 真实发现）
+    # V3 崩溃兜底（注入点 = 启动后 90s）：等「DispatcherQueue unhandled exception」落日志——注入走
+    # EnqueueGuarded（38459944253 V3 红实证：裸 TryEnqueue 回调异常无系统路由，进程直接退出，由此建 guard）
     $crashIdx = -1
     $vLog = ""
     $deadline = (Get-Date).AddSeconds(100)
     while ((Get-Date) -lt $deadline)
     {
-        if ($vProc.HasExited) { Save-FullScreenshot "V-FAIL-crash-exit.png"; throw "断言失败（场景 V3）：崩溃注入后进程退出——XAML UnhandledException Handled=true 兜底未生效（行 24 发现面）" }
+        if ($vProc.HasExited) { Save-FullScreenshot "V-FAIL-crash-exit.png"; throw "断言失败（场景 V3）：崩溃注入后进程退出——DispatcherQueueGuard 兜底未生效（行 24 发现面）" }
         if (Test-Path $vLogPath)
         {
             $vLog = [System.IO.File]::ReadAllText($vLogPath, [System.Text.Encoding]::UTF8)
-            $crashIdx = $vLog.IndexOf("XAML unhandled exception")
+            $crashIdx = $vLog.IndexOf("DispatcherQueue unhandled exception")
             if ($crashIdx -ge 0) { break }
         }
         Start-Sleep -Seconds 2
     }
-    if ($crashIdx -lt 0) { Save-FullScreenshot "V-FAIL-no-crash-log.png"; throw "断言失败（场景 V3）：100s 内日志未见「XAML unhandled exception」——注入异常未进 XAML 兜底链（DispatcherQueue 回调路由 = 行 24 发现面）" }
+    if ($crashIdx -lt 0) { Save-FullScreenshot "V-FAIL-no-crash-log.png"; throw "断言失败（场景 V3）：100s 内日志未见「DispatcherQueue unhandled exception」——注入异常未进兜底链（行 24 发现面）" }
     if ($vLog.Substring($crashIdx) -notmatch "   at ")
     {
         Save-FullScreenshot "V-FAIL-no-stack.png"
@@ -3248,7 +3249,7 @@ try
     Save-FullScreenshot "V-crash-survived.png"
     Write-Host "场景 V3 通过：崩溃注入 → 日志堆栈留痕 + 进程存活 + 零 #32770 + tile 仍在 + 刷新循环续跑"
     Stop-Beacon
-    Write-Host "场景 V 通过：Critical 注入（L0 变色硬断言 + 脉冲取证）与崩溃注入（三兜底全链）——行 71 注入面"
+    Write-Host "场景 V 通过：Critical 注入（L0 变色硬断言 + 脉冲取证）与崩溃注入（DispatcherQueueGuard 兜底全链）——行 71 注入面"
 }
 catch
 {

@@ -9,6 +9,7 @@
 > 2026-10-13 patrol-20261013-A3：场景 S（行43 Recent 事件流一致，38315240633 实证全绿）：结构化 UIA 树遍历（x:Name→AutomationId 锚定 RecentList/AttentionList 各自子树取行文本，滤 HH:mm:ss 时间串——事件行与状态行同出 MakeStateRow，平铺 Name 列表分不开两区）；S1 基线「已用 38%」事件行在列 → S2 注入 Error 后 RecentList 现事件行（95% 行位次新于 38% 行=新→旧）且 AttentionList 同现 95%（两区同源）→ S3 恢复后状态区摘掉 95% 而 RecentList 保留 95% 并补回 38%（状态区=当前、事件流=历史）。**随行读码发现并修复缺陷**：QuickPanelWindow.OnStateChanged 原只更新摘要/chip/RECENT、RebuildStatus（需要关注/正在运行区）唯一触发点在 OnWidgetsInvalidated——面板常驻期间状态区永不随状态刷新（开面板前旧影）；修复=OnStateChanged 现场重建状态区（S2 断言在旧代码上必红，即回归门）。行45 复核：L3 开启唯一入口=ItemClick（DetailRequested 全仓唯一订阅在 App.xaml.cs，两个 handler 均 ItemClick），UIA 无法可靠触发 ItemClick，仍点击门；L3 内部 Retry/Cancel/Open 均 Button（Name 可 UIA Invoke），开启面一通即可整链转化。
 > 2026-10-14 patrol-20261014-A1：场景 U 已建（行 70 L3 内动作链 [Retry] 全链路）：mock 增配 GitHub failed run（id 12345 固定，GET runs + rerun-failed-jobs POST 两路径，POST 落 marker 文件=服务端回执、档位文件可翻 500）+ Find-UiaByName 助手（ContentDialog 按钮无 AutomationId）；U1 失败 run 进需要关注 → U2 AttentionList 行 Invoke 开 L3（run_id 12345 数据行 + Retry 按钮在窗）→ U3 确认弹窗可关（取消 → mock 零 POST 负证）→ U4 确认全链（marker 在 + L3 结果「✓ 已重跑 run 12345」）→ U5 失败反馈（mock 500 → 「✗ GitHub 服务端错误」）。**38434164526 实证全绿（U1-U5 全过），行 32/38/46 半/70 已勾。**与行 70 原设想的差异：「RecentList 现动作事件行」改为 L3 结果文本 + 服务端 marker 双证据——面板 RECENT 语义=WidgetStateChanged（QuickPanelWindow 不订 ActionExecuted），不为取证加产品特性。
 > 2026-10-14 patrol-20261014-A2：行 71 注入面已建（Core DebugInjection：BEACON_DEBUG_SEVERITY=critical → WidgetHost 刷新成功路径改判 Critical/Failed（摘要/负载不动），DebugInjectionTests 8 例；App ScheduleDebugCrashInjection：BEACON_DEBUG_CRASH=<秒> → UI 线程延迟抛未处理异常，预期走 XAML UnhandledException Handled=true 三兜底）+ 场景 V（reduced 档 + 38% 健康数据注入 Critical）：V1 Critical 默认色 #ff3b30 像素硬断言 ≥8px + Error #f85149 负控 ≤4px（tol12 分离：G/B 通道差 22/25）/ V2 Critical 脉冲 Scale 1.0→1.35 帧差分尽力取证（不成 ::warning 转装机，G7c 同口径）/ V3 崩溃兜底全链硬断言：日志「XAML unhandled exception」+ 堆栈「   at 」+ 进程数 1 + 零 #32770 + tile 窗仍在 + 崩溃行后仍有 refreshed ok（刷新循环不中断）。已知风险留档：DispatcherQueue.TryEnqueue 回调异常在 WinUI 3 是否路由至 Application.UnhandledException 未经装机实证，V3 红即行 24 真实发现。待 nightly 实证后勾行 24 注入半/55/61 Critical 半与行 71。
+> 2026-10-14 patrol-20261014-A3：场景 V 首跑（38459944253）：V1 绿（Critical 色 #ff3b30 52px 硬断言、Error 负控 0px 无渗漏）+ V2 绿（Critical 脉冲帧差分 85px）= 行 55/61 Critical 半实证；**V3 红出真实发现**——BEACON_DEBUG_CRASH 裸 TryEnqueue 派发回调异常后进程退出：WinUI 3 无 DispatcherQueue.HandlerException 事件（Windows App SDK 1.6 参考程序集 API 面实证，事件仅 ShutdownStarting/Completed 与 FrameworkShutdownStarting/Completed 四个），回调异常不经 Application.UnhandledException 路由，RFC §10「不闪退」在派发面缺口。修复：Core `DispatchGuard.Wrap`（纯包装：异常转交回调、兜底自身异常亦吞，4 例单测）+ App `DispatcherQueueGuard.EnqueueGuarded`（TryEnqueue 兜底版：异常落应用日志「DispatcherQueue unhandled exception」+ CrashLog，进程存活），全仓 23 处 UI 派发改走 guard（App 19 + UiDispatcher/QuickPanel/FloatingTile/PinnedHost 各 1）+ 唯一 DispatcherTimer.Tick（SettingsWindow 窗口尺寸落盘，同骑派发循环同缺口）；V3 断言改锚 guard 日志串。随批：mock 端口冲突连红两晚根因修复（Ensure-MockServer，4f21ab7）后 U1-U5 全绿（行 70 链回归通过）；Toast 快捷方式缺失检测 Debug.WriteLine（release 无调试器=空操作）改 _logger.LogWarning（490df54）。待 nightly 复证 V3 绿后勾行 24/71。
 
 ## 决策记录
 
@@ -23,7 +24,7 @@
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱——位置还原半已由场景 R 代验（38303355372：预设 shell-state.json capsuleLayout TopLeft 40,40 → 胶囊落位 40,40 ±4 + 重启一致，与场景 H tile floatingX/Y 同口径）；拖动保存半（手势注入不可达）与跨 DPI 拖动（物理显示器）需装机【需装机（半）】
 - [x] 任意前台应用下热键生效；可在设置改键并持久化【已由 CI 代验（应用侧链全量，2026-10-13 patrol-B 转化）：注册成功（场景 K1 启动日志无 RegisterHotKey 失败）+ 改键持久化（场景 N，38297713667：Ctrl+Alt+B→Ctrl+Alt+C 落盘 + 重启后新键注册无失败日志（RegisterHotKey/Invalid hotkey string 双断言））+ WM_HOTKEY 直驱同入口面板出现（K1/N）；「任意前台生效」即 RegisterHotKey 的 OS 派发契约——注册成功后 OS 必达，Beacon 无按前台分支代码；真实键盘和弦 CI 会话不可达（与鼠标手势同限制），留装机顺手复核】
 - [x] 开关即时生效（重启验证）；卸载清理【已由 CI 代验（2026-10-13 patrol-B 转化）：卸载半场景 J（静默安装/卸载、程序文件清空、用户数据保留）+ 注册表半场景 M（38287590006：launchOnStartup true/false 双向断言 HKCU Run\Beacon 写入/清值 = 开关即时落注册表）；「重启验证」半即 OS 登录时执行 HKCU Run 的契约，Beacon 无登录期代码；真实重启留装机顺手复核】
-- [ ] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口——外部故障注入半已由场景 T2 代验（38338077989：断网 75s → 进程存活 + refresh failed LogWarning 含堆栈 + mock 恢复后自动回数，外部可触发面）；真实未处理异常注入半需装机/注入机制（见后续可选「Critical 与崩溃注入机制」批）
+- [ ] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口——外部故障注入半已由场景 T2 代验（38338077989：断网 75s → 进程存活 + refresh failed LogWarning 含堆栈 + mock 恢复后自动回数，外部可触发面）；真实未处理异常注入半：38459944253 V3 红出真实发现（裸 TryEnqueue 回调异常无系统路由=进程直接退出）→ 已建 DispatcherQueueGuard 兜底（patrol-20261014-A3，23 处派发全量接管），待 nightly 复证 V3 绿勾账
 - [x] 无网启动：界面有数据且标注 Last update，随后自动刷新【已由 CI 代验：场景 F1-F4（断网启动有窗有缓存数据、Last update 标注 45s 硬断言、恢复后 90s 自愈百分比读数）】
 - [ ] 真实 PAT 手动验证连接测试成功/失败路径【需装机：需真实 GitHub PAT（mock 链路已由场景 D 代验，真实凭据属用户侧）】
 - [x] 夹具单测：计数/映射正确（GitHubPullRequestsProviderTests 18 例：计数/亮黄映射/红 CI 续探复用；2026-10-11 巡检复点）
@@ -54,13 +55,13 @@
 - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢——CI 已代验位置半（场景 H 两轮重启落位一致）+ 收起态半（场景 P，38303355372 实证：P1 collapsed=true 启动宿主宽 13px 细条 + 重启仍细条；P2 collapsed=false 宽 260px = 细条 20 倍，两态可辨；首跑 38302150211 红、后续 run 全绿）；拔显示器物理事件需装机【需装机（半）】
 - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区【需装机：DPI/分辨率拓扑切换需物理或虚拟显示栈（CI runner 单一虚拟屏不可驱动）】
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈【已由 CI 代验：场景 F3（断网期间 Beacon 进程名下 #32770 对话框数=0）+ F4（mock 恢复 90s 内百分比读数回归）】
-- [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出【需装机：无 Critical 注入面——grep 实证所有 Provider 最高只产 Error，应用无状态注入钩子；需先补注入机制另立项】
+- [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出——L0 变色+脉冲半已由场景 V 代验（38459944253：V1 Critical 色 #ff3b30 52px 硬断言 + Error 负控 0px 无渗漏；V2 脉冲帧差分 85px 可见，注入面=Core DebugInjection 行 71）【需装机（半）：「无打断」观感与 Toast 照常发出的通知引擎链】
 - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录【需装机：四条含真实网络环境与真人操作流】
 - [ ] 设置改级别色 → L0 tile、胶囊、托盘图标同步变色——CI 已代验 tile 半（场景 G4：设置页 ValuePattern 改 #ff8800 → config 落盘 + tile 像素即时变橙）；胶囊与托盘图标像素不可脚本取证【需装机（半）】
 - [x] 某 Widget 设 colorOverride → 仅该 tile 变色，优先级正确【已由 CI 代验：场景 G1（GLM #ff00ff 品红 ≥8px 硬断言，DeepSeek 零渗 ≤4px）】
 - [x] 非法颜色值回退默认色不崩溃；重启后保持【已由 CI 代验：场景 G2 两轮启动（"sent:---" 非法值进程存活、品红 ≤4px、默认绿 ≥8px 硬断言）】
 - [x] Success→Error 状态变化有平滑变色过渡（reduced 档）【已由 CI 代验（2026-10-13 patrol-20261013-A1，38284623093）：场景 L2 三轮翻档连拍均取到渐入中间态帧（与两端差分 ≥8px，过渡时长实为 200ms×intensity 非此前所记 300ms）；L1 同色 tick 不闪灯（22s 连拍灯恒在 44px 恒定，随修复落地——此前每 tick 重放淡入属读码发现的闪灯缺陷，见决策记录）；「平滑」观感最终裁量仍属装机（半）】
-- [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调——CI 已代验三半（场景 G7b off 档三帧差分 ≤12px 全静止 + G7c full 档帧差分 32px 呼吸可见（38274507626 实证，轮询取帧对最大差分）+ G6 强度 1.5 落盘）；Critical 脉冲无注入面装机（同上条原因）【需装机（半）】
+- [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调——CI 已代验四半（场景 G7b off 档三帧差分 ≤12px 全静止 + G7c full 档帧差分 32px 呼吸可见（38274507626 实证，轮询取帧对最大差分）+ G6 强度 1.5 落盘 + 场景 V2 Critical 脉冲帧差分 85px（38459944253 实证，reduced 档自挂载））【需装机（半）：观感与强度可调的最终裁量】
 - [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）——CI 已代验焦点半（场景 H1 前台不变硬断言）；发声与隐藏期动画循环需装机【需装机（半）】
 - [ ] 导出文件全文无 token；导入+重录密钥后行为与原机一致——单测半已证（ImportExportTests：导出全文无 token）；导入全流程依赖 WinUI 文件选择器（CI 会话不稳定，此前有先例）需装机【需装机（半）】
 - [ ] 全流程录屏/截图归档至 docs/；发现问题全部修复或开 Issue——CI 半已代验（本批 A-H/J 全场景截图归档至 visual-evidence 工件）；真人全流程录屏需装机【需装机（半）】
@@ -70,7 +71,7 @@
 
 ## 后续可选（master-plan.md）
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化【**已闭环（patrol-20261014-A1，38434164526 实证 U1-U5 全绿）**：mock 增配 failed run 12345 + rerun POST marker，U1-U5 = 需要关注行 → L3 → 弹窗取消（零 POST 负证）→ 确认（marker + ✓）→ 500（✗）；事件行证改 L3 结果文本 + 服务端 marker 双证据（RECENT 语义=WidgetStateChanged，不加 ActionExecuted 订阅）；解锁行 32/38/46 已勾】
-- [ ] Critical 与崩溃注入机制（debug 门控，落地行 24/55 的「另立项」）【期次：R13 后续批；**已建（patrol-20261014-A2）**：Core `DebugInjection`（BEACON_DEBUG_SEVERITY=critical → WidgetHost 成功路径改判，DebugInjectionTests 8 例）+ App `ScheduleDebugCrashInjection`（BEACON_DEBUG_CRASH=<秒> → UI 线程延迟抛，走 XAML 三兜底）+ 场景 V 三段断言（V1 Critical 色 #ff3b30 硬断言 + Error 负控 / V2 脉冲帧差分尽力 / V3 进程存活+日志堆栈+零 #32770+tile 在+刷新续跑）；待 nightly 实证勾账】
+- [ ] Critical 与崩溃注入机制（debug 门控，落地行 24/55 的「另立项」）【期次：R13 后续批；**已建（patrol-20261014-A2）并已实证+修缺（patrol-20261014-A3）**：Core `DebugInjection`（8 例单测）+ App `ScheduleDebugCrashInjection` + 场景 V 三段断言；首跑 38459944253：V1/V2 绿（Critical 色 52px、脉冲 85px），V3 红出真实发现（裸 TryEnqueue 回调异常无系统路由→进程退出；WinUI 3 无 HandlerException 事件，参考程序集实证）→ 建 DispatchGuard+DispatcherQueueGuard（23 处派发全量接管，Core 4 例单测），V3 断言改锚 guard 日志；待 nightly 复证 V3 绿勾账】
 - [ ] 厂商私有打包工具 Provider（开源标准 API 的 Jenkins Provider 已落位 2026-10-11；私有厂商待取得真实 API/认证/状态字段再评估，不建常驻 Agent）
 - [x] AI Usage Provider——条件门控项已满足并实质完成，关闭（2026-10-11 批3-补41 评估：13 种组件类型/11 家已落地，可靠性三档 + 两次形状漂移均被单文件隔离当日收口；详见 master-plan §13 注记与 positioning §8）
 

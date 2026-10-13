@@ -8,7 +8,7 @@ internal sealed class UiDispatcher(DispatcherQueue dispatcherQueue) : IUiDispatc
 {
     public void Post(Action action)
     {
-        if (!dispatcherQueue.TryEnqueue(() => action()))
+        if (!dispatcherQueue.EnqueueGuarded(action))
         {
             action();
         }
