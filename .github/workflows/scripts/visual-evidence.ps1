@@ -456,6 +456,17 @@ function Stop-MockServer
         Stop-Job $script:mockJob -ErrorAction SilentlyContinue
         Remove-Job $script:mockJob -Force -ErrorAction SilentlyContinue
     }
+    # Stop-Job 只终止作业线程，HttpListener 的 urlacl/端口释放是异步的：紧接着的
+    # Start-MockServer 会撞「Failed to listen on prefix … conflicts with an existing
+    # registration」（38440205547 的 U/V 连红根因）。这里轮询到端口真不可达才返回。
+    $releaseDeadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $releaseDeadline)
+    {
+        $stillUp = $null
+        try { $stillUp = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 2).StatusCode } catch { }
+        if (!$stillUp) { return }
+        Start-Sleep -Milliseconds 500
+    }
 }
 
 # —— 场景 E/F/G/H 取证助手（2026-10-12 巡检点火批：需装机清单 CI 代验转化） ——
