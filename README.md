@@ -72,3 +72,15 @@ Current releases (v0.1.x) are **not signed** — Windows SmartScreen may warn on
 6. 🔨 M5 L0 floating widgets + Quick Panel = MVP (code-complete; remaining: [71-item executable acceptance checklist](docs/acceptance-checklist.md) — each item with prerequisites / steps / expected results; covers the B-803 on-machine walkthrough and B-804 clean-VM run, pending a Windows machine)
 
 > Build requirements: Windows + .NET 10 SDK + Windows App SDK (WinUI 3 does not support cross-platform builds).
+
+## 本地测试口径
+
+CI 与本地开发按改动面三路分流——改一行文档不该全量编译。
+
+1. **文档改动**（`*.md`、`docs/**`、图片）：不编译。主 CI workflow 的
+   `paths-ignore` 已跳过这些路径。
+2. **代码改动**：只跑改动子集，不全量。
+   - `dotnet test <改动 csproj>`
+3. **全量**（`dotnet test Beacon.sln -c Release`）：仅以下情形触发——*.csproj / *.sln、
+   `.github/**`、Docker/Compose 配置、发布前。
+
