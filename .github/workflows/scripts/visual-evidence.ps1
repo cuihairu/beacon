@@ -2776,13 +2776,15 @@ try
     if ($tTile -eq [IntPtr]::Zero) { Save-FullScreenshot "T-FAIL-no-tile.png"; throw "断言失败（场景 T1e）：60s 内未见 GLM tile（Beacon Tile 有 $(([WinEnum]::VisibleHandlesByTitle("Beacon Tile")).Count) 个但无一含 GLM 文本）" }
     $tTexts = @()
     $deadline = (Get-Date).AddSeconds(40)
+    # tile 数值位文本是多窗已用口径（无「已用」前缀）——38330530278 实测 tile 文本=「38%/5h 15%/w 61%/M」
+    #（WidgetValueHint 多窗已用链），与 L2 事件行的摘要「已用 38%」不同面，匹配按 tile 实测格式。
     while ((Get-Date) -lt $deadline)
     {
         $tTexts = Get-WindowUiaTexts $tTile
-        if (@($tTexts | Where-Object { $_ -match '已用 38%' }).Count -ge 1) { break }
+        if (@($tTexts | Where-Object { $_ -match '38%/5h' }).Count -ge 1) { break }
         Start-Sleep -Seconds 2
     }
-    if (@($tTexts | Where-Object { $_ -match '已用 38%' }).Count -lt 1) { Save-FullScreenshot "T-FAIL-no-recovery.png"; throw "断言失败（场景 T1e）：.bak 回滚后 GLM tile 未出 38%（实际：$($tTexts -join ' | ')）" }
+    if (@($tTexts | Where-Object { $_ -match '38%/5h' }).Count -lt 1) { Save-FullScreenshot "T-FAIL-no-recovery.png"; throw "断言失败（场景 T1e）：.bak 回滚后 GLM tile 未出 38%（实际：$($tTexts -join ' | ')）" }
     Write-Host "场景 T1e 通过：.bak 回滚兜底生效（GLM tile 38% 出数）"
     # T2 网络断：WidgetHost 刷新失败走 LogWarning（含堆栈），进程不倒，mock 恢复后回 38%
     # 尾部口径：偏移取在停 mock 前——F 等先前场景已在同一日志留过堆栈行，全量匹配会空过（虚证）
@@ -2808,7 +2810,7 @@ try
     while ((Get-Date) -lt $deadline)
     {
         $tTexts = Get-WindowUiaTexts $tTile
-        if (@($tTexts | Where-Object { $_ -match '已用 38%' }).Count -ge 1) { $tRecovered = $true; break }
+        if (@($tTexts | Where-Object { $_ -match '38%/5h' }).Count -ge 1) { $tRecovered = $true; break }
         Start-Sleep -Seconds 2
     }
     if (!$tRecovered) { Save-FullScreenshot "T-FAIL-no-recover.png"; throw "断言失败（场景 T2）：mock 恢复后 60s 内 GLM tile 未回 38%" }
