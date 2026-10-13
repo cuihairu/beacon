@@ -7,7 +7,8 @@ namespace Beacon.Connections.Tests;
 /// <summary>
 /// mimo.usage（小米 MiMo 开放平台，三档探测后如实降级）：控制台真实响应形状（monthUsage/usage 块
 /// + 0-1 比例 percent，2026-10-11 实抓）、旧防御键名兜底、模型目录解析、缺 Key/401/5xx 分级、
-/// 无用量口时 Info 卡如实标注、自定义 usage_endpoint 原样透传。
+/// 无用量口时 Info 卡如实标注、自定义 usage_endpoint 百分比形状出数/认不出显式 Degraded（2026-10-13
+/// 用户令：卡面不再原样透传远端原文——「最近升级」事件，透传把端点返回的 status/plan 文本印上卡面）。
 /// </summary>
 public sealed class MiMoUsageProviderTests
 {
@@ -509,7 +510,7 @@ public sealed class MiMoUsageProviderTests
         => Assert.Null(MiMoUsageProvider.ParseLocalCount(body));
 
     [Fact]
-    public async Task GetStateAsync_CustomUsageEndpoint_PassthroughBody()
+    public async Task GetStateAsync_CustomUsageEndpoint_PercentShape_ShowsPercent()
     {
         var usageUrl = "https://token-plan-cn.xiaomimimo.com/v1/usage/custom";
         var (provider, http) = Faked(request =>
@@ -522,9 +523,51 @@ public sealed class MiMoUsageProviderTests
             CancellationToken.None);
 
         Assert.NotNull(state);
-        Assert.Equal("custom", state!.Payload["usage_source"]);
+        Assert.Equal("custom_percent", state!.Payload["usage_source"]);
         Assert.Contains(usageUrl, state.Payload["endpoint"]);
-        Assert.Contains("used", state.Payload["body"]); // 原样透传，不加工
+        Assert.Contains("50%", state.Payload["value_text"]); // 有可用用量数字就出数，不透传
+        Assert.Contains("自定义用量端点", state.Summary);
+    }
+
+    // 复现（2026-10-13 用户报「卡面显示最近升级」）：端点返回 status/plan 类无数字 JSON，旧逻辑
+    // ToCustomState 原样透传把远端原文印上卡面。新契约：显式 Degraded 写明原因，原文只进诊断信息。
+    [Fact]
+    public async Task GetStateAsync_CustomUsageEndpoint_UnrecognizedShape_DegradedWithoutCardPassthrough()
+    {
+        var (provider, http) = Faked(request =>
+            new FakeHttpResponse(HttpStatusCode.OK, """{"status": "最近升级", "plan": "pro"}"""));
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(
+                Widget(),
+                Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["usage_endpoint"] = "https://token-plan-cn.xiaomimimo.com/v1/usage/custom",
+                }),
+                Ctx("sk-test"),
+                CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("无可用用量字段", exception.Message); // 原因写明
+        Assert.Contains("最近升级", exception.Message); // 原始响应保留作诊断（只在错误信息，不上卡面）
+    }
+
+    [Fact]
+    public async Task GetStateAsync_CustomUsageEndpoint_EmptyBody_Degraded()
+    {
+        var (provider, http) = Faked(request => new FakeHttpResponse(HttpStatusCode.OK, ""));
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(
+                Widget(),
+                Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["usage_endpoint"] = "https://token-plan-cn.xiaomimimo.com/v1/usage/custom",
+                }),
+                Ctx("sk-test"),
+                CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health); // 空响应也是显式报，不静默
     }
 
     // ---- 凭据与错误分级 ----

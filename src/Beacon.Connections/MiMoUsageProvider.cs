@@ -37,8 +37,10 @@ public static class MiMoWidgetDescriptors
 /// ② LiteLLM 网关记账（2026-10-11 修复单）：Settings litellm_spend_url（默认空=不外发）→ GET /spend/logs
 /// （Bearer=litellm_key_ref 凭据，可空裸调）折算「本月已用 $X」（网关无额度分母只显已用量；网关无 DB 按明示 Degraded）；
 /// ③ 本机计数：连接 Settings 填 usage_endpoint（GET + Bearer）指向计数源，防御解析
-/// total_calls/window_calls/window_minutes（{"data":{...}} 包裹剥开）→「本机累计 N 次 · 近M分 K 次」，
-/// 无计数键则原样透传（不加工）；④ 皆无 → 额度位「无额度口」+ 摘要给控制台 plan-manage 指引
+/// total_calls/window_calls/window_minutes（{"data":{...}} 包裹剥开）→「本机累计 N 次 · 近M分 K 次」；
+/// 非计数但含百分比形状（used/total 等）→ 百分比卡；认不出 → 显式 Degraded（2026-10-13 用户令：
+/// 远端原文不再透传上卡面——「最近升级」事件，透传把端点返回的 status/plan 文本印上了卡）；
+/// ④ 皆无 → 额度位「无额度口」+ 摘要给控制台 plan-manage 指引
 /// （需登录）+ 模型数降次行——模型数是目录不是额度，不得冒充（用户令）。
 /// 推理域 7 个候选端点 404、无限流头（2026-10-08 首测 + 2026-10-10 复核 + 批6 真 Key 三验）；
 /// 旧防御键名解析保留兜底，认不出显式 Degraded。
@@ -347,10 +349,21 @@ public sealed class MiMoUsageProvider : IWidgetProvider
     {
         var key = await RequireKeyAsync(connection, context).ConfigureAwait(false);
         var body = await SendAsync(usageEndpoint, key, cancellationToken).ConfigureAwait(false);
-        // 本机计数形状（防御键名）优先：计数才是真实用量口径；认不出再原样透传
-        return ParseLocalCount(body) is { } count
-            ? ToLocalCountState(widget, connection, usageEndpoint, count)
-            : ToCustomState(widget, connection, usageEndpoint, body);
+        // 本机计数形状（防御键名）优先：计数才是真实用量口径
+        if (ParseLocalCount(body) is { } count)
+        {
+            return ToLocalCountState(widget, connection, usageEndpoint, count);
+        }
+        // 百分比形状（console 防御键名族，used/total 自算优先）：有可用用量数字就出数
+        if (ParseConsoleUsage(body) is { } usage)
+        {
+            return ToCustomPercentState(widget, connection, usageEndpoint, usage);
+        }
+        // 认不出（2026-10-13 用户令：远端原文不透传上卡面——「最近升级」事件）：显式 Degraded 写明
+        // 原因，原始响应只留在错误信息里作诊断，不静默不编数。
+        throw new ConnectionException(
+            $"MiMo 自定义用量端点无可用用量字段（计数/百分比形状均未命中，核对端点返回形状）：{Truncate(body.ReplaceLineEndings(" "))}",
+            ConnectionHealthState.Degraded);
     }
 
     private async Task<string> SendAsync(string url, string key, CancellationToken cancellationToken)
@@ -478,25 +491,41 @@ public sealed class MiMoUsageProvider : IWidgetProvider
 
     public sealed record MiMoLocalCount(long TotalCalls, long? WindowCalls, long? WindowMinutes);
 
-    /// <summary>自定义用量端点命中：原样透传 JSON 顶层（不加工不估价），口径标注自定义。</summary>
-    internal static WidgetState ToCustomState(WidgetConfig widget, ConnectionConfig connection, string endpoint, string body)
+    /// <summary>套餐用量分级（console/自定义共用）：≥100 超限才 Error，≥90 快用完 Warning 提醒。</summary>
+    private static Severity PlanSeverity(double percent)
+        => percent >= ConsoleErrorPercent ? Severity.Error
+            : percent >= ConsoleWarnPercent ? Severity.Warning
+            : Severity.Success;
+
+    /// <summary>已用/总产量化文案（used/total 齐才给，缺一则空串）。</summary>
+    private static string AmountText(MiMoPlanUsage usage)
+        => usage.Used is { } usedValue && usage.Total is { } totalValue
+            ? $"已用 {FormatTokens(usedValue)} / {FormatTokens(totalValue)} · "
+            : "";
+
+    /// <summary>自定义用量端点百分比卡（2026-10-13 用户令替代原样透传）：有可用用量数字就出数，口径注明自定义。</summary>
+    internal static WidgetState ToCustomPercentState(WidgetConfig widget, ConnectionConfig connection, string endpoint, MiMoPlanUsage usage)
     {
         var head = widget.Config.GetValueOrDefault("label") ?? "MiMo";
-        var summaryBody = Truncate(body.ReplaceLineEndings(" "));
+        var severity = PlanSeverity(usage.Percent);
         return new WidgetState
         {
             WidgetId = widget.Id,
             WidgetType = MiMoWidgetDescriptors.UsageType,
             ConnectionId = connection.Id,
-            Severity = Severity.Info,
-            Lifecycle = LifecycleState.Success,
-            Summary = $"{head} · 自定义用量端点 · {summaryBody}",
-            DetailUrl = "https://platform.xiaomimimo.com",
+            Severity = severity,
+            Lifecycle = severity == Severity.Error ? LifecycleState.Failed : LifecycleState.Success,
+            Summary = $"{head} · {AmountText(usage)}{usage.Percent.ToString("0.#", CultureInfo.InvariantCulture)}%（自定义用量端点）",
+            DetailUrl = null, // 自定义端点无控制台页可跳，不硬指 plan-manage
+            Progress = Math.Clamp(usage.Percent, 0, 100) / 100.0,
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["usage_source"] = "custom",
+                ["value_text"] = $"{usage.Percent.ToString("0.#", CultureInfo.InvariantCulture)}%",
+                ["percent"] = usage.Percent.ToString("0.#", CultureInfo.InvariantCulture),
+                ["used"] = usage.Used?.ToString("0", CultureInfo.InvariantCulture) ?? "",
+                ["total"] = usage.Total?.ToString("0", CultureInfo.InvariantCulture) ?? "",
                 ["endpoint"] = endpoint,
-                ["body"] = summaryBody,
+                ["usage_source"] = "custom_percent",
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
@@ -614,13 +643,8 @@ public sealed class MiMoUsageProvider : IWidgetProvider
     internal static WidgetState ToConsoleState(WidgetConfig widget, ConnectionConfig connection, string url, MiMoPlanUsage usage)
     {
         var head = widget.Config.GetValueOrDefault("label") ?? "MiMo";
-        // 95% 量级是「快用完」不是「已坏」：≥100（超限）才 Error，≥90 Warning 提醒
-        var severity = usage.Percent >= ConsoleErrorPercent ? Severity.Error
-            : usage.Percent >= ConsoleWarnPercent ? Severity.Warning
-            : Severity.Success;
-        var amount = usage.Used is { } usedValue && usage.Total is { } totalValue
-            ? $"已用 {FormatTokens(usedValue)} / {FormatTokens(totalValue)} · "
-            : "";
+        var severity = PlanSeverity(usage.Percent); // 95% 量级是「快用完」不是「已坏」
+        var amount = AmountText(usage);
         return new WidgetState
         {
             WidgetId = widget.Id,

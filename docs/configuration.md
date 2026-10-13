@@ -131,7 +131,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 |---|---|---|
 | ark | region | 签名区域，默认 `cn-beijing` |
 | qwen | usage_endpoint | 自定义用量端点（GET + Bearer）。留空则显示模型目录并如实标注官方额度口未开放 |
-| mimo | usage_endpoint | 本机计数源（GET + Bearer），防御解析 total_calls/window_calls/window_minutes |
+| mimo | usage_endpoint | 自定义用量口（GET + Bearer）：计数形状出「本机累计 N 次」；百分比形状（used/total 等）出已用/百分比；认不出的形状显式 Degraded 并附原始响应（不透传上卡面） |
 | mimo | litellm_spend_url | LiteLLM 网关记账端点（如 `http://127.0.0.1:4000/spend/logs`）。**默认空=不外发**（本机 127.0.0.1 记账不算外发）；请求带本月起止 `start_date/end_date + summarize=true`（网关 openapi 参数名） |
 | mimo | litellm_key_ref | LiteLLM 网关 key 的凭据引用，默认 `mimo:litellm`（有则带 Bearer，无则裸调——本机记账常免鉴权）；网关无 DB 时 spend 面全回 `no_db_connection`，卡按 Degraded 明示「未接数据库」 |
 | mimo | console_usage_url | 控制台套餐用量 API 地址（默认 `/api/v1/tokenPlan/usage`，GET + api-platform_ph Cookie + plan-manage referer） |

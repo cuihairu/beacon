@@ -377,7 +377,7 @@ Codex    71% used   weekly 8h 后重置
 `bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）；
 `claude` 连接零凭据零网络（endpoint 可填自定义会话目录）；`kimi`/`deepseek` endpoint 可空走官方接口，Bearer 认证；
 `ark` 凭据为控制台 AK/SK（`AccessKey:SecretKey` 一次粘贴，只进 DPAPI）；`mimo` endpoint 可空走官方推理域，
-`usage_endpoint` 留给官方日后开放的用量口（填了即透传显示）；`codex` 零凭据零网络（endpoint 可填自定义会话目录）；
+`usage_endpoint` 填自定义用量口（计数/百分比形状出数，认不出的形状显式 Degraded——2026-10-13 用户令不透传远端原文上卡面）；`codex` 零凭据零网络（endpoint 可填自定义会话目录）；
 `copilot` 凭据为 GitHub PAT（需 copilot scope），endpoint 可空走官方配额端点（官方扩展同款两头自动带）；
 `opencode` 凭据为 OpenCode Key（oc_sk，读 Budgets 需 All 权限），endpoint 可空走官方 Console Budgets 接口。
 
