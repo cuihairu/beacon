@@ -89,9 +89,10 @@ public static class TileSizing
     {
         // 多窗口全拼（三窗 100% 顶格；两窗/单窗都是其子集形态）
         BigModelWidgetDescriptors.UsageType or ArkWidgetDescriptors.UsageType => "100%/5h 100%/w 100%/M",
-        // kimi 已用口径双窗（2026-10-13 统一已用口径，Progress = 最差窗已用占比 → 池列预算、
-        // 读数被多窗口收起）；接口只给 rolling/weekly 无月窗键，接口加月窗时同步抬一行
-        KimiWidgetDescriptors.CodingType => "100%/5h 100%/w",
+        // kimi 三窗口径（2026-10-13 用户令三窗齐显后预算同步抬）：5h/周 已用% 带「窗口」字样 +
+        // 套餐 totalQuota 换算「剩%」标注（KimiWindows 同构文本）；Progress = 最差窗已用占比 →
+        // 池列预算、读数被多窗口收起（WidgetValueHint.KimiWindows ≥2 段判据同源）
+        KimiWidgetDescriptors.CodingType => "100%/5h窗口 100%/w窗口 剩100%/套餐",
         // sensenova.tokenplan：最差池的最差窗（池名 + 窗名 + 已用%，2026-10-13 用户令）；
         // 池名上限 14 字符（超长截断），预算按夹具最坏形态「Flash-Lite池 5h 已用100%」
         SenseNovaWidgetDescriptors.UsageType => "Flash-Lite池 5h 已用100%",

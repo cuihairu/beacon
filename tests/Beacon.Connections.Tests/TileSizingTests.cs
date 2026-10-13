@@ -50,11 +50,12 @@ public sealed class TileSizingTests
     }
 
     [Fact]
-    public void TileWidth_Kimi_UsedTwoWindows_PoolWithoutReadout()
+    public void TileWidth_Kimi_ThreeWindows_PoolWithoutReadout()
     {
-        // 值行 "100%/5h 100%/w" = 99（2026-10-13 统一已用口径）；Progress = 最差窗已用占比 → 池 16；
-        // 双窗形态读数被收起；标签 Kimi 32；5 列间距 24 → 44+32+99+16+24+4 = 219
-        Assert.Equal(219, TileSizing.TileWidthDips(Widget(KimiWidgetDescriptors.CodingType)));
+        // 值行三窗全拼 "100%/5h窗口 100%/w窗口 剩100%/套餐" = 217（11 ASCII×0.62 + %×3×0.9 + 空格×2×0.36 +
+        // CJK 7×1.0 = 19.72em×11 上取整，与 KimiWindows 同构）；Progress = 最差窗已用占比 → 池 16；
+        // 多窗形态读数被收起；标签 Kimi 32；5 列间距 24 → 44+32+217+16+24+4 = 337
+        Assert.Equal(337, TileSizing.TileWidthDips(Widget(KimiWidgetDescriptors.CodingType)));
     }
 
     [Fact]
