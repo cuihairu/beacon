@@ -7,6 +7,8 @@ using Beacon.Core.Services;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -416,7 +418,8 @@ public sealed partial class QuickPanelWindow : Window
         row.Children.Add(time);
         row.Children.Add(label);
 
-        var item = new ListViewItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
+        var item = new InvokeableListItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
+        item.InvokeRequested += () => OpenDetailFromRow(item); // UIA Invoke 与 ItemClick 同链（行 46 解锁面）
         var pinned = _runtime.Config.FindWidget(state.WidgetId)?.Pinned == true;
         var pin = new MenuFlyoutItem { Text = pinned ? "Unpin from desktop" : "Pin to desktop" };
         pin.Click += (_, _) => PinWidget(state.WidgetId);
@@ -424,22 +427,24 @@ public sealed partial class QuickPanelWindow : Window
         return item;
     }
 
-    /// <summary>当前状态区（需要关注/正在运行）单击 → L3 详情（与 RECENT 同链路，B-603）。</summary>
-    private void OnStateItemClick(object sender, ItemClickEventArgs e)
+    /// <summary>行激活统一入口：人手 ItemClick 与 UIA Invoke 同链（B-603）。Tag 两形态——状态区行带
+    /// WidgetState、RECENT 行带 RecentEvent 事件壳——都解析到底层 state 后走 DetailRequested 唯一订阅。</summary>
+    private void OpenDetailFromRow(ListViewItem? item)
     {
-        if (e.ClickedItem is ListViewItem { Tag: WidgetState state })
+        if (item?.Tag switch
         {
-            DetailRequested?.Invoke(state);
+            WidgetState state => state,
+            RecentEvent evt => evt.State,
+            _ => null,
+        } is { } target)
+        {
+            DetailRequested?.Invoke(target);
         }
     }
 
-    private void OnRecentItemClick(object sender, ItemClickEventArgs e)
-    {
-        if (e.ClickedItem is ListViewItem { Tag: RecentEvent evt })
-        {
-            DetailRequested?.Invoke(evt.State); // B-603：打开 L3 详情窗
-        }
-    }
+    private void OnStateItemClick(object sender, ItemClickEventArgs e) => OpenDetailFromRow(e.ClickedItem as ListViewItem);
+
+    private void OnRecentItemClick(object sender, ItemClickEventArgs e) => OpenDetailFromRow(e.ClickedItem as ListViewItem);
 
     /// <summary>右键 Pin/Unpin：仅 PinSupported 类型可钉（B-702 两入口一致性），落 widgets.json。</summary>
     private void PinWidget(string widgetId)
@@ -453,6 +458,46 @@ public sealed partial class QuickPanelWindow : Window
         _runtime.Config.UpsertWidget(widget);
         _runtime.ReloadWidgets(widget.Pinned ? [widgetId] : null); // 开钉=重建注册+立即拉数（与设置页钉开关同口径）
         PinsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// UIA 可达行（todo 行 46 解锁面）：ListViewItem 默认只暴露 SelectionItem/ScrollItem——S4 三 pattern
+    /// 实测（38325074321/38330530278）全打不开 L3。加 Invoke pattern 后 CI/辅助技术与 ItemClick 同链开
+    /// L3 详情，人手点击行为零变化（ItemClick 处理器未动，Invoke 走同一 OpenDetailFromRow）。
+    /// </summary>
+    private sealed class InvokeableListItem : ListViewItem
+    {
+        /// <summary>UIA Invoke 请求；宿主窗接到与 ItemClick 相同的处理链。</summary>
+        public event Action? InvokeRequested;
+
+        public void RaiseInvoke()
+        {
+            var queue = DispatcherQueue;
+            if (queue is not null && !queue.HasThreadAccess)
+            {
+                queue.TryEnqueue(() => InvokeRequested?.Invoke()); // UIA 调用可能来自非 UI 线程，转回 UI 线程
+            }
+            else
+            {
+                InvokeRequested?.Invoke();
+            }
+        }
+
+        protected override AutomationPeer OnCreateAutomationPeer() => new InvokeableListItemPeer(this);
+    }
+
+    /// <summary>Invoke pattern 只增不改：其余 pattern 走 ListViewItem 基线（SelectionItem 等保持默认语义）。</summary>
+    private sealed class InvokeableListItemPeer : ListViewItemAutomationPeer, IInvokeProvider
+    {
+        public InvokeableListItemPeer(InvokeableListItem owner)
+            : base(owner)
+        {
+        }
+
+        protected override object? GetPatternCore(PatternInterface patternInterface)
+            => patternInterface == PatternInterface.Invoke ? this : base.GetPatternCore(patternInterface);
+
+        void IInvokeProvider.Invoke() => ((InvokeableListItem)Owner).RaiseInvoke();
     }
 }
 

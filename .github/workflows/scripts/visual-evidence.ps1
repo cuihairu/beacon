@@ -2666,11 +2666,11 @@ try
         throw "断言失败（场景 S3）：恢复后 45s 内 状态区摘除=$attentionClear / 事件流保留 95% 且补回 38%=$historyKept（Recent：$($recent -join ' | ')；Attention：$($attention -join ' | ')）"
     }
     Write-Host "场景 S3 通过：恢复后状态区摘掉 95%（当前）而 RecentList 保留 95% 并补回 38%（历史）——两区语义分野"
-    # S4 UIA 激活试探（todo 行 46 实测补证，R7：未测不落账）：RecentList 首行经 UIA pattern 激活能否打开 L3 详情窗。
-    # 行 46 唯一门=ItemClick（DetailRequested 唯一订阅），此前仅有源码侧推断「WinUI ListViewItem 只暴露
-    # SelectionItem/ScrollItem」——本步实测 Invoke / LegacyIAccessible / SelectionItem 三 pattern：
-    # 任一打开 L3（新窗标题 Beacon · *，VisibleHandlesByTitlePrefix 计数超基线）→ 硬断言记回归门；
-    # 全不中 → ::warning:: 实测记录（行 46 点击门坐实：UIA 不可达须装机人手点），不算失败。
+    # S4 UIA 激活回归门（todo 行 46）：RecentList 首行经 UIA pattern 激活能否打开 L3 详情窗。
+    # 38325074321/38330530278 实测 ListView 原生只暴露 SelectionItem/ScrollItem，三 pattern 全不中
+    # （Item 门=ItemClick 坐实）→ 应用侧已补 InvokeableListItem（Invoke pattern 走 ItemClick 同链）。
+    # 本步为该 peer 的回归门：Invoke 打开 L3 → peer 生效硬记；仍不中 → ::warning::（peer 投影/链路
+    # 需排查——不算红，但行 46 详情半不得勾账）。
     $s4Before = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
     $s4Opened = $false
     $s4Detail = @()
