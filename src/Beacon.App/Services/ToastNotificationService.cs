@@ -61,8 +61,8 @@ internal sealed class ToastNotificationService : INotificationSink
         }
     }
 
-    /// <summary>快捷方式自检：缺失只告警（下次发送时由 toolkit 修复），不阻塞启动。</summary>
-    private static void CheckShortcutHealth()
+    /// <summary>快捷方式自检：缺失告警入应用日志（下次发送时由 toolkit 重建自愈），不阻塞启动。</summary>
+    private void CheckShortcutHealth()
     {
         var expected = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -70,8 +70,9 @@ internal sealed class ToastNotificationService : INotificationSink
             Path.ChangeExtension(AppDomain.CurrentDomain.FriendlyName, ".lnk"));
         if (!File.Exists(expected))
         {
-            // 自愈路径：Toolkit 在下一次 Toast 发送时重建快捷方式
-            System.Diagnostics.Debug.WriteLine($"Toast shortcut missing: {expected}");
+            // 自愈路径：Toolkit 在下一次 Toast 发送时重建快捷方式；此处只留痕不自建。
+            // Release 构建无调试器附挂时 Debug.WriteLine 是空操作，走应用日志才有取证面。
+            _logger.LogWarning("Toast 快捷方式缺失（{Path}）——下次 Toast 发送时由 toolkit 重建（AUMID 自愈）。", expected);
         }
     }
 
