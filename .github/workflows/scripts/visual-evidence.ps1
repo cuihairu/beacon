@@ -395,6 +395,8 @@ function Start-MockServer
         $mimoUsage = '{"total_calls":128,"window_calls":6,"window_minutes":60}'
         $qwenModels = '{"object":"list","data":[{"id":"qwen3-coder-plus"},{"id":"qwen3-max"}]}'
         $qwenUsage = '{"percent":42.5,"remaining_credits":1150,"total_credits":2000,"reset_at":"2026-10-19T00:00:00+08:00"}'
+        # GitHub Actions 固定失败 run（场景 U L3 动作链）：id 12345 → rerun POST 路径精确可断
+        $ghRuns = '{"total_count":1,"workflow_runs":[{"id":12345,"name":"ci","status":"completed","conclusion":"failure","head_branch":"main","html_url":"https://github.com/cuihairu/beacon/actions/runs/12345","run_started_at":"2026-10-13T10:00:00Z","updated_at":"2026-10-13T10:05:00Z"}]}'
         while ($listener.IsListening)
         {
             $ctx = $listener.GetContext()
@@ -414,6 +416,15 @@ function Start-MockServer
                     "/mimo/usage" { $body = $mimoUsage }
                     "/compatible-mode/v1/models" { $body = $qwenModels }
                     "/qwen/usage" { $body = $qwenUsage }
+                    "/repos/cuihairu/beacon/actions/workflows/ci.yml/runs" { $body = $ghRuns }
+                    "/repos/cuihairu/beacon/actions/runs/12345/rerun-failed-jobs" {
+                        # POST 回执留痕（场景 U）：marker 文件 = 服务端真收到重跑请求的硬证据
+                        Set-Content -Path (Join-Path $env:TEMP "beacon-gh-rerun-hit.txt") -Value ("rerun " + (Get-Date -Format "HH:mm:ss")) -Encoding ASCII
+                        $rerunMode = ""
+                        try { $rerunMode = (Get-Content (Join-Path $env:TEMP "beacon-gh-rerun-mode.txt") -Raw -ErrorAction Stop).Trim() } catch { }
+                        if ($rerunMode -eq "fail") { $ctx.Response.StatusCode = 500 } # 失败链：executor 收 ConnectionException → ✗
+                        $body = "{}"
+                    }
                     default { $body = $ark } # POST /?Action=GetCodingPlanUsage
                 }
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
@@ -739,6 +750,20 @@ function Count-BarPixels([System.Drawing.Bitmap] $bmp)
 function Find-UiaById([System.Windows.Automation.AutomationElement] $root, [string] $automationId, [int] $timeoutSec = 12)
 {
     $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $automationId)
+    $deadline = (Get-Date).AddSeconds($timeoutSec)
+    while ((Get-Date) -lt $deadline)
+    {
+        $found = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($found) { return $found }
+        Start-Sleep -Milliseconds 400
+    }
+    return $null
+}
+
+# 按 Name 找元素（场景 U ContentDialog 按钮无 x:Name，AutomationId 不可用）——与 Find-UiaById 同款超时轮询
+function Find-UiaByName([System.Windows.Automation.AutomationElement] $root, [string] $name, [int] $timeoutSec = 10)
+{
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $name)
     $deadline = (Get-Date).AddSeconds($timeoutSec)
     while ((Get-Date) -lt $deadline)
     {
@@ -2843,6 +2868,197 @@ catch
     Save-FullScreenshot "T-FAIL-unexpected.png"
     $failures.Add("场景 T：$($_.Exception.Message)")
     Write-Host "::error::场景 T 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 U：L3 内动作链（todo 行 70「[Retry] 全链路」CI 代验，解锁行 32/38/46 半项）——
+# GitHub 连接指 mock：GET runs → 固定失败 run 12345 → AttentionList 行 → 行 Invoke（S4 同链）
+# 开 L3 详情窗（run_id/retry 按钮断言）→「Retry Failed Jobs」→ 窗内 ContentDialog（确认/取消 UIA）：
+# 取消 = mock 零 POST（marker 不在）；确认 = POST 202（marker 在 + ✓ 结果文本）；
+# mock 翻 500 = executor ConnectionException → ✗ 结果文本。回执双证据 = L3 结果文本 + mock 侧
+# marker 文件（服务端回执，比面板事件行更强；RECENT 语义=WidgetStateChanged，不加 ActionExecuted 订阅）。
+try
+{
+    Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-hit.txt") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-mode.txt") -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    # 前置自愈：U 依赖 mock 在场（T 失败路径可能停在停 mock 后）——探针失败即拉起
+    $probeStatus = $null
+    try { $probeStatus = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/repos/cuihairu/beacon/actions/workflows/ci.yml/runs" -TimeoutSeconds 5).StatusCode } catch { }
+    if (!$probeStatus) { Start-MockServer }
+    @'
+{
+  "configVersion": 1,
+  "hotkey": "Ctrl+Alt+B",
+  "launchOnStartup": false,
+  "theme": "dark",
+  "pinDisplayMode": "floating",
+  "numericFloatingEnabled": false,
+  "numericFloatingResetDone": true,
+  "showCapsule": false
+}
+'@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+    @'
+[
+  { "id": "gh-mock", "type": "github", "endpoint": "http://127.0.0.1:18081", "enabled": true }
+]
+'@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    @'
+[
+  { "id": "github.actions.runs:ci", "type": "github.actions.runs", "connectionId": "gh-mock", "refreshTier": "ci", "pinned": true,
+    "config": { "label": "CI", "repo": "cuihairu/beacon", "workflow": "ci.yml" } }
+]
+'@ | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
+    '{ "tiles": [] }' | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 18
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 U 前置）：托盘消息窗未找到" }
+    # U1 失败 run 进「需要关注」：AttentionList 出「ci.yml · failure」行（severity Error 判定链）
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY 开面板
+    $panelHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $ph = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($ph.Count -ge 1) { $panelHandle = $ph[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panelHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "U-FAIL-no-panel.png"; throw "断言失败（场景 U1）：热键触发后 5s 内快速面板未出现" }
+    Start-Sleep -Seconds 2
+    $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+    $attention = @()
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        $attention = Get-UiaListSummaries $panelEl "AttentionList"
+        if ($attention -and @($attention | Where-Object { $_ -match 'ci\.yml · failure' }).Count -ge 1) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$attention -or @($attention | Where-Object { $_ -match 'ci\.yml · failure' }).Count -lt 1)
+    {
+        Save-FullScreenshot "U-FAIL-no-attention-row.png"
+        throw "断言失败（场景 U1）：60s 内 AttentionList 无失败 run 行（实际：$($attention -join ' | ')）——GitHub Provider→状态聚合→需要关注链失效"
+    }
+    Save-FullScreenshot "U-attention-row.png"
+    Write-Host "场景 U1 通过：失败 run 进需要关注（ci.yml · failure · 5m00s）"
+    # U2 行 Invoke 开 L3 详情窗（S4 已证 InvokeableListItem 链）：run_id/重试按钮在窗
+    $uBefore = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
+    $attentionListEl = Find-UiaById $panelEl "AttentionList" 5
+    if (!$attentionListEl) { throw "断言失败（场景 U2）：UIA 未找到 AttentionList" }
+    $rowItem = $attentionListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+    if (!$rowItem) { throw "断言失败（场景 U2）：AttentionList 无 ListItem 可激活" }
+    ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    $detailHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline)
+    {
+        foreach ($h in [WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
+        {
+            if ($uBefore -notcontains $h) { $detailHandle = $h; break }
+        }
+        if ($detailHandle -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 400
+    }
+    if ($detailHandle -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "U-FAIL-no-detail.png"
+        throw "断言失败（场景 U2）：AttentionList 行 Invoke 未打开 L3 详情窗（Beacon · * 计数 $($uBefore.Count) 不变）"
+    }
+    Start-Sleep -Seconds 2 # 详情表/动作区渲染
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($detailHandle)) 8) "U-detail-window.png" 3
+    $detailTexts = Get-WindowUiaTexts $detailHandle
+    if (@($detailTexts | Where-Object { $_ -match 'run_id' }).Count -lt 1 -or @($detailTexts | Where-Object { $_ -match '12345' }).Count -lt 1)
+    {
+        throw "断言失败（场景 U2）：详情窗缺 run_id/12345 数据行（实际：$($detailTexts -join ' | ')）"
+    }
+    $detailEl = [System.Windows.Automation.AutomationElement]::FromHandle($detailHandle)
+    $retryButton = Find-UiaByName $detailEl "Retry Failed Jobs" 8
+    if (!$retryButton)
+    {
+        throw "断言失败（场景 U2）：详情窗无「Retry Failed Jobs」按钮——失败 run 动作区回归"
+    }
+    Write-Host "场景 U2 通过：行 Invoke 打开 L3 详情窗，run_id=12345 数据行与 Retry 按钮在窗"
+    # U3 确认弹窗可关（行 38）：Retry → 取消 → mock 零 POST（marker 不在 = 服务端零请求）
+    $hitPath = Join-Path $env:TEMP "beacon-gh-rerun-hit.txt"
+    Invoke-Uia $retryButton
+    $cancelButton = Find-UiaByName $detailEl "取消" 10
+    if (!$cancelButton)
+    {
+        Save-FullScreenshot "U-FAIL-no-dialog.png"
+        throw "断言失败（场景 U3）：Retry 后 10s 内确认弹窗「取消」按钮不可达（ContentDialog 未在窗内 UIA 树）"
+    }
+    Save-FullScreenshot "U-dialog-open.png"
+    if (!((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '重跑 cuihairu/beacon 的 run 12345' }))
+    {
+        throw "断言失败（场景 U3）：确认弹窗文案缺「重跑 cuihairu/beacon 的 run 12345」——确认语义回归"
+    }
+    Invoke-Uia $cancelButton
+    Start-Sleep -Seconds 2
+    if (Test-Path $hitPath)
+    {
+        throw "断言失败（场景 U3）：弹窗「取消」后 mock 仍收到 rerun POST（marker 在）——取消未拦截请求"
+    }
+    Write-Host "场景 U3 通过：确认弹窗可关（取消后 mock 零 POST，marker 不在）"
+    # U4 确认全链：Retry → 确认 → POST 到 mock（marker 在）+ L3 结果文本 ✓ 已重跑 run 12345
+    Invoke-Uia $retryButton
+    $okButton = Find-UiaByName $detailEl "确认" 10
+    if (!$okButton) { Save-FullScreenshot "U-FAIL-no-confirm.png"; throw "断言失败（场景 U4）：第二轮 Retry 后确认弹窗未出现" }
+    Invoke-Uia $okButton
+    $okText = $false
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '✓ 已重跑 run 12345' }) { $okText = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$okText -or !(Test-Path $hitPath))
+    {
+        Save-FullScreenshot "U-FAIL-no-rerun.png"
+        throw "断言失败（场景 U4）：确认后 ✓ 结果文本=$okText / mock POST 回执=$(Test-Path $hitPath)——重跑执行链失效"
+    }
+    Save-FullScreenshot "U-retry-ok.png"
+    Write-Host "场景 U4 通过：确认 → mock 收 rerun POST（marker 在）+ L3 结果「✓ 已重跑 run 12345」"
+    # U5 失败反馈（行 32）：mock 翻 500 → executor ConnectionException → L3 结果文本 ✗
+    Set-Content -Path (Join-Path $env:TEMP "beacon-gh-rerun-mode.txt") -Value "fail" -Encoding ASCII
+    Invoke-Uia $retryButton
+    $okButton = Find-UiaByName $detailEl "确认" 10
+    if (!$okButton) { Save-FullScreenshot "U-FAIL-no-confirm2.png"; throw "断言失败（场景 U5）：第三轮 Retry 后确认弹窗未出现" }
+    Invoke-Uia $okButton
+    $failText = $false
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match 'GitHub 服务端错误' }) { $failText = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-mode.txt") -Force -ErrorAction SilentlyContinue
+    if (!$failText)
+    {
+        Save-FullScreenshot "U-FAIL-no-fail-text.png"
+        throw "断言失败（场景 U5）：mock 500 后 L3 结果文本未见「✗ GitHub 服务端错误」——失败反馈回归"
+    }
+    Save-FullScreenshot "U-retry-fail.png"
+    Write-Host "场景 U5 通过：服务端 500 → L3 结果「✗ GitHub 服务端错误 (500)」——失败可见反馈"
+    # 收尾：关详情窗（面板若在场一并收起），marker 清档
+    [WinEnum]::Post($detailHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) # WM_CLOSE
+    if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -gt 0)
+    {
+        [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0)
+        Start-Sleep -Seconds 1
+    }
+    Remove-Item $hitPath -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Write-Host "场景 U 通过：失败 run→需要关注→L3 动作区→确认弹窗取消/确认→POST 回执→成功/失败双反馈（行 70 全链）"
+}
+catch
+{
+    Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-hit.txt") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $env:TEMP "beacon-gh-rerun-mode.txt") -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Save-FullScreenshot "U-FAIL-unexpected.png"
+    $failures.Add("场景 U：$($_.Exception.Message)")
+    Write-Host "::error::场景 U 断言失败：$($_.Exception.Message)"
 }
 
 # —— 全场景收尾：停应用/清档位文件/停 mock（J 静默安装要求 Beacon 未在跑——AppMutex） ——
