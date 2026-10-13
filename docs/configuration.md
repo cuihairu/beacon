@@ -106,6 +106,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | claude | 无（读本机） | 留空 | 本机会话目录可读 |
 | kimi | api.kimi.com/coding/v1/usages（社区 GET 口，默认）。控制台口 `www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`：endpoint 整串直填 + Settings 加 `http_method=POST`、`auth_header=Cookie`（载荷照 F12 → 网络 → 该请求补 `http_body`） | 二选一：Kimi For Coding Key（sk-kimi- 前缀），或浏览器 Cookie（F12 → Cookies 复制值粘贴）。**Beacon 不做扫码/登录流**——Cookie 凭据由用户从浏览器复制粘贴，DPAPI 加密存储，请求时原样回放；会话过期（浏览器登出/过期）后重录一次即可。与 Moonshot 开放平台是两套账号 | GET usages / POST GetUsages（2xx 即连通） |
 | moonshot | api.moonshot.cn/v1/users/me/balance | Moonshot 开放平台 API Key（Bearer；与 Kimi For Coding 是两套账号） | GET balance（响应须含余额数据） |
+| sensenova | platform.sensenova.cn/lite/console/v1/tokenplan/pool-usage | 商汤控制台 JWT（Bearer）。这是**控制台会话令牌不是 API Key**——在 platform.sensenova.cn 控制台登录后复制；带 `exp` 会过期 | GET pool-usage（响应须含积分池数据） |
 | deepseek | api.deepseek.com | DeepSeek API Key | GET /user/balance |
 | mimo | token-plan-cn.xiaomimimo.com/v1 | 小米 API Key（Bearer；只授权模型调用，额度另录控制台 Cookie） | GET /models |
 | qwen | token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1 | 百炼 Token Plan 专属 Key（sk-sp- 前缀） | GET /models |
@@ -116,7 +117,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 
 ### 通用 Settings 键
 
-走统一 HTTP 通道（`HttpEndpoint.FetchAsync`，`src/Beacon.Connections/HttpEndpoint.cs`）的连接类型（bigmodel/deepseek/kimi/moonshot/http）支持：
+走统一 HTTP 通道（`HttpEndpoint.FetchAsync`，`src/Beacon.Connections/HttpEndpoint.cs`）的连接类型（bigmodel/deepseek/kimi/moonshot/sensenova/http）支持：
 
 > copilot/qwen/opencode/mimo **不走统一通道**（各自专用请求构造，各自端点与请求头硬编码）：只认连接级 `endpoint`（copilot/opencode）或 Settings `usage_endpoint`（qwen/mimo）与凭据，不认下表四个通道键。
 
@@ -181,6 +182,7 @@ actions:                          # 可选：声明动作（进详情页动作�
 | codex | codex.usage | 近 N 天 token（每会话文件取最后一条累计值求和，如实标注「本地统计，非官方口径」） | 读本机 `~/.codex/sessions/**/rollout-*.jsonl`。官方口需 OAuth，落本地统计档 |
 | kimi | kimi.coding | 卡面/进度条=已用%（剩余反推），级别仍按剩余判（余 0% 显示「已用尽」）；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取剩余最低（=已用最高）窗并标窗名，阈值仍按剩余百分比 | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
 | moonshot | moonshot.balance | 余额金额（¥），余额 ≤ warn_below（默认 20）→ Warning、≤ error_below（默认 5）→ Error | GET /v1/users/me/balance（Bearer）。响应不含余额数据按 Degraded 处理 |
+| sensenova | sensenova.tokenplan | 控制台 Token Plan 积分池已用百分比（多池 × 5h/7d 双窗）；**最差池的最差窗优先**：主数值/进度条/级别取已用最高窗并标池名与窗名，阈值（warn_percent 80 / error_percent 95）作用在最差窗已用 % 上；摘要多池齐显；赠额到期预警（最近到期日 7 天内，或即将到期余额占该池赠额 ≤10%）级别不低于 Warning | 控制台池级口（Bearer JWT）。JWT 过期 401 → Degraded 明示「控制台 token 已过期，请重新获取」不静默空数据；无池/无窗数据是合法状态（Info 明示订阅状态，不造假红）；数值为字符串小数（含千分位）解析容忍；多账号 = 多连接（每连接一个控制台 JWT、各自一组池） |
 | deepseek | deepseek.balance | 余额金额（CNY/USD），total ≤ 阈值判级 | GET /user/balance。is_available=false 直接 Error |
 | mimo | mimo.usage | 套餐已用/总量/百分比（控制台 Cookie 录了才显示）；无 Cookie 且录了 litellm_spend_url → 「本月已用 $X（网关记账）」（网关无额度分母，只显已用量，如实不造）；否则本机计数；再否则如实「无额度口」 | 四档降级：控制台 API → LiteLLM 网关记账 → 本机计数 → 模型目录数降次（模型数是目录不是额度，不冒充）。控制台 401/403 卡面明示「Cookie 已失效或未录制」+ 重录指引（Degraded 中止，不静默降档）。控制台响应真身 2026-10-11 实抓：data.monthUsage/usage 块 + items[]，percent 字段是 **0-1 比例**（used/limit 自算精确百分比，≥90% Warn / ≥100% Error）。LiteLLM 响应兼容 根数组 / response[] / results[] / summarize 汇总对象 四形 |
 | qwen | qwen.usage | Token Plan 已用百分比 + 重置日（个人版 7 天固定窗、团队版月度） | 四档探测：官方用量 API 无 → 自定义 usage_endpoint → 配额探针（耗尽时任意 POST 得 429 AllocationQuota 携重置时间，非耗尽型 429 不翻转）→ 模型目录兜底 |
@@ -192,7 +194,7 @@ actions:                          # 可选：声明动作（进详情页动作�
 | http | http.status / http.quota | 自定义：状态词映射或 JSONPath 数值卡 | 任意 HTTP JSON 接口，字段路径全部可配 |
 | herald | herald.incidents / herald.feed / herald.deliveries | 非额度：事件台账（未决/已认领/已解决/全部计数 + 最新一条）+ 订阅源（RSS 条目/未读数）+ 投递失败（失败计数 + 最新一条去向与错误） | incidents：`/api/v1/incidents?status=…`（默认 open，乱填 fail-loud），open>0 亮黄、含 critical 亮红、回看口径（acked/resolved）恒 Info；feed：公开类目 `/feeds/{category}.xml`（slug 校验防注入）或私密 `/feeds/private/{token}.xml`（token 即凭据走 DPAPI，不落 widgets.json 不进 payload；类目优先）；未读=自上一次刷新新增 guid（按组件记基线，首刷只记基线不出未读）；deliveries：`/api/v1/logs?status=failed&limit=200[&provider=X]`，failed>0 亮黄（送信没送达要人管；重试耗尽 dead 在日志层也写 failed，不区分；shadow 被 status=failed 天然排除，pending 是瞬态不报），计数取响应 total（全窗口过滤总数），可按提供方筛选；RFC1123Z 时间戳剥星期名解析（invariant globalization 兼容） |
 
-**多窗口额度展示**（2026-10-12；2026-10-13 用户令统一已用口径）：bigmodel/ark/kimi 的 tile 数值位在两个以上窗口同时有值时拼成 `5%/5h 70%/w 80%/M` 形态（全部已用口径无前缀，只出实际存在的窗口，窗序 5h → 周 → 月；kimi 的已用=剩余反推）。进度条各家同为已用占比（provider Progress 同源）；kimi 判级口径不变——仍按剩余百分比过阈值。多窗口形态下 tile 收起重复的「NN%」进度读数（数值文本已含该百分比），单窗形态维持现状。tile 宽度按各类型最坏值行字宽预算（`TileSizing`），数值列恒不裁字。
+**多窗口额度展示**（2026-10-12；2026-10-13 用户令统一已用口径）：bigmodel/ark/kimi 的 tile 数值位在两个以上窗口同时有值时拼成 `5%/5h 70%/w 80%/M` 形态（全部已用口径无前缀，只出实际存在的窗口，窗序 5h → 周 → 月；kimi 的已用=剩余反推）。进度条各家同为已用占比（provider Progress 同源）；kimi 判级口径不变——仍按剩余百分比过阈值。多窗口形态下 tile 收起重复的「NN%」进度读数（数值文本已含该百分比），单窗形态维持现状。tile 宽度按各类型最坏值行字宽预算（`TileSizing`），数值列恒不裁字。sensenova 同族但形态不同：tile 数值位取**最差池的最差窗**（池名 + 窗名 + 已用%，如「Flash-Lite池 5h 已用100%」），摘要多池齐显（每池「短名 5h X% · 7d Y%」，池间「 / 」分隔）。
 
 ## 组件（widgets.json）
 

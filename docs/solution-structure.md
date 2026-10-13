@@ -18,7 +18,7 @@ Beacon/
 ├── src/
 │   ├── Beacon.App/                  # WinUI 3 壳（唯一 exe，代码建 UI 为主）
 │   ├── Beacon.Core/                 # 领域模型 + 抽象 + 服务（无 UI 依赖）
-│   ├── Beacon.Connections/          # 连接与 Widget Provider（16 类：GitHub / Jenkins / 本机 / Herald / HTTP / 智谱 / 方舟 / Claude / Kimi / Moonshot / DeepSeek / MiMo / Codex / Copilot / OpenCode / 百炼）
+│   ├── Beacon.Connections/          # 连接与 Widget Provider（17 类：GitHub / Jenkins / 本机 / Herald / HTTP / 智谱 / 方舟 / Claude / Kimi / Moonshot / DeepSeek / MiMo / Codex / Copilot / OpenCode / 百炼 / 商汤）
 │   ├── Beacon.Actions/              # Action 执行器
 │   └── Beacon.Storage/              # JSON 配置 / 缓存 / DPAPI Secrets / 导入导出
 └── tests/
@@ -68,7 +68,7 @@ Beacon.Core/
 │   ├── IClock.cs                      # 注入时钟，供退避/冷却单测
 │   ├── IEventBus.cs
 │   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）+ 记录落盘抽象 INotificationRecordStore
-├── Services/                           # 19 文件
+├── Services/                           # 20 文件
 │   ├── EventBus.cs                    # 线程安全的进程内发布/订阅
 │   ├── RefreshScheduler.cs            # (connection,tier,间隔覆盖) 合并轮询 + 抖动 + 退避
 │   ├── StatusAggregator.cs            # WidgetState* → 总体 Severity + 计数
@@ -79,6 +79,7 @@ Beacon.Core/
 │   ├── SvgPathParser.cs               # SVG path d → 中性几何（品牌图标渲染前置层，纯函数供单测）
 │   ├── BrandIcons.cs                  # Simple Icons CC0 品牌 path 字典 + 连接类型别名归一（纯字符串零依赖，供单测；未收录由 App 字形兜底）
 │   ├── WidgetValueHint.cs             # 悬浮 tile 数值位短文本（各家额度源 payload 键 → 主数值映射 + 多窗口额度「NN%/窗」拼接，纯函数供单测）
+│   ├── DebugInjection.cs              # debug 注入面（BEACON_DEBUG_SEVERITY=critical → 刷新成功态改判 Critical/Failed；环境变量门控、缺省零行为，仅 CI 场景 V 与装机演练用，不进用户文档）
 │   ├── WidgetTypeNames.cs             # 组件类型 → 短显示名（tile 标签/L2 分组 chip 共用，纯函数供单测）
 │   ├── QuickPanelSections.cs          # L2 面板三分区判定（Warning+/过期/断连 → NEEDS ATTENTION，纯函数供单测）
 │   ├── DpiLayoutMath.cs               # DIP↔物理像素唯一换算口径（AppWindow 只认物理像素）
@@ -94,7 +95,7 @@ Beacon.Core/
 ### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
 
 ```text
-Beacon.Connections/                    # 33 文件
+Beacon.Connections/                    # 35 文件
 ├── TileSizing.cs                      # 全类型 tile 宽度字宽预算（逐列最坏文本：标签/数值/读数 + 固定件 + 间距，下限 168；纯函数供单测，2026-10-12 二修）
 ├── GitHub 6 文件
 │   ├── GitHubConnectionProvider.cs    # PAT 认证、连接测试、rate-limit 感知
@@ -142,8 +143,10 @@ Beacon.Connections/                    # 33 文件
 │   └── OpenCodeUsageProvider.cs       # type: opencode.usage（官方 Console Budgets API 直连，micro-cents 金额）+ OpenCodeConnectionProvider（同文件）
 ├── Qwen 1 文件
 │   └── QwenUsageProvider.cs           # type: qwen.usage（百炼 Token Plan 四档探测：官方口→自定义→配额探针→模型目录兜底）+ QwenConnectionProvider（同文件）
-└── Moonshot 1 文件
-    └── MoonshotBalanceProvider.cs     # type: moonshot.balance（开放平台余额，区别于 Kimi For Coding 套餐）+ MoonshotConnectionProvider（同文件）
+├── Moonshot 1 文件
+│   └── MoonshotBalanceProvider.cs     # type: moonshot.balance（开放平台余额，区别于 Kimi For Coding 套餐）+ MoonshotConnectionProvider（同文件）
+└── SenseNova 1 文件
+    └── SenseNovaUsageProvider.cs     # type: sensenova.usage（控制台 Token Plan 积分池：多池 × 5h/7d 双窗，最差窗判级）+ SenseNovaWidgetDescriptors + SenseNovaConnectionProvider（同文件）
 ```
 
 ### 3.3 src/Beacon.Actions（类库）
@@ -214,7 +217,7 @@ Beacon.App/
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 991 个测试（Connections 599 / Core 334 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。
+xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 1057 个测试（Connections 652 / Core 347 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。
 
 ## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
 
