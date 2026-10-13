@@ -223,9 +223,9 @@ Codex    71% used   weekly 8h 后重置
   （与 ark/bigmodel 同语义）；exceeded 进度条满格（对齐 ark「已尽=满格」）；无上限沿用 `$spent · 无上限` 不编百分比；
 - **阿里千问 百炼 Token Plan（AI Usage 第十家，2026-10-09）**：组件类型 `qwen.usage`——Token Plan
   （Coding Plan 专属 Key `sk-sp-` 前缀，Base URL `token-plan.cn-beijing.maas.aliyuncs.com`，OpenAI 兼容口
-  `/compatible-mode/v1` + Anthropic 兼容口 `/apps/anthropic`）。**官方额度查询 REST 口未开放**（FAQ 只有控制台
+  `/compatible-mode/v1`）。**官方额度查询 REST 口未开放**（FAQ 只有控制台
   「我的订阅」页；社区实证 cc-switch#7484——专属 Key 只授权模型调用，/models 实测 200、控制台查询口不授权），
-  三档探测后如实降级：默认显示 `/models` 模型目录真数据 + 「额度口径官方未开放」；连接 Settings/表单「用量端点」
+  四档探测后如实降级：默认显示 `/models` 模型目录真数据 + 「额度口径官方未开放」；连接 Settings/表单「用量端点」
   填自定义口（GET + Bearer），响应按防御键名解析（percent/used_percent、remaining_percent 反推、
   remaining/total_credits、reset_at/reset/period_end ISO 或秒级 epoch）即出额度卡（已用% 进度条 + 阈值告警
   + 重置时间）。窗口口径：个人版 7 天固定窗口、团队版月度（官方 FAQ），重置以端点数据为准；

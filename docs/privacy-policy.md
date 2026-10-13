@@ -37,7 +37,7 @@ Beacon **没有**账号体系，**没有**遥测或埋点，**不**向开发者�
 
 Beacon 主动发出的网络请求只有三类，全部可预期、可关闭：
 
-1. **更新检查**（默认开启，设置里可关）：启动后向本项目的公开仓库接口 `api.github.com/repos/cuihairu/beacon/releases/latest` 发一次 GET——请求里只有 User-Agent（`Beacon-Update-Check`）与你的 IP（任何网络请求都会携带），**不含任何个人数据**。
+1. **更新检查**（默认开启，暂无开关）：启动 20 秒后向本项目的公开仓库接口 `api.github.com/repos/cuihairu/beacon/releases/latest` 发一次 GET（进程生命周期内只查一次，手动「检查更新」按钮可强刷）——请求里只有 User-Agent（`Beacon-Update-Check`）与你的 IP（任何网络请求都会携带），**不含任何个人数据**。
 2. **连接查询**：只发往**你自己配置**的 API 端点（GitHub API、各 AI 平台控制台/用量端点），鉴权用你自己录入的 key。你配置哪些连接，Beacon 就联系哪些端点；删掉连接即停止。
 3. **动作**：仅当你自己配置了 HTTP / webhook 动作时，才会向你指定的 URL 发请求（webhook 带 HMAC-SHA256 签名头，密钥同样只进 DPAPI）。
 

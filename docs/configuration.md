@@ -116,7 +116,9 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 
 ### 通用 Settings 键
 
-走统一 HTTP 通道的连接类型（bigmodel/deepseek/copilot/kimi/qwen/opencode/mimo/http）支持：
+走统一 HTTP 通道（`HttpEndpoint.FetchAsync`，`src/Beacon.Connections/HttpEndpoint.cs`）的连接类型（bigmodel/deepseek/kimi/moonshot/http）支持：
+
+> copilot/qwen/opencode/mimo **不走统一通道**（各自专用请求构造，各自端点与请求头硬编码）：只认连接级 `endpoint`（copilot/opencode）或 Settings `usage_endpoint`（qwen/mimo）与凭据，不认下表四个通道键。
 
 | 键 | 默认 | 说明 |
 |---|---|---|
@@ -283,8 +285,8 @@ http.status：
 | summary_path | — | 摘要字段路径 |
 | url_path | — | 详情链接路径 |
 | success_values | `success,ok,done,passed,healthy,finished` | 成功状态词（逗号分隔） |
-| warning_values | `running,building,pending,queued` | 进行中状态词 |
-| error_values | `failed,failure,error,critical` | 失败状态词；空/未知词按 Warning（宁报勿漏） |
+| warning_values | `running,building,pending,queued,in_progress,deploying,starting` | 进行中状态词 |
+| error_values | `failed,failure,error,critical,broken` | 失败状态词；空/未知词按 Warning（宁报勿漏） |
 
 http.quota：
 
@@ -297,7 +299,7 @@ http.quota：
 | unit | — | 单位文案（如 tokens） |
 | warn_percent / error_percent | 60 / 90 | 阈值；缺数据按 Warning |
 
-ark.usage / bigmodel.usage / qwen.usage / copilot.usage / opencode.usage / mimo.usage：只有通用字段（label、warn_percent、error_percent），各家阈值默认见「额度口径」表（bigmodel/ark/qwen 60/90，copilot/opencode 80/95）。
+ark.usage / bigmodel.usage / qwen.usage / copilot.usage / opencode.usage：只有通用字段（label、warn_percent、error_percent），各家阈值默认见「额度口径」表（bigmodel/ark/qwen 60/90，copilot/opencode 80/95）。mimo.usage 只有 label（阈值固定 90/100，不可配）。
 
 ## 钉选布局（pins.json）
 
