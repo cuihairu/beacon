@@ -380,8 +380,11 @@ function Start-MockServer
         $listener.Prefixes.Add("http://127.0.0.1:18081/")
         $listener.Start()
         $ark = '{"ResponseMetadata":{"RequestId":"mock-1","Action":"GetCodingPlanUsage"},"Result":{"Status":"Running","QuotaUsage":[{"Level":"session","Percent":42.5,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":8,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":"92","ResetTimestamp":0}]}}'
-        # bigmodel 监控响应（quota/limit 结构：limits[] 按 type/unit/number 归类——5h 滚动窗 unit=3/number=5）
-        $bigmodel = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":38,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":61,"nextResetTime":0}]}}'
+        # bigmodel 监控响应（quota/limit 结构：limits[] 按 type/unit/number 归类——5h 滚动窗 unit=3/number=5）。
+        # 健康链口径（2026-10-13 最差窗规则）：级别取已用最高窗——三窗必须全部低于 warn(60)，且 5h(38) 须为
+        # 最高窗（月 20<38），摘要才以「5h 窗口已用 38%」打头，S1 的「已用 38%」事件行断言才成立。
+        # （38390521909 实测：月 61 ≥ 60 → GLM 翻 Warning，G2/L/O1/Q1/S1 六连环红）
+        $bigmodel = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":38,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         # 档位翻转态（G 场景状态变化/动效断言）：主窗 percentage 95 ≥ error_percent(90) → severity Error
         $bigmodelError = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":95,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":61,"nextResetTime":0}]}}'
         # 档位文件：内容 "error" = 95% 态，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
@@ -2782,7 +2785,7 @@ try
     if ($tTile -eq [IntPtr]::Zero) { Save-FullScreenshot "T-FAIL-no-tile.png"; throw "断言失败（场景 T1e）：60s 内未见 GLM tile（Beacon Tile 有 $(([WinEnum]::VisibleHandlesByTitle("Beacon Tile")).Count) 个但无一含 GLM 文本）" }
     $tTexts = @()
     $deadline = (Get-Date).AddSeconds(40)
-    # tile 数值位文本是多窗已用口径（无「已用」前缀）——38330530278 实测 tile 文本=「38%/5h 15%/w 61%/M」
+    # tile 数值位文本是多窗已用口径（无「已用」前缀）——38330530278 实测 tile 文本=「38%/5h 15%/w 20%/M」
     #（WidgetValueHint 多窗已用链），与 L2 事件行的摘要「已用 38%」不同面，匹配按 tile 实测格式。
     while ((Get-Date) -lt $deadline)
     {
@@ -2796,6 +2799,12 @@ try
     # 尾部口径：偏移取在停 mock 前——F 等先前场景已在同一日志留过堆栈行，全量匹配会空过（虚证）
     $logOffset = (Get-Item $tLogPath).Length
     Stop-MockServer
+    Start-Sleep -Seconds 2 # 端口释放余量（与 Start-MockServer 同款 settle）
+    # 负控（38390521909/38391819136 两连红后补）：确认 mock 真的不可达——否则 75s 静默空转，
+    # 失败无法区分「widget 未刷新」与「mock 没停住」。可达即端口未释放，断网语义不成立，直接红。
+    $probeStatus = $null
+    try { $probeStatus = (Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 5).StatusCode } catch { }
+    if ($probeStatus) { Save-FullScreenshot "T-FAIL-mock-alive.png"; throw "断言失败（场景 T2 前置）：Stop-MockServer 后 mock 仍可达（HTTP $probeStatus）——端口未释放，断网语义不成立" }
     $deadline = (Get-Date).AddSeconds(75)
     $tWarn = $false
     while ((Get-Date) -lt $deadline)

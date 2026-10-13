@@ -101,6 +101,18 @@ public sealed class BigModelUsageProviderTests
         Assert.Null(usage.Rolling.ResetMs);
     }
 
+    [Fact]
+    public void ParseUsage_ZeroResetTime_IsNoResetInfo()
+    {
+        // 月度 MCP 窗真实响应常给 nextResetTime=0（无重置信息哨兵）——按缺省处理，
+        // 不渲染「01-01 00:00 重置」（38390521909 O1 失败输出实证）
+        var usage = BigModelUsageProvider.ParseUsage(
+            """{"data":{"limits":[{"type":"TIME_LIMIT","percentage":20,"nextResetTime":0}]}}""")!;
+
+        Assert.Equal(20, usage.Monthly!.Percent);
+        Assert.Null(usage.Monthly.ResetMs);
+    }
+
     [Theory]
     [InlineData("{}")] // 无 limits
     [InlineData("[]")] // 非对象

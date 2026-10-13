@@ -178,7 +178,9 @@ public sealed class BigModelUsageProvider : IWidgetProvider
                 double? percent = item.TryGetProperty("percentage", out var percentElement) && percentElement.ValueKind == JsonValueKind.Number
                     ? percentElement.GetDouble()
                     : null;
-                long? resetMs = item.TryGetProperty("nextResetTime", out var resetElement) && resetElement.ValueKind == JsonValueKind.Number && resetElement.TryGetInt64(out var ms)
+                // nextResetTime=0 是真实接口的「无重置信息」哨兵（月度 MCP 窗常给 0）——按缺省处理，
+                // 否则摘要渲染出「01-01 00:00 重置」（38390521909 的 O1 失败输出实证）
+                long? resetMs = item.TryGetProperty("nextResetTime", out var resetElement) && resetElement.ValueKind == JsonValueKind.Number && resetElement.TryGetInt64(out var ms) && ms > 0
                     ? ms
                     : null;
                 var window = new UsageWindow(percent, resetMs);
