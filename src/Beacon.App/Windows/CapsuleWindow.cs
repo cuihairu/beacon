@@ -207,19 +207,24 @@ public sealed partial class CapsuleWindow : Window
         return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
     }
 
+    /// <summary>外框物理尺寸 = 客户区需求（内容实测）+ 非客户区差值。AppWindow.Resize 收的是外框，
+    /// 直接喂客户区需求 → 底部 ~6px 不可见（无边框 presenter 仍保留 resize 边框），内容裁切
+    /// （2026-10-14 进度条缺陷单同型根因）。_sizePx 与 RestorePosition/SavePosition 的锚点数学
+    /// 同为外框口径，save/restore 往返不漂移。</summary>
+    private (int Width, int Height) FrameSizePx()
+    {
+        var client = MeasureSizePx();
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+        return (client.Width + chromeWidth, client.Height + chromeHeight);
+    }
+
     private void ApplySize()
     {
         if (_appWindow is null)
         {
             return;
         }
-        // 外框需求 = 客户区需求（内容实测）+ 非客户区差值：AppWindow.Resize 收的是外框，
-        // 直接喂客户区需求 → 底部 ~6px 不可见（无边框 presenter 仍保留 resize 边框），内容裁切
-        // （2026-10-14 进度条缺陷单同型根因）。_sizePx 记外框尺寸，RestorePosition/SavePosition
-        // 的锚点数学随之同口径（外框），save/restore 往返不漂移。
-        var client = MeasureSizePx();
-        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
-        _sizePx = (client.Width + chromeWidth, client.Height + chromeHeight);
+        _sizePx = FrameSizePx();
         if (_sizePx.Width == _appWindow.Size.Width && _sizePx.Height == _appWindow.Size.Height)
         {
             return;
@@ -238,7 +243,7 @@ public sealed partial class CapsuleWindow : Window
         var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
         var dpi = GetDpi();
         // 用实测尺寸而非 _appWindow.Size：Resize 刚发出时 Size 可能还是旧值，会把定位算偏
-        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : MeasureSizePx();
+        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
 
         if (layout is null)
         {
@@ -269,7 +274,7 @@ public sealed partial class CapsuleWindow : Window
     private void SavePosition()
     {
         var dpi = GetDpi();
-        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : MeasureSizePx();
+        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
         var monitor = MonitorService.FromPixel(_x + widthPx / 2, _y + heightPx / 2)
                       ?? MonitorService.Primary();
         if (monitor is null)
