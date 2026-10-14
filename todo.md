@@ -14,6 +14,7 @@
 > 2026-10-14 patrol-20261014-A5：F5t 首跑（38470370548）红出两因——①快捷方式名不匹配：app 侧 `Path.ChangeExtension(AppDomain.FriendlyName="Beacon.App", ".lnk")` 把 ".App" 当扩展名替换 → 实际文件名 "Beacon.lnk"（run 1/2 日志实证），F5t 查 "Beacon.App.lnk"（永不存在的文件名）→ 预删除空操作 + 检查必失；②级联红：F5t throw 跳过 F4 的 `Ensure-MockServer`（mock 停摆）→ G1/H1/K 全挂（三场景均不自备 mock）。修复：路径改 "Beacon.lnk"（51dd184）+ F5t 块移到 F5b 之后（F4 必先于任何 throw 执行）+ G/H/K 各加 `Ensure-MockServer` 防御。另：发布步 403 仍在（`gh release create` 403 on releases API，repo default=write + workflow contents:write 均在位但 token 无 release 端点权限——独立卡点，待查）。
 > 2026-10-14 patrol-20261014-A6：F5t 三跑仍红（38488861749，仅剩 F5t 一项）挖出**前提错误**：toolkit 7.1.3 根本不建开始菜单 .lnk——Show() 源码只有 `CreateToastNotifier().Show(notif)`（ToastContentBuilder.cs:430），「AUMID 自愈」真身 = Initialize() 首次触碰 ToastNotificationManagerCompat 时写 `HKCU\Software\Classes\AppUserModelId\<aumid>` 注册键（含 CustomActivator）。此前 A5 的「文件名不匹配」修法（查 Beacon.lnk）是错上修错。机制澄清：app 侧 CheckShortcutHealth（查 .lnk、每次启动必告警假阳性）改 CheckAumidHealth（查注册表 CustomActivator 键）；F5t 断言改预删 AUMID 注册键 → 重启后 30s 内 Initialize() 重建硬断言（Test-AumidKeyPresent），「Toast 发送失败」降级分支不变；RFC-001 §技术选型与 acceptance-checklist D1 同步更正。**复证绿（38494525200）：场景 F5t 通过——预置删除注册键后 Initialize() 重建 AppUserModelId 键。**
 > 2026-10-14 用户四单收口（批3-补53）：看板默认全部+chip 点击过滤（活动 chip 实心高亮+概览头带源，过滤态可见）；本仓原无 i18n（grep 零命中），建 UiStrings 唯一机制（en/zh 双字典、空串=跟随系统）覆盖看板/托盘/设置新增项；贴边收起开关默认开（保持已发布行为），收起态点击细条=粘性展开；托盘 Open Beacon/Notifications 语义分化（B-503 意图出处 mvp-issues.md:266+原 App.xaml.cs:174）。e905a48+23660f8，1078 测试绿，run 38549671960 场景 W1-W4+J 全绿；三跑红皆脚本/取证锚非产品（面板失焦即隐藏、缓存 UIA 元素失效、Border 无 UIA peer 需补 SetName），修复 35bcfe2/b2f4bdd/23660f8。
+> 2026-10-15 patrol-20261015-P1014C：场景 X（行 55/60 右键 Pin 与两入口一致）——X1 面板 RecentList 事件行上 SendInput 合成右键（ContextFlyout）弹菜单，MenuFlyoutItem 按 Name「Unpin from desktop」UIA 命中后 Invoke，断言 widgets.json GLM pinned 翻转 + 悬浮 tile 移除；X2 重启 --settings 后先 Invoke module-bigmodel 行现出 widget 行，钉开关（pin-toggle-{id}）读态断言 Off 再 Toggle On，断言 widgets.json 落库 true + GLM tile 回归；X3 再重启同路读态断言 On + 行文本带「已钉」+ tile 回建——两入口同一落库链（Config.UpsertWidget + ReloadWidgets）实证，勾行 55/60。三跑红皆脚本锚非产品：InvokeableListItem 不报 ListItem ControlType（Find-PanelRow 改 TrueCondition+Name 匹配+向上限深找 ListItem 祖先）；悬浮模式 unpin 即注销 widget（面板无行可再右键，反向必须由设置入口驱动=更强的两入口一致性证据）。修复 cdd05ad/7822aae，复证 run 38590456994 全绿。
 
 ## 决策记录
 
@@ -25,7 +26,7 @@
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
-## MVP 待验/未修项（50 项 = 25 勾 / 25 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
+## MVP 待验/未修项（50 项 = 27 勾 / 23 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；唤起气泡属 OS Toast 面，需装机半）
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；手势注入与跨 DPI 拓扑需装机半）
@@ -52,12 +53,12 @@
 - [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘（托盘图标像素不可脚本取证，见决策记录；tile 层已代验：场景 G7a 38% 到 95% 75s 内反映）
 - [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致（场景 F2 tile + O 面板 + Q 胶囊三面已代验）
 - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（CI 已代验缓存无白屏 + 面板可关：场景 K2/K3；Esc 键盘注入与 100ms 精确计时需装机半）
-- [ ] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S 已代验；右键 Pin 无 UIA 入口，需装机）
+- [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 UIA Invoke 开详情 + U1-U5 Retry 全链已代验）
 - [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面（刷新不打断已代验：场景 H1 前台句柄不变；空白点击穿透需装机半）
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a 两 tile 独立 + H WS_EX_TOOLWINDOW 置位已代验）
 - [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放手感需装机半）
-- [ ] 两种入口（设置开关/右键 Pin）行为一致并持久化（右键 Pin 在 L2 面板内无 UIA 锚点，需装机）
+- [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
 - [ ] 非准入类型在两处入口均不可钉（需真实右键交互，CI 不可达）
 - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件需装机半）
 - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）
