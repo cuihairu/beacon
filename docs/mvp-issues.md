@@ -1278,5 +1278,6 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **红因②（W3）**：「点 chip-智谱 后 OVERVIEW 头未带·智谱」——失败截图 W-FAIL-no-filter.png 实证：GLM/DeepSeek 浮 tile 窗 z 序在面板之上、恰好压住 chip 行。UIA 找得到 chip（树含被遮挡元素）、落点也准，但 SendInput 打到最上层 tile 窗——过滤永不触发。tile 落位随前序场景配置/状态迁移漂移，纯落位运气（前两跑绿、本跑红）。
 - **修法②**：W3 点击前把全部「Beacon Tile」/「Beacon Pinned」窗经新增 `WinEnum.MoveNoFocus`（SetWindowPos，SWP_NOZORDER|NOSIZE|NOACTIVATE——移位不改叠层不抢焦点）挪到面板正下方横排（x=panel.Left，y=panel.Bottom+4+60·i）——落位由面板矩形推导，与运气无关；W3/W4 无任何 tile 视觉断言，挪移零副作用。
 - **X 面复证**：38633490811 X 全绿——Get-ClickPoint 行右键+菜单点击两处 NaN 防护过跑（批3-补57 修法独立成立）。
-- **验证**：CI 文件改动门禁=本地全量 1078 绿（Core 368/Actions 27/Connections 652/Storage 31）+ mkdocs strict 已知基线；nightly 复证 V4/W3/X 绿后行 50 引擎链半转「已代验」。
+- **首复证跑即红（38643228326，3m34s）与本地门建立**：本批 W3 挪窗两行写成 `[WinEnum]::RectOf $panel` 裸参数——`::` 静态方法调用的参数必须入括号，裸 `$var` 紧跟表达式即 ParserError（「Unexpected token」），脚本启动即死。修法 15b265e 两行改括号参数；**同时建立本地 PS 门**（此前本仓 PS 改动零门禁、人工核已烧两轮 CI）：`dotnet tool install -g PowerShell` 后（a）`Parser::ParseFile` 全文解析拦 ParserError 类、（b）提取 Add-Type here-string 本地 Roslyn 编译拦 CS 类，两门均 CLEAN 后才推。门的不完备面：workflow 步 `shell: pwsh` 只做 parse+触发脚本头自重启，**正文实际跑 Windows PowerShell 5.1**（UIA 程序集需 5.1，脚本头 Major≠5 即 `& powershell.exe` 重入）——pwsh-7-only 语法本地过而 5.1 炸，仍需人工对照；探针恒抛结论不受影响（探针在 5.1 正文里跑）。
+- **验证**：CI 文件改动门禁=本地全量 1078 绿（Core 368/Actions 27/Connections 652/Storage 31）+ mkdocs strict 已知基线 + 本地 parse/Add-Type 双门 CLEAN；nightly 复证 V4/W3/X 绿后行 50 引擎链半转「已代验」。
 - **遗留**：行 50（「无打断」观感 + Toast 呈现面）与行 31（唤起气泡呈现）维持装机半。
