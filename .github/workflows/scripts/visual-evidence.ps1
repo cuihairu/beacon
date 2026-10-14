@@ -3389,7 +3389,9 @@ Stop-MockServer
 
 # —— 场景 W：看板 i18n 与语言切换 + chip 点击过滤 + 贴边收起开关（2026-10-14 用户单①②③④）——
 # W1 预置 language=zh 启动：快速面板文案中文（通知/全部已读/概览）——「看板缺中文」修复实证
-# W2 设置页切 English：面板即时翻英文（NOTIFICATIONS/Mark all read/OVERVIEW）+ config.json language=en 落盘
+# W2 设置页切 English：面板重开后翻英文（NOTIFICATIONS/Mark all read/OVERVIEW）+ config.json language=en 落盘
+#    （面板失焦即隐藏=设计行为：设置窗激活 → 面板 Deactivated → Hide；切换在隐藏期间经 LanguageChanged
+#    广播完成重画，重开面板应见新语言、无需重启进程——首跑 38525961627 在隐藏态读 UIA 得空文本红）
 # W3 chip 点击过滤：点 chip-智谱 → OVERVIEW 头带「· 智谱」（当前类目界面可见）；点 chip-all 回全部
 # W4 贴边收起开关：Toggle off→on，config.json edgeCollapseEnabled false→true（开关可切换可落盘；
 #    收起细条宽度断言见场景 P；「点击细条粘性展开」手势半转装机——SendInput 对 12 DIP 细条点击
@@ -3463,6 +3465,31 @@ try
         Start-Sleep -Milliseconds 400
     }
     if (!$cfgOk) { Save-FullScreenshot "W-FAIL-config-lang.png"; throw "断言失败（场景 W2）：切 English 后 config.json 无 language=en——语言选择未落盘" }
+    # 面板失焦即隐藏（QuickPanelWindow OnActivated：Deactivated → Hide，设计行为）：设置窗激活后面板
+    # 已隐藏，隐藏态读 UIA 得空文本（首跑 38525961627 红因）。重开面板验新语言：可见则直接读，
+    # 隐藏则经热键重开（SendInput 和弦 + WM_HOTKEY 双路，与 W1 前置同款）——重开见 English 即切换生效
+    if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -lt 1)
+    {
+        [WinEnum]::SendChord(0x11, 0x42)
+        $deadline = (Get-Date).AddSeconds(3)
+        while ((Get-Date) -lt $deadline)
+        {
+            if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -ge 1) { break }
+            Start-Sleep -Milliseconds 250
+        }
+        $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+        if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+        if ($msgWindow -ne [IntPtr]::Zero)
+        {
+            [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId
+            $deadline = (Get-Date).AddSeconds(5)
+            while ((Get-Date) -lt $deadline)
+            {
+                if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -ge 1) { break }
+                Start-Sleep -Milliseconds 250
+            }
+        }
+    }
     $panelTexts = @()
     $deadline = (Get-Date).AddSeconds(8)
     while ((Get-Date) -lt $deadline)
@@ -3474,9 +3501,9 @@ try
     if (!($panelTexts -contains "NOTIFICATIONS") -or !($panelTexts -contains "Mark all read") -or !($panelTexts -contains "OVERVIEW"))
     {
         Save-FullScreenshot "W-FAIL-live-switch.png"
-        throw "断言失败（场景 W2）：切 English 后看板未即时翻英文（实际：$($panelTexts -join ' | ')）——语言切换即时生效回归"
+        throw "断言失败（场景 W2）：切 English 后重开面板未见英文（实际：$($panelTexts -join ' | ')）——语言切换生效回归"
     }
-    Write-Host "场景 W2 通过：设置切 English → 看板即时翻英文 + config.json language=en 落盘"
+    Write-Host "场景 W2 通过：设置切 English → 重开面板见英文（隐藏期已重画）+ config.json language=en 落盘"
     # W3 chip 点击过滤：点 chip-智谱 → OVERVIEW 头带「· 智谱」；点 chip-all 回纯 OVERVIEW
     $chip = Find-UiaById $panelRoot "chip-智谱" 8
     if (!$chip) { Save-FullScreenshot "W-FAIL-no-chip.png"; throw "断言失败（场景 W3）：面板未找到 chip-智谱（AutomationId 缺失或 chip 未渲染）" }
@@ -3540,6 +3567,7 @@ try
 }
 catch
 {
+    Stop-Beacon # 失败也收尸：W 的 try 尾 Stop-Beacon 在 throw 时被跳过，残留进程曾毒化场景 J 静默安装（38525961627）
     Save-FullScreenshot "W-FAIL-unexpected.png"
     $failures.Add("场景 W：$($_.Exception.Message)")
     Write-Host "::error::场景 W 断言失败：$($_.Exception.Message)"
@@ -3556,6 +3584,7 @@ try
     else
     {
         Write-Host "场景 J：静默安装 $($setup.Name)"
+        Stop-Beacon # 防御：不依赖前一场景收尸（W 失败跳过 Stop-Beacon 时安装撞运行中进程，退出码 1——38525961627）
         $proc = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -PassThru -Wait
         if ($proc.ExitCode -ne 0)
         {
