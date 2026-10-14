@@ -1271,3 +1271,12 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **E1b（8b4b82b 新增，降级非红）**：二次启动唤起气泡「Beacon 已在运行」12s UIA 轮询未现于无头会话（toast 基础设施不可用或专注助手抑制）→ 按设计 ::warning 转装机（F5t/G7c 同口径）；E1 进程半已绿，行 31 呈现半维持装机。
 - **验证**：CI 文件改动门禁全量 1078 测试绿（Core 368/Actions 27/Connections 652/Storage 31）；mkdocs strict 维持已知基线告警（troubleshooting.md 链 ../README.md，干净 HEAD 同在）；待 nightly 复证 V4/X 绿后行 50 引擎链半转「已代验」。
 - **遗留**：行 50（「无打断」观感 + Toast 呈现面）与行 31（唤起气泡呈现）维持装机半。
+
+### 批3-补58 V4 前置裸探针假红消解 + W3 浮 tile 遮挡防护（2026-10-15 patrol P1014E 二轮，commit f42f822 首跑 38633490811 红两处 + 本批收口）
+- **红因①（V4 前置）**：批3-补57 新增的 mock 探针 5 次全败 → 前置红 V-FAIL-mock-cold——但 V1/V2 恰在同一 mock 上绿（V1 需刷新成功注入才达 L0）。读全程日志锁因：**本 CI 会话 PS 5.1 `Invoke-WebRequest`（无 `-UseBasicParsing`）恒抛**（IE 解析引擎不可用，响应永远解析不了），探针永远「失败」。铁证：绿跑 38608625892 同款全程 11 次「mock HTTP server 已监听」假重启信号（Ensure-MockServer 探针 3 败→无谓 Stop/Start），T/U/V/W 每场景起头都重启——脚本从未依赖探针成功，f42f822 是首个以探针 200 为门的设计，故必假红；红跑与绿跑重启次数完全一致（11=11），mock 本身无恙。
+- **修法①**：V4 前置改走 `Ensure-MockServer`（重启收尾带作业态 Running 校验，38440205547 起全场景统一助手）——重启先于本场景启动完成，首跳刷新必命中已绑定监听，冷却竞态不可发；块内注释明令本会话禁以裸探针 200 为门。既有探针（Stop/Ensure 内）一字不改：其恒抛正是「每场景无谓重启」常态的组成部分，改探针反而改变 mock 生命周期语义。
+- **红因②（W3）**：「点 chip-智谱 后 OVERVIEW 头未带·智谱」——失败截图 W-FAIL-no-filter.png 实证：GLM/DeepSeek 浮 tile 窗 z 序在面板之上、恰好压住 chip 行。UIA 找得到 chip（树含被遮挡元素）、落点也准，但 SendInput 打到最上层 tile 窗——过滤永不触发。tile 落位随前序场景配置/状态迁移漂移，纯落位运气（前两跑绿、本跑红）。
+- **修法②**：W3 点击前把全部「Beacon Tile」/「Beacon Pinned」窗经新增 `WinEnum.MoveNoFocus`（SetWindowPos，SWP_NOZORDER|NOSIZE|NOACTIVATE——移位不改叠层不抢焦点）挪到面板正下方横排（x=panel.Left，y=panel.Bottom+4+60·i）——落位由面板矩形推导，与运气无关；W3/W4 无任何 tile 视觉断言，挪移零副作用。
+- **X 面复证**：38633490811 X 全绿——Get-ClickPoint 行右键+菜单点击两处 NaN 防护过跑（批3-补57 修法独立成立）。
+- **验证**：CI 文件改动门禁=本地全量 1078 绿（Core 368/Actions 27/Connections 652/Storage 31）+ mkdocs strict 已知基线；nightly 复证 V4/W3/X 绿后行 50 引擎链半转「已代验」。
+- **遗留**：行 50（「无打断」观感 + Toast 呈现面）与行 31（唤起气泡呈现）维持装机半。
