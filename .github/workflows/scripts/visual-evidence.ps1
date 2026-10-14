@@ -3505,6 +3505,9 @@ try
     }
     Write-Host "场景 W2 通过：设置切 English → 重开面板见英文（隐藏期已重画）+ config.json language=en 落盘"
     # W3 chip 点击过滤：点 chip-智谱 → OVERVIEW 头带「· 智谱」；点 chip-all 回纯 OVERVIEW
+    # 重取面板根：W2 隐藏/重开 + LanguageChanged 全量重画后，W1 缓存的 AutomationElement 已失效
+    # （FindFirst 空转——38533804493 W3 红因，失败截图实证 chip 实际在树：All 2/DeepSeek 1/智谱 1）
+    $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
     $chip = Find-UiaById $panelRoot "chip-智谱" 8
     if (!$chip) { Save-FullScreenshot "W-FAIL-no-chip.png"; throw "断言失败（场景 W3）：面板未找到 chip-智谱（AutomationId 缺失或 chip 未渲染）" }
     try { $pt = $chip.GetClickablePoint(); $cx = [int]$pt.X; $cy = [int]$pt.Y } catch { $r = $chip.Current.BoundingRectangle; $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2) }
@@ -3523,6 +3526,8 @@ try
         throw "断言失败（场景 W3）：点 chip-智谱 后 OVERVIEW 头未带「· 智谱」（实际：$($panelTexts -join ' | ')）——点击过滤/可见态回归"
     }
     Write-Host "场景 W3 通过：点 chip-智谱 → OVERVIEW 头「OVERVIEW · 智谱」（当前类目界面可见）"
+    # 点 chip-智谱 触发 ApplySourceFilter 全量重画 → 缓存根再失效一次，找 chip-all 前重取
+    $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
     $chipAll = Find-UiaById $panelRoot "chip-all" 5
     if (!$chipAll) { Save-FullScreenshot "W-FAIL-no-chip-all.png"; throw "断言失败（场景 W3）：面板未找到 chip-all（「全部」chip 缺失）" }
     try { $pt = $chipAll.GetClickablePoint(); $cx = [int]$pt.X; $cy = [int]$pt.Y } catch { $r = $chipAll.Current.BoundingRectangle; $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2) }
