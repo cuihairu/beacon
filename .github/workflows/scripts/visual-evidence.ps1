@@ -1676,8 +1676,11 @@ try
         Write-Host "场景 G2 第${round}轮通过：非法色回退默认绿（品红 $magenta / 绿 $green px），进程存活"
     }
     Write-Host "场景 G2 通过：非法颜色回退不崩溃且重启保持"
-    # G3-G6 设置页驱动：改色即时生效+落盘、重置默认、动效档位/强度持久化、重启恢复选中
-    Write-GConfig ""
+    # G3-G6 设置页驱动：改色即时生效+落盘、重置默认、动效档位/强度持久化、重启恢复选中。
+    # showCapsule=true：胶囊 OverallLight 与 tile 同源（UiPalette 每次渲染实时读 config），
+    # G4/G5 顺带像素断言「设置改级别色后胶囊同步变色」（todo 行 67 胶囊半；标题「Beacon Status」同 Q 场景）；
+    # L 场景 :2203 重播种回 showCapsule=false，胶囊只存活于 G3-G7 会话
+    Write-GConfig "" "off" 1.0 $false $true
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow
     if (!$settings)
@@ -1735,6 +1738,42 @@ try
         throw "断言失败（场景 G4）：20s 内 GLM tile 橙色像素 $orange（期望 ≥8）——改色后渲染链未用新色（palette 渲染时读 config 失效）"
     }
     Write-Host "场景 G4 通过：设置改成功色 #ff8800 → config 落盘 + GLM tile 下一渲染 tick 换橙（$orange px，无重启）"
+    # G4 胶囊半（todo 行 67：胶囊原记「像素不可脚本取证」——实测与 tile 同机制，可断言）：
+    # OverallLight.Fill 走同一 UiPalette.SeverityColor（Ø9 DIP 灯）→ 改色后下一聚合 tick 同步换橙，
+    # 同 tile 轮询口径；窗口默认右下角（tile 右上角级联，无重叠），UiOpacity 默认 1.0 无混色
+    $capsuleHandle = [IntPtr]::Zero
+    $capsuleDeadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $capsuleDeadline)
+    {
+        $capsuleHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+        if ($capsuleHandles.Count -ge 1) { $capsuleHandle = $capsuleHandles[0]; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if ($capsuleHandle -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "G4-FAIL-no-capsule.png"
+        throw "断言失败（场景 G4）：showCapsule=true 启动未见「Beacon Status」胶囊窗"
+    }
+    $capsuleOrange = 0
+    $capsuleCrop = $null
+    $capsuleDeadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $capsuleDeadline)
+    {
+        $crop = New-Crop ([WinEnum]::RectOf($capsuleHandle)) 0
+        $capsuleOrange = Count-ColorPixels $crop 255 136 0 45
+        if ($capsuleCrop) { $capsuleCrop.Dispose() }
+        $capsuleCrop = $crop
+        if ($capsuleOrange -ge 8) { break }
+        Start-Sleep -Seconds 3
+    }
+    Save-Zoom $capsuleCrop "G4-capsule-orange-live.png" 6
+    $capsuleCrop.Dispose()
+    # 阈值同 tile 口径：Ø9 灯失效模式（改色未生效）=0 px 橙 → 8
+    if ($capsuleOrange -lt 8)
+    {
+        throw "断言失败（场景 G4）：20s 内胶囊灯橙色像素 $capsuleOrange（期望 ≥8）——胶囊未随级别色同步变色"
+    }
+    Write-Host "场景 G4 通过：胶囊 OverallLight 同步换橙（$capsuleOrange px，无重启）"
     # G5 重置默认一键还原
     $reset = Find-UiaById $settings "appearance-reset-button" 10
     if (!$reset) { throw "断言失败（场景 G5）：UIA 未找到 appearance-reset-button" }
@@ -1765,6 +1804,23 @@ try
     # 同 G2/G4 阈值依据：同 Ø8 灯亚像素实测 10~44 px，失效模式（重置未回渲染）=0 px → 8
     if ($green -lt 8) { throw "断言失败（场景 G5）：20s 内重置默认绿未回渲染（$green px，期望 ≥8）" }
     Write-Host "场景 G5 通过：重置默认 → severityColors 清空 + tile 回默认绿（$green px）"
+    # G5 胶囊半：重置后胶囊灯同源回默认绿（$capsuleHandle 沿用 G4 所取，同会话未重启；同 tile 轮询口径）
+    $capsuleGreen = 0
+    $capsuleCrop = $null
+    $capsuleDeadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $capsuleDeadline)
+    {
+        $crop = New-Crop ([WinEnum]::RectOf($capsuleHandle)) 0
+        $capsuleGreen = Count-ColorPixels $crop 63 185 80 45
+        if ($capsuleCrop) { $capsuleCrop.Dispose() }
+        $capsuleCrop = $crop
+        if ($capsuleGreen -ge 8) { break }
+        Start-Sleep -Seconds 3
+    }
+    Save-Zoom $capsuleCrop "G5-capsule-green-back.png" 6
+    $capsuleCrop.Dispose()
+    if ($capsuleGreen -lt 8) { throw "断言失败（场景 G5）：20s 内胶囊灯默认绿未回渲染（$capsuleGreen px，期望 ≥8）" }
+    Write-Host "场景 G5 通过：胶囊 OverallLight 回默认绿（$capsuleGreen px）"
     # G6 动效档 off + 强度 1.5 落盘
     Select-ComboItemById $settings $motionBox "motion-off"
     Start-Sleep -Seconds 2
