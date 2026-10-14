@@ -984,6 +984,33 @@ function Get-UiaListSummaries([System.Windows.Automation.AutomationElement] $roo
     return ,@($summaries)
 }
 
+# 场景 X 用：按摘要文本锚定 RecentList 事件行，返回右键落点元素。命中元素沿控制视图向上找 ListItem
+# 祖先取整行矩形；无 ListItem（InvokeableListItem 自定义 peer，不报 ListItem ControlType——run
+# 38571373088 实证 ControlType 过滤 40s 零命中）时停在命中元素自身，绝不越界到 ListView 整框。
+function Find-PanelRow([System.Windows.Automation.AutomationElement] $root, [string] $nameRegex)
+{
+    $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+    foreach ($item in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+    {
+        try
+        {
+            if ($item.Current.Name -notmatch $nameRegex) { continue }
+            $rowAnchor = $item
+            $node = $item
+            for ($depth = 0; $depth -lt 8; $depth++)
+            {
+                $parent = $walker.GetParent($node)
+                if ($null -eq $parent) { break }
+                if ($parent.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem) { $rowAnchor = $parent; break }
+                $node = $parent
+            }
+            return $rowAnchor
+        }
+        catch { }
+    }
+    return $null
+}
+
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
 {
     ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
@@ -3699,12 +3726,7 @@ try
     {
         $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
         $recentRoot = Find-UiaById $panelEl "RecentList" 5
-        if ($recentRoot)
-        {
-            $rows = $recentRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
-                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
-            if (@($rows).Count -ge 1) { $glmRow = $rows | Where-Object { $_.Current.Name -match '已用 38%' } | Select-Object -First 1 }
-        }
+        if ($recentRoot) { $glmRow = Find-PanelRow $recentRoot '已用 38%' }
         if ($glmRow) { break }
         Start-Sleep -Seconds 2
     }
@@ -3761,12 +3783,7 @@ try
     {
         $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
         $recentRoot = Find-UiaById $panelEl "RecentList" 5
-        if ($recentRoot)
-        {
-            $rows = $recentRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
-                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
-            if (@($rows).Count -ge 1) { $glmRow = $rows | Where-Object { $_.Current.Name -match '已用 38%' } | Select-Object -First 1 }
-        }
+        if ($recentRoot) { $glmRow = Find-PanelRow $recentRoot '已用 38%' }
         if ($glmRow) { break }
         Start-Sleep -Seconds 2
     }
