@@ -1011,6 +1011,24 @@ function Find-PanelRow([System.Windows.Automation.AutomationElement] $root, [str
     return $null
 }
 
+# UIA 点击落点解析（X1 行右键/菜单点击、W3 chip 点击共用）：38619441591 X 红实证——RecentList 行被
+# 虚拟化或刷新 tick 重建中途时，UIA BoundingRectangle 返 NaN 矩形，[int] 转换直接炸（"Cannot convert
+# value NaN to Int32"），无任何断言消息。优先 GetClickablePoint（元素不可点时抛 PointUnavailableException
+# 而非返 NaN），退回矩形中心；NaN/空/解析失败一律返 $null，由调用方判失败或整链重试。
+function Get-ClickPoint([System.Windows.Automation.AutomationElement] $element)
+{
+    try
+    {
+        $pt = $element.GetClickablePoint()
+        if (-not [double]::IsNaN($pt.X) -and -not [double]::IsNaN($pt.Y)) { return @( [int]$pt.X, [int]$pt.Y ) }
+    }
+    catch { }
+    $r = $null
+    try { $r = $element.Current.BoundingRectangle } catch { }
+    if ($null -eq $r -or $r.IsEmpty -or [double]::IsNaN($r.X) -or [double]::IsNaN($r.Y) -or [double]::IsNaN($r.Width) -or [double]::IsNaN($r.Height)) { return $null }
+    return @( [int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2) )
+}
+
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
 {
     ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
@@ -3360,11 +3378,13 @@ catch
 #   渲染 Critical 默认色 #ff3b30（V1 像素硬断言；与 Error #f85149 G/B 通道差 22/25，tol12 互不误吞）+
 #   Critical 脉冲自 reduced 档挂载（V2 帧差分尽力取证；Composition 属性动画 CI 会话不可证时 ::warning
 #   转装机——G7c 同口径，色断言不受降级影响）。
+# V4（行 50 Toast 引擎面）注入 Critical → 通知引擎恰 1 条 critical 记录；冷却竞态消解见 V4 块内注。
 # BEACON_DEBUG_CRASH=90：90s 后 UI 线程抛未处理异常 → DispatcherQueueGuard 兜底（V3 硬断言：
 #   日志「DispatcherQueue unhandled exception」+堆栈「   at 」、进程数 1、零 #32770 对话框、tile 窗仍在、
 #   崩溃行之后仍有「refreshed ok」——刷新循环不因兜底中断）。历史：裸 TryEnqueue 回调异常在 WinUI 3
 #   无系统路由（38459944253 V3 红实证，进程直接退出），由此建 EnqueueGuarded 全量接管 UI 派发。
-# 两注入均为环境变量门控、Start-Process 后即撤——后续场景与安装链零泄漏。
+# 两注入均为环境变量门控：首启 Start-Process 后即撤、V4 独立重启时重设（V2/V3 同享该实例），
+# catch 末行兜底清除——后续场景与安装链零泄漏。
 try
 {
     Stop-Beacon
@@ -3401,28 +3421,7 @@ try
     if ($critPx -lt 8) { Save-FullScreenshot "V-FAIL-no-critical.png"; throw "断言失败（场景 V1）：Critical 档位色未渲染（#ff3b30 $critPx px，期望 ≥8）——注入未达 L0 或调色回归" }
     if ($errPx -gt 4) { Save-FullScreenshot "V-FAIL-error-leak.png"; throw "断言失败（场景 V1）：Error 色 $errPx px 渗漏（期望 ≤4）——注入判级错档（Critical 误判 Error）" }
     Write-Host "场景 V1 通过：注入 Critical → tile 状态灯 #ff3b30（$critPx px），Error 色 $errPx px 无渗漏"
-    # V4 Critical 通知引擎链（todo 行 50「Toast 照常由通知引擎发出」半）：Success→Critical 跨界触发
-    # builtin.connection-degraded（任意 widget ≥Warning）投递恰 1 条——记录面硬断言（F5 同口径：
-    # 冷却 15min + 跨越语义唯一化）；Toast 呈现面与 F5 同转装机。severity 为 camelCase 枚举串（BeaconJson）。
-    $vNotifPath = Join-Path $configDir "notifications.json"
-    $vRecords = @()
-    $deadline = (Get-Date).AddSeconds(60)
-    while ((Get-Date) -lt $deadline)
-    {
-        if (Test-Path $vNotifPath)
-        {
-            $vRecords = @(Get-Content $vNotifPath -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
-            if ($vRecords.Count -ge 1) { break }
-        }
-        Start-Sleep -Seconds 3
-    }
-    $vCrit = @($vRecords | Where-Object { "$($_.severity)" -eq "critical" })
-    if ($vCrit.Count -ne 1)
-    {
-        Save-FullScreenshot "V-FAIL-critical-record.png"
-        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1）——注入 Critical 未触发通知引擎投递（行 50 Toast 半回归）"
-    }
-    Write-Host "场景 V4 通过：注入 Critical → 通知引擎恰 1 条 critical 记录（connection-degraded 跨界）——Toast 引擎面在案，呈现面同 F5 转装机"
+    # V4（行 50 Toast 引擎面）在 V2 之后独立重启自证——冷却竞态消解见其块内注
     # V2 Critical 脉冲（尽力取证）：脉冲 = Scale 1.0→1.35→1.0 周期 1000ms，三帧 700ms 间隔必跨相位；
     # 灯 Ø8→Ø10.8 环域 ~40px²，阈值 8 为保守下界。差分不成 → ::warning 转装机（G7c 降级同口径，非红）
     $pulseDiff = 0
@@ -3469,6 +3468,47 @@ try
         if ($best3) { $best3.Dispose() }
         Write-Host "::warning::场景 V2：Critical 脉冲帧差分 $pulseDiff px（期望 ≥8）——Composition 属性动画在本 CI 会话不可证（G7c/L2 同口径），Critical 脉冲观感转装机目检；V1 色断言不受影响"
     }
+    # V4 Critical 通知引擎链（todo 行 50「Toast 照常由通知引擎发出」半）：注入 Critical → Success→Critical
+    # 跨界触发 builtin.connection-degraded（任意 widget ≥Warning）投递恰 1 条 critical 记录——记录面硬断言
+    # （severity 为 camelCase 枚举串，BeaconJson StringEnumConverter）；Toast 呈现面与 F5 同转装机。
+    # 独立重启消竞态（38619441591 V4 红实证）：connection-degraded 冷却按 (规则,widget) 键且跨级别共享——
+    # 首启实例的 GLM 首跳刷新若撞上 Ensure-MockServer 重启后的 bind 窗（连接被拒），PublishStale 会先发一条
+    # Warning 记录并武装 15min 冷却（WidgetHost:174 无缓存亦发 Warning），随后注入的 Critical 被去重吞掉：
+    # 表现为「GLM 记录存在但零 critical」+ V1 已绿（注入确达 L0）。故 V4 自启新实例：mock 探针确认热态
+    # （首跳刷新必成）+ notifications.json 删净 + 新引擎冷却表空 → 首个 GLM 事件即注入 Critical。
+    # V3 的崩溃基线随之移到本次启动（Stop-Beacon 在 +70s 内收掉首启实例，其 +90s 注入未及触发）。
+    Stop-Beacon
+    $vNotifPath = Join-Path $configDir "notifications.json"
+    Remove-Item $vNotifPath -Force -ErrorAction SilentlyContinue # 新引擎水合源清空，记录集从零起
+    $mockHot = $false
+    for ($i = 0; $i -lt 5 -and !$mockHot; $i++)
+    {
+        try { $mockHot = ((Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 3).StatusCode -eq 200) } catch { }
+        Start-Sleep -Seconds 1
+    }
+    if (!$mockHot) { Save-FullScreenshot "V-FAIL-mock-cold.png"; throw "断言失败（场景 V4 前置）：mock 探针 5 次未 200——首跳刷新不可保证成功，冷却竞态不可消" }
+    $env:BEACON_DEBUG_SEVERITY = "critical"
+    $env:BEACON_DEBUG_CRASH = "90"
+    $vProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -PassThru
+    $vRecords = @()
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (Test-Path $vNotifPath)
+        {
+            $vRecords = @(Get-Content $vNotifPath -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
+            if ($vRecords.Count -ge 1) { break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    $vCrit = @($vRecords | Where-Object { "$($_.severity)" -eq "critical" })
+    if ($vCrit.Count -ne 1)
+    {
+        $sevDump = ($vRecords | ForEach-Object { "$($_.severity)" }) -join ","
+        Save-FullScreenshot "V-FAIL-critical-record.png"
+        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1，实为 $($vRecords.Count) 条 severity=$sevDump）——首跳刷新失败致 Warning 先行投递+15min 冷却武装，注入 Critical 被去重（行 50 Toast 半回归）"
+    }
+    Write-Host "场景 V4 通过：注入 Critical → 通知引擎恰 1 条 critical 记录（connection-degraded 跨界）——Toast 引擎面在案，呈现面同 F5 转装机"
     # V3 崩溃兜底（注入点 = 启动后 90s）：等「DispatcherQueue unhandled exception」落日志——注入走
     # EnqueueGuarded（38459944253 V3 红实证：裸 TryEnqueue 回调异常无系统路由，进程直接退出，由此建 guard）
     $crashIdx = -1
@@ -3660,8 +3700,9 @@ try
     $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
     $chip = Find-UiaById $panelRoot "chip-智谱" 8
     if (!$chip) { Save-FullScreenshot "W-FAIL-no-chip.png"; throw "断言失败（场景 W3）：面板未找到 chip-智谱（AutomationId 缺失或 chip 未渲染）" }
-    try { $pt = $chip.GetClickablePoint(); $cx = [int]$pt.X; $cy = [int]$pt.Y } catch { $r = $chip.Current.BoundingRectangle; $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2) }
-    [WinEnum]::ClickAt($cx, $cy) # 面板常置顶，绝对坐标点击命中面板
+    $chipPt = Get-ClickPoint $chip
+    if (!$chipPt) { Save-FullScreenshot "W-FAIL-no-chip-point.png"; throw "断言失败（场景 W3）：chip-智谱 落点不可解析（UIA 矩形 NaN/空）——chip 未渲染或面板布局未稳" }
+    [WinEnum]::ClickAt($chipPt[0], $chipPt[1]) # 面板常置顶，绝对坐标点击命中面板
     $filtered = $false
     $deadline = (Get-Date).AddSeconds(6)
     while ((Get-Date) -lt $deadline)
@@ -3680,8 +3721,9 @@ try
     $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
     $chipAll = Find-UiaById $panelRoot "chip-all" 5
     if (!$chipAll) { Save-FullScreenshot "W-FAIL-no-chip-all.png"; throw "断言失败（场景 W3）：面板未找到 chip-all（「全部」chip 缺失）" }
-    try { $pt = $chipAll.GetClickablePoint(); $cx = [int]$pt.X; $cy = [int]$pt.Y } catch { $r = $chipAll.Current.BoundingRectangle; $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2) }
-    [WinEnum]::ClickAt($cx, $cy)
+    $chipAllPt = Get-ClickPoint $chipAll
+    if (!$chipAllPt) { Save-FullScreenshot "W-FAIL-no-chipall-point.png"; throw "断言失败（场景 W3）：chip-all 落点不可解析（UIA 矩形 NaN/空）——「全部」chip 未渲染或面板布局未稳" }
+    [WinEnum]::ClickAt($chipAllPt[0], $chipAllPt[1])
     $backToAll = $false
     $deadline = (Get-Date).AddSeconds(6)
     while ((Get-Date) -lt $deadline)
@@ -3784,6 +3826,8 @@ try
     # Invoke→ClickAt + 整链重试两轮：38602176751 实证 flyout 开启动画期 InvokePattern.Invoke 可能被吞
     # （菜单命中、Invoke 已调、widgets.json 不翻、flyout 已关、tile 仍在）——真实鼠标点击不吃动画竞态；
     # 点击后 15s 未翻则整链重来（上一轮弹层无论命中/落空均已关闭，右键重开新 flyout，无状态残留）。
+    # 落点走 Get-ClickPoint（38619441591 X 红实证：行/菜单项 UIA 矩形返 NaN，[int] 转换直接炸且无断言消息）
+    # ——NaN/空矩形按落空处理走整链重试，不炸。
     $unpinned = $false
     $menuSeen = $false
     for ($attempt = 1; $attempt -le 2 -and !$unpinned; $attempt++)
@@ -3804,8 +3848,13 @@ try
             }
             if (!$glmRow) { Save-FullScreenshot "X-FAIL-no-glm-row.png"; throw "断言失败（场景 X1）：重试时 RecentList 无 GLM 事件行（38%）" }
         }
-        $rect = $glmRow.Current.BoundingRectangle
-        [WinEnum]::RightClick([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+        $rowPt = Get-ClickPoint $glmRow
+        if (!$rowPt)
+        {
+            Write-Host "场景 X1：第 $attempt 次行落点不可解析（UIA 矩形 NaN/空——行被虚拟化或刷新重建中），整链重试"
+            continue
+        }
+        [WinEnum]::RightClick($rowPt[0], $rowPt[1])
         $menuItem = $null
         $deadline = (Get-Date).AddSeconds(5)
         while ((Get-Date) -lt $deadline)
@@ -3830,8 +3879,13 @@ try
         }
         $menuSeen = $true
         Start-Sleep -Milliseconds 600 # flyout 开启动画走完再点击（动画期 UIA 模式调用不可靠）
-        $menuRect = $menuItem.Current.BoundingRectangle
-        [WinEnum]::ClickAt([int]($menuRect.X + $menuRect.Width / 2), [int]($menuRect.Y + $menuRect.Height / 2))
+        $menuPt = Get-ClickPoint $menuItem
+        if (!$menuPt)
+        {
+            Write-Host "场景 X1：第 $attempt 次菜单项落点不可解析（UIA 矩形 NaN/空——flyout 布局未稳），整链重试"
+            continue
+        }
+        [WinEnum]::ClickAt($menuPt[0], $menuPt[1])
         $deadline = (Get-Date).AddSeconds(15)
         while ((Get-Date) -lt $deadline)
         {
