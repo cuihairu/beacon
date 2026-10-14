@@ -88,6 +88,11 @@ public static class WinEnum
     [DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     public static void SetForeground(IntPtr h) { SetForegroundWindow(h); }
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    public static void MoveNoFocus(IntPtr h, int x, int y)
+    {
+        SetWindowPos(h, IntPtr.Zero, x, y, 0, 0, 0x0004u | 0x0001u | 0x0010u); // SWP_NOZORDER|SWP_NOSIZE|SWP_NOACTIVATE——移位不改叠层不抢焦点
+    }
     private const uint MouseDown = 0x0002;
     private const uint MouseUp = 0x0004;
 
@@ -3474,19 +3479,17 @@ try
     # 独立重启消竞态（38619441591 V4 红实证）：connection-degraded 冷却按 (规则,widget) 键且跨级别共享——
     # 首启实例的 GLM 首跳刷新若撞上 Ensure-MockServer 重启后的 bind 窗（连接被拒），PublishStale 会先发一条
     # Warning 记录并武装 15min 冷却（WidgetHost:174 无缓存亦发 Warning），随后注入的 Critical 被去重吞掉：
-    # 表现为「GLM 记录存在但零 critical」+ V1 已绿（注入确达 L0）。故 V4 自启新实例：mock 探针确认热态
-    # （首跳刷新必成）+ notifications.json 删净 + 新引擎冷却表空 → 首个 GLM 事件即注入 Critical。
+    # 表现为「GLM 记录存在但零 critical」+ V1 已绿（注入确达 L0）。故 V4 自启新实例：Ensure-MockServer
+    # 重启保证热态（首跳刷新必成）+ notifications.json 删净 + 新引擎冷却表空 → 首个 GLM 事件即注入 Critical。
     # V3 的崩溃基线随之移到本次启动（Stop-Beacon 在 +70s 内收掉首启实例，其 +90s 注入未及触发）。
     Stop-Beacon
     $vNotifPath = Join-Path $configDir "notifications.json"
     Remove-Item $vNotifPath -Force -ErrorAction SilentlyContinue # 新引擎水合源清空，记录集从零起
-    $mockHot = $false
-    for ($i = 0; $i -lt 5 -and !$mockHot; $i++)
-    {
-        try { $mockHot = ((Invoke-WebRequest -Uri "http://127.0.0.1:18081/api/monitor/usage/quota/limit" -TimeoutSeconds 3).StatusCode -eq 200) } catch { }
-        Start-Sleep -Seconds 1
-    }
-    if (!$mockHot) { Save-FullScreenshot "V-FAIL-mock-cold.png"; throw "断言失败（场景 V4 前置）：mock 探针 5 次未 200——首跳刷新不可保证成功，冷却竞态不可消" }
+    # 热态保证走 Ensure-MockServer（重启收尾带作业态 Running 校验），不用裸探针：本 CI 会话 PS 5.1
+    # Invoke-WebRequest 无 IE 解析引擎恒抛（38633490811 实证：绿跑同款 11 次/全程「已监听」假重启信号，
+    # 探针「失败」≠ mock 死）——凡以裸探针 200 为门的设计在本会话必假红。Ensure 重启先于本场景启动
+    # 完成，首跳刷新必命中已绑定监听，冷却竞态不可发。
+    Ensure-MockServer
     $env:BEACON_DEBUG_SEVERITY = "critical"
     $env:BEACON_DEBUG_CRASH = "90"
     $vProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -PassThru
@@ -3697,6 +3700,16 @@ try
     # W3 chip 点击过滤：点 chip-智谱 → OVERVIEW 头带「· 智谱」；点 chip-all 回纯 OVERVIEW
     # 重取面板根：W2 隐藏/重开 + LanguageChanged 全量重画后，W1 缓存的 AutomationElement 已失效
     # （FindFirst 空转——38533804493 W3 红因，失败截图实证 chip 实际在树：All 2/DeepSeek 1/智谱 1）
+    # 遮挡防护（38633490811 W3 红实证）：浮 tile 窗 z 序在面板之上，恰好压住 chip 行时 UIA 找得到
+    # chip、矩形坐标也准，但 SendInput 打到最上层 tile——过滤永不触发。点击前把全部 tile 挪到面板
+    # 正下方横排（位置由面板矩形推导），与 tile 落位运气无关
+    $wPr = [WinEnum]::RectOf $panel
+    $wTi = 0
+    foreach ($wTh in @([WinEnum]::VisibleHandlesByTitle("Beacon Tile") + [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")))
+    {
+        [WinEnum]::MoveNoFocus $wTh $wPr.Left ($wPr.Bottom + 4 + $wTi * 60)
+        $wTi++
+    }
     $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
     $chip = Find-UiaById $panelRoot "chip-智谱" 8
     if (!$chip) { Save-FullScreenshot "W-FAIL-no-chip.png"; throw "断言失败（场景 W3）：面板未找到 chip-智谱（AutomationId 缺失或 chip 未渲染）" }
