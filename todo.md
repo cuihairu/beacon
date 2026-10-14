@@ -13,6 +13,7 @@
 > 2026-10-14 patrol-20261014-A4：行 41 自愈半场景化 F5t——F 断网窗口预置删除 Beacon.App.lnk（Stop 后删，无竞态）→ 首发送由 toolkit 重建（AUMID 自愈）→ 30s 轮询 .lnk 硬断言；无头会话 toast 基础设施不可用时按「Toast 发送失败」日志降级 ::warning 转装机（G7c 同口径），零失败日志且 .lnk 不在 = 首发送链真回归红。顺修行 41 注记笔误（「SendInput」→ 实际四执行器 Http/LocalCommand/OpenUrl/Webhook，grep 实证无 SendInput）。待 nightly 实证后更新行 41。
 > 2026-10-14 patrol-20261014-A5：F5t 首跑（38470370548）红出两因——①快捷方式名不匹配：app 侧 `Path.ChangeExtension(AppDomain.FriendlyName="Beacon.App", ".lnk")` 把 ".App" 当扩展名替换 → 实际文件名 "Beacon.lnk"（run 1/2 日志实证），F5t 查 "Beacon.App.lnk"（永不存在的文件名）→ 预删除空操作 + 检查必失；②级联红：F5t throw 跳过 F4 的 `Ensure-MockServer`（mock 停摆）→ G1/H1/K 全挂（三场景均不自备 mock）。修复：路径改 "Beacon.lnk"（51dd184）+ F5t 块移到 F5b 之后（F4 必先于任何 throw 执行）+ G/H/K 各加 `Ensure-MockServer` 防御。另：发布步 403 仍在（`gh release create` 403 on releases API，repo default=write + workflow contents:write 均在位但 token 无 release 端点权限——独立卡点，待查）。
 > 2026-10-14 patrol-20261014-A6：F5t 三跑仍红（38488861749，仅剩 F5t 一项）挖出**前提错误**：toolkit 7.1.3 根本不建开始菜单 .lnk——Show() 源码只有 `CreateToastNotifier().Show(notif)`（ToastContentBuilder.cs:430），「AUMID 自愈」真身 = Initialize() 首次触碰 ToastNotificationManagerCompat 时写 `HKCU\Software\Classes\AppUserModelId\<aumid>` 注册键（含 CustomActivator）。此前 A5 的「文件名不匹配」修法（查 Beacon.lnk）是错上修错。机制澄清：app 侧 CheckShortcutHealth（查 .lnk、每次启动必告警假阳性）改 CheckAumidHealth（查注册表 CustomActivator 键）；F5t 断言改预删 AUMID 注册键 → 重启后 30s 内 Initialize() 重建硬断言（Test-AumidKeyPresent），「Toast 发送失败」降级分支不变；RFC-001 §技术选型与 acceptance-checklist D1 同步更正。**复证绿（38494525200）：场景 F5t 通过——预置删除注册键后 Initialize() 重建 AppUserModelId 键。**
+> 2026-10-14 用户四单收口（批3-补53）：看板默认全部+chip 点击过滤（活动 chip 实心高亮+概览头带源，过滤态可见）；本仓原无 i18n（grep 零命中），建 UiStrings 唯一机制（en/zh 双字典、空串=跟随系统）覆盖看板/托盘/设置新增项；贴边收起开关默认开（保持已发布行为），收起态点击细条=粘性展开；托盘 Open Beacon/Notifications 语义分化（B-503 意图出处 mvp-issues.md:266+原 App.xaml.cs:174）。e905a48+23660f8，1078 测试绿，run 38549671960 场景 W1-W4+J 全绿；三跑红皆脚本/取证锚非产品（面板失焦即隐藏、缓存 UIA 元素失效、Border 无 UIA peer 需补 SetName），修复 35bcfe2/b2f4bdd/23660f8。
 
 ## 决策记录
 
@@ -91,20 +92,20 @@
 
 验收：CI windows-latest 出截图或给安装包名 + SHA256 让用户自验；「改了未验」不算完成。
 
-- [ ] 事件看板：默认全部 + 可点击过滤（来源：用户 2026-10-14）
+- [x] 事件看板：默认全部 + 可点击过滤（QuickPanelFilter 四区统一过滤；活动 chip 实心高亮 + 概览头「OVERVIEW · 源」=过滤态可见，再点回全部；e905a48+23660f8，1078 测试绿，38549671960 场景 W3 实证）
   - 要求：看板**默认显示全部事件**；同时**可以点击对应项只看该类过滤后的结果**
   - 验收：默认态是"全部"，点击某类后只显示该类，再点可取消回到全部；过滤状态在界面上可见（当前在看哪一类不能是隐式的）
-- [ ] 看板与多语言：缺中文、设置里无切换选项（来源：用户 2026-10-14）
+- [x] 看板与多语言：缺中文、设置里无切换选项（核实本仓原无 i18n，建 UiStrings 唯一机制覆盖看板/托盘/设置新增项；设置语言下拉即时生效+落盘，zh 系统开箱即中文；e905a48，1078 测试绿，38549671960 场景 W1/W2 实证）
   - 现象：**看板没有中文**；且**多语言设置中没有切换选项**
   - 验收：看板文案纳入既有 i18n 体系（先核本仓 i18n 机制怎么做的，**不另起一套**）；**设置页要提供语言切换项**，切换后看板同步生效
 
-- [ ] 悬浮框边缘坍缩：难用且无关闭开关（来源：用户 2026-10-14）
+- [x] 悬浮框边缘坍缩：难用且无关闭开关（开关默认开=保持已发布行为，关=拖边不收起且已收起立刻弹回；收起态点击细条=粘性展开，步骤：拖贴死边收成细条、点细条任意处展开保持、拖离边缘恢复普通展开；e905a48，1078 测试绿，38549671960 场景 W4 + 场景 P 收起/展开宽度回归）
   - 现象：**悬浮框靠近桌面边缘就坍缩**，**没有关闭该行为的开关**；**坍缩之后很难再点开**
   - 风险定性：这是**可用性缺陷**——功能默认开启且无法关闭，导致用户失去对悬浮框的控制
   - 要求：**加开关让用户可关闭边缘坍缩**（默认值由你判断并说明理由）；同时**修坍缩后难以展开的问题**——坍缩态必须有可靠的展开入口（点击/悬停/快捷键任一，且不要求像素级精度）
   - 验收：设置中能看到并切换该开关；关闭后悬浮框靠近边缘**不再坍缩**；坍缩态下**能稳定展开**（给出可复现的操作步骤）
 
-- [ ] 语义澄清/缺陷：菜单中「Open Beacon」与「Notifications」效果相同（来源：用户 2026-10-14）
+- [x] 语义澄清/缺陷：菜单中「Open Beacon」与「Notifications」效果相同（意图出处=B-503：docs/mvp-issues.md:266「托盘菜单含常用 Action 与 Notifications 入口」+ 原 App.xaml.cs:174 注释「Notifications 入口落 L2 通知中心视图」；缺陷=两事件同接 Toggle；分化：Open Beacon=开合面板、Notifications=直达通知列表（Show+滚动+焦点），两文案入 UiStrings 可译；e905a48，run 38549671960 场景 W1/W2 文案面实证）
   - 现象：托盘/菜单里 **`Open Beacon` 与 `Notifications` 两个入口效果一样**，用户表示**很困惑**
   - 要求：
     1. **先查清当初的设计意图**（读代码与文档，给 file:line 与出处），说明两者**本应**是什么关系
