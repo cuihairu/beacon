@@ -1,0 +1,39 @@
+name: probe release permission
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    name: probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # checkout 必须带：否则 gh 报 "failed to run git" 干扰判读
+      - uses: actions/checkout@v5
+      - name: probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -x
+          echo "--- repo default workflow permissions ---"
+          gh api "repos/$GITHUB_REPOSITORY/actions/permissions/workflow" || true
+          echo "--- run token effective permissions on repo ---"
+          gh api "repos/$GITHUB_REPOSITORY" --jq '.permissions' || true
+          echo "--- list releases ---"
+          gh api "repos/$GITHUB_REPOSITORY/releases" --jq 'length' || true
+          echo "--- create release ---"
+          if gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name=probe-release-perm \
+            -f target_commitish="$GITHUB_SHA" \
+            -f name=probe \
+            -f body=probe; then
+            echo "--- cleanup ---"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/probe-release-perm" --jq .id)" || true
+            git push origin ":refs/tags/probe-release-perm" || true
+            echo "probe: release create OK"
+          else
+            echo "probe: release create FAILED"
+          fi
