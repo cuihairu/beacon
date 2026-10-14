@@ -3682,13 +3682,16 @@ catch
     Write-Host "::error::场景 W 断言失败：$($_.Exception.Message)"
 }
 
-# —— 场景 X：右键 Pin/Unpin 全链（todo 行 55「右键 Pin 落库」+ 行 60「两入口一致并持久化」CI 代验）——
-# 链路：RecentList 行右键（SendInput RIGHTDOWN/UP 合成，DragMouse 同绝对坐标口径）→ ContextFlyout 弹出
-# → MenuFlyoutItem（Control 自带 peer；Name=硬编码英文「(Un)Pin to desktop」，未入 UiStrings）UIA 可达
-# → Invoke → PinWidget：widget.Pinned 翻转 + UpsertWidget 落 widgets.json + ReloadWidgets 重建
-# （floating 形态 FloatingTileWindow 按 widgets.json 重建窗集——tile 增减=落库+重建双证）。
-# X3 重启 --settings 冷加载（持久化）+ pin-toggle-{widgetId} ToggleState=On + 行标「已钉」——两入口单一
-# 事实源（widget.Pinned）读态一致。行 61 非准入类型半项留待入口闸口径（PinEntryVisible）落定后补。
+# —— 场景 X：Pin 双向全链（todo 行 55「右键 Pin 落库」+ 行 60「两入口一致并持久化」CI 代验）——
+# X1 面板入口：RecentList 行右键（SendInput RIGHTDOWN/UP 合成，DragMouse 同绝对坐标口径）→ ContextFlyout
+#   弹出 → MenuFlyoutItem（Control 自带 peer；Name=硬编码英文「(Un)Pin to desktop」，未入 UiStrings）可达
+#   → Invoke → PinWidget：Pinned 翻 false + UpsertWidget 落 widgets.json + ReloadWidgets 重建
+#   （floating 形态 FloatingTileWindow 按 widgets.json 重建窗集——tile 增减=落库+重建双证）。
+# X2 设置入口（两入口一致，反向驱动）：Unpin 后 GLM 已注销、面板无行可右键（38583526906 实证）——
+#   重启 --settings 证 Unpin 持久化（钉开关读态 Off）→ Toggle On（与面板 PinWidget 共用
+#   UpsertWidget+ReloadWidgets+PinsChanged 链）→ widgets.json 翻 true + tile 回归。
+# X3 再重启：冷加载持久化（tile 回建）+ 钉开关 On + 行标「已钉」读态一致。
+# 行 61 非准入类型半项留待入口闸口径（PinEntryVisible）落定后补。
 try
 {
     Write-GConfig "" "off" 1.0
@@ -3776,38 +3779,23 @@ try
         throw "断言失败（场景 X1）：Unpin 后 15s 内 GLM 悬浮 tile 未消失（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 1）——ReloadWidgets 重建链未跑"
     }
     Write-Host "场景 X1 通过：右键 Unpin → widgets.json 落盘 + GLM tile 移除（余 1 tile）"
-    # X2 右键复钉：ReloadWidgets 已全量重画（W3 教训：行/根全重取）→ 菜单项翻「Pin to desktop」→ 翻回 true + tile 回归
-    $glmRow = $null
-    $deadline = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $deadline)
-    {
-        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
-        $recentRoot = Find-UiaById $panelEl "RecentList" 5
-        if ($recentRoot) { $glmRow = Find-PanelRow $recentRoot '已用 38%' }
-        if ($glmRow) { break }
-        Start-Sleep -Seconds 2
-    }
-    if (!$glmRow) { Save-FullScreenshot "X-FAIL-no-glm-row-repin.png"; throw "断言失败（场景 X2）：重建后 15s 内 RecentList 无 GLM 事件行" }
-    $rect = $glmRow.Current.BoundingRectangle
-    [WinEnum]::RightClick([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
-    $menuItem = $null
-    $deadline = (Get-Date).AddSeconds(5)
-    while ((Get-Date) -lt $deadline)
-    {
-        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
-        $menuItem = $panelEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Pin to desktop")))
-        if (!$menuItem)
-        {
-            $menuItem = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                [System.Windows.Automation.TreeScope]::Descendants,
-                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Pin to desktop")))
-        }
-        if ($menuItem) { break }
-        Start-Sleep -Milliseconds 500
-    }
-    if (!$menuItem) { Save-FullScreenshot "X-FAIL-no-pin-item.png"; throw "断言失败（场景 X2）：右键后 5s 内未见菜单项「Pin to desktop」（pinned=false 应翻文案）" }
-    Invoke-Uia $menuItem
+    # X2 设置入口复钉（行 60 两入口一致，反向驱动）：X1 实证 Unpin 后 GLM 已注销——面板 RecentList
+    # 不再有行可右键（38583526906：X1 绿、旧 X2 设计红）。反向必须从另一入口进：设置页钉开关
+    # （pin-toggle-{widgetId}，同批锚点）与面板 PinWidget 共用 UpsertWidget+ReloadWidgets+PinsChanged 链。
+    # 重启 --settings（顺带证 Unpin 持久化到冷加载）→ 读态应 Off → Toggle On → widgets.json 翻 true + tile 回归
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { Save-FullScreenshot "X-FAIL-no-settings-repin.png"; throw "断言失败（场景 X2）：重启后设置窗未开" }
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { throw "断言失败（场景 X2）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    $pinToggle = Find-UiaById $settings "pin-toggle-bigmodel.usage:GLM" 10
+    if (!$pinToggle) { Save-FullScreenshot "X-FAIL-no-toggle.png"; throw "断言失败（场景 X2）：UIA 未找到 pin-toggle-bigmodel.usage:GLM（锚点丢失？）" }
+    $toggleState = "$(($pinToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
+    if ($toggleState -ne "Off") { throw "断言失败（场景 X2）：重启后设置钉开关 ToggleState=$toggleState（期望 Off）——X1 的 Unpin 未持久化或两入口读态不一致" }
+    ($pinToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
     $repinned = $false
     $tileBack = $false
     $deadline = (Get-Date).AddSeconds(20)
@@ -3820,18 +3808,22 @@ try
         if ($repinned -and $tileBack) { break }
         Start-Sleep -Seconds 2
     }
-    if (!$repinned) { Save-FullScreenshot "X-FAIL-repin-not-saved.png"; throw "断言失败（场景 X2）：复钉后 20s 内 widgets.json GLM pinned 未翻 true" }
+    if (!$repinned) { Save-FullScreenshot "X-FAIL-repin-not-saved.png"; throw "断言失败（场景 X2）：设置入口复钉后 20s 内 widgets.json GLM pinned 未翻 true" }
     if (!$tileBack)
     {
         Save-FullScreenshot "X-FAIL-repin-tile-missing.png"
-        throw "断言失败（场景 X2）：复钉后 20s 内 GLM 悬浮 tile 未回归（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 2）——开钉重建链回归"
+        throw "断言失败（场景 X2）：设置入口复钉后 20s 内 GLM 悬浮 tile 未回归（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 2）——PinsChanged 重建链回归"
     }
-    Write-Host "场景 X2 通过：右键复钉 → widgets.json 落盘 + GLM tile 回归（2 tiles）——两方向落库同证"
+    Write-Host "场景 X2 通过：设置钉开关 Off→On → widgets.json 落盘 + GLM tile 回归（2 tiles）——两入口同链实证"
     # X3 持久化 + 两入口读态一致：重启 --settings 冷加载 → tile 回建 + 钉开关 On + 行标「已钉」
     Stop-Beacon
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow
     if (!$settings) { Save-FullScreenshot "X-FAIL-no-settings.png"; throw "断言失败（场景 X3）：重启后设置窗未开" }
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { throw "断言失败（场景 X3）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
     $pinToggle = Find-UiaById $settings "pin-toggle-bigmodel.usage:GLM" 10
     if (!$pinToggle) { throw "断言失败（场景 X3）：UIA 未找到 pin-toggle-bigmodel.usage:GLM（锚点丢失？）" }
     $toggleState = "$(($pinToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
