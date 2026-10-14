@@ -1424,7 +1424,30 @@ try
     Start-Sleep -Seconds 18
     # E1 二次启动：命名互斥体 → 副实例 SignalExisting 后退出——进程数恒 1 + 日志凭证
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
-    Start-Sleep -Seconds 8
+    # E1b 唤起气泡（todo 行 30 后半）：副实例 SignalExisting → 主实例 OnActivate → ShowBalloon
+    # 「Beacon 已在运行。」Shell_NotifyIcon NIF_INFO 气泡 Win10+ 由 shell 转 toast 展示——toast 存活
+    # ~5s，须启动后立即轮询（睡 8s 再查必扑空）；UIA 桌面根两变体精确匹配（带/不带句号）。
+    # 无头会话 toast 基础设施不可用或被专注助手抑制则降级 ::warning 转装机（F5t/G7c 同口径），不可观测面不诈尸成红。
+    $balloonSeen = $false
+    $balloonCond1 = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Beacon 已在运行")
+    $balloonCond2 = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Beacon 已在运行。")
+    $deadline = (Get-Date).AddSeconds(12)
+    while ((Get-Date) -lt $deadline -and !$balloonSeen)
+    {
+        $balloonHit = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $balloonCond1)
+        if (!$balloonHit) { $balloonHit = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $balloonCond2) }
+        if ($balloonHit) { $balloonSeen = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    Start-Sleep -Seconds 4 # 与气泡轮询合计凑足原 8s：副实例退出 + 日志落盘窗口
+    if ($balloonSeen)
+    {
+        Write-Host "场景 E1b 通过：二次启动唤起气泡「Beacon 已在运行」UIA 可见（shell 转 toast 展示）——唤起链全绿"
+    }
+    else
+    {
+        Write-Host "::warning::二次启动气泡未在 UIA 出现（无头会话 toast 基础设施不可用或专注助手抑制）——唤起气泡呈现转装机目检（信号/进程半 E1 已绿）"
+    }
     $alive = @(Get-Process Beacon.App -ErrorAction SilentlyContinue)
     if ($alive.Count -ne 1)
     {
@@ -1437,7 +1460,7 @@ try
         Save-FullScreenshot "E-FAIL-no-secondary-log.png"
         throw "断言失败（场景 E1）：二次启动后日志未见「Secondary instance exit.」——副实例退出路径未走"
     }
-    Write-Host "场景 E1 通过：二次启动进程数保持 1，副实例退出日志在案（唤起气泡为 Toast 面不可断，转装机目检）"
+    Write-Host "场景 E1 通过：二次启动进程数保持 1，副实例退出日志在案（唤起气泡见 E1b）"
     # E2 托盘菜单 → Settings → 关窗不退进程（托盘驻留语义）；菜单驱动失败降级 warning（分隔条拖拽同款先例）
     $opened = Invoke-TrayMenu 5 "Settings"
     if (!$opened)
@@ -3350,6 +3373,7 @@ try
     Ensure-MockServer
     # reduced 档：Critical 脉冲自 reduced 起（off 档 StartPulse 直接 return，G7b 已证 off 全静止）
     Write-GConfig "" "reduced" 1.0
+    Remove-Item (Join-Path $configDir "notifications.json") -Force -ErrorAction SilentlyContinue # 通知记录隔离，只认本场景新增（F 同口径）
     $vLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
     $env:BEACON_DEBUG_SEVERITY = "critical"
     $env:BEACON_DEBUG_CRASH = "90"
@@ -3377,6 +3401,28 @@ try
     if ($critPx -lt 8) { Save-FullScreenshot "V-FAIL-no-critical.png"; throw "断言失败（场景 V1）：Critical 档位色未渲染（#ff3b30 $critPx px，期望 ≥8）——注入未达 L0 或调色回归" }
     if ($errPx -gt 4) { Save-FullScreenshot "V-FAIL-error-leak.png"; throw "断言失败（场景 V1）：Error 色 $errPx px 渗漏（期望 ≤4）——注入判级错档（Critical 误判 Error）" }
     Write-Host "场景 V1 通过：注入 Critical → tile 状态灯 #ff3b30（$critPx px），Error 色 $errPx px 无渗漏"
+    # V4 Critical 通知引擎链（todo 行 50「Toast 照常由通知引擎发出」半）：Success→Critical 跨界触发
+    # builtin.connection-degraded（任意 widget ≥Warning）投递恰 1 条——记录面硬断言（F5 同口径：
+    # 冷却 15min + 跨越语义唯一化）；Toast 呈现面与 F5 同转装机。severity 为 camelCase 枚举串（BeaconJson）。
+    $vNotifPath = Join-Path $configDir "notifications.json"
+    $vRecords = @()
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (Test-Path $vNotifPath)
+        {
+            $vRecords = @(Get-Content $vNotifPath -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
+            if ($vRecords.Count -ge 1) { break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    $vCrit = @($vRecords | Where-Object { "$($_.severity)" -eq "critical" })
+    if ($vCrit.Count -ne 1)
+    {
+        Save-FullScreenshot "V-FAIL-critical-record.png"
+        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1）——注入 Critical 未触发通知引擎投递（行 50 Toast 半回归）"
+    }
+    Write-Host "场景 V4 通过：注入 Critical → 通知引擎恰 1 条 critical 记录（connection-degraded 跨界）——Toast 引擎面在案，呈现面同 F5 转装机"
     # V2 Critical 脉冲（尽力取证）：脉冲 = Scale 1.0→1.35→1.0 周期 1000ms，三帧 700ms 间隔必跨相位；
     # 灯 Ø8→Ø10.8 环域 ~40px²，阈值 8 为保守下界。差分不成 → ::warning 转装机（G7c 降级同口径，非红）
     $pulseDiff = 0
