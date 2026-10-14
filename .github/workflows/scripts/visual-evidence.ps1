@@ -3691,7 +3691,7 @@ catch
 #   重启 --settings 证 Unpin 持久化（钉开关读态 Off）→ Toggle On（与面板 PinWidget 共用
 #   UpsertWidget+ReloadWidgets+PinsChanged 链）→ widgets.json 翻 true + tile 回归。
 # X3 再重启：冷加载持久化（tile 回建）+ 钉开关 On + 行标「已钉」读态一致。
-# 行 61 非准入类型半项留待入口闸口径（PinEntryVisible）落定后补。
+# 行 61 非准入类型半项由场景 Y 代验（「无入口」证据面，见 Y 头注）。
 try
 {
     Write-GConfig "" "off" 1.0
@@ -3850,6 +3850,128 @@ catch
     Save-FullScreenshot "X-FAIL-unexpected.png"
     $failures.Add("场景 X：$($_.Exception.Message)")
     Write-Host "::error::场景 X 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 Y：非准入类型两处入口均不可钉（todo 行 61；原记「需真实右键交互，CI 不可达」）——
+# 播种 widgets.json 单条未登记类型（unknownghost.usage：BeaconRuntime providers 字典无此键）+ pinned:true。
+# 证据面取「无入口」而非「点了没反应」——比后者强且确定：设置入口 RebuildWidgets 按 _scopeDescriptors
+# 过滤类型（未登记类型整行不产，连行标都不出）；面板入口 WidgetHost 对未登记类型 Resolve=null 静默跳过，
+# 无状态即无 tile 无行，行级 ContextFlyout 无宿主。
+# Y1 主机侧：启动 ReloadWidgets(null)/scheduler.KickWidget 对 ghost 同步触发刷新链 →
+#   TryRefreshOneAsync Resolve=null → 「No provider for widget type …; skipped.」Warning 落今日日志
+#   （与 F5t「Toast 发送失败」同通道）；pinned:true 却零 tile——无任何路径可为它建窗。
+# Y2 面板入口：面板无该行，右键（SendInput 合成，场景 X 已证生效）后 5s 内无
+#   「Pin to desktop」/「Unpin from desktop」菜单项（面板根+桌面根双查）——无钉入口。
+# Y3 设置入口：module 页组件区无 pin-toggle-* 元素、无 ghost 行文本——无钉入口。
+# Y4 钉选零改写：widgets.json ghost 条 pinned 恒 true——无入口可翻转、不被任何路径重写或剪除。
+# 与并行会话在飞的 PinEntryVisible 门控改造（面板侧不再挂 Pin 菜单项）观测一致，其落地后本场景仍成立。
+try
+{
+    Write-GConfig "" "off" 1.0
+    # ghost-only widgets.json：连接指已存在的 zhipu——连接命中才会走到 Resolve 分支（触发「No provider」
+    # 而非「connection is missing」），JsonConfigurationStore.LoadFile 纯反序列化不剪除未知类型
+    @'
+[
+  {
+    "id": "unknownghost.usage:Ghost",
+    "type": "unknownghost.usage",
+    "connectionId": "zhipu",
+    "refreshTier": "ci",
+    "pinned": true,
+    "config": {}
+  }
+]
+'@ | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    # Y1 主机侧跳过锚 + pinned:true 零 tile
+    $noProvider = $false
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ((Get-TodayLog) -match 'No provider for widget type unknownghost.usage') { $noProvider = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$noProvider) { Save-FullScreenshot "Y-FAIL-no-skip-log.png"; throw "断言失败（场景 Y1）：30s 内日志无「No provider for widget type unknownghost.usage」——未登记类型未被静默跳过（可能误注册或崩溃）" }
+    $ghostTiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+    if ($ghostTiles -ne 0) { Save-FullScreenshot "Y-FAIL-ghost-tile.png"; throw "断言失败（场景 Y1）：未登记类型 pinned:true 却出现悬浮 tile=$ghostTiles（期望 0）——钉选越权建窗" }
+    Write-Host "场景 Y1 通过：未登记类型 skipped 日志在 + pinned:true 零 tile（主机侧无入口）"
+    # Y2 面板入口无钉菜单：开面板（WM_HOTKEY 直发，X 同链路）→ 右键面板中心 → 无 Pin 菜单项
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 Y 前置）：托盘消息窗未找到" }
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0)
+    $panelHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $ph = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($ph.Count -ge 1) { $panelHandle = $ph[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panelHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "Y-FAIL-no-panel.png"; throw "断言失败（场景 Y 前置）：热键触发后 5s 内快速面板未出现" }
+    Start-Sleep -Seconds 2
+    $pRect = [WinEnum]::RectOf($panelHandle)
+    [WinEnum]::RightClick([int]($pRect.X + $pRect.Width / 2), [int]($pRect.Y + $pRect.Height / 2))
+    $pinMenu = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+        foreach ($menuName in @("Pin to desktop", "Unpin from desktop"))
+        {
+            $pinMenu = $panelEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $menuName)))
+            if (!$pinMenu)
+            {
+                $pinMenu = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                    [System.Windows.Automation.TreeScope]::Descendants,
+                    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $menuName)))
+            }
+            if ($pinMenu) { break }
+        }
+        if ($pinMenu) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if ($pinMenu) { Save-FullScreenshot "Y-FAIL-pin-menu.png"; throw "断言失败（场景 Y2）：面板右键出现钉选菜单项「$($pinMenu.Current.Name)」——未登记类型本应无钉入口（行级 ContextFlyout 越权弹出）" }
+    Write-Host "场景 Y2 通过：面板右键 5s 无「Pin to desktop」/「Unpin from desktop」菜单项——面板侧无钉入口"
+    # Y3 设置入口无行无开关：重启 --settings → module 页组件区无 pin-toggle-ghost、无 ghost 行文本
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { Save-FullScreenshot "Y-FAIL-no-settings.png"; throw "断言失败（场景 Y3）：重启后设置窗未开" }
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { throw "断言失败（场景 Y3）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    $ghostToggle = Find-UiaById $settings "pin-toggle-unknownghost.usage:Ghost" 5
+    if ($ghostToggle) { Save-FullScreenshot "Y-FAIL-ghost-toggle.png"; throw "断言失败（场景 Y3）：设置页出现未登记类型的钉开关 pin-toggle-unknownghost.usage:Ghost——scope 过滤失效（行 61 回归）" }
+    $ghostLabel = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)))
+        $ghostLabel = @($texts) | Where-Object { $_.Current.Name -match 'unknownghost' } | Select-Object -First 1
+        if ($ghostLabel) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if ($ghostLabel) { Save-FullScreenshot "Y-FAIL-ghost-row.png"; throw "断言失败（场景 Y3）：设置页组件区渲染了未登记类型行「$($ghostLabel.Current.Name)」——RebuildWidgets scope 过滤回归" }
+    Write-Host "场景 Y3 通过：设置页无 pin-toggle-ghost 元素、无 ghost 行文本——设置侧无钉入口（scope 过滤）"
+    # Y4 钉选零改写：ghost 条 pinned 恒 true（无入口可翻转、不被任何路径重写或剪除）
+    $widgetsJson = Get-Content (Join-Path $configDir "widgets.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    $ghostEntry = $widgetsJson | Where-Object { $_.id -eq "unknownghost.usage:Ghost" }
+    if (!$ghostEntry) { Save-FullScreenshot "Y-FAIL-ghost-pruned.png"; throw "断言失败（场景 Y4）：widgets.json 中 ghost 条目消失——未登记类型被剪除（配置加载回归）" }
+    if ($ghostEntry.pinned -ne $true) { Save-FullScreenshot "Y-FAIL-ghost-flipped.png"; throw "断言失败（场景 Y4）：ghost 条目 pinned=$($ghostEntry.pinned)（期望 true）——钉选被越权改写" }
+    Write-Host "场景 Y4 通过：widgets.json ghost 条目完整、pinned 恒 true——两入口均无钉面且配置零改写"
+    Stop-Beacon
+}
+catch
+{
+    Stop-Beacon # W 同口径：失败也收尸，防残留进程毒化 J 静默安装
+    Save-FullScreenshot "Y-FAIL-unexpected.png"
+    $failures.Add("场景 Y：$($_.Exception.Message)")
+    Write-Host "::error::场景 Y 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
