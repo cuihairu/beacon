@@ -411,7 +411,7 @@ config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/
 |---|---|---|
 | 打包形态 | **Unpackaged**（自包含 exe） | 便携、%AppData% 直写、开发迭代快；二期可加 MSIX |
 | System Tray | Win32 `Shell_NotifyIcon` 自实现（TrayIconService，不引第三方托盘库） | NOTIFYICONDATA + 消息窗回调；图标按配置色 GDI+ 运行时绘制（B-706） |
-| Toast 通知 | Microsoft.Toolkit.Uwp.Notifications（`ToastNotificationManagerCompat`） | unpackaged 应用由 Compat 首次发送时自动创建/修复 AUMID Start Menu 快捷方式；激活路由回 Beacon（深链到 L3） |
+| Toast 通知 | Microsoft.Toolkit.Uwp.Notifications（`ToastNotificationManagerCompat`） | unpackaged 应用由 Compat Initialize 首次触碰时写 HKCU\Software\Classes\AppUserModelId\<aumid> 注册键（含 CustomActivator），缺失下次启动重建自愈；toolkit 7.1.3 不创建 .lnk（Show 只调 CreateToastNotifier().Show）；激活路由回 Beacon（深链到 L3） |
 | Global Hotkey | `RegisterHotKey`（默认 Ctrl+Alt+B） | 设置可改；冲突时提示重设 |
 | 开机自启 | HKCU `Run` 键 | MSIX 化后改 StartupTask |
 | 置顶/不激活 | `AppWindow.IsAlwaysOnTop` + `WS_EX_NOACTIVATE` interop | 见 §16 风险 1 |

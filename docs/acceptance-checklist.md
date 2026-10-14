@@ -269,8 +269,8 @@
 
 #### D1｜B-501｜Toast 全链路
 - **前置**：E0；通知规则命中。
-- **步骤**：① 触发 Toast；② 点击 Toast；③ 重命名开始菜单快捷方式后重试。
-- **预期**：发送/点击/激活路由全通；快捷方式缺失自愈（重建）。
+- **步骤**：① 触发 Toast；② 点击 Toast；③ 删除 HKCU\Software\Classes\AppUserModelId 下的 AUMID 注册键（带 CustomActivator）后重启应用重试。
+- **预期**：发送/点击/激活路由全通；AUMID 注册缺失自愈（下次启动由 toolkit Initialize 重建注册键）。
 
 #### D2｜B-502｜Toast 冷却
 - **前置**：E0；同上。

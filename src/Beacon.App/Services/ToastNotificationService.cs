@@ -2,6 +2,7 @@ using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Toolkit.Uwp.Notifications;
+using Microsoft.Win32;
 
 namespace Beacon.App.Services;
 
@@ -10,8 +11,10 @@ public sealed record ToastActivation(string? WidgetId, string? DetailUrl);
 
 /// <summary>
 /// Toast 通知出口（B-501，unpackaged）：Microsoft.Toolkit.Uwp.Notifications 的
-/// ToastNotificationManagerCompat 兼容非打包应用——首次发送时自动创建/修复
-/// 开始菜单快捷方式并绑定 AUMID（缺失自愈，RFC §8/§16 风险 2）。
+/// ToastNotificationManagerCompat 兼容非打包应用——首次触碰（Initialize）时写
+/// HKCU\Software\Classes\AppUserModelId\&lt;aumid&gt; 注册键（含 CustomActivator）绑定 AUMID，
+/// 缺失自愈（RFC §8/§16 风险 2）。注意：toolkit 7.1.3 不创建开始菜单快捷方式，
+/// Show() 只调 CreateToastNotifier().Show()（源证 ToastContentBuilder.cs:430）。
 /// 点击激活通过 OnActivated 深链路由（widget → L3，L3 就绪前回退打开 DetailUrl）。
 /// </summary>
 internal sealed class ToastNotificationService : INotificationSink
@@ -29,11 +32,11 @@ internal sealed class ToastNotificationService : INotificationSink
         _logger = logger;
     }
 
-    /// <summary>进程启动即调用：注册激活路由（含 Toast 冷启动回放）+ 快捷方式自检。</summary>
+    /// <summary>进程启动即调用：注册激活路由（含 Toast 冷启动回放）+ AUMID 注册自检。</summary>
     public void Initialize()
     {
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
-        CheckShortcutHealth();
+        CheckAumidHealth();
     }
 
     public void Show(NotificationRecord notification, NotificationDelivery delivery)
@@ -53,7 +56,7 @@ internal sealed class ToastNotificationService : INotificationSink
                 builder.AddArgument(ArgDetailUrl, notification.DetailUrl);
             }
             builder.AddAudio(new ToastAudio { Silent = !delivery.Sound });
-            builder.Show(); // 首次调用自动创建开始菜单快捷方式（AUMID 自愈）
+            builder.Show(); // AUMID 注册在 Initialize() 完成；Show 只发通知，不建快捷方式
         }
         catch (Exception exception)
         {
@@ -61,18 +64,38 @@ internal sealed class ToastNotificationService : INotificationSink
         }
     }
 
-    /// <summary>快捷方式自检：缺失告警入应用日志（下次发送时由 toolkit 重建自愈），不阻塞启动。</summary>
-    private void CheckShortcutHealth()
+    /// <summary>
+    /// AUMID 注册自检：toolkit 7.1.3 的「自愈」是注册表机制而非开始菜单快捷方式——
+    /// 首次触碰 ToastNotificationManagerCompat（上方 OnActivated 挂接）即由 Initialize()
+    /// 写 HKCU\Software\Classes\AppUserModelId\&lt;aumid&gt; 键并置 CustomActivator；
+    /// Show() 不建 .lnk。缺失告警入应用日志（下次启动由 toolkit 重建自愈），不阻塞启动。
+    /// Release 构建无调试器附挂时 Debug.WriteLine 是空操作，走应用日志才有取证面。
+    /// </summary>
+    private void CheckAumidHealth()
     {
-        var expected = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Microsoft", "Windows", "Start Menu", "Programs",
-            Path.ChangeExtension(AppDomain.CurrentDomain.FriendlyName, ".lnk"));
-        if (!File.Exists(expected))
+        try
         {
-            // 自愈路径：Toolkit 在下一次 Toast 发送时重建快捷方式；此处只留痕不自建。
-            // Release 构建无调试器附挂时 Debug.WriteLine 是空操作，走应用日志才有取证面。
-            _logger.LogWarning("Toast 快捷方式缺失（{Path}）——下次 Toast 发送时由 toolkit 重建（AUMID 自愈）。", expected);
+            using var root = Registry.CurrentUser.OpenSubKey(@"Software\Classes\AppUserModelId");
+            if (root is null)
+            {
+                _logger.LogWarning("AUMID 注册缺失（HKCU\\Software\\Classes\\AppUserModelId 不存在）——下次启动由 toolkit 重建（AUMID 自愈）。");
+                return;
+            }
+
+            foreach (var name in root.GetSubKeyNames())
+            {
+                using var sub = root.OpenSubKey(name);
+                if (sub?.GetValue("CustomActivator") is not null)
+                {
+                    return; // 注册在案
+                }
+            }
+
+            _logger.LogWarning("AUMID 注册缺失（AppUserModelId 下无 CustomActivator 键）——下次启动由 toolkit 重建（AUMID 自愈）。");
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(exception, "AUMID 注册自检失败。");
         }
     }
 
