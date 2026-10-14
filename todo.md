@@ -16,6 +16,7 @@
 > 2026-10-14 用户四单收口（批3-补53）：看板默认全部+chip 点击过滤（活动 chip 实心高亮+概览头带源，过滤态可见）；本仓原无 i18n（grep 零命中），建 UiStrings 唯一机制（en/zh 双字典、空串=跟随系统）覆盖看板/托盘/设置新增项；贴边收起开关默认开（保持已发布行为），收起态点击细条=粘性展开；托盘 Open Beacon/Notifications 语义分化（B-503 意图出处 mvp-issues.md:266+原 App.xaml.cs:174）。e905a48+23660f8，1078 测试绿，run 38549671960 场景 W1-W4+J 全绿；三跑红皆脚本/取证锚非产品（面板失焦即隐藏、缓存 UIA 元素失效、Border 无 UIA peer 需补 SetName），修复 35bcfe2/b2f4bdd/23660f8。
 > 2026-10-15 patrol-20261015-P1014C：场景 X（行 55/60 右键 Pin 与两入口一致）——X1 面板 RecentList 事件行上 SendInput 合成右键（ContextFlyout）弹菜单，MenuFlyoutItem 按 Name「Unpin from desktop」UIA 命中后 Invoke，断言 widgets.json GLM pinned 翻转 + 悬浮 tile 移除；X2 重启 --settings 后先 Invoke module-bigmodel 行现出 widget 行，钉开关（pin-toggle-{id}）读态断言 Off 再 Toggle On，断言 widgets.json 落库 true + GLM tile 回归；X3 再重启同路读态断言 On + 行文本带「已钉」+ tile 回建——两入口同一落库链（Config.UpsertWidget + ReloadWidgets）实证，勾行 55/60。三跑红皆脚本锚非产品：InvokeableListItem 不报 ListItem ControlType（Find-PanelRow 改 TrueCondition+Name 匹配+向上限深找 ListItem 祖先）；悬浮模式 unpin 即注销 widget（面板无行可再右键，反向必须由设置入口驱动=更强的两入口一致性证据）。修复 cdd05ad/7822aae，复证 run 38590456994 全绿。
 > 2026-10-15 patrol-20261015-P1014D：场景 Y（行 61 非准入类型两入口不可钉）：播种未登记类型 unknownghost.usage（pinned:true、连接指 zhipu）——Y1 主机 Resolve=null「No provider」skipped 日志 + pinned:true 零 tile、Y2 面板右键 5s 无 Pin 菜单项、Y3 设置 scope 过滤整行不产（无行无开关）、Y4 widgets.json pinned 恒 true 零改写——「无入口」证据面勾行；随批 X1 抗 flake 加固（38602176751 红因=flyout 开启动画期 InvokePattern.Invoke 被吞：菜单命中+Invoke 已调+配置不翻，失败截图实证 tile 仍在；改真实点击 ClickAt + 整链两轮重试，重试前重找行防刷新 tick 重建失效），复证 38608625892 X1-X3+Y1-Y4 全绿。803329a+67f144f。
+> 2026-10-15 patrol-20261015-P1014E：8b4b82b（E1b 气泡探测 + V4 通知记录断言）首跑 38619441591 红两处：①**V4 红出冷却竞态**——V1 绿（tile #ff3b30 382px，注入确达 L0）后 2s 即红「GLM Critical 记录 0 条」，60s 轮询 2s 即退出=记录存在但 severity 非 critical；读码锁因：connection-degraded 冷却按 (规则,widget) 键且跨级别共享（NotificationEngine._lastNotified），首启实例 GLM 首跳刷新若撞 Ensure-MockServer 重启后的 bind 窗（连接被拒），PublishStale 先发一条 Warning 记录并武装 15min 冷却（WidgetHost:174 无缓存亦发 Warning；F5 同 run 绿证引擎链本身无恙且 F5 从不断言 severity——camelCase「critical」期望首由 V4 落地），随后注入 Critical 被去重吞掉。修法=V4 独立重启自证：mock 探针确认热态 + notifications.json 删净 + 新引擎冷却表空 → 首个 GLM 事件即注入 Critical，确定性落盘；V4 移至 V2 后（V1/V2 同享首启实例），V3 崩溃基线随 V4 重启移动（首启实例 +70s 内被收、其 +90s 注入未及触发），失败信息带记录 severity dump。②**X 红出 UIA 矩形 NaN**——19:29:40 炸于 X1 行右键落点 `[int]($rect.X+$rect.Width/2)`（W4 绿后 24s、X0 基线已过=行已找到），RecentList 行被虚拟化/刷新 tick 重建中途 UIA BoundingRectangle 返 NaN 矩形，转换炸且无断言消息。修法=新增 Get-ClickPoint 助手（GetClickablePoint 优先——不可点抛 PointUnavailableException 而非返 NaN，退回矩形中心，NaN/空/解析失败返 null），X1 两处落点 NaN 按落空走整链重试；W3/W4 chip 点击同型隐患一并收编。③E1b 二次启动气泡 12s 轮询未现于 UIA → 按设计降级 ::warning 转装机（无头会话 toast 基础设施不可用，F5t/G7c 同口径），E1 进程半已绿，行 31 呈现半仍装机。CI 文件改动门禁：全量 1078 测试绿。
 
 ## 决策记录
 
@@ -28,7 +29,7 @@
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
 ## MVP 待验/未修项（50 项 = 28 勾 / 22 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
-- [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；唤起气泡属 OS Toast 面，需装机半）
+- [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；唤起气泡属 OS Toast 面，需装机半）
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；手势注入与跨 DPI 拓扑需装机半）
 - [x] 任意前台应用下热键生效；可在设置改键并持久化（场景 K1 注册成功 + N 改键落盘重启新键注册 + WM_HOTKEY 直驱面板出现已代验）
@@ -64,7 +65,7 @@
 - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件需装机半）
 - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
-- [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（L0 变色+脉冲半已代验：场景 V1/V2，38459944253；「无打断」观感与 Toast 照常发出的通知引擎链需装机半）
+- [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（L0 变色+脉冲半已代验：场景 V1/V2，38459944253；Toast 引擎链半已建场景 V4（注入 Critical 恰 1 条 critical 记录），首跑 38619441591 红=冷却竞态已修待复证；「无打断」观感与 Toast 呈现面需装机半）
 - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录（四条含真实网络环境与真人操作流，需装机）
 - [ ] 设置改级别色后 L0 tile、胶囊、托盘图标同步变色（tile 与胶囊半已代验：场景 G4/G5 改色后 tile 与胶囊灯同步换橙、重置回绿，run 38561621450；托盘图标像素取证需装机半）
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验：品红 ≥8px + DeepSeek 零渗 ≤4px）

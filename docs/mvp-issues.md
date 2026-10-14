@@ -1262,3 +1262,12 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **随批 X1 抗 flake 加固（38602176751 红因）**：该跑 Y 全绿但 X1 红——flyout 开启动画期 InvokePattern.Invoke 被吞（菜单命中、Invoke 已调、widgets.json 不翻、flyout 已关、tile 仍在——失败截图 X-FAIL-unpin-not-saved.png 实证 GLM tile 38% 绿灯照常）。修复 67f144f：菜单项改真实鼠标点击（ClickAt，不吃动画竞态——渲染即命中）+ 整链重试两轮（重试前重找 RecentList 行：ci 档 15s 刷新 tick 重建后旧元素 BoundingRectangle 不可信；上一轮弹层无论命中/落空均已关闭，右键重开新 flyout，无状态残留）；落库断言与 tile 断言拆为先后两窗。复证 38608625892 X1-X3+Y1-Y4 全绿。
 - **验证**：run 38608625892 全绿，勾行 61（MVP 计数 28 勾 / 22 未勾）。
 - **遗留**：无（本条全闭环；PinEntryVisible 单判定收编属并行会话改造，不改观测行为）。
+
+### 批3-补57 V4 冷却竞态消解 + E1b 气泡探测降级 + UIA 矩形 NaN 防护（2026-10-15 patrol P1014E，commit 8b4b82b 首跑红 + f42f822 收口）
+- **红因①（V4，38619441591）**：V1 绿（tile #ff3b30 382px，注入确达 L0）后 2s 即红「GLM Critical 记录 0 条」——60s 轮询 2s 即退出（break 条件=记录存在）→ 记录在但 severity 非 critical。读码锁因：connection-degraded 冷却按 (规则,widget) 键且跨级别共享（NotificationEngine._lastNotified）；首启实例 GLM 首跳刷新若撞 Ensure-MockServer 重启后的 bind 窗（连接被拒），PublishStale 先发一条 Warning 记录并武装 15min 冷却（WidgetHost:174 无缓存亦发 Warning），随后注入的 Critical 被去重吞掉。F5 同跑绿证引擎链本身无恙——且 F5 从不断言 severity，「camelCase critical」期望首由 V4 落地。产品去重语义本身正确，红的是场景预期。
+- **修法（V4 独立重启自证）**：V4 移至 V2 后（V1/V2 同享首启实例）——Stop-Beacon → notifications.json 删净（新引擎水合源空）→ mock 探针确认热态（5 次未 200 即前置红，首跳刷新必成）→ 重设 BEACON_DEBUG_SEVERITY/CRASH → 新实例首个 GLM 事件即注入 Critical → critical 记录确定性落盘；失败信息带记录 severity dump（severity=warning 即冷却竞态再临的可判信号）。V3 崩溃基线随 V4 重启移动：首启实例 +70s 内被 Stop-Beacon 收掉、其 +90s 注入未及触发，日志中崩溃行唯属 V4 实例，断言语义不变。
+- **红因②（X，同 run）**：W4 绿后 24s、X0 基线已过（行已找到）炸于 X1 行右键落点 `[int]($rect.X+$rect.Width/2)`——「Cannot convert value NaN to Int32」，无任何断言消息。RecentList 行被虚拟化或刷新 tick 重建中途，UIA BoundingRectangle 返 NaN 矩形。
+- **修法（Get-ClickPoint 助手）**：GetClickablePoint 优先（元素不可点抛 PointUnavailableException 而非返 NaN），退回矩形中心；NaN/空/解析失败一律返 null——X1 两处落点（行右键+菜单点击）NaN 按落空走整链两轮重试不炸；W3/W4 chip 点击同型隐患（catch 回退分支直喂 [int]）一并收编，落点不可解析即前置红（带截图）。Y2 面板中心右键用 RectOf（Win32 整数矩形）无此险不改。
+- **E1b（8b4b82b 新增，降级非红）**：二次启动唤起气泡「Beacon 已在运行」12s UIA 轮询未现于无头会话（toast 基础设施不可用或专注助手抑制）→ 按设计 ::warning 转装机（F5t/G7c 同口径）；E1 进程半已绿，行 31 呈现半维持装机。
+- **验证**：CI 文件改动门禁全量 1078 测试绿（Core 368/Actions 27/Connections 652/Storage 31）；mkdocs strict 维持已知基线告警（troubleshooting.md 链 ../README.md，干净 HEAD 同在）；待 nightly 复证 V4/X 绿后行 50 引擎链半转「已代验」。
+- **遗留**：行 50（「无打断」观感 + Toast 呈现面）与行 31（唤起气泡呈现）维持装机半。
