@@ -1402,7 +1402,10 @@ try
     Stop-Beacon
     Stop-MockServer # 断网（端点不可达 = 无网语义）
     Remove-Item (Join-Path $configDir "notifications.json") -Force -ErrorAction SilentlyContinue # 通知记录隔离，只认本场景新增
-    $toastShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Beacon.App.lnk"
+    # 快捷方式名=AppDomain.FriendlyName 经 Path.ChangeExtension 派生：FriendlyName="Beacon.App"
+    # → ChangeExtension("Beacon.App", ".lnk") 把 ".App" 当扩展名替换 → "Beacon.lnk"（非 "Beacon.App.lnk"）。
+    # 38470370548 实证：F5t 查 "Beacon.App.lnk"（永不存在的文件名）→ 预删除空操作 + 检查必失。
+    $toastShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Beacon.lnk"
     Remove-Item $toastShortcut -Force -ErrorAction SilentlyContinue # F5t 预置缺失：首发送应自愈重建（行 41「快捷方式缺失可自愈」半）
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 12
@@ -1458,33 +1461,6 @@ try
         throw "断言失败（场景 F5）：断网窗口内 GLM 降级通知记录 $($mine.Count) 条（期望恰 1，冷却去重）——规则未开火或重复投递"
     }
     Write-Host "场景 F5 通过：断网降级通知恰 1 条（connection-degraded 冷却去重）；Toast 呈现面转装机"
-    # F5t Toast 快捷方式自愈（行 41「快捷方式缺失可自愈」半）：开跑前预置缺失（Stop 后删除），首发送由
-    # toolkit 重建 .lnk（AUMID 自愈）。无头会话 toast 基础设施不可用时按「Toast 发送失败」日志降级 warning
-    # 转装机（G7c 同口径）；零失败日志且 .lnk 不在 = 首发送链真回归红（行 41 发现面）。
-    $sentFailure = $false
-    $deadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $deadline)
-    {
-        if (Test-Path $toastShortcut) { break }
-        $fLog = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
-        if ((Test-Path $fLog) -and ([System.IO.File]::ReadAllText($fLog, [System.Text.Encoding]::UTF8) -match "Toast 发送失败")) { $sentFailure = $true; break }
-        Start-Sleep -Seconds 2
-    }
-    if (Test-Path $toastShortcut)
-    {
-        Save-FullScreenshot "F-toast-shortcut-healed.png"
-        Write-Host "场景 F5t 通过：Toast 快捷方式缺失自愈——预置删除后首发送重建 .lnk（AUMID 自愈，行 41 半）"
-    }
-    elseif ($sentFailure)
-    {
-        Save-FullScreenshot "F-toast-shortcut-headless.png"
-        Write-Host "::warning::场景 F5t：无头会话 toast 基础设施不可用（「Toast 发送失败」在日志），快捷方式自愈转装机目检（G7c 同口径）；通知记录断言（F5）不受影响"
-    }
-    else
-    {
-        Save-FullScreenshot "F-FAIL-shortcut-not-healed.png"
-        throw "断言失败（场景 F5t）：预置删除的 Toast 快捷方式 30s 未自愈重建，且日志无「Toast 发送失败」——首发送链未走通（行 41 发现面）"
-    }
     # F4 恢复自愈：mock 回来 ≤150s 内百分比读数重现（自动刷新闭环，无重启无人工；
     # 断网期失败刷新会累积 backoff——15s 基数 ×10 封顶 150s，宽限取满，成功即提前退出）
     Ensure-MockServer
@@ -1510,6 +1486,35 @@ try
     {
         throw "断言失败（场景 F5b）：恢复后 GLM 通知记录 $($mine.Count) 条（期望仍 1）——健康状态误报"
     }
+    # F5t Toast 快捷方式自愈（行 41「快捷方式缺失可自愈」半）：开跑前预置缺失（Stop 后删除），首发送由
+    # toolkit 重建 .lnk（AUMID 自愈）。无头会话 toast 基础设施不可用时按「Toast 发送失败」日志降级 warning
+    # 转装机（G7c 同口径）；零失败日志且 .lnk 不在 = 首发送链真回归红（行 41 发现面）。
+    # 38470370548 实证：快捷方式名=Path.ChangeExtension(FriendlyName,".lnk")="Beacon.lnk"（非 Beacon.App.lnk）。
+    # F5t 排在 F4 之后：F4 的 Ensure-MockServer 必须先于任何 throw 执行，否则 mock 停摆连带 G/H/K 全红。
+    $sentFailure = $false
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (Test-Path $toastShortcut) { break }
+        $fLog = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+        if ((Test-Path $fLog) -and ([System.IO.File]::ReadAllText($fLog, [System.Text.Encoding]::UTF8) -match "Toast 发送失败")) { $sentFailure = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (Test-Path $toastShortcut)
+    {
+        Save-FullScreenshot "F-toast-shortcut-healed.png"
+        Write-Host "场景 F5t 通过：Toast 快捷方式缺失自愈——预置删除后首发送重建 .lnk（AUMID 自愈，行 41 半）"
+    }
+    elseif ($sentFailure)
+    {
+        Save-FullScreenshot "F-toast-shortcut-headless.png"
+        Write-Host "::warning::场景 F5t：无头会话 toast 基础设施不可用（「Toast 发送失败」在日志），快捷方式自愈转装机目检（G7c 同口径）；通知记录断言（F5）不受影响"
+    }
+    else
+    {
+        Save-FullScreenshot "F-FAIL-shortcut-not-healed.png"
+        throw "断言失败（场景 F5t）：预置删除的 Toast 快捷方式 30s 未自愈重建，且日志无「Toast 发送失败」——首发送链未走通（行 41 发现面）"
+    }
 }
 catch
 {
@@ -1522,6 +1527,7 @@ catch
 try
 {
     # G1 colorOverride 仅该 tile 变色（#ff00ff 品红只落 GLM 状态灯，DeepSeek 零渗）
+    Ensure-MockServer # 防御：不依赖 F 场景收尾（38470370548 级联红根因=F5t throw 跳过 F4 的 Ensure-MockServer）
     Write-GConfig "#ff00ff"
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 15
@@ -1879,6 +1885,7 @@ catch
 # —— 场景 H：悬浮位置还原 + Alt-Tab/任务栏结构 + 刷新不抢焦点 + panel/floating 二选一（todo 行 39/40/41/44 半项 CI 代验）——
 try
 {
+    Ensure-MockServer # 防御：不依赖前序场景收尾（38470370548 级联红根因）
     Write-HConfig "floating"
     foreach ($round in @(1, 2))
     {
@@ -1967,6 +1974,7 @@ catch
 # —— 场景 K：全局热键唤起 L2 快速面板 + 缓存优先 + Esc 键盘关闭（todo 行14/36 半项 CI 代验）——
 try
 {
+    Ensure-MockServer # 防御：不依赖前序场景收尾（38470370548 级联红根因）
     Write-ScenarioConfig $true
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 15
