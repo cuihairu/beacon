@@ -3703,11 +3703,11 @@ try
     # 遮挡防护（38633490811 W3 红实证）：浮 tile 窗 z 序在面板之上，恰好压住 chip 行时 UIA 找得到
     # chip、矩形坐标也准，但 SendInput 打到最上层 tile——过滤永不触发。点击前把全部 tile 挪到面板
     # 正下方横排（位置由面板矩形推导），与 tile 落位运气无关
-    $wPr = [WinEnum]::RectOf $panel
+    $wPr = [WinEnum]::RectOf($panel)
     $wTi = 0
     foreach ($wTh in @([WinEnum]::VisibleHandlesByTitle("Beacon Tile") + [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")))
     {
-        [WinEnum]::MoveNoFocus $wTh $wPr.Left ($wPr.Bottom + 4 + $wTi * 60)
+        [WinEnum]::MoveNoFocus($wTh, $wPr.Left, ($wPr.Bottom + 4 + $wTi * 60))
         $wTi++
     }
     $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
