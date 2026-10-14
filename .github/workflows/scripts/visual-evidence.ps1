@@ -128,6 +128,27 @@ public static class WinEnum
         SendInput(1, new[] { up }, size);
         System.Threading.Thread.Sleep(400);
     }
+    // 场景 X：合成右键（行级 ContextFlyout 触发）。同 DragMouse 的 SendInput 绝对坐标口径——
+    // mouse_event/SetCursorPos 合成输入在 CI 会话不生效（38044411443），必须走 INPUT 队列。
+    // RIGHTDOWN=0x0008 / RIGHTUP=0x0010
+    public static void RightClick(int x, int y)
+    {
+        int vx = ToVirtual(x, 76, 78); int vy = ToVirtual(y, 77, 79);
+        var move = new INPUT
+        {
+            type = 0, // INPUT_MOUSE
+            u = new INPUTUNION { mi = new MOUSEINPUT { dx = vx, dy = vy, dwFlags = 0x8001 } } // MOVE|ABSOLUTE|VIRTUALDESK
+        };
+        var down = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dwFlags = 0x0008 } } };  // RIGHTDOWN
+        var up = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dwFlags = 0x0010 } } };    // RIGHTUP
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { move }, size);
+        System.Threading.Thread.Sleep(200);
+        SendInput(1, new[] { down }, size);
+        System.Threading.Thread.Sleep(120);
+        SendInput(1, new[] { up }, size);
+        System.Threading.Thread.Sleep(400);
+    }
     // 物理像素 → 绝对归一化 [0,65535]：origin(76/77) 起算、span(78/79) 归一（VIRTUALDESK 语义）
     private static int ToVirtual(int px, int originMetric, int spanMetric)
     {
@@ -3632,6 +3653,194 @@ catch
     Save-FullScreenshot "W-FAIL-unexpected.png"
     $failures.Add("场景 W：$($_.Exception.Message)")
     Write-Host "::error::场景 W 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 X：右键 Pin/Unpin 全链（todo 行 55「右键 Pin 落库」+ 行 60「两入口一致并持久化」CI 代验）——
+# 链路：RecentList 行右键（SendInput RIGHTDOWN/UP 合成，DragMouse 同绝对坐标口径）→ ContextFlyout 弹出
+# → MenuFlyoutItem（Control 自带 peer；Name=硬编码英文「(Un)Pin to desktop」，未入 UiStrings）UIA 可达
+# → Invoke → PinWidget：widget.Pinned 翻转 + UpsertWidget 落 widgets.json + ReloadWidgets 重建
+# （floating 形态 FloatingTileWindow 按 widgets.json 重建窗集——tile 增减=落库+重建双证）。
+# X3 重启 --settings 冷加载（持久化）+ pin-toggle-{widgetId} ToggleState=On + 行标「已钉」——两入口单一
+# 事实源（widget.Pinned）读态一致。行 61 非准入类型半项留待入口闸口径（PinEntryVisible）落定后补。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    # X0 基线：两 tile（GLM/DeepSeek 预置 pinned:true，floating 形态建窗）
+    $baseTiles = -1
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline)
+    {
+        $baseTiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+        if ($baseTiles -eq 2) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($baseTiles -ne 2) { Save-FullScreenshot "X-FAIL-baseline-tiles.png"; throw "断言失败（场景 X 前置）：基线悬浮 tile=$baseTiles（期望 2——GLM/DeepSeek 预置钉选）" }
+    # 开面板（热键 WM_HOTKEY 直发，S 同链路）
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 X 前置）：托盘消息窗未找到" }
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0)
+    $panelHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $ph = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($ph.Count -ge 1) { $panelHandle = $ph[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panelHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "X-FAIL-no-panel.png"; throw "断言失败（场景 X 前置）：热键触发后 5s 内快速面板未出现" }
+    Start-Sleep -Seconds 2
+    # RecentList 出 GLM 事件行（S1 同口径；行名含「已用 38%」）
+    $glmRow = $null
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+        $recentRoot = Find-UiaById $panelEl "RecentList" 5
+        if ($recentRoot)
+        {
+            $rows = $recentRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+            if (@($rows).Count -ge 1) { $glmRow = $rows | Where-Object { $_.Current.Name -match '已用 38%' } | Select-Object -First 1 }
+        }
+        if ($glmRow) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$glmRow) { Save-FullScreenshot "X-FAIL-no-glm-row.png"; throw "断言失败（场景 X1 前置）：40s 内 RecentList 无 GLM 事件行（38%）" }
+    # X1 右键 Unpin：菜单项「Unpin from desktop」→ widgets.json 翻 false + GLM tile 消失
+    $rect = $glmRow.Current.BoundingRectangle
+    [WinEnum]::RightClick([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+    $menuItem = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+        $menuItem = $panelEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Unpin from desktop")))
+        if (!$menuItem)
+        {
+            # 弹层若独立 HWND：桌面根兜底（G6b combo 展开同口径）
+            $menuItem = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Unpin from desktop")))
+        }
+        if ($menuItem) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$menuItem) { Save-FullScreenshot "X-FAIL-no-unpin-item.png"; throw "断言失败（场景 X1）：右键后 5s 内未见菜单项「Unpin from desktop」——ContextFlyout 未弹出（合成右键不生效？）" }
+    Invoke-Uia $menuItem
+    $unpinned = $false
+    $tileGone = $false
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline)
+    {
+        $widgetsJson = Get-Content (Join-Path $configDir "widgets.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+        $glmEntry = $widgetsJson | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.pinned -eq $false) { $unpinned = $true }
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count -eq 1) { $tileGone = $true }
+        if ($unpinned -and $tileGone) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$unpinned)
+    {
+        Save-FullScreenshot "X-FAIL-unpin-not-saved.png"
+        throw "断言失败（场景 X1）：Unpin 后 15s 内 widgets.json GLM pinned 未翻 false——右键 Pin 落库失败（todo 行 55）"
+    }
+    if (!$tileGone)
+    {
+        Save-FullScreenshot "X-FAIL-unpin-tile-alive.png"
+        throw "断言失败（场景 X1）：Unpin 后 15s 内 GLM 悬浮 tile 未消失（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 1）——ReloadWidgets 重建链未跑"
+    }
+    Write-Host "场景 X1 通过：右键 Unpin → widgets.json 落盘 + GLM tile 移除（余 1 tile）"
+    # X2 右键复钉：ReloadWidgets 已全量重画（W3 教训：行/根全重取）→ 菜单项翻「Pin to desktop」→ 翻回 true + tile 回归
+    $glmRow = $null
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+        $recentRoot = Find-UiaById $panelEl "RecentList" 5
+        if ($recentRoot)
+        {
+            $rows = $recentRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+            if (@($rows).Count -ge 1) { $glmRow = $rows | Where-Object { $_.Current.Name -match '已用 38%' } | Select-Object -First 1 }
+        }
+        if ($glmRow) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$glmRow) { Save-FullScreenshot "X-FAIL-no-glm-row-repin.png"; throw "断言失败（场景 X2）：重建后 15s 内 RecentList 无 GLM 事件行" }
+    $rect = $glmRow.Current.BoundingRectangle
+    [WinEnum]::RightClick([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+    $menuItem = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+        $menuItem = $panelEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Pin to desktop")))
+        if (!$menuItem)
+        {
+            $menuItem = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Pin to desktop")))
+        }
+        if ($menuItem) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$menuItem) { Save-FullScreenshot "X-FAIL-no-pin-item.png"; throw "断言失败（场景 X2）：右键后 5s 内未见菜单项「Pin to desktop」（pinned=false 应翻文案）" }
+    Invoke-Uia $menuItem
+    $repinned = $false
+    $tileBack = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $widgetsJson = Get-Content (Join-Path $configDir "widgets.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+        $glmEntry = $widgetsJson | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.pinned -eq $true) { $repinned = $true }
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count -eq 2) { $tileBack = $true }
+        if ($repinned -and $tileBack) { break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$repinned) { Save-FullScreenshot "X-FAIL-repin-not-saved.png"; throw "断言失败（场景 X2）：复钉后 20s 内 widgets.json GLM pinned 未翻 true" }
+    if (!$tileBack)
+    {
+        Save-FullScreenshot "X-FAIL-repin-tile-missing.png"
+        throw "断言失败（场景 X2）：复钉后 20s 内 GLM 悬浮 tile 未回归（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 2）——开钉重建链回归"
+    }
+    Write-Host "场景 X2 通过：右键复钉 → widgets.json 落盘 + GLM tile 回归（2 tiles）——两方向落库同证"
+    # X3 持久化 + 两入口读态一致：重启 --settings 冷加载 → tile 回建 + 钉开关 On + 行标「已钉」
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { Save-FullScreenshot "X-FAIL-no-settings.png"; throw "断言失败（场景 X3）：重启后设置窗未开" }
+    $pinToggle = Find-UiaById $settings "pin-toggle-bigmodel.usage:GLM" 10
+    if (!$pinToggle) { throw "断言失败（场景 X3）：UIA 未找到 pin-toggle-bigmodel.usage:GLM（锚点丢失？）" }
+    $toggleState = "$(($pinToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
+    if ($toggleState -ne "On") { throw "断言失败（场景 X3）：重启后设置钉开关 ToggleState=$toggleState（期望 On）——两入口读态不一致或持久化回归" }
+    $glmLabel = $null
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        $texts = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)))
+        $glmLabel = @($texts) | Where-Object { $_.Current.Name -match 'bigmodel.usage:GLM' -and $_.Current.Name -match '已钉' } | Select-Object -First 1
+        if ($glmLabel) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$glmLabel) { Save-FullScreenshot "X-FAIL-no-pinned-label.png"; throw "断言失败（场景 X3）：设置页 GLM 行标未见「已钉」——两入口读态不一致（行 60）" }
+    $tilesRestarted = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+    if ($tilesRestarted -ne 2) { Save-FullScreenshot "X-FAIL-restart-tiles.png"; throw "断言失败（场景 X3）：重启后悬浮 tile=$tilesRestarted（期望 2）——钉选持久化回归" }
+    Write-Host "场景 X3 通过：重启持久化（2 tiles）+ 设置钉开关 On + 行标「已钉」——两入口读态一致"
+    Stop-Beacon
+}
+catch
+{
+    Stop-Beacon # W 同口径：失败也收尸，防残留进程毒化 J 静默安装
+    Save-FullScreenshot "X-FAIL-unexpected.png"
+    $failures.Add("场景 X：$($_.Exception.Message)")
+    Write-Host "::error::场景 X 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——

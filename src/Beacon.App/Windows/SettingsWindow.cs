@@ -2113,6 +2113,9 @@ internal sealed class SettingsWindow : Window
         if (descriptor is { PinSupported: true })
         {
             var pin = new ToggleSwitch { OnContent = "钉", OffContent = "钉", IsOn = widget.Pinned, Margin = new Thickness(0, 0, 0, 0) };
+            // UIA 取证/CI 入口（B-702 两入口一致性取证）：ToggleSwitch 自带 peer，AutomationId 即可达——
+            // 与 appearance-color-success 同口径（Control 不需要 Border 那样的 SetName 补 peer）。
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pin, $"pin-toggle-{widget.Id}");
             pin.Toggled += (_, _) =>
             {
                 widget.Pinned = pin.IsOn;
