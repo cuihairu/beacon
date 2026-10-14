@@ -3734,44 +3734,80 @@ try
         Start-Sleep -Seconds 2
     }
     if (!$glmRow) { Save-FullScreenshot "X-FAIL-no-glm-row.png"; throw "断言失败（场景 X1 前置）：40s 内 RecentList 无 GLM 事件行（38%）" }
-    # X1 右键 Unpin：菜单项「Unpin from desktop」→ widgets.json 翻 false + GLM tile 消失
-    $rect = $glmRow.Current.BoundingRectangle
-    [WinEnum]::RightClick([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
-    $menuItem = $null
-    $deadline = (Get-Date).AddSeconds(5)
-    while ((Get-Date) -lt $deadline)
+    # X1 右键 Unpin：菜单项「Unpin from desktop」→ widgets.json 翻 false + GLM tile 消失。
+    # Invoke→ClickAt + 整链重试两轮：38602176751 实证 flyout 开启动画期 InvokePattern.Invoke 可能被吞
+    # （菜单命中、Invoke 已调、widgets.json 不翻、flyout 已关、tile 仍在）——真实鼠标点击不吃动画竞态；
+    # 点击后 15s 未翻则整链重来（上一轮弹层无论命中/落空均已关闭，右键重开新 flyout，无状态残留）。
+    $unpinned = $false
+    $menuSeen = $false
+    for ($attempt = 1; $attempt -le 2 -and !$unpinned; $attempt++)
     {
-        $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
-        $menuItem = $panelEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Unpin from desktop")))
+        if ($attempt -gt 1)
+        {
+            Start-Sleep -Seconds 2
+            # 重试前重找行（ci 档 15s 刷新 tick 可能已重建 RecentList，旧元素 BoundingRectangle 不可信）
+            $glmRow = $null
+            $deadline = (Get-Date).AddSeconds(20)
+            while ((Get-Date) -lt $deadline)
+            {
+                $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+                $recentRoot = Find-UiaById $panelEl "RecentList" 5
+                if ($recentRoot) { $glmRow = Find-PanelRow $recentRoot '已用 38%' }
+                if ($glmRow) { break }
+                Start-Sleep -Seconds 2
+            }
+            if (!$glmRow) { Save-FullScreenshot "X-FAIL-no-glm-row.png"; throw "断言失败（场景 X1）：重试时 RecentList 无 GLM 事件行（38%）" }
+        }
+        $rect = $glmRow.Current.BoundingRectangle
+        [WinEnum]::RightClick([int]($rect.X + $rect.Width / 2), [int]($rect.Y + $rect.Height / 2))
+        $menuItem = $null
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $deadline)
+        {
+            $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+            $menuItem = $panelEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Unpin from desktop")))
+            if (!$menuItem)
+            {
+                # 弹层若独立 HWND：桌面根兜底（G6b combo 展开同口径）
+                $menuItem = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                    [System.Windows.Automation.TreeScope]::Descendants,
+                    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Unpin from desktop")))
+            }
+            if ($menuItem) { break }
+            Start-Sleep -Milliseconds 500
+        }
         if (!$menuItem)
         {
-            # 弹层若独立 HWND：桌面根兜底（G6b combo 展开同口径）
-            $menuItem = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                [System.Windows.Automation.TreeScope]::Descendants,
-                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Unpin from desktop")))
+            Write-Host "场景 X1：第 $attempt 次右键后 5s 未见菜单项（ContextFlyout 未弹出），重试"
+            continue
         }
-        if ($menuItem) { break }
-        Start-Sleep -Milliseconds 500
+        $menuSeen = $true
+        Start-Sleep -Milliseconds 600 # flyout 开启动画走完再点击（动画期 UIA 模式调用不可靠）
+        $menuRect = $menuItem.Current.BoundingRectangle
+        [WinEnum]::ClickAt([int]($menuRect.X + $menuRect.Width / 2), [int]($menuRect.Y + $menuRect.Height / 2))
+        $deadline = (Get-Date).AddSeconds(15)
+        while ((Get-Date) -lt $deadline)
+        {
+            $widgetsJson = Get-Content (Join-Path $configDir "widgets.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+            $glmEntry = $widgetsJson | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+            if ($glmEntry -and $glmEntry.pinned -eq $false) { $unpinned = $true; break }
+            Start-Sleep -Seconds 2
+        }
+        if (!$unpinned -and $attempt -lt 2) { Write-Host "场景 X1：第 $attempt 次点击后 widgets.json 未翻，整链重试" }
     }
-    if (!$menuItem) { Save-FullScreenshot "X-FAIL-no-unpin-item.png"; throw "断言失败（场景 X1）：右键后 5s 内未见菜单项「Unpin from desktop」——ContextFlyout 未弹出（合成右键不生效？）" }
-    Invoke-Uia $menuItem
-    $unpinned = $false
+    if (!$menuSeen) { Save-FullScreenshot "X-FAIL-no-unpin-item.png"; throw "断言失败（场景 X1）：两轮右键后均未见菜单项「Unpin from desktop」——ContextFlyout 未弹出（合成右键不生效？）" }
+    if (!$unpinned)
+    {
+        Save-FullScreenshot "X-FAIL-unpin-not-saved.png"
+        throw "断言失败（场景 X1）：右键 Unpin 两轮尝试后 widgets.json GLM pinned 未翻 false——右键 Pin 落库失败（todo 行 55）"
+    }
     $tileGone = $false
     $deadline = (Get-Date).AddSeconds(15)
     while ((Get-Date) -lt $deadline)
     {
-        $widgetsJson = Get-Content (Join-Path $configDir "widgets.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-        $glmEntry = $widgetsJson | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
-        if ($glmEntry -and $glmEntry.pinned -eq $false) { $unpinned = $true }
-        if ([WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count -eq 1) { $tileGone = $true }
-        if ($unpinned -and $tileGone) { break }
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count -eq 1) { $tileGone = $true; break }
         Start-Sleep -Seconds 2
-    }
-    if (!$unpinned)
-    {
-        Save-FullScreenshot "X-FAIL-unpin-not-saved.png"
-        throw "断言失败（场景 X1）：Unpin 后 15s 内 widgets.json GLM pinned 未翻 false——右键 Pin 落库失败（todo 行 55）"
     }
     if (!$tileGone)
     {
