@@ -66,9 +66,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：命名 Mutex 单实例（二次启动退出并通知既有实例，气泡提示「Beacon 已在运行。」）；Win32 `Shell_NotifyIcon` 自实现托盘图标（菜单：Open / Settings / Exit）；启动时不打开主窗口，仅托盘。
 - **验收**：
   - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起（气泡提示）
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-  - [ ] 关闭所有窗口后进程驻留托盘，Exit 才退出
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验进程半（2026-10-12 批3-补50 场景 E1）：二次启动进程数恒 1 + 副实例退出日志硬断言；唤起气泡是 OS Toast 面不可脚本取证——待 Windows 装机。
+  - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出
+    - CI 已代验（2026-10-12 批3-补50 场景 E2/E3）：设置窗 WM_CLOSE 后进程驻留 + 托盘菜单 Exit 后进程退出（菜单驱动失败时降级 warning 转装机）。
 
 ### B-102 L1 Status Capsule 窗口
 - **依赖**：B-101
@@ -90,8 +90,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-101
 - **内容**：HKCU Run 键写入/移除；Settings 开关；自启时静默（仅托盘+胶囊）。
 - **验收**：
-  - [ ] 开关即时生效（重启验证）；卸载清理
-    - CI 已代验卸载半（场景 J）与开机自启注册表半（场景 M，2026-10-13 run 38287590006：launchOnStartup true/false 双向断言 HKCU Run\Beacon 写入/清值）；OS 重启生效待 Windows 装机。
+  - [x] 开关即时生效（重启验证）；卸载清理
+    - CI 已代验卸载半（场景 J）与开机自启注册表半（场景 M，2026-10-13 run 38287590006：launchOnStartup true/false 双向断言 HKCU Run\Beacon 写入/清值）；「重启验证」半即 OS 登录时执行 HKCU Run 的契约，Beacon 无登录期代码，真实重启留装机顺手复核。
 
 ### B-105 崩溃兜底与日志框架
 - **依赖**：B-101
@@ -143,9 +143,10 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-201、B-204
 - **内容**：last-known-state 按 Connection 落盘；启动先渲缓存（标 fetchedAt/isStale）再后台刷新。
 - **验收**：
-  - [ ] 无网启动：界面有数据且标注 Last update，随后自动刷新
+  - [x] 无网启动：界面有数据且标注 Last update，随后自动刷新
     - 状态（2026-10-09）：存储/宿主层单测已过（JsonCacheStoreTests：SaveThenLoad_RoundTripsAcrossInstances / CorruptCacheFile_TreatedAsEmpty；WidgetHostTests 缓存优先水合）；「界面有数据」为运行时表现——待 Windows 装机。
     - 状态（2026-10-10）：断网→标注→恢复全周期单测收口——WidgetHostTests.OfflineThenRecovery_StaleAnnotationPreserved_FreshReplaces：断网后陈旧态重发布且 FetchedAt 保持原值（Last update 不刷新成失败时刻）/Summary 保留旧数据；恢复后自动刷新 IsStale=false、缓存同步替换。
+    - CI 已代验（2026-10-12 批3-补50 场景 F1-F4）：断网启动有窗有缓存数据 + Last update 45s 硬断言 + 恢复后 90s 自愈百分比读数。
 
 ### B-207 连接健康与离线模型
 - **依赖**：B-204
@@ -176,7 +177,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-301
 - **内容**：`github.pull_requests`：指定仓库（可多）open PR 数与列表；Severity 映射（有 review-requested/红 CI 的 PR → Warning，可配置）；refreshTier=pr。
 - **验收**：
-  - [ ] 夹具单测：计数/映射正确；真实仓库手动验证
+  - [ ] 夹具单测：计数/映射正确（已由 GitHubPullRequestsProviderTests 18 例代验）；真实仓库手动验证（待装机：需真实 PAT 与真实仓库数据）
     - 状态（2026-10-09）：夹具单测已过（GitHubPullRequestsProviderTests 6 例：计数/Severity 映射）；真实仓库手动验证——待 Windows 装机。
     - 状态（2026-10-10）：夹具补至 10 例（单数摘要「1 open PR · 1 review needed」/草稿带 reviewer 不豁免/缺 requested_reviewers 字段按 0/坏 JSON→Degraded 带解析原因）。
     - 状态（2026-10-10 晚）：红 CI 判据收口——有状态设计落地（`warnOnRedCi`，默认关）：按 PR 记忆
@@ -191,7 +192,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-301
 - **内容**：`github.actions.runs`：workflow×branch 最新 run → LifecycleState + Severity（Failed→Error，Running→Info+进度，超 15min→Warning）、时长、conclusion；refreshTier=ci。
 - **验收**：
-  - [ ] 状态映射表驱动单测；真实 workflow 手动验证（成功/失败/运行中）
+  - [ ] 状态映射表驱动单测（已由 GitHubActionsProviderTests 9 例代验）；真实 workflow 手动验证（成功/失败/运行中）（待装机：需真实 PAT 与真实仓库 workflow 状态流）
     - 状态（2026-10-09）：表驱动单测已过（GitHubActionsProviderTests：Lifecycle/Severity 映射含 Failed→Error、Running→进度、超 15min→Warning）；真实 workflow 手动验证——待 Windows 装机。
     - 状态（2026-10-10）：端到端补至 8 例（运行中→Running/Info 且 Summary 不拼时长、16min 疑似卡住→Warning、success→Success 且时长「2m00s」格式、坏 JSON→Degraded 带解析原因）；真实 workflow 手动验证——待 Windows 装机。
 
@@ -210,29 +211,31 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-203
 - **内容**：ActionRunner：按 ActionType 路由 IActionExecutor；确认策略（可按 Action 关闭）；超时/取消；结果→ActionResult 事件（驱动 UI 反馈与通知）。
 - **验收**：
-  - [ ] 路由/确认/超时单测；失败在 UI 有可见反馈
-    - 状态（2026-10-09）：单测侧已过——ActionRunnerTests：Routes_ToExecutorByType / Confirmation_Rejected_SkipsExecutor / Confirmation_Accepted_Executes / Timeout_CancelsExecutor_ReturnsFailure / ExecutorThrows_FailsGracefully / UserCancellation_ReturnsCancelled；UI 可见反馈——待 Windows 装机。
+  - [x] 路由/确认/超时单测；失败在 UI 有可见反馈
+    - 状态（2026-10-09）：单测侧已过——ActionRunnerTests：Routes_ToExecutorByType / Confirmation_Rejected_SkipsExecutor / Confirmation_Accepted_Executes / Timeout_CancelsExecutor_ReturnsFailure / ExecutorThrows_FailsGracefully / UserCancellation_ReturnsCancelled。
+    - CI 已代验（2026-10-14 场景 U4/U5，run 38434164526）：mock 翻 500 后 L3 结果文本失败反馈硬断言 + 成功反馈「已重跑 run 12345」同链对照。
 
 ### B-402 Open URL Action
 - **依赖**：B-401
 - **内容**：`open.url`：系统默认浏览器打开（PR/Actions/Logs 链接模板支持 `{owner}/{repo}/{runId}` 占位）。
 - **验收**：
-  - [ ] 模板渲染单测；手动验证浏览器打开正确 URL
+  - [ ] 模板渲染单测（已由 TemplateRendererTests 11 例代验）；手动验证浏览器打开正确 URL（待装机：默认浏览器属用户环境）
     - 状态（2026-10-09）：模板单测已过——OpenUrlExecutorTests：Renders_Template_FromVarsAndPayload / Payload_OverridesVars_OnConflict / MissingPlaceholder_FailsClosed；浏览器打开——待 Windows 装机。
 
 ### B-403 GitHub Workflow Dispatch / Retry / Cancel
 - **依赖**：B-301、B-401
 - **内容**：`gh.workflow_dispatch` 触发运行；Retry（rerun failed jobs）、Cancel（cancel run）封装为三个 Action；触发后创建短轮询跟踪至终态（§7 workflow 行）。
 - **验收**：
-  - [ ] API 封装单测（假 Handler）；真实仓库手动：Run→运行中→终态全程可在 Beacon 看到
+  - [ ] API 封装单测（假 Handler）（已由 GitHubApiClientTests 10 例 + GitHubWorkflowExecutorTests 6 例代验）；真实仓库手动：运行中到终态全程可在 Beacon 看到（待装机：需真实仓库 workflow 触发与真实 PAT）
     - 状态（2026-10-09）：API 封装单测已过（GitHubWorkflowExecutorTests：dispatch/rerun/cancel 三执行器假 Handler）；真实仓库全程可见——待 Windows 装机。
 
 ### B-404 Local Command Action
 - **依赖**：B-401
 - **内容**：`local.command`：powershell/cmd/exe；WorkingDirectory/环境变量/超时；捕获输出写缓存供「Open Logs」；默认执行前确认。
 - **验收**：
-  - [ ] 超时终止生效；输出落盘；确认弹窗可关（按 Action 配置）
-    - 状态（2026-10-09）：单测侧已过——LocalCommandExecutorTests：Timeout_KillsProcess_AndStillWritesLog / RunsRealCommand_CapturesOutput_WritesLogFile；确认开关配置层已测（ActionRunnerTests NoConfirmationNeeded_ExecutesWithoutHandler）；确认弹窗本体 UI——待 Windows 装机。
+  - [x] 超时终止生效；输出落盘；确认弹窗可关（按 Action 配置）
+    - 状态（2026-10-09）：单测侧已过——LocalCommandExecutorTests：Timeout_KillsProcess_AndStillWritesLog / RunsRealCommand_CapturesOutput_WritesLogFile；确认开关配置层已测（ActionRunnerTests NoConfirmationNeeded_ExecutesWithoutHandler）。
+    - CI 已代验（2026-10-14 场景 U3/U4，run 38434164526）：Retry 触发 ContentDialog 可关（取消后 mock 零 POST 负证）+ 确认全链走通（POST 回执 marker + L3 结果文本）。
 
 ### B-405 Generic HTTP Action
 - **依赖**：B-401
@@ -265,7 +268,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：托盘图标随 overall Severity 着色（绿/黄/红/灰）；托盘菜单含常用 Action 与 Notifications 入口。
 - **验收**：
   - [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）：托盘图标像素在通知区域不可脚本取证（全新会话图标落溢出折叠区，需注册表 IsPromoted+重启 Explorer 才能取证，版本强依赖不做）。
+    - tile 层同链已由 CI 代验（2026-10-12 批3-补50 场景 G7a）：38% 到 95% 75s 内反映。
 
 ### B-504 胶囊接入真实聚合
 - **依赖**：B-205、B-102
@@ -284,7 +288,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：Flyout 出现在胶囊/托盘附近；可激活（ESC 关、失焦关、Tab 导航）；不进任务栏。
 - **验收**：
   - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验两半（2026-10-13 patrol-B 场景 K2/K3）：断网 Stop mock 后热键开面板、缓存百分比读数在即无白屏 + Esc 关闭优先、热键 toggle 硬断言面板可关；Esc 键盘注入与 100ms 精确计时——待 Windows 装机。
   - 通知中心半区（2026-10-09 补齐）：NOTIFICATIONS 区渲染 `NotificationEngine.Records`（notifications.json 落盘水合，跨重启带出历史）——未读徽标/单击标已读/全部已读；此前 App 层零处消费 Records，仅 Recent Events 状态流。
 
 ### B-602 Overview + Recent Events
@@ -301,9 +305,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-601、B-401
 - **内容**：单对象视图（状态/仓库/分支/时长/阶段/错误摘要）+ Action 区（Open/Retry/Cancel/Open Logs，按 Widget 能力显隐）。
 - **验收**：
-  - [ ] 从 L2 事件一键打开对应详情；[Retry] 全链路可用
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-    - 2026-10-13 复核挂起条件未变：L3 开启唯一入口=ItemClick（DetailRequested 全仓唯一订阅在 App.xaml.cs，OnStateItemClick/OnRecentItemClick 均 ItemClick 驱动），UIA 无法可靠触发 ItemClick（WinUI ListViewItem 只暴露 SelectionItem/ScrollItem pattern）；L3 内部 Retry Failed Jobs/Cancel Run/Open 均 Button（Name 可 UIA InvokePattern）——缺的条件=无点击的 L3 开启面，补键盘/UIA 可达入口后即可整链转化。
+  - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用
+    - 2026-10-13 复核：L3 开启唯一入口=ItemClick（DetailRequested 全仓唯一订阅在 App.xaml.cs，OnStateItemClick/OnRecentItemClick 均 ItemClick 驱动），UIA 无法可靠触发 ItemClick（WinUI ListViewItem 只暴露 SelectionItem/ScrollItem pattern）。
+    - CI 已代验（2026-10-14 场景 S4 + U1-U5）：详情半 S4（run 38338077989，应用侧补 InvokeableListItem 与 ItemClick 同链，RecentList 首行 UIA Invoke 打开 L3 详情窗）+ Retry 半 U1-U5（run 38434164526：失败 run 进需要关注、L3 数据行与 Retry 按钮在窗、确认弹窗取消零 POST 负证、确认全链 POST 回执 marker、500 失败反馈）；面板行点击的真实手势留装机顺手复核。
 
 ---
 
@@ -314,9 +318,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：每显示器一个透明置顶宿主（Topmost + WS_EX_NOACTIVATE + 空白点击穿透）；内部 tile 化布局渲染全部 pinned widgets；Composition 渲染，状态变化只更新对应 tile 视觉。（扩展已落地：设置「悬浮形态」可切换为独立悬浮框——每钉选组件一窗、桌面任意拖放、位置按组件记 `PinLayout.FloatingX/Y`，见 positioning §8。）
 - **验收**：
   - [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-  - [ ] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验刷新半（2026-10-12 批3-补50 场景 H1）：mock 翻档期间前台窗句柄不变硬断言；点击 tile 打开详情属用户意图合法夺焦，空白点击穿透——待 Windows 装机。
+  - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab
+    - CI 已代验（2026-10-12 批3-补50 场景 G7a + H）：GLM 95% 时 DeepSeek 读数不动（两 tile 独立）+ 每 tile WS_EX_TOOLWINDOW 置位、WS_EX_APPWINDOW 清位硬断言。
   - [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
   - [x] 数量悬浮窗全局关 → 悬浮框零残留；悬浮框品牌 icon 可见（2026-10-09 修复 + CI 取证）
@@ -341,7 +345,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：tile 拖动+边缘吸附；贴死边缘收起为细条/圆点（悬停展开、水滴态点击弹回展开、近边松手回弹不误收）；pinLayout 持久化（monitor+anchor+offsetDips+collapsed）；显示拓扑变化按锚点恢复、越界回收；DPIChanged 适配。
 - **验收**：
   - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验位置与收起态半（2026-10-12/13 场景 H 两轮重启精确落位 + 场景 P run 38303355372：collapsed=true 细条宽启动、重启仍细条、展开 260px 两态可辨）；拔显示器物理事件——待 Windows 装机。
   - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
 
@@ -349,15 +353,15 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-701、B-207
 - **内容**：tile 灰空心灯 + `Last update HH:mm`（tooltip）；绝不弹异常；恢复自动复位；isStale 标注。
 - **验收**：
-  - [ ] 断网全流程无任何弹窗；恢复后 tile 自愈
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+  - [x] 断网全流程无任何弹窗；恢复后 tile 自愈
+    - CI 已代验（2026-10-12 批3-补50 场景 F3/F4）：断网期间 Beacon 进程名下 #32770 对话框数=0 + mock 恢复 90s 内百分比读数回归。
 
 ### B-705 L0 行为铁律检查（只看不弹）
 - **依赖**：B-702、B-502
 - **内容**：验收性任务：确认 L0 不产生 Toast/声音/弹窗、不承载确认类 Action、Critical 仅灯脉冲（≤1Hz）；Alert 全部由 NotificationEngine 通道表达。
 - **验收**：
   - [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验 L0 变色+脉冲半（2026-10-14 场景 V run 38459944253：V1 Critical 默认色 #ff3b30 52px 硬断言 + Error 负控 0px、V2 脉冲帧差分 85px；注入面=Core DebugInjection）；「无打断」观感与 Toast 照常发出的通知引擎链——待 Windows 装机。
   - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录
     - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
 
@@ -365,12 +369,12 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-701、B-201..207（config/widgets 存储）
 - **内容**（RFC §4.1/§6.2.8）：五级 + Offline 默认色表；`config.json appearance.severityColors` 按级别全局覆盖、`widgets.json colorOverride` 按 Widget 覆盖（Widget > 级别 > 默认，非法值回退默认）；`SeverityPalette` 改为读配置，L0 tile/L1 胶囊/L2-L3 状态点/托盘图标同源换色；改色即时生效（事件通知重绘，无需重启）。
 - **验收**：
-  - [ ] 设置改级别色 → L0 tile、胶囊、托盘图标同步变色
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-  - [ ] 某 Widget 设 colorOverride → 仅该 tile 变色，优先级正确
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-  - [ ] 非法颜色值回退默认色不崩溃；重启后保持
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+  - [ ] 设置改级别色后 L0 tile、胶囊、托盘图标同步变色
+    - CI 已代验 tile 半（2026-10-12 批3-补50 场景 G4）：设置页改 #ff8800 后 config 落盘 + tile 像素即时变橙；胶囊与托盘图标像素不可脚本取证——待 Windows 装机。
+  - [x] 某 Widget 设 colorOverride 后仅该 tile 变色，优先级正确
+    - CI 已代验（2026-10-12 批3-补50 场景 G1）：GLM 设 #ff00ff 品红 ≥8px 硬断言 + DeepSeek 零渗 ≤4px。
+  - [x] 非法颜色值回退默认色不崩溃；重启后保持
+    - CI 已代验（2026-10-12 批3-补50 场景 G2 两轮启动）：非法值进程存活 + 品红 ≤4px + 默认绿 ≥8px 硬断言。
 
 ### B-707 动效系统（状态过渡/呼吸灯/脉冲/滑入）
 - **依赖**：B-701、B-706
@@ -379,9 +383,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   - [x] Success→Error 状态变化有平滑变色过渡（reduced 档）
     - CI 代验（2026-10-13，run 38284623093，场景 L）：三轮翻档连拍均取到渐入中间态帧（与两端差分 ≥8px）；同色 tick 不闪灯（L1 连拍灯恒在）。渐入观感最终裁量仍可装机复核。
   - [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验四半（场景 G7b off 三帧差分 ≤12px 全静止 + G7c full 帧差分 32px 呼吸可见，run 38274507626 + G6 强度 1.5 落盘 + 场景 V2 Critical 脉冲帧差分 85px，run 38459944253）；观感与强度可调的最终裁量——待 Windows 装机。
   - [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - CI 已代验焦点半（2026-10-12 批3-补50 场景 H1）：翻档期间前台窗句柄不变硬断言；发声与隐藏期动画循环——待 Windows 装机。
 
 ---
 
@@ -424,10 +428,10 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-801、B-706、B-707
 - **内容**（RFC §4.1/§6.2.8/§9.1）：级别色编辑器（六色 + 重置默认）；Widget 级 colorOverride 入口（随 Widgets CRUD）；动效三档 full/reduced/off + intensity 滑杆 + 逐族预览（过渡/闪烁/呼吸灯/脉冲/滑入）；改动即时预览、落 config.json appearance。
 - **验收**：
-  - [ ] 调色/动效改动即时预览并持久化，重启生效
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
-  - [ ] 重置默认一键还原；off 档预览即全静止
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+  - [x] 调色/动效改动即时预览并持久化，重启生效
+    - CI 已代验（2026-10-12 批3-补50 场景 G4/G6/G6b）：设置页改色即时变橙 + config 落盘 + 档位/强度落盘 + 重启后 UIA IsSelected 恢复选中态。
+  - [x] 重置默认一键还原；off 档预览即全静止
+    - CI 已代验（2026-10-12 批3-补50 场景 G5/G7b）：重置后 severityColors 清空 + tile 即时回默认绿 + off 档三帧差分 ≤12px 全静止。
 
 ---
 
@@ -1224,3 +1228,9 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **③machine.git**：provider 补 `value_text` = Summary 计数段（`↑A↓B · 改 N · stash M`，同源构造与 machine.local/net 的 value_text 先例一致）——原兜底把 ↑↓/改/stash 计数全截没（「beacon …」），是补45 同族 bug；最坏值行 = 五数顶格 250 → tile 226 → **340**（标签 = 类型尾段「git」）。
 - **④同轮自查揪出五处「最坏值」低估并抬预算**：http.quota percent = used/total 计算值**不封顶**（注释明示「可超 100 供严重度判定」）→ 最坏 `"100%"` 改 `"999.9%"`（191 → **204**，读数列来自 Clamp 后 Progress 恒 ≤100 不受影响）；`FormatCount` 的 M 形态尾数无上界（无 B 档）→ codex/claude/mimo 计数形态尾数顶格 `9999.9`（≈百亿 token，generous 口径与 PR 5 位/金额 6 位同档）：codex 172 → **179**、claude 成本/token 两形态取宽者 168 → **187**（token 形态顶开后不再触 168 下限）、mimo 244 → **251**；`FormatRate` 档内尾数上限是 **1023.9** 非 999.9（≥1024 才换档），千兆/万兆网卡 MB 档 6 位尾数真实可达 → machine.net 最坏值行 157 → 171（net 默认 247 → **261**）。qwen percent 已 `Math.Clamp(0,100)` 核实不需抬；kimi 月窗键是预留（provider 今天不产出）预算维持双窗并注记「接口加月窗时同步抬一行」。
 - **验收**：Core +1 用例（moonshot ¥110.00）；TileSizingTests qwen/moonshot/git/http.quota/codex/claude/mimo 七处按新形态重算；QwenUsageProviderTests 用尽用例补 value_text 断言、GitWorkspaceProviderTests 两用例补 value_text 断言；四项目 991 全绿（Core 334 / Connections 599 / Actions 27 / Storage 31，逐项复核）。另修两轮 CI 红（都因 Linux 本地编不到 App 漏网）：ab9649b 遗留 `SettingsWindow.cs:608` 插值内三元未加括号（CS8361，已括号修复随本单上 CI）、随后编译器过 608 行才暴露 `BeaconRuntime.UpdateCheck` 属性 public 而 `UpdateCheckService` 为 internal 的 CS0053（服务类改 public，与 BeaconRuntime 暴露的其余服务类 public sealed 口径一致），第三轮同类：服务类转 public 后其 `Last`/`CheckAsync` 又把 internal 的 `UpdateCheckOutcome` 暴露成 CS0053/CS0050，结果 record 一并转 public（成员类型 string?/DateTimeOffset/bool + Core public enum Verdict，全公开面干净）。可访问性链只能人工核对：实测 Linux 上 XamlCompiler 在 Csc 之前就中止（放必炸探针照样零 error CS、无 dll 产物），本地没有 C# 门禁，CI 是 App 唯一编译关。
+
+### 批3-补52 tile/胶囊底部裁切修复：外框/客户区尺寸混用（2026-10-14 用户缺陷单「底部进度条显示不全（还是一样的问题）」，commits 02a5de1 + 4ae613d/7e4c2b0/f4b0eb1 收口）
+- **取证**（run 38488861749 工件逐像素）：AppWindow.Resize 设的是窗口外框，PinnedHostWindow 面板/细条、FloatingTileWindow、CapsuleWindow、QuickPanelWindow 四处全把客户区需求尺寸（行×32 DIP / 内容实测）直接喂 Resize——无边框 OverlappedPresenter 仍保留 ~6px 非客户区 resize 边框，每窗底部 ~6px 落进不可见区（tile 设计 32px 实测客户区 26px，底部 4 DIP 进度条整条不可见；胶囊与快捷面板同型裁字）。同型先例：DetailWindow c80c244（2026-10-11 装机「没有修复」根因，批3-补22）。CI 旧条带断言 vacuous：裁外框矩形、底部 6 行落在窗框外桌面区，「465/507 像素」全是桌面边缘，零渲染也通过。
+- **修复**：ChromeSizePx（GetWindowRect − GetClientRect，取不到兜 0）收编 NativeMethods 供五窗共用（DetailWindow 私有副本同收），Resize 一律补回差值；CapsuleWindow._sizePx 改记外框尺寸（save/restore 锚点数学同口径不漂移）；QuickPanel 定位按外框口径保 24/140 DIP 可见边距；SettingsWindow 构造期同型（记忆尺寸存客户区 DIP 直喂外框，逐次开窗矮一标题栏）一并修复。CI 断言同步去 vacuous：条带裁图改锚客户区（裁屏图经 ClientToScreen 换算屏坐标——GetClientRect 返回窗内坐标），新增 Assert-ClientHeight 硬断言（客户区高=设计值 ±1，期望值按窗 DPI 缩放与 DpiLayoutMath.ToPx 同取整）。
+- **验收**（run 38500538817 全绿含发布）：场景 A client 32px/frame 38px（chrome 6px 实证）+ 条带 620 像素（原 465=桌面边缘）；场景 D 五悬浮窗全 32px + ark 条带 676 像素（原 507）；场景 H5 面板 client 64px=2 行×32（原 58）。Assert-ClientHeight 为永久回归守卫。GLM tile 空态收起与有值路径同一行高预算（缺陷在窗口层不在 tile 层）；完整机制记录见 todo.md 决策记录同名条。
+- **台账注记**：批3-补50（2026-10-12 装机清单 CI 代验转化：场景 E/F/G/H/J）与批3-补51（G 系色彩断言阈值逐像素重标定，run 38261911354）的完整记录在 todo.md 头注与决策记录，不在本文件重复展开；本文件 B-xxx 验收行勾账已按 todo.md 同步（B-101/102/104/206/401/404/603/701/704/706/805 各行，勾账证据随行注记）。
