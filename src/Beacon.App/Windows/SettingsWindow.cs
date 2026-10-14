@@ -105,10 +105,14 @@ internal sealed class SettingsWindow : Window
         var dpi = Infrastructure.NativeMethods.GetDpiForWindow(hwnd) / 96.0;
         var width = _runtime.Config.App.SettingsWindowWidth is double w && w >= 600 ? w : 880;
         var height = _runtime.Config.App.SettingsWindowHeight is double h && h >= 400 ? h : 640;
+        // 记忆尺寸记的是 Bounds（客户区 DIP，SaveWindowSizeNow），AppWindow.Resize 设的是外框——
+        // 两者差一条标题栏+边框，直接喂客户区需求会让每次开窗都比记忆尺寸矮一截、底部内容裁在
+        // 可调边距底下（2026-10-14 缺陷单同型，与 tile 进度条裁切同根因）。按 ChromeSizePx 补回差值。
+        var (chromeWidth, chromeHeight) = Infrastructure.NativeMethods.ChromeSizePx(hwnd);
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32
         {
-            Width = DpiLayoutMath.ToPx(width, dpi),
-            Height = DpiLayoutMath.ToPx(height, dpi),
+            Width = DpiLayoutMath.ToPx(width, dpi) + chromeWidth,
+            Height = DpiLayoutMath.ToPx(height, dpi) + chromeHeight,
         });
         Services.AppIcon.Apply(AppWindow, _runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
     }

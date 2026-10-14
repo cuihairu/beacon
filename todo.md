@@ -80,7 +80,7 @@
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化【**已闭环（patrol-20261014-A1，38434164526 实证 U1-U5 全绿）**：mock 增配 failed run 12345 + rerun POST marker，U1-U5 = 需要关注行 → L3 → 弹窗取消（零 POST 负证）→ 确认（marker + ✓）→ 500（✗）；事件行证改 L3 结果文本 + 服务端 marker 双证据（RECENT 语义=WidgetStateChanged，不加 ActionExecuted 订阅）；解锁行 32/38/46 已勾】
 - [x] Critical 与崩溃注入机制（debug 门控，落地行 24/55 的「另立项」）【期次：R13 后续批；**已建（patrol-20261014-A2）并已实证+修缺（patrol-20261014-A3）+ 复证绿勾账（38494525200）**：Core `DebugInjection`（8 例单测）+ App `ScheduleDebugCrashInjection` + 场景 V 三段断言；首跑 38459944253：V1/V2 绿（Critical 色 52px、脉冲 85px），V3 红出真实发现（裸 TryEnqueue 回调异常无系统路由→进程退出；WinUI 3 无 HandlerException 事件，参考程序集实证）→ 建 DispatchGuard+DispatcherQueueGuard（23 处派发全量接管，Core 4 例单测），V3 断言改锚 guard 日志；复证 run 38494525200：V1 34px/V2 脉冲 89px/V3 全链绿】
 - [ ] 厂商私有打包工具 Provider（开源标准 API 的 Jenkins Provider 已落位 2026-10-11；私有厂商待取得真实 API/认证/状态字段再评估，不建常驻 Agent）
-- [ ] SettingsWindow 构造期 Resize 同型外框/客户区混用（默认标题栏样式，root.SizeChanged 记客户区、构造期喂给外框 → 设置窗记忆尺寸逐轮矮一截标题栏高；修复口径同 2026-10-14 进度条缺陷单 ChromeSizePx，见决策记录）
+- [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（SettingsWindow.cs:108 记忆尺寸存的是 `Bounds` 客户区 DIP，构造期直接当外框尺寸喂 `AppWindow.Resize` → 每次开窗比记忆尺寸矮一整条标题栏+边框（@100% DPI 约 31 DIP），底部内容裁在可调边距底下；非逐轮累积——补回差值后记忆值与开窗尺寸自洽。已按 2026-10-14 进度条缺陷单同一 `NativeMethods.ChromeSizePx` 口径修复，见决策记录）
 - [x] AI Usage Provider——条件门控项已满足并实质完成，关闭（2026-10-11 批3-补41 评估：13 种组件类型/11 家已落地，可靠性三档 + 两次形状漂移均被单文件隔离当日收口；详见 master-plan §13 注记与 positioning §8）
 
 ## MVP 验收标准（master-plan §14，需真实装机验证）
