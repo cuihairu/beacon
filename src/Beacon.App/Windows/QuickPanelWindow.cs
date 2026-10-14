@@ -331,7 +331,11 @@ public sealed partial class QuickPanelWindow : Window
             Padding = new Thickness(8, 3, 8, 3),
             Child = row,
         };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(chip, $"chip-{sourceKey ?? "all"}"); // UIA 取证/CI 点击入口
+        // UIA 取证/CI 点击入口。Border 非 Control 无自带 peer，只设 AutomationId 不进 UIA 树
+        // （CI 38533804493/38542642112 实证「面板未找到 chip-智谱」，chip 却在截图里）——
+        // 与 SettingsWindow.cs:306 分隔条同口径：Name 强制创建 FrameworkElementAutomationPeer。
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(chip, $"{label} {count}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(chip, $"chip-{sourceKey ?? "all"}");
         chip.Tapped += (_, _) => ApplySourceFilter(sourceKey); // sourceKey=null 的「全部」chip 恒回全部
         return chip;
     }
