@@ -3477,39 +3477,64 @@ try
     # 跨界触发 builtin.connection-degraded（任意 widget ≥Warning）投递恰 1 条 critical 记录——记录面硬断言
     # （severity 为 camelCase 枚举串，BeaconJson StringEnumConverter）；Toast 呈现面与 F5 同转装机。
     # 独立重启消竞态（38619441591 V4 红实证）：connection-degraded 冷却按 (规则,widget) 键且跨级别共享——
-    # 首启实例的 GLM 首跳刷新若撞上 Ensure-MockServer 重启后的 bind 窗（连接被拒），PublishStale 会先发一条
-    # Warning 记录并武装 15min 冷却（WidgetHost:174 无缓存亦发 Warning），随后注入的 Critical 被去重吞掉：
-    # 表现为「GLM 记录存在但零 critical」+ V1 已绿（注入确达 L0）。故 V4 自启新实例：Ensure-MockServer
-    # 重启保证热态（首跳刷新必成）+ notifications.json 删净 + 新引擎冷却表空 → 首个 GLM 事件即注入 Critical。
+    # 首跳刷新若撞上 mock 重启后的 bind 窗（连接被拒），PublishStale 会先发一条 Warning 记录并武装 15min 冷却
+    # （WidgetHost:174 无缓存亦发 Warning），随后注入的 Critical 被去重吞掉：表现为「GLM 记录存在但零 critical」
+    # + V1 已绿（注入确达 L0）。故 V4 自启新实例：mock 热态保证 + notifications.json 删净 + 新引擎冷却表空
+    # → 首个 GLM 事件即注入 Critical。两轮复证仍红（38633490811 / 38644793130）后加固三处：Ensure 只保证作业
+    # 态 Running，监听 bind 与作业态非原子，故补纯 socket 预检；「首条记录」即断言会把 Warning 快照误判成零
+    # critical，故改为轮询到 critical 才断；删档静默失败会让旧记录混入快照，故删后校验。
     # V3 的崩溃基线随之移到本次启动（Stop-Beacon 在 +70s 内收掉首启实例，其 +90s 注入未及触发）。
     Stop-Beacon
     $vNotifPath = Join-Path $configDir "notifications.json"
     Remove-Item $vNotifPath -Force -ErrorAction SilentlyContinue # 新引擎水合源清空，记录集从零起
-    # 热态保证走 Ensure-MockServer（重启收尾带作业态 Running 校验），不用裸探针：本 CI 会话 PS 5.1
-    # Invoke-WebRequest 无 IE 解析引擎恒抛（38633490811 实证：绿跑同款 11 次/全程「已监听」假重启信号，
-    # 探针「失败」≠ mock 死）——凡以裸探针 200 为门的设计在本会话必假红。Ensure 重启先于本场景启动
-    # 完成，首跳刷新必命中已绑定监听，冷却竞态不可发。
+    if (Test-Path $vNotifPath)
+    {
+        Save-FullScreenshot "V-FAIL-notif-clear.png"
+        throw "断言失败（场景 V4）：notifications.json 删除失败（疑被进程占用）——记录集无法从零起，断言快照会混入旧记录"
+    }
+    # 热态保证两层：Ensure-MockServer 拉起（收尾带作业态 Running 校验），再纯 socket 预检监听真已 bind。
+    # 不用 Invoke-WebRequest 探针：本 CI 会话正文跑 PS 5.1 无 IE 解析引擎恒抛（38633490811 实证：绿跑同款
+    # 11 次假重启信号，探针「失败」≠ mock 死），凡以裸探针 200 为门的设计在本会话必假红。
     Ensure-MockServer
+    $mockReady = $false
+    $mockDeadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $mockDeadline)
+    {
+        $probe = New-Object System.Net.Sockets.TcpClient
+        try { $probe.Connect("127.0.0.1", 18081); $mockReady = $true } catch { } finally { $probe.Close() }
+        if ($mockReady) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$mockReady)
+    {
+        Save-FullScreenshot "V-FAIL-mock-probe.png"
+        throw "断言失败（场景 V4）：mock 预检失败（127.0.0.1:18081 20s 内未可连）——首跳刷新无热态保证，冷却竞态不可排"
+    }
     $env:BEACON_DEBUG_SEVERITY = "critical"
     $env:BEACON_DEBUG_CRASH = "90"
     $vProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -PassThru
+    # 轮询到 critical 记录才断言：首快照若恰是 Warning（首跳失败或冷却武装中）会误判成「零 critical」
     $vRecords = @()
+    $vCrit = @()
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline)
     {
         if (Test-Path $vNotifPath)
         {
             $vRecords = @(Get-Content $vNotifPath -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
-            if ($vRecords.Count -ge 1) { break }
+            $vCrit = @($vRecords | Where-Object { "$($_.severity)" -eq "critical" })
+            if ($vCrit.Count -ge 1) { break }
         }
         Start-Sleep -Seconds 3
     }
-    $vCrit = @($vRecords | Where-Object { "$($_.severity)" -eq "critical" })
     if ($vCrit.Count -ne 1)
     {
-        $sevDump = ($vRecords | ForEach-Object { "$($_.severity)" }) -join ","
+        # 现场取证三件：记录文件原样（判定 severity 实态）+ app 日志（刷新/冷却链路）+ 截图
+        Copy-Item $vNotifPath (Join-Path $evidence "notifications-V4-fail.json") -Force -ErrorAction SilentlyContinue
+        Copy-Item $vLogPath (Join-Path $evidence "beacon-V4-fail.log") -Force -ErrorAction SilentlyContinue
+        $sevDump = ($vRecords | ForEach-Object { "$($_.severity)@id=$($_.id)" }) -join " | "
         Save-FullScreenshot "V-FAIL-critical-record.png"
-        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1，实为 $($vRecords.Count) 条 severity=$sevDump）——首跳刷新失败致 Warning 先行投递+15min 冷却武装，注入 Critical 被去重（行 50 Toast 半回归）"
+        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1；GLM 记录 $($vRecords.Count) 条：$sevDump）——首跳刷新失败致 Warning 先行投递+15min 冷却武装，注入 Critical 被去重（行 50 Toast 半回归）"
     }
     Write-Host "场景 V4 通过：注入 Critical → 通知引擎恰 1 条 critical 记录（connection-degraded 跨界）——Toast 引擎面在案，呈现面同 F5 转装机"
     # V3 崩溃兜底（注入点 = 启动后 90s）：等「DispatcherQueue unhandled exception」落日志——注入走
