@@ -26,6 +26,13 @@ public sealed class AppConfig
     /// <summary>全局检查频率（秒，0=按各组件刷新档策略表，默认）。设置「检查频率」落点：
     /// 组件级检测间隔优先，未设组件级的按此值走（2026-10-09 用户令：轮询节奏可配）。</summary>
     public int PollIntervalSeconds { get; set; } = 0;
+    /// <summary>界面语言（2026-10-14 用户单②）："" = 跟随系统 UI 文化（zh 族 → 中文，其余英文）；
+    /// "zh"/"en" 显式。切换即时生效面 = 看板 + 托盘菜单（设置页存量中文文案暂未整体迁移）。</summary>
+    public string Language { get; set; } = "";
+    /// <summary>贴边收起开关（2026-10-14 用户单③）：拖到屏幕边缘贴死才收成细条。默认开 = 保持
+    /// 已发布行为（此前无开关时代的既定观感，翻转默认属行为变更须用户拍板）；关 = 拖边只吸附不收起，
+    /// 且当前已收起的立刻弹回展开（设置切换即时生效）。</summary>
+    public bool EdgeCollapseEnabled { get; set; } = true;
     /// <summary>设置窗口左栏宽度（DIP）。拖拽分隔条落点，启动恢复（2026-10-10 用户令「能拖」）；
     /// 运行时钳位 [200, 420]，0/非法=默认 264。</summary>
     public double SettingsSidebarWidth { get; set; } = 264;

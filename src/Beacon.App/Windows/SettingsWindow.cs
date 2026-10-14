@@ -35,11 +35,13 @@ internal sealed class SettingsWindow : Window
     private TextBox _hotkeyBox = null!;
     private ToggleSwitch _startupToggle = null!;
     private ComboBox _themeBox = null!;
+    private ComboBox _languageBox = null!;
     private ComboBox _pollBox = null!;
     private ComboBox _pinModeBox = null!;
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
     private ToggleSwitch _numericFloatingToggle = null!;
+    private ToggleSwitch _edgeCollapseToggle = null!;
 
     private StackPanel _connectionList = null!;
     private ComboBox _connTypeBox = null!;
@@ -568,6 +570,19 @@ internal sealed class SettingsWindow : Window
         }
         _themeBox.SelectedIndex = IndexOfTag(_themeBox, _runtime.Config.App.Theme);
         _themeBox.SelectionChanged += (_, _) => SaveGeneral();
+        // 界面语言（2026-10-14 用户单②）：看板/托盘即时生效（UiStrings.LanguageChanged 广播重画）；
+        // 设置页存量中文文案暂未整体迁移（UiStrings 覆盖面记录在案）。语言名按惯例用本名不翻译。
+        _languageBox = new ComboBox { Header = UiStrings.SettingsLanguage, Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_languageBox, "language-box"); // UIA 取证：语言切换驱动
+        foreach (var item in new[] { ("", UiStrings.SettingsLanguageAuto), ("zh", "中文"), ("en", "English") })
+        {
+            var languageTag = item.Item1.Length == 0 ? "auto" : item.Item1; // 插值内不放条件表达式（WinUI 坑记录），先算出 id
+            var languageItem = new ComboBoxItem { Content = item.Item2, Tag = item.Item1 };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(languageItem, $"language-{languageTag}"); // UIA 取证：语言切换驱动（场景 W）
+            _languageBox.Items.Add(languageItem);
+        }
+        _languageBox.SelectedIndex = IndexOfTag(_languageBox, _runtime.Config.App.Language);
+        _languageBox.SelectionChanged += (_, _) => SaveGeneral();
         _opacitySlider = new Slider
         {
             Header = "界面透明度",
@@ -583,6 +598,11 @@ internal sealed class SettingsWindow : Window
         // 2026-10-11 用户令：数量悬浮窗默认开（推翻 2026-10-08 默认关拍板）；关=桌面零残留，即时生效
         _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认开）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
         _numericFloatingToggle.Toggled += (_, _) => SaveGeneral();
+        // 贴边收起开关（2026-10-14 用户单③，默认开=保持已发布行为）：关=拖到屏幕边缘不再收成细条，
+        // 已收起的经 ApplySettingsEffects → ApplyEdgeCollapseSetting 立刻弹回
+        _edgeCollapseToggle = new ToggleSwitch { Header = UiStrings.SettingsEdgeCollapse, IsOn = _runtime.Config.App.EdgeCollapseEnabled };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_edgeCollapseToggle, "edge-collapse-toggle"); // UIA 取证：开关驱动
+        _edgeCollapseToggle.Toggled += (_, _) => SaveGeneral();
         // 全局检查频率（2026-10-09 用户令）：组件级「检测间隔」优先，未设组件级的按此走；改后立即重建调度
         _pollBox = new ComboBox { Header = "检查频率（未单独设置间隔的组件）", Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_pollBox, "poll-interval-box"); // UIA 取证：检查频率改动驱动
@@ -601,7 +621,7 @@ internal sealed class SettingsWindow : Window
         }
         _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
         _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle, _pollBox } });
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle, _edgeCollapseToggle, _pollBox } });
         page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认开；关闭即刻生效=桌面零残留）。"));
         page.Children.Add(BuildAboutSection());
         return page;
@@ -1101,7 +1121,10 @@ internal sealed class SettingsWindow : Window
         app.UiOpacity = _opacitySlider.Value;
         app.ShowCapsule = _capsuleToggle.IsOn;
         app.NumericFloatingEnabled = _numericFloatingToggle.IsOn;
+        app.EdgeCollapseEnabled = _edgeCollapseToggle.IsOn;
         app.PollIntervalSeconds = int.TryParse(TagOf(_pollBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pollSeconds) && pollSeconds > 0 ? pollSeconds : 0;
+        app.Language = TagOf(_languageBox) ?? "";
+        UiStrings.SetLanguage(app.Language); // 语言切换即时广播（同值幂等）；看板/托盘下次取词即新语言
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke();
     }

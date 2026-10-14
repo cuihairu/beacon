@@ -512,7 +512,8 @@ internal sealed record DragSession(UIElement Element, (int X, int Y) StartCursor
 /// 置顶 + WS_EX_NOACTIVATE + WS_EX_TOOLWINDOW；窗口子类化——
 /// WM_NCHITTEST tile 行 HTCLIENT / 空白 HTTRANSPARENT，WM_DPICHANGED 重排，WM_DISPLAYCHANGE 越界回收。
 /// 位置按「显示器标识 + 锚点角 + DIP 偏移 + 收起态」持久化到 pins.json（PinLayoutMath 互算）；
-/// 拖动吸附四边，拖至屏边收起为细条（悬停展开、点击进 L2）。
+/// 拖动吸附四边，拖至屏边贴死收起为细条（config.edgeCollapseEnabled 开关，默认开；悬停临时展开、
+/// 点击粘性展开不移出即缩、拖动落点重判，2026-10-14 用户单③）。
 /// </summary>
 internal sealed class PinnedHostWindow
 {
@@ -544,6 +545,7 @@ internal sealed class PinnedHostWindow
     private DragSession? _drag;
     private bool _dragMoved;      // 拖动已位移（抑制随后的合成 Tapped）
     private bool _hoverExpanded;  // 收起态悬停临时展开
+    private bool _stickyExpanded; // 收起态点击的可靠展开（2026-10-14 用户单③：不随移出回缩，拖动重判/开关关闭时清除）
 
     /// <summary>tile 点击（收起态点击含）：下钻 L2（RFC §6.2.7）。</summary>
     public event Action? TileActivated;
@@ -810,6 +812,24 @@ internal sealed class PinnedHostWindow
         appWindow.Move(new PointInt32(rect.X, rect.Y));
     }
 
+    /// <summary>
+    /// 设置「贴边收起」开关回落（2026-10-14 用户单③）：开关关闭且当前已收起 → 弹回展开并落盘
+    /// （用户失去控制的根因之一：坍缩默认开且无开关）。开关开=不主动收起，等下次拖到边自然判定；
+    /// 未收起/开关仍开时为无操作（设置每次改动都会走本方法，保持幂等）。
+    /// </summary>
+    public void ApplyEdgeCollapseSetting()
+    {
+        if (_layout is not { Collapsed: true } || _runtime.Config.App.EdgeCollapseEnabled)
+        {
+            return;
+        }
+        _layout.Collapsed = false;
+        _stickyExpanded = false;
+        _hoverExpanded = false;
+        ApplyLayout();
+        PersistLayout();
+    }
+
     /// <summary>显示拓扑变化：按显示器标识恢复；标识消失落主屏；Place 内部完成越界回收（B-703 验收）。</summary>
     private void Reconcile()
     {
@@ -820,6 +840,7 @@ internal sealed class PinnedHostWindow
         var resolved = ResolveMonitor(_layout.Monitor);
         _layout.Monitor = Identity(resolved);
         _hoverExpanded = false;
+        _stickyExpanded = false; // 拓扑变化后收起/展开态重算，粘性展开一律清
         ApplyLayout();
         PersistLayout();
     }
@@ -950,8 +971,11 @@ internal sealed class PinnedHostWindow
         var edge = Math.Min(
             Math.Min(freeX - work.X, work.Right - (freeX + size.Width)),
             Math.Min(freeY - work.Y, work.Bottom - (freeY + size.Height)));
-        _layout.Collapsed = edge <= Math.Max(2, (int)(2 * dpi)); // 贴死才收起；未贴死=回弹展开
+        // 贴死才收起；未贴死=回弹展开。开关（config.edgeCollapseEnabled）关=拖边只吸附不收起
+        //（2026-10-14 用户单③：坍缩默认开且无关闭开关是可用性缺陷，开关给控制权）
+        _layout.Collapsed = _runtime.Config.App.EdgeCollapseEnabled && edge <= Math.Max(2, (int)(2 * dpi));
         _hoverExpanded = false;
+        _stickyExpanded = false; // 拖动重判收起/展开，粘性展开不跨拖动会话
         ApplyLayout();
         PersistLayout();
     }
@@ -963,10 +987,13 @@ internal sealed class PinnedHostWindow
             _dragMoved = false; // 拖动结束的合成点击忽略
             return;
         }
-        // 水滴态点击 = 弹回展开（用户令：坍缩必须可逆——可拖出/可点击弹回）；进 L2 需在展开态点击
+        // 水滴态点击 = 弹回展开（用户令：坍缩必须可逆——可拖出/可点击弹回）；进 L2 需在展开态点击。
+        // 粘性展开（2026-10-14 用户单③）：点击展开必须可靠——旧实现点击也走 _hoverExpanded 临时展开，
+        // 指针一移出面板立刻回缩成细条，用户体感「很难点开」；现在点击=粘住，直到拖动重判或开关关闭
         if (_layout is { Collapsed: true } && !_hoverExpanded)
         {
             _hoverExpanded = true;
+            _stickyExpanded = true;
             ApplyLayout();
             e.Handled = true;
             return;
@@ -986,9 +1013,9 @@ internal sealed class PinnedHostWindow
 
     private void OnPanelPointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (_hoverExpanded && _drag is null)
+        if (_hoverExpanded && _drag is null && !_stickyExpanded)
         {
-            _hoverExpanded = false; // 离开面板回到细条
+            _hoverExpanded = false; // 离开面板回到细条（点击粘住的粘性展开不移出即缩）
             ApplyLayout();
         }
     }
@@ -1029,6 +1056,7 @@ internal sealed class PinnedHostWindow
 
         _layout = RestoreLayout();
         ApplyLayout();
+        ApplyEdgeCollapseSetting(); // 开关关着时清 pins.json 残留收起态（手改配置兜底，关=立刻弹回并落盘）
         SubclassForHitTest();
         SyncHostVisibility(); // 零钉选启动：Loaded 内立即隐藏，白板不进首帧
     }

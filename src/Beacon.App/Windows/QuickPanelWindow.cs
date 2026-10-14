@@ -23,7 +23,9 @@ internal sealed record RecentEvent(DateTimeOffset At, WidgetState State);
 /// L2 Quick Panel（RFC §6.4）：Flyout 语义——失焦自动隐藏、ESC 关闭、Tab 可达、不进任务栏。
 /// 常驻档（config.keepQuickPanelOpen，托盘菜单 Keep Panel Open 打勾）：失焦不自隐，面板一直在。
 /// 打开零网络等待（B-601/B-602）：内容常驻订阅事件流 + 启动时从缓存水合，打开 &lt;100ms。
-/// Overview 按来源计数；Recent Events 单击进 L3（DetailRequested），右键 Pin to desktop 落 widgets.json。
+/// Overview 按来源计数，chip 可点击过滤（默认全部 + 再点取消，2026-10-14 用户单①）；
+/// Recent Events 单击进 L3（DetailRequested），右键 Pin to desktop 落 widgets.json。
+/// 文案经 Core UiStrings 取词（用户单②），语言切换即时重画。
 /// </summary>
 public sealed partial class QuickPanelWindow : Window
 {
@@ -38,6 +40,7 @@ public sealed partial class QuickPanelWindow : Window
     private readonly IUiDispatcher _dispatcher;
     private readonly Dictionary<string, WidgetState> _states = [];
     private readonly List<RecentEvent> _events = [];
+    private string? _activeSource; // OVERVIEW chip 点击过滤：null=全部（默认），点击同类再点取消（用户单①）
 
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
@@ -63,6 +66,7 @@ public sealed partial class QuickPanelWindow : Window
         runtime.Bus.Subscribe<WidgetsInvalidated>(evt => dispatcher.Post(() => OnWidgetsInvalidated(evt.WidgetIds)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(_ => dispatcher.Post(UpdateHeader));
         runtime.Bus.Subscribe<NotificationRaised>(_ => dispatcher.Post(RebuildNotifications)); // B-601 通知中心
+        UiStrings.LanguageChanged += OnLanguageChanged; // 用户单②：设置切语言，看板文案即时重画（App 生命周期单例，无需退订）
 
         // 缓存优先（B-601 验收：打开无网络等待白屏）——启动即用上次落盘状态填充首屏
         foreach (var connection in runtime.Config.Connections)
@@ -111,9 +115,8 @@ public sealed partial class QuickPanelWindow : Window
         escape.Invoked += (_, _) => Hide();
         ((FrameworkElement)Content).KeyboardAccelerators.Add(escape);
 
-        UpdateHeader();
+        ApplyStrings(); // 语言口径先行：XAML 缺省文案替换（含 OVERVIEW 头与 chip 标签）
         RebuildNotifications(); // notifications.json 水合记录随面板首开带出（跨重启）
-        UpdateOverview();
         RebuildRecent();
     }
 
@@ -161,9 +164,52 @@ public sealed partial class QuickPanelWindow : Window
         _visible = false;
     }
 
+    /// <summary>
+    /// 托盘「通知中心」入口（B-503 语义分化，2026-10-14 用户单④）：确保面板可见后把焦点与滚动落到
+    /// 通知区——与「打开 Beacon」（Toggle 开/关面板）区分，不再是同义入口。已显示时不反向关闭
+    /// （点「通知中心」不应 Toggle 收起面板），仅重新聚焦。
+    /// </summary>
+    public void OpenNotifications()
+    {
+        Show();
+        Activate(); // Show 对已可见面板是空操作不再 Activate——补一次取焦点，聚焦通知区才有可见焦点框
+        if (NotificationList.Items.Count > 0)
+        {
+            NotificationList.ScrollIntoView(NotificationList.Items[0]);
+        }
+        NotificationList.Focus(FocusState.Programmatic); // 焦点框落在通知列表 = 可见落在通知视图
+    }
+
     /// <summary>config.uiOpacity（B-801 界面透明度）：挂面板内容层（批8 2026-10-10：与胶囊/宿主面板/独立悬浮框统一同一来源）。</summary>
     public void ApplyOpacity(double opacity)
         => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
+
+    /// <summary>
+    /// 语言切换广播（用户单②）：文案 + 计数 + 列表全量重画——过滤态保持不变（切语言不换视角）。
+    /// 设置页与面板同在 UI 线程，仍走 dispatcher 归口（与总线订阅同一派发口径，避免重入）。
+    /// </summary>
+    private void OnLanguageChanged()
+    {
+        _dispatcher.Post(() =>
+        {
+            ApplyStrings();
+            RebuildNotifications();
+            RebuildStatus();
+            RebuildRecent();
+        });
+    }
+
+    /// <summary>静态文案统一入口（XAML 缺省英文 → 当前语言）；OVERVIEW 头带过滤后缀，chip 标签随 chip 重建。</summary>
+    private void ApplyStrings()
+    {
+        NotificationsHeader.Text = UiStrings.BoardNotifications;
+        MarkAllReadButton.Content = UiStrings.BoardMarkAllRead;
+        AttentionHeader.Text = UiStrings.BoardNeedsAttention;
+        RunningHeader.Text = UiStrings.BoardRunning;
+        RecentHeader.Text = UiStrings.BoardRecentEvents;
+        UpdateHeader(); // OverallSummary 文案（all clear / N warn · N error）
+        UpdateOverview(); // OVERVIEW 头 + chip（含「全部」chip 标签与高亮态）
+    }
 
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
 
@@ -224,58 +270,76 @@ public sealed partial class QuickPanelWindow : Window
         var warn = _states.Values.Count(s => s.Severity == Severity.Warning);
         var error = _states.Values.Count(s => s.Severity >= Severity.Error);
         OverallSummary.Text = warn == 0 && error == 0
-            ? "all clear"
-            : $"{warn} warn · {error} error";
+            ? UiStrings.BoardAllClear
+            : string.Format(UiStrings.BoardWarnError, warn, error);
         var overall = _states.Values.Count == 0
             ? Severity.Success
             : _states.Values.Max(s => s.Severity);
         OverallLight.Fill = new SolidColorBrush(_palette.SeverityColor(overall));
     }
 
+    /// <summary>OVERVIEW 区（用户单①）：默认「全部」chip 在首 + 来源计数 chip 可点击过滤；
+    /// 当前看哪一类必须界面可见——激活 chip 高亮填充 + OVERVIEW 头带「· 来源」后缀双保险。</summary>
     private void UpdateOverview()
     {
+        OverviewHeader.Text = _activeSource is null
+            ? UiStrings.BoardOverview
+            : $"{UiStrings.BoardOverview} · {_activeSource}";
         SourceCounts.Children.Clear();
+        SourceCounts.Children.Add(MakeChip(
+            UiStrings.BoardAll, _states.Values.Count,
+            _states.Values.Count == 0 ? Severity.Success : _states.Values.Max(s => s.Severity),
+            sourceKey: null, active: _activeSource is null));
         foreach (var group in _states.Values
-            .GroupBy(state => SourceOf(state.WidgetType))
+            .GroupBy(state => QuickPanelFilter.SourceKey(state.WidgetType))
             .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
             var worst = group.Max(state => state.Severity);
-            SourceCounts.Children.Add(MakeChip(group.Key, group.Count(), worst));
+            SourceCounts.Children.Add(MakeChip(group.Key, group.Count(), worst,
+                sourceKey: group.Key, active: _activeSource == group.Key));
         }
     }
 
-    private static string SourceOf(string widgetType) => widgetType switch
+    /// <summary>chip 点击过滤（用户单①）：点某类只看该类，再点同类取消回全部；「全部」chip 恒回全部。</summary>
+    private void ApplySourceFilter(string? sourceKey)
     {
-        "github.actions.runs" => "CI", // CI 运行单独成 chip（与 PR 计数区分）
-        _ => WidgetTypeNames.Of(widgetType), // 短名统一 Core 单表（与 tile 标签同源；旧 GLM/ARK 硬编码并入）
-    };
+        _activeSource = _activeSource == sourceKey && sourceKey is not null ? null : sourceKey;
+        UpdateOverview(); // 头后缀 + chip 高亮态（可见过滤状态）
+        RebuildStatus();
+        RebuildRecent();
+        RebuildNotifications();
+    }
 
-    private Border MakeChip(string label, int count, Severity worst)
+    private Border MakeChip(string label, int count, Severity worst, string? sourceKey = null, bool active = false)
     {
         var dot = new Ellipse { Width = 7, Height = 7, Fill = new SolidColorBrush(_palette.SeverityColor(worst)) };
         var text = new TextBlock
         {
             Text = $"{label} {count}",
-            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 241, 245, 249) : SeverityPalette.Rgb(255, 30, 41, 59)),
+            Foreground = new SolidColorBrush(active ? SeverityPalette.Rgb(255, 255, 255, 255) : IsDarkTheme ? SeverityPalette.Rgb(255, 241, 245, 249) : SeverityPalette.Rgb(255, 30, 41, 59)),
             FontSize = 11,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
         row.Children.Add(dot);
         row.Children.Add(text);
-        return new Border
+        // 激活态=当前在看：实色填充（两主题同色白字，对比可辨）；非激活维持原浅底
+        var chip = new Border
         {
-            Background = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(28, 255, 255, 255) : SeverityPalette.Rgb(20, 15, 23, 42)),
+            Background = new SolidColorBrush(active ? SeverityPalette.Rgb(255, 37, 99, 235) : IsDarkTheme ? SeverityPalette.Rgb(28, 255, 255, 255) : SeverityPalette.Rgb(20, 15, 23, 42)),
             CornerRadius = new CornerRadius(9),
             Padding = new Thickness(8, 3, 8, 3),
             Child = row,
         };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(chip, $"chip-{sourceKey ?? "all"}"); // UIA 取证/CI 点击入口
+        chip.Tapped += (_, _) => ApplySourceFilter(sourceKey); // sourceKey=null 的「全部」chip 恒回全部
+        return chip;
     }
 
     private void RebuildRecent()
     {
         RecentList.Items.Clear();
-        foreach (var evt in _events)
+        foreach (var evt in _events.Where(evt => QuickPanelFilter.Matches(_activeSource, evt.State.WidgetType)))
         {
             RecentList.Items.Add(MakeEventRow(evt));
         }
@@ -290,7 +354,7 @@ public sealed partial class QuickPanelWindow : Window
     {
         var attention = new List<WidgetState>();
         var running = new List<WidgetState>();
-        foreach (var state in _states.Values)
+        foreach (var state in _states.Values.Where(s => QuickPanelFilter.Matches(_activeSource, s.WidgetType)))
         {
             switch (QuickPanelSections.Resolve(state))
             {
@@ -332,7 +396,7 @@ public sealed partial class QuickPanelWindow : Window
     {
         var records = _runtime.Notifications.Records;
         NotificationList.Items.Clear();
-        foreach (var record in records.Reverse())
+        foreach (var record in records.Reverse().Where(MatchesNotificationFilter))
         {
             NotificationList.Items.Add(MakeNotificationRow(record));
         }
@@ -340,6 +404,13 @@ public sealed partial class QuickPanelWindow : Window
         UnreadBadge.Visibility = unread > 0 ? Visibility.Visible : Visibility.Collapsed;
         UnreadCount.Text = unread.ToString();
     }
+
+    /// <summary>通知按来源过滤（用户单①）：记录只带 SourceWidgetId，经 config 反查组件类型取来源键；
+    /// 组件已删的记录在过滤态不出现（无类可归），全览态照常。</summary>
+    private bool MatchesNotificationFilter(NotificationRecord record)
+        => _activeSource is null
+           || (_runtime.Config.FindWidget(record.SourceWidgetId) is { } widget
+               && QuickPanelFilter.SourceKey(widget.Type) == _activeSource);
 
     private ListViewItem MakeNotificationRow(NotificationRecord record)
     {

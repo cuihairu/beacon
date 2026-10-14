@@ -44,7 +44,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="NOTIFICATIONS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+                    <TextBlock Grid.Column="0" x:Name="NotificationsHeader" Text="NOTIFICATIONS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                     <HyperlinkButton
                         Grid.Column="1"
                         x:Name="MarkAllReadButton"
@@ -64,7 +64,7 @@
 
             <!-- B-602：按来源计数区（GitHub / CI / …） -->
             <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
-                <TextBlock Text="OVERVIEW" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+                <TextBlock x:Name="OverviewHeader" Text="OVERVIEW" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <StackPanel x:Name="SourceCounts" Orientation="Horizontal" Spacing="6" />
             </StackPanel>
 
@@ -109,7 +109,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+                <TextBlock Grid.Row="0" x:Name="RecentHeader" Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
                 <ListView
                     Grid.Row="1"
                     x:Name="RecentList"

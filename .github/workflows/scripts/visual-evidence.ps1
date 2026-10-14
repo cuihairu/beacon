@@ -3387,6 +3387,164 @@ Stop-Beacon
 Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
 Stop-MockServer
 
+# —— 场景 W：看板 i18n 与语言切换 + chip 点击过滤 + 贴边收起开关（2026-10-14 用户单①②③④）——
+# W1 预置 language=zh 启动：快速面板文案中文（通知/全部已读/概览）——「看板缺中文」修复实证
+# W2 设置页切 English：面板即时翻英文（NOTIFICATIONS/Mark all read/OVERVIEW）+ config.json language=en 落盘
+# W3 chip 点击过滤：点 chip-智谱 → OVERVIEW 头带「· 智谱」（当前类目界面可见）；点 chip-all 回全部
+# W4 贴边收起开关：Toggle off→on，config.json edgeCollapseEnabled false→true（开关可切换可落盘；
+#    收起细条宽度断言见场景 P；「点击细条粘性展开」手势半转装机——SendInput 对 12 DIP 细条点击
+#    精度不稳，粘性展开的可靠入口语义在 OnTileTapped 代码路径与 W4 开关断言共同覆盖）
+try
+{
+    Ensure-MockServer
+    Write-GConfig $true
+    $cfgPath = Join-Path $configDir "config.json"
+    (Get-Content $cfgPath -Raw -Encoding UTF8).Replace('"theme": "dark",', '"theme": "dark", "language": "zh",') | Set-Content -Path $cfgPath -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    Start-Sleep -Seconds 15
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "W-FAIL-no-settings.png"; throw "断言失败（场景 W 前置）：设置窗未出现" }
+    # 唤起面板：SendInput 和弦优先，WM_HOTKEY 直驱兜底（场景 K 同款双路）
+    $panel = [IntPtr]::Zero
+    [WinEnum]::SendChord(0x11, 0x42)
+    $deadline = (Get-Date).AddSeconds(3)
+    while ((Get-Date) -lt $deadline)
+    {
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($handles.Count -ge 1) { $panel = $handles[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panel -eq [IntPtr]::Zero)
+    {
+        $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+        if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+        if ($msgWindow -ne [IntPtr]::Zero)
+        {
+            [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId
+            $deadline = (Get-Date).AddSeconds(5)
+            while ((Get-Date) -lt $deadline)
+            {
+                $handles = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+                if ($handles.Count -ge 1) { $panel = $handles[0]; break }
+                Start-Sleep -Milliseconds 250
+            }
+        }
+    }
+    if ($panel -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "W-FAIL-no-panel.png"
+        throw "断言失败（场景 W 前置）：快速面板未唤起（和弦与 WM_HOTKEY 双路）"
+    }
+    $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panel)
+    # W1 预置中文：通知/全部已读/概览三个常显文案全中文（StatusPanel 可能整块收起，不作断言面）
+    $panelTexts = @()
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelTexts = Get-WindowUiaTexts $panel
+        if (($panelTexts -contains "通知") -and ($panelTexts -contains "全部已读") -and ($panelTexts -contains "概览")) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!($panelTexts -contains "通知") -or !($panelTexts -contains "全部已读") -or !($panelTexts -contains "概览"))
+    {
+        Save-FullScreenshot "W-FAIL-zh-missing.png"
+        throw "断言失败（场景 W1）：预置 language=zh 后看板文案未中文（实际：$($panelTexts -join ' | ')）——看板 i18n 接线回归"
+    }
+    Write-Host "场景 W1 通过：预置 zh 启动看板文案中文（通知/全部已读/概览）——看板缺中文修复实证"
+    # W2 设置切 English：面板即时翻英文 + config 落盘（无需重启）
+    $combo = Find-UiaById $settings "language-box" 10
+    if (!$combo) { Save-FullScreenshot "W-FAIL-no-language-box.png"; throw "断言失败（场景 W2）：设置页未找到语言下拉 language-box" }
+    Select-ComboItemById $settings $combo "language-en"
+    $cfgOk = $false
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ((Get-Content $cfgPath -Raw -Encoding UTF8) -match '"language":\s*"en"') { $cfgOk = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!$cfgOk) { Save-FullScreenshot "W-FAIL-config-lang.png"; throw "断言失败（场景 W2）：切 English 后 config.json 无 language=en——语言选择未落盘" }
+    $panelTexts = @()
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelTexts = Get-WindowUiaTexts $panel
+        if (($panelTexts -contains "NOTIFICATIONS") -and ($panelTexts -contains "Mark all read") -and ($panelTexts -contains "OVERVIEW")) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!($panelTexts -contains "NOTIFICATIONS") -or !($panelTexts -contains "Mark all read") -or !($panelTexts -contains "OVERVIEW"))
+    {
+        Save-FullScreenshot "W-FAIL-live-switch.png"
+        throw "断言失败（场景 W2）：切 English 后看板未即时翻英文（实际：$($panelTexts -join ' | ')）——语言切换即时生效回归"
+    }
+    Write-Host "场景 W2 通过：设置切 English → 看板即时翻英文 + config.json language=en 落盘"
+    # W3 chip 点击过滤：点 chip-智谱 → OVERVIEW 头带「· 智谱」；点 chip-all 回纯 OVERVIEW
+    $chip = Find-UiaById $panelRoot "chip-智谱" 8
+    if (!$chip) { Save-FullScreenshot "W-FAIL-no-chip.png"; throw "断言失败（场景 W3）：面板未找到 chip-智谱（AutomationId 缺失或 chip 未渲染）" }
+    try { $pt = $chip.GetClickablePoint(); $cx = [int]$pt.X; $cy = [int]$pt.Y } catch { $r = $chip.Current.BoundingRectangle; $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2) }
+    [WinEnum]::ClickAt($cx, $cy) # 面板常置顶，绝对坐标点击命中面板
+    $filtered = $false
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelTexts = Get-WindowUiaTexts $panel
+        if ($panelTexts | Where-Object { $_ -match 'OVERVIEW · 智谱' }) { $filtered = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!$filtered)
+    {
+        Save-FullScreenshot "W-FAIL-no-filter.png"
+        throw "断言失败（场景 W3）：点 chip-智谱 后 OVERVIEW 头未带「· 智谱」（实际：$($panelTexts -join ' | ')）——点击过滤/可见态回归"
+    }
+    Write-Host "场景 W3 通过：点 chip-智谱 → OVERVIEW 头「OVERVIEW · 智谱」（当前类目界面可见）"
+    $chipAll = Find-UiaById $panelRoot "chip-all" 5
+    if (!$chipAll) { Save-FullScreenshot "W-FAIL-no-chip-all.png"; throw "断言失败（场景 W3）：面板未找到 chip-all（「全部」chip 缺失）" }
+    try { $pt = $chipAll.GetClickablePoint(); $cx = [int]$pt.X; $cy = [int]$pt.Y } catch { $r = $chipAll.Current.BoundingRectangle; $cx = [int]($r.X + $r.Width / 2); $cy = [int]($r.Y + $r.Height / 2) }
+    [WinEnum]::ClickAt($cx, $cy)
+    $backToAll = $false
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline)
+    {
+        $panelTexts = Get-WindowUiaTexts $panel
+        if ($panelTexts -contains "OVERVIEW") { $backToAll = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!$backToAll)
+    {
+        Save-FullScreenshot "W-FAIL-no-unfilter.png"
+        throw "断言失败（场景 W3）：点「全部」chip 后 OVERVIEW 头未回纯 OVERVIEW（实际：$($panelTexts -join ' | ')）——取消过滤回归"
+    }
+    Write-Host "场景 W3 通过：点「全部」chip → 回全部（OVERVIEW 纯头）——再点取消链实证"
+    # W4 贴边收起开关：off→config false，on→config true（开关可切换可落盘）
+    $toggle = Find-UiaById $settings "edge-collapse-toggle" 8
+    if (!$toggle) { Save-FullScreenshot "W-FAIL-no-toggle.png"; throw "断言失败（场景 W4）：设置页未找到贴边收起开关 edge-collapse-toggle" }
+    ($toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    $offOk = $false
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ((Get-Content $cfgPath -Raw -Encoding UTF8) -match '"edgeCollapseEnabled":\s*false') { $offOk = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!$offOk) { Save-FullScreenshot "W-FAIL-toggle-off.png"; throw "断言失败（场景 W4）：开关置关后 config.json 无 edgeCollapseEnabled=false——开关未落盘" }
+    ($toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    $onOk = $false
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ((Get-Content $cfgPath -Raw -Encoding UTF8) -match '"edgeCollapseEnabled":\s*true') { $onOk = $true; break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!$onOk) { Save-FullScreenshot "W-FAIL-toggle-on.png"; throw "断言失败（场景 W4）：开关置开后 config.json 无 edgeCollapseEnabled=true——开关回切未落盘" }
+    Write-Host "场景 W4 通过：贴边收起开关可切换且落盘（edgeCollapseEnabled false→true）"
+    Stop-Beacon
+}
+catch
+{
+    Save-FullScreenshot "W-FAIL-unexpected.png"
+    $failures.Add("场景 W：$($_.Exception.Message)")
+    Write-Host "::error::场景 W 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {

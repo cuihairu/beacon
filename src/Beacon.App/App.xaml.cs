@@ -3,6 +3,7 @@ using Beacon.App.Services;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.UI.Dispatching;
@@ -153,6 +154,8 @@ public partial class App : Application
         }
         var dispatcher = Services.GetRequiredService<IUiDispatcher>();
         var tray = Services.GetRequiredService<TrayIconService>();
+        // 界面语言先行（2026-10-14 用户单②）：任何窗口/菜单创建前定语言口径，看板首屏不吃 XAML 英文缺省
+        UiStrings.SetLanguage(runtime.Config.App.Language);
         tray.Palette = new UiPalette(runtime.Config); // B-706：托盘圆点按 appearance.SeverityColors 运行时绘制
         _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher);
         var quickPanel = _quickPanel;
@@ -171,8 +174,10 @@ public partial class App : Application
         };
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
         quickPanel.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
-        // B-503：Notifications 入口 → L2 通知中心视图（148c3bd 落地）；Refresh All 已接 runtime.RefreshAll
-        tray.NotificationsRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
+        // B-503 语义分化（2026-10-14 用户单④）：Notifications 入口 = 打开面板并聚焦通知中心视图
+        // （原实现与 Open Beacon 同为 Toggle——两个同义入口正是用户困惑点；设计意图见 mvp-issues B-503
+        // 「托盘菜单含常用 Action 与 Notifications 入口」+ App.xaml.cs 原注释「→ L2 通知中心视图」）
+        tray.NotificationsRequested += () => Dispatcher.EnqueueGuarded(quickPanel.OpenNotifications);
         tray.ExitRequested += () => Dispatcher.EnqueueGuarded(ShutdownApp);
         tray.Initialize();
         // 托盘常驻无主窗口：启动即给可见反馈，避免被当成「点了没反应」
@@ -308,6 +313,7 @@ public partial class App : Application
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
             capsule.SetVisible(appConfig.ShowCapsule);
             capsule.ApplyOpacity(appConfig.UiOpacity);
+            _pinnedHost?.ApplyEdgeCollapseSetting(); // 贴边收起开关即时生效（2026-10-14 用户单③）：关=已收起的立刻弹回
             // 批8 2026-10-10：透明度实时生效——四类悬浮面统一读 config.uiOpacity（此前只应用胶囊）
             _pinnedHost?.ApplyOpacity(appConfig.UiOpacity);
             _floatingHost?.ApplyOpacity(appConfig.UiOpacity);

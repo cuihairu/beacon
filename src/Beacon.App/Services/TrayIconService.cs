@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Beacon.App.Infrastructure;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Beacon.App.Services;
@@ -251,19 +252,20 @@ internal sealed class TrayIconService : IDisposable
         var menu = NativeMethods.CreatePopupMenu();
         try
         {
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuOpenPanel, "Open Beacon");
+            // 菜单文案经 Core UiStrings 取词（2026-10-14 用户单②④）：菜单每次右键重绘，语言切换下次开菜单即生效
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuOpenPanel, UiStrings.TrayOpenPanel);
             // 可勾选项（2026-10-11 用户令）：打勾=面板常驻不失焦自隐；勾选态每次开菜单实时读 config
             var keepPanelOn = IsKeepPanelOn?.Invoke() == true;
             NativeMethods.AppendMenuW(
                 menu,
                 NativeMethods.MF_STRING | (keepPanelOn ? NativeMethods.MF_CHECKED : 0u),
                 (IntPtr)MenuKeepPanel,
-                "Keep Panel Open");
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuNotifications, "Notifications");
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuRefreshAll, "Refresh All");
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuSettings, "Settings");
+                UiStrings.TrayKeepPanelOpen);
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuNotifications, UiStrings.TrayNotifications);
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuRefreshAll, UiStrings.TrayRefreshAll);
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuSettings, UiStrings.TraySettings);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuExit, "Exit");
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuExit, UiStrings.TrayExit);
 
             NativeMethods.GetCursorPos(out var position);
             // TrackPopupMenu 前必须 SetForegroundWindow，否则点击外部菜单不会消失
