@@ -805,6 +805,13 @@ function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow)
     return $count
 }
 
+# 期望客户区高度（px）：设计 DIP × 该窗实测 DPI。取整口径与应用侧 DpiLayoutMath.ToPx 一致
+# （MidpointRounding.AwayFromZero），100% 缩放下 32 DIP = 32px，runner 换缩放期望值跟着走。
+function ExpectedRowPx([IntPtr] $hwnd, [double] $dips = 32)
+{
+    return [int][Math]::Round($dips * [WinEnum]::DpiScaleOf($hwnd), [MidpointRounding]::AwayFromZero)
+}
+
 # 客户区高度硬断言（2026-10-14 进度条缺陷单回归守卫）：AppWindow.Resize 设的是窗口外框，
 # 客户区需求尺寸（tile 32 DIP@100%=32px）直接喂 Resize 会丢非客户区差值（~6px resize 边框），
 # 底部 4 DIP 进度条整条落进不可见区——缺陷形态=客户区实测 26px、条带零像素（run 38488861749 取证：
@@ -1004,7 +1011,7 @@ try
     # 进度条像素硬断言（2026-10-11 重设计，bar 默认路径；2026-10-14 缺陷单改客户区锚定）：
     # GLM tile 有 Progress 语义（mock 38%），底部 4 DIP 条带必须出像素——旧病「条从未渲染」/
     # 3px 细到难辨都在这里现形。客户区高先硬断言（32 DIP@100%=32px ±1），再裁客户区数条带像素。
-    Assert-ClientHeight $tiles[0] 32 "场景 A"
+    Assert-ClientHeight $tiles[0] (ExpectedRowPx $tiles[0]) "场景 A"
     $aBarCrop = New-Crop ([WinEnum]::ClientScreenRectOf($tiles[0])) 0
     Save-Zoom $aBarCrop "A-tile-bar-band.png" 6
     $aBarPixels = Count-BarPixels $aBarCrop
@@ -1264,7 +1271,7 @@ try
     $dTileHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
     foreach ($h in $dTileHandles)
     {
-        Assert-ClientHeight $h 32 "场景 D"
+        Assert-ClientHeight $h (ExpectedRowPx $h) "场景 D"
     }
     if (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
@@ -2031,11 +2038,12 @@ try
     # 非客户区差值未补回时末行 tile 底部 6px 不可见（H 取证：末行 tile 26px 无条、首行完整 32px）。
     $panelClient = [WinEnum]::ClientRectOf($panel[0])
     $panelH = $panelClient.Bottom - $panelClient.Top
-    if ($panelH -lt 32 -or ($panelH % 32) -ne 0)
+    $panelRowPx = ExpectedRowPx $panel[0]
+    if ($panelH -lt $panelRowPx -or ($panelH % $panelRowPx) -ne 0)
     {
-        throw "断言失败（场景 H5）：面板客户区高 ${panelH}px（期望 32 的整数倍 ≥32）——非客户区差值未补回，末行 tile 底部进度条落进不可见区（缺陷 2026-10-14 回归）"
+        throw "断言失败（场景 H5）：面板客户区高 ${panelH}px（期望 ${panelRowPx}px 的整数倍，32 DIP × 缩放 ${([WinEnum]::DpiScaleOf($panel[0]))}）——非客户区差值未补回，末行 tile 底部进度条落进不可见区（缺陷 2026-10-14 回归）"
     }
-    Write-Host "场景 H5 面板客户区断言通过：client ${panelH}px（$($panelH / 32) 行 × 32 DIP）"
+    Write-Host "场景 H5 面板客户区断言通过：client ${panelH}px（$($panelH / $panelRowPx) 行 × 32 DIP，行高 ${panelRowPx}px）"
     Write-Host "场景 H5 通过：panel 模式宿主在、悬浮 tile 窗零（两形态二选一）"
     Stop-Beacon
 }
