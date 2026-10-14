@@ -97,8 +97,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **依赖**：B-101
 - **内容**：全局异常处理 → `%AppData%\Beacon\logs` 滚动日志 + 托盘气泡提示，不闪退；ILogger 接入。
 - **验收**：
-  - [ ] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。代码路径已就位（非运行时验证）：App.xaml.cs OnLaunched catch → LogCritical + CrashLog.Alert，CrashLog 落 %AppData%\Beacon\logs。
+  - [x] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口
+    - 已由 CI 代验（2026-10-14 勾账）：外部故障半场景 T2（断网 75s 进程存活 + 堆栈日志）+ 注入半场景 V3（38459944253 红出裸 TryEnqueue 缺口 → DispatcherQueueGuard 23 处接管，patrol-20261014-A3；38494525200 复证：崩溃注入 → 日志堆栈留痕 + 进程存活 + 零 #32770 + tile 仍在 + 刷新循环续跑）。代码路径：App.xaml.cs OnLaunched catch → LogCritical + CrashLog.Alert。
 
 ---
 
@@ -250,7 +250,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **内容**：CommunityToolkit Notifications；AUMID 快捷方式自检/修复；Toast 点击激活路由（深链到对应 L3）。
 - **验收**：
   - [ ] 发送/点击/激活路由全链路手动通过；快捷方式缺失可自愈
-    - 待 Windows 装机（2026-10-09 标注；本机 Linux 不代验）。
+    - 自愈半已由 CI 代验（2026-10-14，38494525200 场景 F5t：预置删除 HKCU AppUserModelId 注册键 → Initialize() 重建硬断言；toolkit 7.1.3 注册表机制，不建 .lnk）；点击/激活路由与横幅呈现属 OS Toast 面，待装机。
 
 ### B-502 NotificationEngine + 默认规则
 - **依赖**：B-203、B-207、B-501
