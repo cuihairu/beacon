@@ -57,23 +57,12 @@ internal sealed class DetailWindow : Window
         var dpi = NativeMethods.GetDpiForWindow(hwnd) / 96.0;
         var content = (FrameworkElement)Content;
         content.Measure(new global::Windows.Foundation.Size(DetailWidthDips, double.PositiveInfinity));
-        var (chromeWidth, chromeHeight) = ChromeSizePx(hwnd);
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(hwnd);
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32
         {
             Width = DpiLayoutMath.ToPx(DetailWidthDips, dpi) + chromeWidth,
             Height = DpiLayoutMath.ClampedHeightPx(content.DesiredSize.Height, DetailMinHeightDips, DetailMaxHeightDips, dpi) + chromeHeight,
         });
-    }
-
-    /// <summary>窗口外框与客户区的物理差（标题栏+边框）；取不到按 0 兜底（无边框窗差值本就为 0）。</summary>
-    private static (int Width, int Height) ChromeSizePx(IntPtr hwnd)
-    {
-        if (!NativeMethods.GetWindowRect(hwnd, out var window) || !NativeMethods.GetClientRect(hwnd, out var client))
-        {
-            return (0, 0);
-        }
-        return (Math.Max(0, window.Right - window.Left - (client.Right - client.Left)),
-            Math.Max(0, window.Bottom - window.Top - (client.Bottom - client.Top)));
     }
 
     private UIElement BuildContent()

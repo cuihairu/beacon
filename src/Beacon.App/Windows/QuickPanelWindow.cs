@@ -95,11 +95,14 @@ public sealed partial class QuickPanelWindow : Window
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW);
 
         // 设计值是 DIP，AppWindow.Resize 收物理像素——只在 Win32 边界经 DpiLayoutMath 换算一次，
-        // 否则高缩放下内容被裁（DPI 修复单 2026-10-10）
+        // 否则高缩放下内容被裁（DPI 修复单 2026-10-10）。Resize 收的是窗口外框，客户区需求必须
+        // 补回非客户区差值（无边框 presenter 仍保留 ~6px resize 边框），否则底部内容落进不可见区
+        // （2026-10-14 进度条缺陷单同型根因：tile 底部 4 DIP 条带整条不可见）
         var dpi = GetDpi();
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
         _appWindow.Resize(new SizeInt32(
-            DpiLayoutMath.ToPx(PanelWidth, dpi),
-            DpiLayoutMath.ToPx(PanelHeight, dpi)));
+            DpiLayoutMath.ToPx(PanelWidth, dpi) + chromeWidth,
+            DpiLayoutMath.ToPx(PanelHeight, dpi) + chromeHeight));
         _appWindow.Hide();
         _visible = false;
 
@@ -171,8 +174,11 @@ public sealed partial class QuickPanelWindow : Window
     {
         var work = MonitorService.Primary()?.WorkPx ?? _fallbackWorkArea;
         var dpi = GetDpi(); // work 是物理像素，偏移设计值是 DIP——同单位换算
-        var x = work.Right - DpiLayoutMath.ToPx(PanelWidth, dpi) - DpiLayoutMath.ToPx(24, dpi);
-        var y = work.Bottom - DpiLayoutMath.ToPx(PanelHeight, dpi) - DpiLayoutMath.ToPx(140, dpi); // 胶囊（右下角）上方
+        // 锚点数学按外框口径（Resize 同口径补回非客户区差值，2026-10-14 缺陷单）：可见面板
+        // 保持 24/140 DIP 边距，不被 resize 边框吃掉
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+        var x = work.Right - (DpiLayoutMath.ToPx(PanelWidth, dpi) + chromeWidth) - DpiLayoutMath.ToPx(24, dpi);
+        var y = work.Bottom - (DpiLayoutMath.ToPx(PanelHeight, dpi) + chromeHeight) - DpiLayoutMath.ToPx(140, dpi); // 胶囊（右下角）上方
         _appWindow.Move(new PointInt32(x, y));
     }
 

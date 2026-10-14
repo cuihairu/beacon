@@ -243,6 +243,19 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
+    /// <summary>窗口外框与客户区的物理差（标题栏+边框）；取不到按 0 兜底（无边框窗差值本就为 0）。
+    /// AppWindow.Resize 设的是窗口外框，客户区需求尺寸必须补回此差值，否则底部内容落进不可见区
+    /// （DetailWindow 2026-10-11 装机「没有修复」根因；tile 底部进度条裁切 2026-10-14 缺陷单同型）。</summary>
+    public static (int Width, int Height) ChromeSizePx(IntPtr hwnd)
+    {
+        if (!GetWindowRect(hwnd, out var window) || !GetClientRect(hwnd, out var client))
+        {
+            return (0, 0);
+        }
+        return (Math.Max(0, window.Right - window.Left - (client.Right - client.Left)),
+            Math.Max(0, window.Bottom - window.Top - (client.Bottom - client.Top)));
+    }
+
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 

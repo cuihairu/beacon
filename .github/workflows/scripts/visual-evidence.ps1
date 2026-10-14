@@ -46,6 +46,10 @@ public static class WinEnum
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
     [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr h, out RECT r);
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
     public static List<IntPtr> VisibleHandlesByTitle(string title)
     {
         var found = new List<IntPtr>();
@@ -62,6 +66,20 @@ public static class WinEnum
         return found;
     }
     public static RECT RectOf(IntPtr h) { RECT r; GetWindowRect(h, out r); return r; }
+    // DIP→物理像素缩放（GetDpiForWindow/96，与应用侧 DpiLayoutMath 同一换算口径）：
+    // 断言期望值按窗实测 DPI 算，不写死 1.0——runner 换缩放不会假红（2026-10-14 缺陷单改造）。
+    public static double DpiScaleOf(IntPtr h) { var d = GetDpiForWindow(h); return d == 0 ? 1.0 : d / 96.0; }
+    public static RECT ClientRectOf(IntPtr h) { RECT r; GetClientRect(h, out r); return r; }
+    // 客户区矩形换算到屏幕坐标：GetClientRect 原点是客户区自身（通常 0,0），New-Crop 走 CopyFromScreen
+    // 要的是屏幕坐标，混用会把裁图挪到窗口原点（2026-10-14 进度条缺陷单断言改造踩坑）。
+    public static RECT ClientScreenRectOf(IntPtr h)
+    {
+        RECT r; GetClientRect(h, out r);
+        var w = r.Right - r.Left; var ht = r.Bottom - r.Top;
+        POINT p; p.X = r.Left; p.Y = r.Top;
+        ClientToScreen(h, ref p);
+        return new RECT { Left = p.X, Top = p.Y, Right = p.X + w, Bottom = p.Y + ht };
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SystemParametersInfo(uint action, uint param, string value, uint init);
     public static void SetWallpaper(string path) { SystemParametersInfo(20, 0, path, 3); }
@@ -787,9 +805,29 @@ function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow)
     return $count
 }
 
-# 进度条像素硬断言助手（2026-10-10 修「进度条看不到」配套，2026-10-11 重设计后 bar 为默认路径）：
-# 扫 tile 截图（必须 margin 0，防桌面色混入）底部 6 物理像素行、中部 60% 宽（避开 2 DIP 圆角端头
-# 与 NN% 读数列），统计与暗底色 (15,23,42) 任一通道差 >25 的像素。
+# 客户区高度硬断言（2026-10-14 进度条缺陷单回归守卫）：AppWindow.Resize 设的是窗口外框，
+# 客户区需求尺寸（tile 32 DIP@100%=32px）直接喂 Resize 会丢非客户区差值（~6px resize 边框），
+# 底部 4 DIP 进度条整条落进不可见区——缺陷形态=客户区实测 26px、条带零像素（run 38488861749 取证：
+# A 场景 GLM tile 26px 无条、D 场景 5 窗全 26px、H 场景面板末行 tile 26px 且首行完整 32px）。
+# 客户区高必须等于设计值 ±1（亚像素阈值口径同 todo 决策记录：状态灯 8px 下限同理）。
+function Assert-ClientHeight([IntPtr] $hwnd, [int] $expectedPx, [string] $label)
+{
+    $client = [WinEnum]::ClientRectOf($hwnd)
+    $frame = [WinEnum]::RectOf($hwnd)
+    $clientH = $client.Bottom - $client.Top
+    $frameH = $frame.Bottom - $frame.Top
+    if ([Math]::Abs($clientH - $expectedPx) -gt 1)
+    {
+        throw "断言失败（$label）：客户区高 ${clientH}px（期望 ${expectedPx}px ±1，外框 ${frameH}px）——非客户区差值未补回，底部进度条落进不可见区（缺陷 2026-10-14 回归）"
+    }
+    Write-Host "$label 客户区断言通过：client ${clientH}px / frame ${frameH}px（chrome $($frameH - $clientH)px）"
+}
+
+# 进度条像素硬断言助手（2026-10-10 修「进度条看不到」配套，2026-10-11 重设计后 bar 为默认路径；
+# 2026-10-14 缺陷单改客户区锚定）：入参必须是客户区裁图（ClientRectOf，非外框 RectOf）——
+# 旧实现裁外框、底部 6 行落在窗框外的桌面区，「465/507 像素」全是桌面边缘（vacuous 通过实证）。
+# 扫底部 6 物理像素行、中部 60% 宽（避开 2 DIP 圆角端头与 NN% 读数列），统计与暗底色
+# (15,23,42) 任一通道差 >25 的像素。
 # bar 缺席=0（CI 截图实证过的旧病）；bar 在场：track(≈62,72,92)+fill(档位色) 盖满 4px 高带 → 数百，
 # 阈值 120 ≈ 期望值的 30%，容忍圆角/窗口边 1-2 行的毛边。
 # 只对 dark 主题（A/D 场景）成立；浅主题底色不同不适用（C 场景走暗像素断言）。
@@ -963,9 +1001,11 @@ try
     }
     Save-FullScreenshot "A-numeric-on-desktop.png"
     Save-Zoom (New-Crop ([WinEnum]::RectOf($tiles[0])) 10) "A-numeric-on-tile-closeup.png" 6
-    # 进度条像素硬断言（2026-10-11 重设计，bar 默认路径）：GLM tile 有 Progress 语义（mock 38%），
-    # 底部 4 DIP 条带必须出像素——旧病「条从未渲染」/ 3px 细到难辨都在这里现形
-    $aBarCrop = New-Crop ([WinEnum]::RectOf($tiles[0])) 0
+    # 进度条像素硬断言（2026-10-11 重设计，bar 默认路径；2026-10-14 缺陷单改客户区锚定）：
+    # GLM tile 有 Progress 语义（mock 38%），底部 4 DIP 条带必须出像素——旧病「条从未渲染」/
+    # 3px 细到难辨都在这里现形。客户区高先硬断言（32 DIP@100%=32px ±1），再裁客户区数条带像素。
+    Assert-ClientHeight $tiles[0] 32 "场景 A"
+    $aBarCrop = New-Crop ([WinEnum]::ClientScreenRectOf($tiles[0])) 0
     Save-Zoom $aBarCrop "A-tile-bar-band.png" 6
     $aBarPixels = Count-BarPixels $aBarCrop
     $aBarCrop.Dispose()
@@ -1219,6 +1259,13 @@ try
         Save-Zoom (New-Crop ([WinEnum]::RectOf($panelHandles[$tileIndex])) 8) "D-tile-$tileIndex-closeup.png" 4
     }
     Save-FullScreenshot "D-provider-tiles-desktop.png"
+    # 逐窗客户区高度硬断言（2026-10-14 进度条缺陷单）：取证 5 悬浮 tile 窗客户区全 26px（32 设计值
+    # −6px 非客户区 resize 边框），底部 4 DIP 条带整条落进不可见区。修复后每窗客户区必须回到 32px ±1。
+    $dTileHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile")
+    foreach ($h in $dTileHandles)
+    {
+        Assert-ClientHeight $h 32 "场景 D"
+    }
     if (($tileTexts | Where-Object { $_.Trim().Length -gt 0 } | Measure-Object).Count -gt 0)
     {
         foreach ($expected in @("火山方舟", "DeepSeek", "千问", "42.5", "420.5", "128 次"))
@@ -1263,8 +1310,9 @@ try
     }
     if ($arkIndex -ge 0)
     {
-        $arkRect = [WinEnum]::RectOf($panelHandles[$arkIndex])
-        $arkBarCrop = New-Crop $arkRect 0
+        # 条带裁图锚客户区（ClientRectOf）：旧实现裁外框，底部 6 行落在窗框外桌面——「507 像素」
+        # 全是桌面边缘的 vacuous 通过（2026-10-14 缺陷单取证）。客户区裁图下条带缺席=真 0。
+        $arkBarCrop = New-Crop ([WinEnum]::ClientScreenRectOf($panelHandles[$arkIndex])) 0
         Save-Zoom $arkBarCrop "D-tile-ark-bar-closeup.png" 6
         $arkBarPixels = Count-BarPixels $arkBarCrop
         $arkBarCrop.Dispose()
@@ -1979,6 +2027,15 @@ try
         throw "断言失败（场景 H5）：panel 模式残留 $($tiles.Count) 个悬浮 tile 窗——形态互斥回归"
     }
     Save-FullScreenshot "H-panel-mode.png"
+    # 面板客户区高度硬断言（2026-10-14 缺陷单）：面板客户区 = 行数×32 DIP（100% DPI 下 32 的整数倍）。
+    # 非客户区差值未补回时末行 tile 底部 6px 不可见（H 取证：末行 tile 26px 无条、首行完整 32px）。
+    $panelClient = [WinEnum]::ClientRectOf($panel[0])
+    $panelH = $panelClient.Bottom - $panelClient.Top
+    if ($panelH -lt 32 -or ($panelH % 32) -ne 0)
+    {
+        throw "断言失败（场景 H5）：面板客户区高 ${panelH}px（期望 32 的整数倍 ≥32）——非客户区差值未补回，末行 tile 底部进度条落进不可见区（缺陷 2026-10-14 回归）"
+    }
+    Write-Host "场景 H5 面板客户区断言通过：client ${panelH}px（$($panelH / 32) 行 × 32 DIP）"
     Write-Host "场景 H5 通过：panel 模式宿主在、悬浮 tile 窗零（两形态二选一）"
     Stop-Beacon
 }

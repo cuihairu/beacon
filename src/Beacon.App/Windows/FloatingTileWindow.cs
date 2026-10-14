@@ -392,7 +392,9 @@ internal sealed class FloatingTileHost
         }
 
         /// <summary>按 DIP 设计值×当前 DPI 重排尺寸并收回工作区（Loaded / WM_DPICHANGED / 拖动跨 DPI 补排共用；
-        /// ReloadTiles 对已存窗也调——展示项（show）改了推算宽就跟着变，即时生效不重启）。</summary>
+        /// ReloadTiles 对已存窗也调——展示项（show）改了推算宽就跟着变，即时生效不重启）。
+        /// Resize 喂的是外框尺寸：客户区需求（tile 32 DIP 高）必须补回非客户区差值（无边框 presenter
+        /// 仍保留 ~6px resize 边框），否则底部 4 DIP 进度条整条落进不可见区（2026-10-14 缺陷单根因）。</summary>
         public void ApplyDesignSize()
         {
             if (GetAppWindow() is not { } appWindow)
@@ -400,7 +402,8 @@ internal sealed class FloatingTileHost
                 return;
             }
             var dpi = GetDpi();
-            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(_tileWidthDips, dpi), DpiLayoutMath.ToPx(TileHeightDips, dpi)));
+            var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(_tileWidthDips, dpi) + chromeWidth, DpiLayoutMath.ToPx(TileHeightDips, dpi) + chromeHeight));
             EnsurePlaced();
         }
 

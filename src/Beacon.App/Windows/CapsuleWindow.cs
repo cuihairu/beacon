@@ -25,7 +25,7 @@ public sealed partial class CapsuleWindow : Window
 
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
-    private (int Width, int Height) _sizePx; // 最近一次按内容实测的物理尺寸（定位与落盘共用，避免读旧值）
+    private (int Width, int Height) _sizePx; // 最近一次应用的外框物理尺寸（客户区需求+非客户区差值，定位与落盘共用，避免读旧值）
     private bool _positioned; // RestorePosition 已跑过（此后 ApplySize 变尺寸需重新贴锚点）
     private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
     private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
@@ -213,7 +213,13 @@ public sealed partial class CapsuleWindow : Window
         {
             return;
         }
-        _sizePx = MeasureSizePx();
+        // 外框需求 = 客户区需求（内容实测）+ 非客户区差值：AppWindow.Resize 收的是外框，
+        // 直接喂客户区需求 → 底部 ~6px 不可见（无边框 presenter 仍保留 resize 边框），内容裁切
+        // （2026-10-14 进度条缺陷单同型根因）。_sizePx 记外框尺寸，RestorePosition/SavePosition
+        // 的锚点数学随之同口径（外框），save/restore 往返不漂移。
+        var client = MeasureSizePx();
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+        _sizePx = (client.Width + chromeWidth, client.Height + chromeHeight);
         if (_sizePx.Width == _appWindow.Size.Width && _sizePx.Height == _appWindow.Size.Height)
         {
             return;

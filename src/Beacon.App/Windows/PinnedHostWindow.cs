@@ -786,6 +786,12 @@ internal sealed class PinnedHostWindow
             }
         }
 
+        // 客户区需求 → 外框需求：AppWindow.Resize 设的是窗口外框，量出来的是客户区需求，必须补回
+        // 非客户区差值（无边框 OverlappedPresenter 仍保留 ~6px resize 边框）。旧实现直接喂客户区
+        // 需求尺寸 → 底部 6px 不可见，tile 底部 4 DIP 进度条整条落进不可见区（2026-10-14 缺陷单
+        // 「底部进度条显示不全」根因；DetailWindow 2026-10-11 同型修复）。
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+
         if (strip)
         {
             // 吸边细条 = 展开面板的锚边窄条：同一 Place 数学、宽度换细条宽，条缘与面板缘重合——
@@ -793,13 +799,13 @@ internal sealed class PinnedHostWindow
             // 内缩 offsetX：悬停展开瞬间光标落在面板外 → PointerExited 立刻坍缩 → 再悬停再展开死循环，
             // 表现为「竖线贴着屏幕边无法恢复」（2026-10-10 用户实测根因）。高度仍取整面板高（细条=面板边条）。
             var stripWidth = Math.Max(1, DpiLayoutMath.ToPx(CollapseStripDips, dpi));
-            var stripRect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, stripWidth, height);
+            var stripRect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, stripWidth + chromeWidth, height + chromeHeight);
             appWindow.Resize(new SizeInt32(stripRect.Width, stripRect.Height));
             appWindow.Move(new PointInt32(stripRect.X, stripRect.Y));
             return;
         }
 
-        var rect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, width, height);
+        var rect = PinLayoutMath.Place(work, _layout.Anchor, _layout.OffsetDips, dpi, width + chromeWidth, height + chromeHeight);
         appWindow.Resize(new SizeInt32(rect.Width, rect.Height));
         appWindow.Move(new PointInt32(rect.X, rect.Y));
     }
