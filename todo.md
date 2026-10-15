@@ -125,21 +125,21 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 7 勾 / 36 未勾（2026-10-16 Phase 0 审计面收口 + Phase 1 State Store 旁路与 Selector 收编落地：契约冻结与兼容方案仍待拍板）。
+> 进度：43 条 = 11 勾 / 32 未勾（2026-10-16 PATROL1016：Phase 0 与 Phase 1 全清，契约冻结生效——决策记录 docs/design/redesign-2026-10-16-契约.md §4，已代决①②③④，仅 HTML 边界留问；下一步 Phase 2 设计令牌，App 面开工）。
 
-### Phase 0 现状审计与契约冻结（6 条 = 4 勾 / 2 未勾）
+### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
 - [x] 列出现有 Provider、Widget、Action 与 Renderer 清单（23 类型键 + 17 连接 + 7 执行器 + 6 窗口 + 47 Core 文件全量盘点：docs/design/redesign-2026-10-16-映射与迁移.md §1，e1229fc）
 - [x] 核对 `WidgetState` 的事件总线、刷新调度与 ActionRunner 契约（50 条核验表 A03 A04 B03 B04 B05 B11 逐条核过：docs/design/redesign-2026-10-16-核验.md，759742b）
 - [x] 识别现有状态模型中哪些字段是业务状态、哪些只是显示字段（WidgetState 12 字段逐一定性 + 配置字段三分类：映射与迁移 §2，e1229fc）
-- [ ] 确定新组件模型与旧配置的兼容方案（方案已提案四条：映射与迁移 §5，冻结待拍板）
+- [x] 确定新组件模型与旧配置的兼容方案（已代决④：映射与迁移 §5 四条照此冻结，docs/design/redesign-2026-10-16-契约.md §3，409d4e7）
 - [x] 保留现有已完成功能与真机验收要求（装机 71 条清单与 CI 视觉取证场景列为 Phase 6 验收底座：映射与迁移 §4/§5.4，e1229fc）
-- [ ] 冻结状态流契约与组件契约（契约草案与待拍板清单四条：映射与迁移 §4/§6，待拍板）
+- [x] 冻结状态流契约与组件契约（四类概念映射 + IStateStore 签名 + 变更检测口径 + 兼容四条冻结，已代决①②③④ 落决策记录：docs/design/redesign-2026-10-16-契约.md，409d4e7；仅 HTML 边界留问，Phase 4 开工前裁定）
 
-### Phase 1 响应式状态与数据流（5 条 = 3 勾 / 2 未勾）
+### Phase 1 响应式状态与数据流（5 条 = 5 勾，期次完成）
 
-- [ ] 明确 State、Event、Command 与 Operation Result 四类概念（待落地 hash）
-- [ ] 完善状态变更检测（检测机制已落地旁路：StateStore 内容键排除 FetchedAt、stale/健康翻转仍发布并有单测锚定；去重启用属行为变化待拍板 §6.2）
+- [x] 明确 State、Event、Command 与 Operation Result 四类概念（四类概念逐项映射仓内落点与语义，Operation Result 目标五态已定待 Phase 5 施：契约.md §1/§4，409d4e7）
+- [x] 完善状态变更检测（去重默认启用：内容键排除 FetchedAt、stale/健康翻转必发布、回退开关 suppressUnchanged=false；默认态与翻转行为各有单测锚定 StateStoreTests，d71bdc8）
 - [x] 增加或整理统一的 State Store 与 Selector（Store 契约+实现+15 测试：Abstractions/IStateStore.cs + Services/StateStore.cs，WidgetHost 发布点改经 Store 且事件契约不变（f5d1d91）；Selector 收编：QuotaWindows / WidgetValueHint / QuickPanelSections / QuickPanelFilter 归位 Beacon.Core.Selectors 命名空间，签名不动（24678f9））
 - [x] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（订阅/退订沿 IEventBus、写入经 IStateStore（接口注释写明，Abstractions/IStateStore.cs）；刷新失败转 ConnectionHealthChanged + 陈旧重发布、过期保 FetchedAt（RFC §6.2.6/§12，WidgetHostTests + StateStoreTests 锚定），f5d1d91）
 - [x] 确保 UI 只消费状态、不直接请求外部数据（核验表 A03 已确证：单向数据流 RFC-001:54-63、凭据只经 ConnectionContext 注入、UI 侧经 IWidgetProvider 抽象，759742b）
