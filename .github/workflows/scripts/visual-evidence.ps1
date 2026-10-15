@@ -65,6 +65,17 @@ public static class WinEnum
         }, IntPtr.Zero);
         return found;
     }
+    // 顶层可见窗句柄全量枚举（EnumWindows 地面真值）：UIA 桌面根 Children 枚举漏 WinRT picker——
+    // 38683714647 实证：失败截图里 Save As 对话框确在（File name 预填、Save/Cancel 齐全），而同一时刻
+    // UIA 桌面清单只有 Beacon 设置/tiles/托盘/agent 控制台/Progman，picker 窗不在其中。故 picker 发现
+    // 改走 EnumWindows（与 VisibleHandlesByClassAndPid 同一 P/Invoke 链，跨进程、与 UIA 桌面树无关）。
+    public static List<IntPtr> VisibleTopLevelHandles()
+    {
+        var all = new List<IntPtr>();
+        EnumWindows((h, l) => { if (IsWindowVisible(h)) { all.Add(h); } return true; }, IntPtr.Zero);
+        return all;
+    }
+    public static string TitleOf(IntPtr h) { var sb = new StringBuilder(512); GetWindowText(h, sb, 512); return sb.ToString(); }
     public static RECT RectOf(IntPtr h) { RECT r; GetWindowRect(h, out r); return r; }
     // DIP→物理像素缩放（GetDpiForWindow/96，与应用侧 DpiLayoutMath 同一换算口径）：
     // 断言期望值按窗实测 DPI 算，不写死 1.0——runner 换缩放不会假红（2026-10-14 缺陷单改造）。
@@ -4203,68 +4214,83 @@ function Save-UiaTreeDump([System.Windows.Automation.AutomationElement] $root, [
     [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
 }
 
-# 顶层窗句柄快照（UIA 桌面根 Children，跨进程）：WinRT picker 由外部进程承载（PickerHost 等），
-# 按 class=#32770 + pid(beacon) 找必空——38678998804 首跑实证：截图里「Save As」对话框确在（File name
-# 预填 beacon-config-…、Save/Cancel 齐全），而 #32770+beaconPid 零命中。故改「点前快照 → 点后差集」。
+# 顶层窗句柄快照（EnumWindows 地面真值，跨进程）：WinRT picker 由外部进程承载（PickerHost 等），
+# 按 class=#32770 + pid(beacon) 找必空（38678998804 实证）；38683714647 再证 UIA 桌面根 Children 枚举
+# 也漏它——截图里「Save As」对话框确在（File name 预填、Save/Cancel 齐全），同时刻 UIA 桌面清单无此窗。
+# 故「点前快照 → 点后差集」全程走 EnumWindows（Win32 层，与 UIA 桌面树/provider 注册无关）。
 function Get-DesktopWindowKeys
 {
     $keys = New-Object System.Collections.Generic.List[string]
-    $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-    foreach ($w in $wins)
+    foreach ($h in [WinEnum]::VisibleTopLevelHandles())
     {
-        try
-        {
-            $h = [string]$w.Current.NativeWindowHandle
-            if ($h -and $h -ne "0") { $keys.Add($h) }
-        }
-        catch { }
+        $keys.Add([string]$h)
     }
     return $keys
 }
 
-# 桌面顶层窗清单 dump（诊断面）：class/name/handle 逐窗一行，picker 形态未预期时定因用。
+# 桌面顶层窗清单 dump（诊断面）：EnumWindows 枚举，Win32 title/class/pid 恒可得，再挂 UIA 视角
+# （AutomationElement.FromHandle → ControlType/Name）——若 picker 有 handle 但 uia=<unavailable>，
+# 即「UIA 桌面树漏窗 + 无 UIA provider」双失效，驱动只能转纯 Win32（SetWindowText+SendInput）。
 function Save-DesktopWindowDump([string] $fileName)
 {
     $lines = New-Object System.Collections.Generic.List[string]
-    $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-    foreach ($w in $wins)
+    foreach ($h in [WinEnum]::VisibleTopLevelHandles())
     {
+        $head = "hwnd=[" + [string]$h + "] title=[" + [WinEnum]::TitleOf($h) + "] class=[" + [WinEnum]::ClassOf($h) + "] pid=[" + [WinEnum]::PidOf($h) + "]"
         try
         {
-            $lines.Add($w.Current.ControlType.ProgrammaticName + " class=[" + $w.Current.ClassName + "] name=[" + $w.Current.Name + "] hwnd=[" + $w.Current.NativeWindowHandle + "] pid=[" + $w.Current.ProcessId + "]")
+            $el = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$h)
+            $lines.Add($head + " uia=[" + $el.Current.ControlType.ProgrammaticName + " name=[" + $el.Current.Name + "]]")
         }
-        catch { }
+        catch { $lines.Add($head + " uia=<unavailable>") }
     }
     [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
 }
 
-# 等新顶层对话框窗：桌面根 Children 中取「点前快照之外」的新窗（ControlType=Window），标题命中
-# titleHints（*like*）优先，无命中则取首个新窗。跨进程、与 window class 无关。
-function Wait-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [int] $timeoutSec = 20)
+# HWND → AutomationElement（跨进程）：桌面树枚举漏 picker 时，仍可按 handle 直接取元素驱动。
+function Get-WindowElement([IntPtr]$h)
+{
+    try { return [System.Windows.Automation.AutomationElement]::FromHandle($h) }
+    catch { return $null }
+}
+
+# 等新顶层对话框窗：EnumWindows 全量枚举取「点前快照之外」的新窗，标题命中 titleHints（*like*）优先，
+# 无命中取首个新窗——跨进程、与 window class / UIA 桌面树无关（38683714647：UIA 桌面枚举漏 picker）。
+# 命中即 AutomationElement.FromHandle 转元素返回；元素取不到（picker 无 UIA provider）则 dump 后返 $null。
+function Wait-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [int] $timeoutSec = 20, [string] $tag = "")
 {
     $deadline = (Get-Date).AddSeconds($timeoutSec)
     while ((Get-Date) -lt $deadline)
     {
-        $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
         $fallback = $null
-        foreach ($w in $wins)
+        foreach ($h in [WinEnum]::VisibleTopLevelHandles())
         {
-            try
+            $hs = [string]$h
+            if ($before.Contains($hs)) { continue }
+            $hit = $false
+            foreach ($hint in $titleHints)
             {
-                if ($w.Current.ControlType.ProgrammaticName -ne "ControlType.Window") { continue }
-                $h = [string]$w.Current.NativeWindowHandle
-                if (!$h -or $h -eq "0" -or $before.Contains($h)) { continue }
-                foreach ($hint in $titleHints)
-                {
-                    if ($w.Current.Name -like "*$hint*") { return $w }
-                }
-                if (!$fallback) { $fallback = $w }
+                if ([WinEnum]::TitleOf($h) -like "*$hint*") { $hit = $true; break }
             }
-            catch { }
+            if ($hit)
+            {
+                $el = Get-WindowElement ([IntPtr]$h)
+                if ($el) { return $el }
+                Save-DesktopWindowDump ($tag + "-windows.txt")
+                Write-Host "::warning::场景 Z：$tag 命中新窗 title=[" + [WinEnum]::TitleOf($h) + "] 但 AutomationElement.FromHandle 失败——picker 无 UIA provider，驱动须转纯 Win32（读 " + $tag + "-windows.txt）"
+                return $null
+            }
+            if (!$fallback) { $fallback = $h }
         }
-        if ($fallback) { return $fallback }
+        if ($fallback)
+        {
+            $el = Get-WindowElement ([IntPtr]$fallback)
+            if ($el) { return $el }
+            $fallback = $null
+        }
         Start-Sleep -Milliseconds 300
     }
+    Save-DesktopWindowDump ($tag + "-windows.txt")
     return $null
 }
 
@@ -4274,12 +4300,11 @@ function Wait-CommonFileDialog([System.Collections.Generic.List[string]] $before
 # UIA 树 + 桌面窗清单 + 截图进 evidence，返 $false（调用侧按 G7c 口径降级 ::warning 转装机）。
 function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [string] $filePath, [string] $tag)
 {
-    $dlgEl = Wait-CommonFileDialog $before $titleHints 20
+    $dlgEl = Wait-CommonFileDialog $before $titleHints 20 $tag
     if (!$dlgEl)
     {
         Save-FullScreenshot ($tag + "-FAIL-no-dialog.png")
-        Save-DesktopWindowDump ($tag + "-windows.txt")
-        Write-Host "::warning::场景 Z：$tag 20s 内未见新顶层对话框窗——读 $tag-windows.txt（桌面窗清单）与截图定形态"
+        Write-Host "::warning::场景 Z：$tag 20s 内未见可驱动的新顶层对话框窗（EnumWindows 差集 + UIA FromHandle）——读 $tag-windows.txt（win32 title/class/pid + uia= 视角）与截图定形态"
         return $false
     }
     $edit = $null
@@ -4352,8 +4377,11 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
 # —— 场景 Z：导入导出往返（todo 行 80「导入+重录密钥后行为与原机一致」CI 代验，B-802）——
 # 行 80 导入半原注记「导入依赖 WinUI 文件选择器，CI 会话不稳，需装机半」系未实测假设——本场景实测：
 # FileSavePicker/FileOpenPicker 确为经典通用对话框（File name 预填 beacon-config-…、Save/Cancel 齐全，
-# 38678998804 截图实证），但**由外部进程承载**（WinRT PickerHost），按 #32770+beaconPid 必零命中——
-# 故驱动走跨进程差集：点前 Get-DesktopWindowKeys 快照 → 点后 Wait-CommonFileDialog 取新顶层窗。
+# 38678998804 / 38683714647 两次截图实证），但**由外部进程承载**（WinRT PickerHost），两种 UIA 口径
+# 全盲：#32770+beaconPid 零命中（38678998804）；UIA 桌面根 Children 差集亦零命中（38683714647 失败
+# 清单只有 Beacon 设置/tiles/托盘/agent 控制台/Progman，同期截图里对话框在）——故发现改走 EnumWindows
+# （Win32 地面真值，跨进程）：点前 Get-DesktopWindowKeys 快照 → 点后 Wait-CommonFileDialog 差集取新窗，
+# 再 AutomationElement.FromHandle 转元素驱动（Edit 1148 SetValue + 按钮 1 Invoke，不变）。
 # 包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置定数（2 连接含 credentialRef
 # conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。导出红线 CI 层回声：
 # secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按 G7c 口径降级
