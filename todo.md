@@ -161,7 +161,7 @@
 - [x] 定义 Component Descriptor（ComponentDescriptor(Id?,Type,Props,Children) 挂 WidgetConfig.Components 面键开集；嵌套允许 + 8 层/32 子/256 节点上限；结构非法整树弃用回传统渲染 + 诊断进 LoadErrors；形状代决记契约.md §4 已代决⑤（Core 13 例 + Storage 1 例锚定），5e076e6）
 - [x] 定义 Widget Instance 与 Binding 配置（ComponentBinding(Field,Source) 随节点进树，源三态 state/selector/const（state 路径受支持字段集封闭 + payload:key，校验前移到加载/解析期）；WidgetInstance 面键解析 fail-closed（无面树/非法树→null→传统渲染），树与 Config 只读共享、解析无 IO；代决记契约.md §4 已代决⑥（Core 21 例锚定），e065107）
 - [x] 实现 Selector 到组件属性的绑定（ComponentBindingEngine 纯函数解析：state 受支持字段集 + payload:key、selector 注册表（value-hint/quota-windows = Core 既有纯函数）、const 三态，取不到值回空串 fail-closed；输出键 = {节点路径}.{字段} 与校验诊断同口径；源名保留键 "" = 自身状态；无 IO 无 Provider 依赖（行 6 不变量构造保证）；代决记契约.md §3.7/§4 已代决⑦，Core 12 例锚定，c9e0b0e）
-- [ ] 实现多个数据源组合（待落地 hash）
+- [x] 实现多个数据源组合（WidgetConfig.Sources 面级「源名→widgetId」增量可选字段（存量 widgets.json 零迁移可读、ConfigVersion 不动）；源名大小写敏感精确匹配、保留键 ""=自身状态、每面 16 源上限；声明非法整面弃用附加源（自身状态恒可用）+ 诊断进 LoadErrors（口径同组件树）；WidgetInstanceResolver.ResolveSources 从状态快照按 widgetId 查取构建运行时源映射（查不到的源缺席、绑定侧回空串）；组合在组件层聚合多个 WidgetId，WidgetState 单 ConnectionId 的 Provider 口径不动；代决记契约.md §3.8/§4 已代决⑧，Core 17 例 + Storage 1 例锚定，dde7b14）
 - [x] 支持不同组件消费同一份状态（ComponentSourceIndex：ConsumedWidgetIds = 实例所需 widgetId 全集（自身 Id 在前、附加源按声明顺序、同 widgetId 去重）；SourcesOf 反查 widgetId→消费实例集合；解析纯函数只读状态、按引用共享不复制（内容相等 + Assert.Same 锚定），索引按需重建不落缓存无 IO；代决记契约.md §3.9/§4 已代决⑨，Core 8 例锚定，65efa84）
 - [x] 保证修改布局不触发无意义的数据请求（组件层纯函数边界：五个类型全静态类无缓存面，公共方法不接收任何运行时服务（Provider/执行器/Store/事件总线/Clock 等）；状态查取次数 = 自身 1 + Sources 数、与布局形状无关（1 节点 vs 200 层同 2 次），引擎拿到映射后零查取；反射签名守 + 查取计数守双锚定；代决记契约.md §3.10/§4 已代决⑩，Core 3 例锚定，fd9f2d1）
 
