@@ -71,7 +71,7 @@ internal sealed class DetailWindow : Window
         var root = new StackPanel { Spacing = 10, Padding = new Thickness(18, 16, 18, 16) };
 
         // 头部：severity 点 + 类型 + 摘要
-        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var header = ComponentLayout.Row(8);
         header.Children.Add(ComponentStatus.Indicator(new SolidColorBrush(_palette.SeverityColor(_state.Severity,
             widgetOverride: _runtime.Config.FindWidget(_state.WidgetId)?.ColorOverride))));
         header.Children.Add(new TextBlock
@@ -99,7 +99,8 @@ internal sealed class DetailWindow : Window
         // Provider 附加数据（仓库/分支/时长/阶段/错误摘要…）
         if (_state.Payload.Count > 0)
         {
-            root.Children.Add(SectionLabel("DETAILS"));
+            root.Children.Add(ComponentLayout.SectionLabel("DETAILS",
+                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
             var table = ComponentList.Vertical();
             foreach (var pair in _state.Payload)
             {
@@ -115,7 +116,8 @@ internal sealed class DetailWindow : Window
 
         // Action 区（按能力显隐，B-603）
         var widget = _runtime.Config.FindWidget(_state.WidgetId);
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 4, 0, 0) };
+        var actions = ComponentLayout.Row(8);
+        actions.Margin = new Thickness(0, 4, 0, 0);
 
         if (!string.IsNullOrEmpty(_state.DetailUrl))
         {
@@ -152,7 +154,8 @@ internal sealed class DetailWindow : Window
         }
         if (actions.Children.Count > 0)
         {
-            root.Children.Add(SectionLabel("ACTIONS"));
+            root.Children.Add(ComponentLayout.SectionLabel("ACTIONS",
+                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
             root.Children.Add(actions);
         }
 
@@ -160,14 +163,6 @@ internal sealed class DetailWindow : Window
         // UI/UX 审计：Auto 档滚动条不显眼，底部还有 ACTIONS/结果反馈这件事无提示——常驻 Visible
         return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Visible };
     }
-
-    private static TextBlock SectionLabel(string text) => new()
-    {
-        Text = text,
-        FontSize = DesignTokens.FontCaption,
-        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
-        Margin = new Thickness(0, 6, 0, 0),
-    };
 
     private async Task RetryAsync(WidgetConfig widget, string runId)
     {

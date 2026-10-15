@@ -322,7 +322,7 @@ public sealed partial class QuickPanelWindow : Window
             FontSize = DesignTokens.FontCaption,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+        var row = ComponentLayout.Row(5);
         row.Children.Add(dot);
         row.Children.Add(text);
         // 激活态=当前在看：实色填充（两主题同色白字，对比可辨）；非激活维持原浅底
@@ -388,7 +388,7 @@ public sealed partial class QuickPanelWindow : Window
         {
             list.Items.Add(MakeStateRow(state, state.FetchedAt.ToLocalTime().ToString("HH:mm:ss")));
         }
-        var visible = states.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var visible = ComponentLayout.When(states.Count > 0);
         list.Visibility = visible;
         header.Visibility = visible;
     }
@@ -444,7 +444,7 @@ public sealed partial class QuickPanelWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             FontWeight = record.Read ? FontWeights.Normal : FontWeights.SemiBold, // 未读加粗区分
         };
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+        var row = ComponentLayout.Row(7);
         row.Children.Add(dot);
         row.Children.Add(time);
         row.Children.Add(title);
@@ -481,7 +481,7 @@ public sealed partial class QuickPanelWindow : Window
         var label = ComponentText.Body(state.Summary, new SolidColorBrush(IsDarkTheme
             ? SeverityPalette.Rgb(255, 226, 232, 240)
             : SeverityPalette.Rgb(255, 30, 41, 59)), maxWidth: 260); // 面板加宽 320→380 后同步放开（原 210）
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
+        var row = ComponentLayout.Row(7);
         row.Children.Add(dot);
         row.Children.Add(time);
         row.Children.Add(label);

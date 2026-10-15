@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Beacon.App.Components;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Connections;
@@ -239,13 +240,8 @@ internal sealed class PinTile
         _progressText.Text = "加载中"; // 首态静态可读量：首个状态事件到达即被 NN% 覆盖
         _progressText.Visibility = Visibility.Visible;
 
-        var grid = new Grid { ColumnSpacing = 6 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var grid = ComponentLayout.Columns(6, GridLength.Auto, GridLength.Auto,
+            new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto);
         Grid.SetColumn(_light, 0);
         Grid.SetColumn(icon, 1);
         Grid.SetColumn(_label, 2);
