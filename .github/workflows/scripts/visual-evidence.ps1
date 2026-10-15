@@ -157,6 +157,17 @@ public static class WinEnum
         return all;
     }
     public static void SetText(IntPtr h, string t) { SetWindowTextW(h, t); }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageW(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    // CBE_SETEDITTEXT(0x1640)：Explorer 对话框的文件名框由 ComboBoxEx32 自绘，子 Edit 只是无绘制的缓冲区——
+    // 38716060653 实证 SetWindowTextW 成功、GetWindowTextW 复核命中、截图裁框放大后框内仍空。写子 Edit 不动
+    // 绘制面，提交时 IDOK 读到空名故 no-op。改走 ComboBoxEx 自己的编辑分支消息，lParam=LPWSTR 指针。
+    public static bool SetComboBoxEditText(IntPtr h, string t)
+    {
+        if (h == IntPtr.Zero) { return false; }
+        IntPtr p = System.Runtime.InteropServices.Marshal.StringToHGlobalUni(t);
+        try { return SendMessageW(h, 0x1640, IntPtr.Zero, p) != IntPtr.Zero; }
+        finally { System.Runtime.InteropServices.Marshal.FreeHGlobal(p); }
+    }
     public static bool Alive(IntPtr h) { return IsWindow(h); }
     public static bool Visible(IntPtr h) { return IsWindowVisible(h); }
     public static uint CtrlIdOf(IntPtr h) { return (uint)GetDlgCtrlID(h); }
@@ -378,6 +389,22 @@ public static class WinEnum
         System.Threading.Thread.Sleep(90);
         SendInput(1, new[] { up }, size);
         System.Threading.Thread.Sleep(300);
+    }
+    // 键盘 UNICODE 注入：KEYEVENTF_UNICODE(0x0004)、wScan=码位——与键盘布局无关，文件名里的 - . 在
+    // VK 注入下会错。type 必须是 INPUT_KEYBOARD(1)。CI 会话键盘注入可达性未证实（K1 注记），故仅作
+    // CBE_SETEDITTEXT 之后可见框仍空时的兜底。
+    public static void TypeText(string s)
+    {
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        foreach (char c in s)
+        {
+            var down = new INPUT { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wScan = c, dwFlags = 0x0004 } } };
+            var up = new INPUT { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wScan = c, dwFlags = 0x0006 } } };
+            SendInput(1, new[] { down }, size);
+            System.Threading.Thread.Sleep(25);
+            SendInput(1, new[] { up }, size);
+            System.Threading.Thread.Sleep(25);
+        }
     }
 }
 "@
@@ -924,6 +951,23 @@ function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow)
         }
     }
     return $count
+}
+
+# 屏幕矩形内「文字墨迹」像素数：唯一不撒谎的写入判据。窗口文本会骗人——38716060653 实证 GetWindowTextW
+# 复核命中、截图裁框放大后框内仍空（子 Edit 是 ComboBoxEx 自绘面的无绘制缓冲区）。裁框内亮背景上的暗像素
+# 数量即用户看得见的内容：空白框≈0（光标竖线至多数十），有文字则成排出现。
+function Count-BoxInk([WinEnum+RECT] $rect)
+{
+    $w = $rect.Right - $rect.Left
+    $h = $rect.Bottom - $rect.Top
+    if ($w -le 0 -or $h -le 0) { return 0 }
+    $bmp = New-Object System.Drawing.Bitmap $w, $h
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($rect.Left, $rect.Top, 0, 0, (New-Object System.Drawing.Size $w, $h))
+    $g.Dispose()
+    $n = Count-DarkPixels $bmp 120
+    $bmp.Dispose()
+    return $n
 }
 
 # 期望客户区高度（px）：设计 DIP × 该窗实测 DPI。取整口径与应用侧 DpiLayoutMath.ToPx 一致
@@ -4414,9 +4458,10 @@ function Save-ChildDump([IntPtr]$dlgH, [string] $fileName)
     [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
 }
 
-# 通用文件对话框驱动（纯 Win32，无 UIA）：EnumWindows 差集发现（Wait-CommonFileDialog）→ 键盘路由
-# （WM_CHAR post 给**对话框本体**，由对话框消息循环的 IsDialogMessage 派给当前聚焦控件）→ WM_COMMAND(IDOK)
-# 提交 → 对话框仍开则退 legacy Edit 写入再提交 → 仍开则 child/edit dump + BM_CLICK Save/Open 兜底。
+# 通用文件对话框驱动（纯 Win32，无 UIA）：EnumWindows 差集发现（Wait-CommonFileDialog）→ 写入
+# （仅打开侧：CBE_SETEDITTEXT 写 ComboBoxEx 编辑分支，像素判据复核，仍空退点框聚焦+Ctrl+A+UNICODE 敲）→ 提交
+# （保存侧 WM_COMMAND(IDOK)；打开侧真实鼠标点击提交按钮，消息兜底 WM_COMMAND+按钮句柄、BM_CLICK）→
+# 仍开则 child/edit dump + 截图留证。
 # $fileName 传空=导出半：不写名（用 app 的 suggested name，38696676733 实证提交链通），真实路径由调用侧
 # 从 app 反馈「已导出到 <path>」提取——目录/文件名都不猜（picker 记忆目录无 Win32 句柄可导航）。该 picker
 # 拒收含 \ 与 : 的完整路径（38689737249「Rename」校验错实证），只写裸文件名。找不到对话框：dump + 截图进
@@ -4430,67 +4475,93 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
         Write-Host "::warning::场景 Z：$tag 20s 内未见新顶层对话框窗（EnumWindows 差集）——读 $tag-windows.txt 与截图定形态"
         return $false
     }
+    # —— 写入：仅打开侧（$fileName 非空）需要。保存侧不写名，用 app suggested name。
+    # 38716060653 定案：文件名框是 ComboBoxEx32 **自绘**，子 Edit 只是无绘制的缓冲区——SetWindowTextW
+    # 成功、GetWindowTextW 复核命中，但截图裁框放大后框内仍空（38709869802 同证）；IDOK 读到空名故 no-op。
+    # 故写入走 ComboBoxEx 自己的编辑分支消息 CBE_SETEDITTEXT，且**只认像素判据**（Count-BoxInk），
+    # 窗口文本一律不采信。像素仍空→真实输入路径（鼠标点框聚焦→Ctrl+A→UNICODE 逐字）再复测。
+    $boxInk = -1
     if ($fileName -ne "")
     {
-        # 键盘路由先行：现代 Explorer 对话框的文件名框是 DirectUI（无 Win32 句柄），写 legacy Edit 只是写幽灵
-        # ——38709869802 实证 SetWindowText 成功且 GetWindowText 复核通过，IDOK 仍空名 no-op、截图框内为空。
-        # 唯一还能喂到 DirectUI 框的通道是「聚焦控件」：WM_CHAR post 给对话框，IsDialogMessage 会转给聚焦控件。
-        foreach ($ch in $fileName.ToCharArray())
-        {
-            [WinEnum]::Post($dlgH, 0x0102, ([uint32][char]$ch), 0)   # WM_CHAR
-        }
-        Start-Sleep -Milliseconds 800
-    }
-    [WinEnum]::Post($dlgH, 0x0111, 1, 0)              # WM_COMMAND，wParam=MAKEWPARAM(IDOK=1, BN_CLICKED=0)：控制 id 在 LOWORD
-    Start-Sleep -Milliseconds 1000
-    if (-not [WinEnum]::Alive($dlgH))
-    {
-        # 空名 IDOK 是 no-op（对话框滞留，38703104601 实证）——故「关掉」即提交生效
-        Write-Host "场景 Z：$tag 提交生效（对话框已关，键盘路由 WM_CHAR→聚焦控件）"
-        return $true
-    }
-    Write-Host "::warning::场景 Z：$tag 键盘路由未关对话框——退 legacy Edit 写入再提交"
-    if ($fileName -ne "")
-    {
+        $combo = [WinEnum]::DlgItemOf($dlgH, 1148)
         $edit = Find-FileNameEdit $dlgH
+        if ($edit -eq [IntPtr]::Zero) { $edit = $combo }
+        if ($combo -ne [IntPtr]::Zero) { [WinEnum]::SetComboBoxEditText($combo, $fileName) }
+        Start-Sleep -Milliseconds 500
         if ($edit -ne [IntPtr]::Zero)
         {
-            [WinEnum]::SetText($edit, $fileName)
-            Start-Sleep -Milliseconds 500
-            if (([WinEnum]::TitleOf($edit)) -ne $fileName)
+            $r = [WinEnum]::RectOf($edit)
+            $boxInk = Count-BoxInk $r
+            if ($boxInk -lt 60)
             {
-                # SetText 未达——清空后 WM_CHAR 逐字注入目标 edit 本体
-                [WinEnum]::SetText($edit, "")
-                Start-Sleep -Milliseconds 300
-                foreach ($ch in $fileName.ToCharArray())
-                {
-                    [WinEnum]::Post($edit, 0x0102, ([uint32][char]$ch), 0)   # WM_CHAR
-                }
-                Start-Sleep -Milliseconds 500
-            }
-            [WinEnum]::Post($dlgH, 0x0111, 1, 0)      # 再提交一次
-            Start-Sleep -Milliseconds 1000
-            if (-not [WinEnum]::Alive($dlgH))
-            {
-                Write-Host "场景 Z：$tag 提交生效（对话框已关，legacy Edit 写入路径）"
-                return $true
+                Write-Host "::warning::场景 Z：$tag CBE_SETEDITTEXT 后框内墨迹仅 $boxInk px——退真实输入（点框聚焦+Ctrl+A+UNICODE）"
+                [WinEnum]::ClickAt([int](($r.Left + $r.Right) / 2), [int](($r.Top + $r.Bottom) / 2))
+                Start-Sleep -Milliseconds 350
+                [WinEnum]::SendChord(0x11, 0x41)   # Ctrl+A 全选（覆盖残留）：0x11=VK_CONTROL 0x41=VK_A
+                Start-Sleep -Milliseconds 150
+                [WinEnum]::TypeText($fileName)
+                Start-Sleep -Milliseconds 600
+                $boxInk = Count-BoxInk $r
             }
         }
+        Write-Host ("场景 Z：$tag 文件名框墨迹像素=$boxInk（阈值 60；窗口文本不采信，见注）")
+        Save-FullScreenshot ($tag + "-typed.png")
     }
-    # 两条路都未关对话框：留全形态证据（含矩形）再走按钮兜底
-    Save-ChildDump $dlgH ($tag + "-children.txt")
-    Save-EditDump $dlgH ($tag + "-edits.txt")
+    # —— 提交
+    if ($fileName -eq "")
+    {
+        # 保存侧：WM_COMMAND(IDOK) 三跑实证生效（38696676733），不动已证路径。控制 id 在 LOWORD。
+        [WinEnum]::Post($dlgH, 0x0111, 1, 0)
+        Start-Sleep -Milliseconds 1000
+        if (-not [WinEnum]::Alive($dlgH))
+        {
+            Write-Host "场景 Z：$tag 提交生效（对话框已关，WM_COMMAND IDOK）"
+            return $true
+        }
+    }
+    # 打开侧：对话框本体 WM_COMMAND 恒空转（空名 no-op 之外，有真名也不关——38716060653），走真实鼠标点击。
     $btn = [IntPtr]::Zero
     foreach ($b in [WinEnum]::ChildrenOfClass($dlgH, "Button"))
     {
-        $t = [WinEnum]::TitleOf($b)
-        if ($t -match "^(Save|Open|保存|打开)") { $btn = $b; break }
+        $t = ([WinEnum]::TitleOf($b)) -replace '&', ''     # 加速符 &Open 不匹配 ^Open——38716060653 兜底失效正此
+        if ($t -match '^(Save|Open|保存|打开)') { $btn = $b; break }
+    }
+    if ($btn -eq [IntPtr]::Zero) { $btn = [WinEnum]::DlgItemOf($dlgH, 1) }   # 退化到 IDOK 控制 id
+    if ($btn -ne [IntPtr]::Zero)
+    {
+        $r = [WinEnum]::RectOf($btn)
+        [WinEnum]::ClickAt([int](($r.Left + $r.Right) / 2), [int](($r.Top + $r.Bottom) / 2))
+        Start-Sleep -Milliseconds 1200
+    }
+    if (-not [WinEnum]::Alive($dlgH))
+    {
+        Write-Host "场景 Z：$tag 提交生效（对话框已关，真实点击提交按钮）"
+        return $true
     }
     if ($btn -ne [IntPtr]::Zero)
     {
-        [WinEnum]::Post($btn, 0x00F5, 0, 0)           # BM_CLICK
+        # 消息兜底①：WM_COMMAND(IDOK) lParam 带按钮句柄（对话框 proc 常校验 wParam 与 lParam 双路）
+        [WinEnum]::Post($dlgH, 0x0111, 1, $btn)
+        Start-Sleep -Milliseconds 800
+    }
+    if (-not [WinEnum]::Alive($dlgH))
+    {
+        Write-Host "场景 Z：$tag 提交生效（对话框已关，WM_COMMAND IDOK+按钮句柄）"
+        return $true
+    }
+    if ($btn -ne [IntPtr]::Zero)
+    {
+        [WinEnum]::Post($btn, 0x00F5, 0, 0)               # 消息兜底②：BM_CLICK
         Start-Sleep -Milliseconds 1500
     }
+    if (-not [WinEnum]::Alive($dlgH))
+    {
+        Write-Host "场景 Z：$tag 提交生效（对话框已关，BM_CLICK）"
+        return $true
+    }
+    Save-ChildDump $dlgH ($tag + "-children.txt")
+    Save-EditDump $dlgH ($tag + "-edits.txt")
+    Save-FullScreenshot ($tag + "-FAIL-still-open.png")
     return $true
 }
 
@@ -4508,12 +4579,21 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
 # 提交空转——写入命中**隐藏兼容 Edit**（复核自证通过、可见框仍空、IDOK 空名 no-op 对话框滞留），
 # 故文件名框定位必须做 IsWindowVisible 过滤（Find-FileNameEdit），提交后仍开则 Save-EditDump 留证。
 # 38709869802 定案（可见性过滤后仍不通）：dump 里 id=1148 **visible=True 且文本就是文件名**，同期截图
-# 文件名框**仍空**、IDOK 空名 no-op——即该 Edit 是「可见性为真的幽灵」，不是用户看得见的那个框；现代
-# Explorer 对话框的文件名框是 DirectUI（与地址栏同源，无 Win32 句柄可写）。故驱动改走**键盘路由**：
-# WM_CHAR post 给对话框本体，由对话框消息循环的 IsDialogMessage 派给当前聚焦控件（DirectUI 框只能这样喂）；
-# 提交判据=对话框是否关闭（空名 IDOK 恒 no-op，关掉即生效）。legacy Edit 写入退为第二路，全失败留
-# child dump（class/id/可见/矩形/文本——矩形是判「幽灵 vs 真框」的关键）。
-# 发现=EnumWindows 点前快照→点后差集；提交=WM_COMMAND(IDOK)，BM_CLICK 兜底。
+# 文件名框**仍空**、IDOK 空名 no-op。故改走键盘路由（WM_CHAR→对话框→聚焦控件）——38716060653 亦不通：
+# 键盘路由未关对话框、legacy SetWindowText 复核命中而框内仍空。
+# 38716060653 形态取证定案（Save-ChildDump 全后代 rect/class/id）：文件名框是 `ComboBoxEx32 id=1148`
+# rect[231,457,434,481] + 内嵌 `ComboBox id=1148` + `Edit id=1148` rect[235,462,414,477]（文本=文件名），
+# 其右为 `Button id=1 text=[&Open]` rect[446,486,534,512] 与 `Button id=2 [Cancel]`——**按钮是真 Win32
+# 且启用**；文件列表却是 `SHELLDLL_DefView`→`DirectUIHWND`（无 SysListView32 可 LVM 选行）、`ListBox
+# id=1120` 不可见。截图裁框 8× 放大复核：框内只有光标与下拉箭头、**无任何文字**。故「visible 为真的
+# 幽灵」定性修正：**子 Edit 矩形正确但只是 ComboBoxEx 自绘面的无绘制缓冲区**——SetWindowTextW/GetWindowTextW
+# 只碰缓冲区、不动绘制面，IDOK 提交时读到空名故 no-op；窗口文本自证一律不算写入成功。驱动改走
+# **CBE_SETEDITTEXT(0x1640)** 写 ComboBoxEx 编辑分支，且写入判据改为**像素**（Count-BoxInk 裁框数暗像素），
+# 像素仍空才退真实输入（ClickAt 点框聚焦→Ctrl+A→UNICODE 逐字）。提交改走**真实鼠标点击提交按钮**
+# （BM_CLICK 兜底此前恒空转：按钮文本是 `&Open`，`^(Save|Open|…)` 正则不匹配加速符——正则为 38716060653
+# 的次级根因）。保存侧提交仍用 WM_COMMAND(IDOK)（三跑实证，不动已证路径）。child dump 与 typed 截图
+# 双留在证。
+# 发现=EnumWindows 点前快照→点后差集；提交=真实鼠标点击提交按钮，WM_COMMAND/BM_CLICK 消息兜底。
 # 包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置定数（2 连接含 credentialRef
 # conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。导出红线 CI 层回声：
 # secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按 G7c 口径降级
