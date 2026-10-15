@@ -2316,6 +2316,68 @@ try
         Stop-Beacon
     }
     Write-Host "场景 H 重启还原通过（两轮落位一致，config→窗口数据链）"
+    # H6 悬浮 tile 可拖放（todo 行 67 拖放半项 CI 代验）：SendInput 绝对坐标拖拽（场景 D 分隔条
+    # 同款口径，38048738860 实证合成拖拽在 CI 生效；旧「合成拖拽不可靠」先例是 mouse_event 时代）。
+    # 拖 GLM tile +80/+60（远过 3px 死区）→ 窗随动 → PointerReleased 落盘 widgets.json/pins.json →
+    # 重启还原到新位（拖放→落盘→还原全链闭环）。
+    Ensure-MockServer
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $glm = [IntPtr]::Zero
+    foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+    {
+        $r = [WinEnum]::RectOf($h)
+        if ([Math]::Abs($r.Left - 120) -le 4 -and [Math]::Abs($r.Top - 120) -le 4) { $glm = $h; break }
+    }
+    if ($glm -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "H6-FAIL-no-glm.png"
+        throw "断言失败（场景 H6）：GLM tile 未在预设位 120,120（拖拽前置失败）"
+    }
+    $r0 = [WinEnum]::RectOf($glm)
+    $cx = [int](($r0.Left + $r0.Right) / 2)
+    $cy = [int](($r0.Top + $r0.Bottom) / 2)
+    Save-FullScreenshot "H6-drag-before.png"
+    [WinEnum]::DragMouse($cx, $cy, ($cx + 80), ($cy + 60))
+    Start-Sleep -Seconds 1
+    Save-FullScreenshot "H6-drag-after.png"
+    $r1 = [WinEnum]::RectOf($glm)
+    if ([Math]::Abs(($r1.Left - $r0.Left) - 80) -gt 6 -or [Math]::Abs(($r1.Top - $r0.Top) - 60) -gt 6)
+    {
+        Write-Host "::warning::场景 H6：拖拽后窗位 $($r1.Left),$($r1.Top)（自 $($r0.Left),$($r0.Top) 期望 +80/+60）——合成拖拽手势未生效（截图 before/after 在案），拖放功能链转装机手验"
+    }
+    else
+    {
+        Write-Host "场景 H6a 通过：拖拽 +80/+60 窗随动（$($r0.Left),$($r0.Top) → $($r1.Left),$($r1.Top)，死区 3px 已过）"
+        # 落盘断言：PointerReleased→PersistPosition 双写 widgets.json/pins.json 的 FloatingX/Y = 新位
+        $appCfg = Get-Content (Join-Path $configDir "widgets.json") -Raw | ConvertFrom-Json
+        $glmRow = @($appCfg) | Where-Object { $_.id -eq "bigmodel.usage:GLM" } | Select-Object -First 1
+        $expectX = $r1.Left; $expectY = $r1.Top
+        $savedX = $glmRow.pinLayout.floatingX
+        $savedY = $glmRow.pinLayout.floatingY
+        if ([Math]::Abs([double]$savedX - $expectX) -gt 4 -or [Math]::Abs([double]$savedY - $expectY) -gt 4)
+        {
+            Save-FullScreenshot "H6-FAIL-persist.png"
+            throw "断言失败（场景 H6b）：拖后落盘 floatingX/Y=$savedX,$savedY 与窗位 $expectX,$expectY 不符（±4）——PersistPosition 落盘回归"
+        }
+        Write-Host "场景 H6b 通过：拖后落盘 floatingX/Y=$savedX,$savedY（窗位一致）"
+        # 重启还原到拖后新位（与 H 预设还原同一取证口径，但这次还原的是手势产物）
+        Stop-Beacon
+        Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+        Start-Sleep -Seconds 15
+        $restored = $false
+        foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+        {
+            $r = [WinEnum]::RectOf($h)
+            if ([Math]::Abs($r.Left - $expectX) -le 4 -and [Math]::Abs($r.Top - $expectY) -le 4) { $restored = $true; break }
+        }
+        if (!$restored)
+        {
+            Save-FullScreenshot "H6-FAIL-restore.png"
+            throw "断言失败（场景 H6c）：重启后无 tile 落在拖后位 $expectX,$expectY（±4）——拖动结果未进还原链"
+        }
+        Write-Host "场景 H6c 通过：重启还原到拖后位 $expectX,$expectY（拖放→落盘→还原闭环）"
+    }
     # H5 panel/floating 二选一
     Write-HConfig "panel"
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
