@@ -83,6 +83,8 @@ public static class WinEnum
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SetWindowTextW(IntPtr h, string t);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr h);
+    [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr h, int id);
+    public static IntPtr DlgItemOf(IntPtr h, int id) { return GetDlgItem(h, id); }
     public static IntPtr ChildOfClass(IntPtr parent, string cls)
     {
         IntPtr found = IntPtr.Zero;
@@ -4368,73 +4370,70 @@ function Wait-CommonFileDialog([System.Collections.Generic.List[string]] $before
     return [IntPtr]::Zero
 }
 
-# 对话框内两编辑控件定位（纯 Win32）：文件名框（写裸文件名）与地址栏（导航到目标目录）。
-# 经典 #32770 两者都是 ComboBox 内的 Edit，用 GetDlgCtrlID 判别（1019=文件名框、1023=查找范围/地址）；
-# 拿不到 combo 结构（新版 picker 布局）时退文本启发式：形如 X:\ 的=地址栏，其余首个=文件名框。
-function Find-DialogEdits([IntPtr]$dlgH)
+# 文件名框定位（纯 Win32）：Explorer 样式模板的文件名 combo 控件 id 固定 1148（cmb13，UIA 同名
+# AutomationId「1148」的来源）——GetDlgItem 直取再取其内层 Edit；拿不到（新版布局无此 combo）退
+# 文本启发式（首个非路径文本 Edit）。地址栏不找：DirectUI 无 Win32 句柄（38696676733 探测落空实证）。
+function Find-FileNameEdit([IntPtr]$dlgH)
 {
-    $name = [IntPtr]::Zero
-    $addr = [IntPtr]::Zero
-    foreach ($combo in [WinEnum]::ChildrenOfClass($dlgH, "ComboBox"))
+    $combo = [WinEnum]::DlgItemOf($dlgH, 1148)
+    if ($combo -ne [IntPtr]::Zero)
     {
-        $id = [string]([WinEnum]::CtrlIdOf($combo))
         $e = [WinEnum]::ChildOfClass($combo, "Edit")
-        if (!$e) { continue }
-        if ($id -eq "1019" -and $name -eq [IntPtr]::Zero) { $name = $e }
-        elseif ($id -eq "1023" -and $addr -eq [IntPtr]::Zero) { $addr = $e }
+        if ($e -ne [IntPtr]::Zero) { return $e }
     }
-    if ($name -eq [IntPtr]::Zero -and $addr -eq [IntPtr]::Zero)
+    foreach ($x in [WinEnum]::DescendantsOfClassAll($dlgH, "Edit"))
     {
-        foreach ($e in [WinEnum]::DescendantsOfClassAll($dlgH, "Edit"))
-        {
-            $t = [WinEnum]::TitleOf($e)
-            if ($t -match "^[A-Za-z]:\\")
-            {
-                if ($addr -eq [IntPtr]::Zero) { $addr = $e }
-            }
-            elseif ($name -eq [IntPtr]::Zero) { $name = $e }
-        }
+        if (([WinEnum]::TitleOf($x)) -notmatch "^[A-Za-z]:\\") { return $x }
     }
-    return @($name, $addr)
+    return [IntPtr]::Zero
 }
 
 # 通用文件对话框驱动（纯 Win32，无 UIA）：EnumWindows 差集发现（Wait-CommonFileDialog）→
-# Find-DialogEdits 定位文件名框/地址栏 → 地址栏 SetWindowText+回车 导航到 targetDir（拿不到地址栏
-# 则跳过导航，由调用侧按名查找兜底）→ 文件名框 SetWindowText 写裸文件名（该 picker 拒收含 \ 与 :
-# 的完整路径，38689737249「Rename」校验错实证）→ WM_COMMAND(IDOK) 提交 → 对话框仍存活则 BM_CLICK
-# Save/Open 兜底。任一步失败：dump + 截图进 evidence，返 $false（调用侧按 G7c 口径降级 ::warning）。
-function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [string] $targetDir, [string] $fileName, [string] $tag)
+# $fileName 非空时经 Find-FileNameEdit 写入（SetText 先行、GetWindowText 复核不过再退 WM_CHAR 逐字
+# 直注入）→ WM_COMMAND(IDOK) 提交 → 对话框仍存活则 BM_CLICK Save/Open 兜底。$fileName 传空=导出半：
+# 不写名（用 app 的 suggested name，38696676733 实证提交链通），真实路径由调用侧从 app 反馈
+# 「已导出到 <path>」提取——目录/文件名都不猜（picker 记忆目录无 Win32 句柄可导航）。该 picker 拒收
+# 含 \ 与 : 的完整路径（38689737249「Rename」校验错实证），只写裸文件名。任一步失败：dump + 截图进
+# evidence，返 $false（调用侧按 G7c 口径降级 ::warning）。
+function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [string] $fileName, [string] $tag)
 {
     $dlgH = Wait-CommonFileDialog $before $titleHints 20 $tag
     if ($dlgH -eq [IntPtr]::Zero)
     {
         Save-FullScreenshot ($tag + "-FAIL-no-dialog.png")
-        Write-Host "::warning::场景 Z：$tag 20s 内未见新顶层对话框窗（EnumWindows 差集）——读 $tag-windows.txt（win32 title/class/pid + uia= 视角）与截图定形态"
+        Write-Host "::warning::场景 Z：$tag 20s 内未见新顶层对话框窗（EnumWindows 差集）——读 $tag-windows.txt 与截图定形态"
         return $false
     }
-    $edits = Find-DialogEdits $dlgH
-    $nameEdit = $edits[0]
-    $addrEdit = $edits[1]
-    if ($nameEdit -eq [IntPtr]::Zero)
+    if ($fileName -ne "")
     {
-        Save-DesktopWindowDump ($tag + "-windows.txt")
-        Save-FullScreenshot ($tag + "-FAIL-no-edit.png")
-        return $false
-    }
-    if ($addrEdit -ne [IntPtr]::Zero)
-    {
-        [WinEnum]::SetText($addrEdit, $targetDir)
+        $edit = Find-FileNameEdit $dlgH
+        if ($edit -eq [IntPtr]::Zero)
+        {
+            Save-DesktopWindowDump ($tag + "-windows.txt")
+            Save-FullScreenshot ($tag + "-FAIL-no-edit.png")
+            return $false
+        }
+        [WinEnum]::SetText($edit, $fileName)
         Start-Sleep -Milliseconds 500
-        [WinEnum]::Post($addrEdit, 0x0100, 0x0D, 0)   # WM_KEYDOWN VK_RETURN
-        [WinEnum]::Post($addrEdit, 0x0101, 0x0D, 0)   # WM_KEYUP
-        Start-Sleep -Milliseconds 1500
+        if (([WinEnum]::TitleOf($edit)) -ne $fileName)
+        {
+            # SetText 未达（38696676733：写进了非文件名框）——清空后 WM_CHAR 逐字注入目标 edit 本体
+            [WinEnum]::SetText($edit, "")
+            Start-Sleep -Milliseconds 300
+            foreach ($ch in $fileName.ToCharArray())
+            {
+                [WinEnum]::Post($edit, 0x0102, ([uint32][char]$ch), 0)   # WM_CHAR
+            }
+            Start-Sleep -Milliseconds 500
+            if (([WinEnum]::TitleOf($edit)) -ne $fileName)
+            {
+                Save-DesktopWindowDump ($tag + "-windows.txt")
+                Save-FullScreenshot ($tag + "-FAIL-setname.png")
+                Write-Host "::warning::场景 Z：$tag 文件名写入未达（SetText+WM_CHAR 双路后 edit 内容=[$([WinEnum]::TitleOf($edit))]）"
+                return $false
+            }
+        }
     }
-    else
-    {
-        Write-Host "::warning::场景 Z：$tag 未定位地址栏 Edit——跳过目录导航，文件可能落在 picker 当前目录（调用侧按名查找兜底）"
-    }
-    [WinEnum]::SetText($nameEdit, $fileName)
-    Start-Sleep -Milliseconds 600
     [WinEnum]::Post($dlgH, 0x0111, 1, 0)              # WM_COMMAND，wParam=MAKEWPARAM(IDOK=1, BN_CLICKED=0)：控制 id 在 LOWORD
     Start-Sleep -Milliseconds 1000
     if ([WinEnum]::Alive($dlgH))
@@ -4455,14 +4454,17 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
 }
 
 # —— 场景 Z：导入导出往返（todo 行 80「导入+重录密钥后行为与原机一致」CI 代验，B-802）——
-# 行 80 导入半原注记「导入依赖 WinUI 文件选择器，CI 会话不稳，需装机半」系未实测假设——三轮实测定案：
+# 行 80 导入半原注记「导入依赖 WinUI 文件选择器，CI 会话不稳，需装机半」系未实测假设——四轮实测定案：
 # FileSavePicker/FileOpenPicker 确为经典通用对话框（File name 预填 beacon-config-…、Save/Cancel 齐全），
 # 但**由外部进程承载**且对 UIA 全盲：#32770+beaconPid 零命中（38678998804）；UIA 桌面根 Children 差集
 # 亦零命中（38683714647 失败清单无此窗、同期截图里对话框在）；FromHandle 后跨进程查询恒超时
 # （GetFirstChild → UIA_E_TIMEOUT 0x80131505，38689737249）；且该 picker 拒收含 \ 与 : 的完整路径
-# （shell 弹「Rename」校验错，同期截图实证）。故驱动全链路改纯 Win32：发现=EnumWindows 点前快照→
-# 点后差集（Wait-CommonFileDialog）；控件=EnumChildWindows+GetDlgCtrlID（Find-DialogEdits：1019 文件名
-# 框 / 1023 地址栏）；输入=SetWindowText（地址栏导航+裸文件名）+ WM_COMMAND(IDOK)，BM_CLICK 兜底。
+# （shell 弹「Rename」校验错，同期截图实证）。38696676733 再证：纯 Win32 提交链通（WM_COMMAND IDOK
+# /BM_CLICK），但 SetWindowText 落点不受控（写进了非文件名框，suggested name 照旧提交、文件落
+# Documents），地址栏为 DirectUI 无 Win32 句柄——故定案口径：**文件名/目录一概不猜**——导出半不写名
+# 直接提交，真实路径从 app 反馈「已导出到 <path>」提取（TextBlock UIA Name=文本，导入半同法）；
+# 导入半只写裸文件名（SetText + GetWindowText 复核 + WM_CHAR 逐字兜底）。发现=EnumWindows 点前快照
+# →点后差集；文件名框=GetDlgItem(1148) combo 内层 Edit；提交=WM_COMMAND(IDOK)，BM_CLICK 兜底。
 # 包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置定数（2 连接含 credentialRef
 # conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。导出红线 CI 层回声：
 # secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按 G7c 口径降级
@@ -4493,43 +4495,55 @@ try
         Save-FullScreenshot "Z-FAIL-no-export-btn.png"
         throw "断言失败（场景 Z）：高级页未找到「导出配置…」按钮"
     }
-    $zExport = Join-Path $env:TEMP "beacon-z-export.json"
-    if (Test-Path $zExport) { Remove-Item $zExport -Force -ErrorAction SilentlyContinue }
+    $zExport = ""
     # 点前顶层窗快照=差集基准（跨进程）：不查 #32770+pid，picker 由外部进程承载（见 Invoke-CommonFileDialog 注）
     $zBeforeExport = Get-DesktopWindowKeys
     Invoke-Uia $exportBtn
-    $zPickerOk = Invoke-CommonFileDialog $zBeforeExport @("Save As", "另存为") $env:TEMP "beacon-z-export.json" "Z-export"
+    $zPickerOk = Invoke-CommonFileDialog $zBeforeExport @("Save As", "另存为") "" "Z-export"
     if (!$zPickerOk)
     {
-        Write-Host "::warning::场景 Z：导出 picker 驱动失败——导入导出维持装机半（证据：Z-export-* 截图/UIA dump），下轮按 dump 结构修驱动（G7c 降级口径）"
+        Write-Host "::warning::场景 Z：导出 picker 驱动失败——导入导出维持装机半（证据：Z-export-* 截图/dump），下轮按 dump 结构修驱动（G7c 降级口径）"
     }
     else
     {
-        # 导出落盘断言 + 红线：密钥真值不入包。地址栏导航未生效时文件落在 picker 当前目录
-        # （新 runner 通常 Documents）——TEMP 未中再按名在常用根里找最新一份并改写 $zExport
-        $zExportExists = $false
-        $deadline = (Get-Date).AddSeconds(15)
+        # 导出真实路径以 app 反馈为准（ExportAsync 成功后 _importFeedback 显示「✓ 已导出到 <path>…」）：
+        # 文件名/目录都由 picker 侧定（suggested name + 记忆目录，脚本不猜），反馈文本轮询与导入半同法
+        $zExportFeedback = $null
+        $deadline = (Get-Date).AddSeconds(25)
         while ((Get-Date) -lt $deadline)
         {
-            if (Test-Path $zExport) { $zExportExists = $true; break }
+            $zTexts = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)))
+            foreach ($t in $zTexts)
+            {
+                if ($t.Current.Name -like "*已导出到*") { $zExportFeedback = $t.Current.Name; break }
+            }
+            if ($zExportFeedback) { break }
             Start-Sleep -Seconds 1
         }
-        if (!$zExportExists)
+        if (!$zExportFeedback)
         {
-            $zFound = Get-ChildItem -Path @($env:USERPROFILE, $env:TEMP) -Recurse -Depth 4 -Filter "beacon-z-export.json" -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-            if ($zFound)
-            {
-                $zExport = $zFound.FullName
-                $zExportExists = $true
-                Write-Host "场景 Z：导出文件落在 picker 当前目录 $zExport（地址栏导航未生效，按名定位兜底）"
-            }
+            Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+            Save-FullScreenshot "Z-FAIL-no-export-feedback.png"
+            throw "断言失败（场景 Z）：提交后 25s 内高级页无「已导出到」反馈——Export 链或对话框提交未达：读 beacon-Z-fail.log 定因"
         }
-        if (!$zExportExists)
+        if ($zExportFeedback -match "已导出到\s+([^\s（]+\.json)")
+        {
+            $zExport = $Matches[1]
+        }
+        else
+        {
+            Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+            Save-FullScreenshot "Z-FAIL-export-path-unreadable.png"
+            throw "断言失败（场景 Z）：导出反馈无法解析路径——反馈=[$zExportFeedback]"
+        }
+        Write-Host "场景 Z：导出落盘 $zExport（app 反馈为准）"
+        if (!(Test-Path $zExport))
         {
             Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
             Save-FullScreenshot "Z-FAIL-no-export-file.png"
-            throw "断言失败（场景 Z）：点保存后 15s 内导出文件未落盘（TEMP 与常用目录按名查找均无）——Export 链或对话框提交未达：读 beacon-Z-fail.log 定因"
+            throw "断言失败（场景 Z）：反馈称已导出 $zExport 但文件不存在（15s 内）——读 beacon-Z-fail.log 定因"
         }
+        # 导出红线：密钥真值不入包
         $zExportText = [System.IO.File]::ReadAllText($zExport)
         if ($zExportText -match "sk-ds-mock")
         {
@@ -4547,9 +4561,9 @@ try
         $zExpActions = 0
         if ($zBundle.actions) { $zExpActions = @($zBundle.actions).Count }
         Write-Host "场景 Z：导出包就位（$zExpConn 连接 / $zExpWidgets 组件 / $zExpPins 钉选 / $zExpActions 动作）——转入导入"
-        # 导出文件已落盘=导出 picker 已提交并关闭；重新取顶层窗快照作导入差集基准（不查 #32770+pid）
+        # 导出文件已落盘=导出 picker 已提交并关闭；重新取顶层窗快照作导入差集基准（不查 #32770+pid）。
+        # 导入只写裸文件名：打开侧 picker 记忆目录=保存侧目录（同一会话），完整路径反被拒收
         $zBeforeImport = Get-DesktopWindowKeys
-        $zExportDir = Split-Path $zExport -Parent
         $zExportName = Split-Path $zExport -Leaf
         $importBtn = Find-UiaByName $settings "导入配置…" 20
         if (!$importBtn)
@@ -4558,7 +4572,7 @@ try
             throw "断言失败（场景 Z）：高级页未找到「导入配置…」按钮"
         }
         Invoke-Uia $importBtn
-        if (!(Invoke-CommonFileDialog $zBeforeImport @("Open", "打开") $zExportDir $zExportName "Z-import"))
+        if (!(Invoke-CommonFileDialog $zBeforeImport @("Open", "打开") $zExportName "Z-import"))
         {
             Write-Host "::warning::场景 Z：导入 picker 驱动失败——导出半已过、导入半维持装机半（证据：Z-import-* 截图/UIA dump）"
         }
