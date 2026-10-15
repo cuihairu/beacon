@@ -2,6 +2,7 @@
 
 > 用户设计单 2026-10-15。参考对象 [jazzenchen/agent-hud-open](https://github.com/jazzenchen/agent-hud-open)（macOS 常驻 HUD，Swift/SwiftUI）。
 > 本文只定形态与语义，不含实现代码。
+> 2026-10-15 补充单「组件可选展示」并入本文 §10（同日用户令，不另起文档）。
 
 ## 0. 口径（用户定死，本文不改）
 
@@ -244,3 +245,80 @@ var mark: CGFloat { showsRings ? size : logo }                       // 含环�
 | P2 | 多组件收起体是否允许换行/堆叠（组件多时沿边会很长） | 建议先单行/单列，超出后按屏边可用长度截断（沿用 tile 溢出回收口径），待装机看观感 |
 | P3 | 无进度时 logo 染级别色（§4.4）是否与「logo 保持品牌辨识」冲突 | 建议保留：logo 是单色 path，染级别色不损形；若用户要求 logo 恒为标签色，则无进度时补 4 DIP 级别点（角标） |
 | P4 | 环的取色是否允许用户覆盖 | 建议沿用 `WidgetConfig.ColorOverride`（Widget > 级别 > 默认），不新增开关 |
+
+---
+
+## 10. 组件可选展示（2026-10-15 补充单，并入本文）
+
+> 用户令：「beacon 能选择展示的组件最好」。本节给三层划分、组件清单、默认配置、坍缩态联动与持久化。
+
+### 10.1 参考项目怎么组织可选组件（先给结论）
+
+通读 `agent-hud-open` 源码（`Sources/AgentHUDCore` + `AgentHUDDesktop`），它的可选组件**不是一种机制而是三层**，每层恰好一个机制：
+
+| 层 | 内容 | 唯一机制 |
+|---|---|---|
+| **内置常驻** | 岛窗本体、悬停面板底栏、告警系统、统计窗、设置窗、引导页、bots 机体 | **无开关**——只有数据或模式改变其内容，没有任何配置能移除它们 |
+| **偏好开关** | 悬停面板三区（`showIslandQuota/Tokens/Sessions`）、重置倒计时（`showResetCountdown`）、菜单栏图标（`showMenuBarIcon`）、bot 形象（`botLogos`）；坍缩 meter 的环/数字/bot（`showsRings/showsNumbers/simpleBots`，按屏的 `ScreenPlacement`） | 平面布尔集中在 `Settings`（`Settings.swift:42`，「every field has a default so older stored JSON still decodes」），形态开关在按屏 `ScreenPlacement`；视图侧统一 `if 开关 && !数据空`（`HoverPanelView.swift:101/111/119` 实证三例） |
+| **数据驱动行** | 每个 agent/额度窗口一行 | `AgentDescriptor.enabled` 逐行开关（`agents.v5` 有序数组持久化），provider 发现合并（`SettingsStore.mergeDiscovered`）；新厂商默认显隐由 `VendorCatalog.startsHidden` 定——**全部默认显示，唯一例外 DeepSeek**（API 余额行默认不进 HUD，`:48`）；账号级隐藏是混合机制（`hiddenAccountIDs` 强制其全部行 off，`SettingsStore.swift:220-222`） |
+
+持久化只有一处：**UserDefaults 三个 JSON 键**（`settings.v1` / `agents.v5` / `onboarding.completed.v1`，`SettingsStore.swift:21-25`），每次变更立即重编码落盘；数据（SQLite 台账、缓存）在 Application Support，与配置分家。引导页**不问任何组件选择**（「no choices」，`OnboardingView.swift:5`），全部选择都在设置窗。唯一的「仅内存」开关是运行时 glow 隐藏（`UsageStore.glowHidden`），故意不持久化。
+
+对 Beacon 的三条可迁移结论：
+
+1. **开关跟着「内容」走，不跟着「窗」走**——面板分区、meter 部件、逐行 agent 各用各的开关层，没有一个大总闸。
+2. **「偏好 ∧ 有数据」双门**是它面板不空转的全部秘密：关掉 = 少一区，数据空 = 同样少一区，两种情况渲染结果一致，不存在「开关开了但区域空白占位」。
+3. **默认值=现状**：偏好开关默认全 true（DeepSeek 行是数据层例外）；「关」是给被某个部件困扰的人的出口，不是初始状态。
+
+### 10.2 本仓组件三层划分与清单
+
+| 层 | 组件 | 说明 |
+|---|---|---|
+| **常驻（无开关）** | L1 状态胶囊、托盘图标+托盘菜单、L2 面板骨架与开合入口、设置窗、坍缩宿主（手势目标） | 拆掉任何一个 app 就失去操作入口，不做可选（参考同层同理由） |
+| **偏好开关（本单新增）** | tile 子部件：进度条、百分比读数、状态灯、多窗明细；坍缩徽章的进度环（`components.collapsedRing`）；L2 三分区：RECENT EVENTS / 需要关注 / 正在运行；Toast 通知 | 机制：`config.json` 新增 `components` 段（与 `appearance` 同级）；既有开关先例：`app.edgeCollapseEnabled`（默认开，`AppConfig.cs:35`）、`appearance.progressStyle`（bar 默认/pool 可选，2026-10-11 用户令「圆池绝不做默认路径」）、`uiOpacity` 四面同值（批3-补10）、动效三档 |
+| **数据驱动行（已有，不动）** | widget 实例本身（`widgets.json`）→ 悬浮 tile（pin 双入口）、面板行、坍缩徽章的生成；通知规则（`notifications.json`） | 与参考 `agents.v5`+`enabled` 同构：行由用户创建，行级可见性已有（pin/unpin），无需新机制 |
+
+L0 tile 的 `bar|pool` 是**样式二选一**不是有无，故进度条开关语义 = 「不画条」（off 后读数/灯仍在）；多窗明细本就条件渲染（≥2 窗才出，`WidgetValueHint.MultiWindow`），开关只是再加一道偏好门。
+
+### 10.3 默认配置（推荐：全部 = 现状行为，全开）
+
+| 开关 | 默认 | 理由 |
+|---|---|---|
+| tile 进度条 / 读数 / 状态灯 / 多窗明细 | 开 | 与已发布行为零漂移，升级用户看不到突变 |
+| `components.collapsedRing` | 开 | 环本就是条件渲染（无进度不画，§0/§7），默认开不产生任何常驻元素 |
+| L2 三分区 | 开 | 三区全条件渲染（空区不渲是既有口径），关=少一区、空=同样少一区 |
+| Toast 通知 | 开（按既有通知规则） | 已有 rulesProvider 与规则引擎，不另设总闸 |
+
+**为什么默认全开不是噪音**：噪音的来源是「无语义的常驻元素」，而上面每个部件都是条件渲染——无进度不画条/环、无数据不渲区、无行不出徽章；真正默认关的是动效 `full` 档（现状 `reduced`）与 `pool` 样式（现状 `bar`），这两处在既有令里已定，本单不重复设。参考项目同类偏好开关（`showsRings/showsNumbers/botLogos`）也全默认 true，唯一默认隐藏的 DeepSeek 是数据驱动行的 `startsHidden`，不是偏好开关。若装机走查证明多窗明细在窄 tile 上噪音大，再降 `tileMultiWindow` 默认（见 10.6 P8），不预设。
+
+### 10.4 坍缩态联动规则（用户令 #3 的正面回答）
+
+坍缩徽章不是 tile 的缩略图，是独立形态——**坍缩态只吃两个输入：widget 存在性（数据层）与 `collapsedRing`（偏好层）**。L0 子部件开关（灯/读数/多窗）不外溢到坍缩态，坍缩态本来就没有那些位置：
+
+| 组件可见性状态 | 坍缩体表现 |
+|---|---|
+| widget 正常钉选 | 徽章 = logo + 环（`Progress != null` 且 `collapsedRing` 开时画环） |
+| widget 取消钉选 / 删除（数据层关） | **无徽章**，不出空位（徽章随 widget 生成，无 widget 无徽章） |
+| `components.collapsedRing` 关（偏好层关进度通道） | 每枚徽章**只剩 logo**，染级别色——即 §4.4「无进度」行的形态原样复用（用户举例：关掉进度组件，坍缩态就只剩 logo，正是此行） |
+| 钉选全空 | **收起禁用**：拖贴边不收起、已收起的立即弹回（与 `app.edgeCollapseEnabled=false` 同语义）——空收起体是一个看不见的命中区，交互黑洞；面板保持展开 |
+| L2 分区开关关 | 面板少一区不占位（空数据同款渲染），坍缩态不受影响（面板分区与坍缩体无耦合） |
+
+级别色通道自查：`collapsedRing` 关后，徽章上级别色的唯一载体 = logo 染色（§4.4 右列），通道不丢；tile 状态灯开关只影响 tile 自己，级别色在胶囊/托盘/坍缩徽章各有独立载体，任一单点关闭都不产生「级别色全灭」的窗口期。
+
+### 10.5 持久化与恢复（用户令 #5）
+
+- **唯一真源 = `config.json` 新 `components` 段**（与 `appearance`/动效同级），原子写沿用既有 settings 落盘链（SaveGeneral/SaveApp → SettingsApplied → 落盘）；设置页开关只是编辑器，与参考「UserDefaults 唯一真源、设置窗只是编辑器」同构。
+- **缺字段回退默认**：老 config 无 `components` 段 → 逐键取默认（参考 `Settings.swift:42` 同一原则：每个字段带默认值，旧 JSON 永远可解码），升级零迁移。
+- **重启不丢** = config.json 落盘即满足，无额外机制。
+- **导入导出自动携带**：config.json 已是导出包成员（B-802），组件选择随包迁移、导入后恢复，不加新逻辑。
+- 设置页落「外观」页（与透明度/动效/进度样式同族），文案进 `UiStrings` 双语字典（批3-补53 机制）。
+- 不做「仅内存」的临时隐藏类开关（参考 glowHidden 是唯一例外且故意不持久化；本仓无对应需求，不引入）。
+
+### 10.6 新增待拍板点
+
+| # | 问题 | 建议 |
+|---|---|---|
+| P5 | 钉选全空时收起是否禁用（10.4 第 4 行） | 建议禁用收起（面板保持展开）——空收起体不可见不可命中，违反 §3.2「悬停收起体任何位置都在展开面板内」不变量的精神 |
+| P6 | L2 分区开关粒度 | 建议三区各一（RECENT / 需要关注 / 正在运行），不做整组总闸——参考同层就是逐区布尔 |
+| P7 | tile「进度条+读数」是否合并为一键 | 建议分开两键：bar off + 读数 on（纯数字形态）与 bar on + 读数 off（纯条形态）都是合理终态，合并会堵死其中之一 |
+| P8 | `tileMultiWindow` 默认值 | 建议先开（条件渲染本就 ≥2 窗才出）；装机走查若窄 tile 噪音大再降默认，不改机制 |
