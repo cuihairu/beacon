@@ -125,7 +125,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 4 勾 / 39 未勾（2026-10-16 Phase 0 审计面收口：核验表 + 映射与迁移两份交付；契约冻结与兼容方案两卡待拍板）。
+> 进度：43 条 = 6 勾 / 37 未勾（2026-10-16 Phase 0 审计面收口 + Phase 1 State Store 旁路落地：契约冻结与兼容方案仍待拍板）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 4 勾 / 2 未勾）
 
@@ -136,13 +136,13 @@
 - [x] 保留现有已完成功能与真机验收要求（装机 71 条清单与 CI 视觉取证场景列为 Phase 6 验收底座：映射与迁移 §4/§5.4，e1229fc）
 - [ ] 冻结状态流契约与组件契约（契约草案与待拍板清单四条：映射与迁移 §4/§6，待拍板）
 
-### Phase 1 响应式状态与数据流（5 条）
+### Phase 1 响应式状态与数据流（5 条 = 2 勾 / 3 未勾）
 
 - [ ] 明确 State、Event、Command 与 Operation Result 四类概念（待落地 hash）
 - [ ] 完善状态变更检测（检测机制已落地旁路：StateStore 内容键排除 FetchedAt、stale/健康翻转仍发布并有单测锚定；去重启用属行为变化待拍板 §6.2）
 - [ ] 增加或整理统一的 State Store 与 Selector（Store 契约+实现+15 测试已落地：Abstractions/IStateStore.cs + Services/StateStore.cs，WidgetHost 发布点已改经 Store 且事件契约不变；Selector 收编未动）
-- [ ] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（待落地 hash）
-- [ ] 确保 UI 只消费状态、不直接请求外部数据（待落地 hash）
+- [x] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（订阅/退订沿 IEventBus、写入经 IStateStore（接口注释写明，Abstractions/IStateStore.cs）；刷新失败转 ConnectionHealthChanged + 陈旧重发布、过期保 FetchedAt（RFC §6.2.6/§12，WidgetHostTests + StateStoreTests 锚定），f5d1d91）
+- [x] 确保 UI 只消费状态、不直接请求外部数据（核验表 A03 已确证：单向数据流 RFC-001:54-63、凭据只经 ConnectionContext 注入、UI 侧经 IWidgetProvider 抽象，759742b）
 
 ### Phase 2 设计系统与基础组件库（9 条）
 
