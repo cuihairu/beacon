@@ -489,9 +489,8 @@ public sealed partial class QuickPanelWindow : Window
         var item = new InvokeableListItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
         item.InvokeRequested += () => OpenDetailFromRow(item); // UIA Invoke 与 ItemClick 同链（行 46 解锁面）
         var pinned = _runtime.Config.FindWidget(state.WidgetId)?.Pinned == true;
-        var pin = new MenuFlyoutItem { Text = pinned ? "Unpin from desktop" : "Pin to desktop" };
-        pin.Click += (_, _) => PinWidget(state.WidgetId);
-        item.ContextFlyout = new MenuFlyout { Items = { pin } };
+        item.ContextFlyout = ComponentAction.Menu(ComponentAction.Item(
+            pinned ? "Unpin from desktop" : "Pin to desktop", () => PinWidget(state.WidgetId)));
         return item;
     }
 

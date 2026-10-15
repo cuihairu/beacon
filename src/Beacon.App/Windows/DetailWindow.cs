@@ -119,7 +119,7 @@ internal sealed class DetailWindow : Window
 
         if (!string.IsNullOrEmpty(_state.DetailUrl))
         {
-            actions.Children.Add(ActionButton("Open", () => RunActionAsync(new ActionConfig
+            actions.Children.Add(ComponentAction.Button("Open", () => RunActionAsync(new ActionConfig
             {
                 Id = $"{_state.WidgetId}.open",
                 Type = "open.url",
@@ -131,10 +131,10 @@ internal sealed class DetailWindow : Window
         var runId = _state.Payload.GetValueOrDefault("run_id") ?? _state.Payload.GetValueOrDefault("runId");
         if (runId is not null && widget is not null)
         {
-            actions.Children.Add(ActionButton("Retry Failed Jobs", () => RetryAsync(widget, runId)));
+            actions.Children.Add(ComponentAction.Button("Retry Failed Jobs", () => RetryAsync(widget, runId)));
             if (_state.Lifecycle is LifecycleState.Running or LifecycleState.Queued)
             {
-                actions.Children.Add(ActionButton("Cancel Run", () => CancelAsync(widget, runId)));
+                actions.Children.Add(ComponentAction.Button("Cancel Run", () => CancelAsync(widget, runId)));
             }
         }
 
@@ -148,7 +148,7 @@ internal sealed class DetailWindow : Window
                 continue;
             }
             var custom = candidate;
-            actions.Children.Add(ActionButton(custom.Name ?? custom.Id, () => RunCustomAsync(custom)));
+            actions.Children.Add(ComponentAction.Button(custom.Name ?? custom.Id, () => RunCustomAsync(custom)));
         }
         if (actions.Children.Count > 0)
         {
@@ -168,13 +168,6 @@ internal sealed class DetailWindow : Window
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
         Margin = new Thickness(0, 6, 0, 0),
     };
-
-    private Button ActionButton(string label, Func<Task> run)
-    {
-        var button = new Button { Content = label, Padding = new Thickness(12, 6, 12, 6) };
-        button.Click += (_, _) => _ = run();
-        return button;
-    }
 
     private async Task RetryAsync(WidgetConfig widget, string runId)
     {
