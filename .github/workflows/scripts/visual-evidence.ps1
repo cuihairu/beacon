@@ -186,6 +186,14 @@ public static class WinEnum
         ClientToScreen(h, ref p);
         return new RECT { Left = p.X, Top = p.Y, Right = p.X + w, Bottom = p.Y + ht };
     }
+    // WM_NCHITTEST 探针（todo 行 65 空白穿透 CI 代验）：lParam 打包屏幕坐标直接问窗口命中裁决，
+    // 返回 1=HTCLIENT（tile 行可交互）/ -1=HTTRANSPARENT（空白穿透到下层窗，Win32 对该点
+    // 点击落点的官方语义即「落到下层」）——比注入真实点击确定性高，无 z 序/焦点竞态。
+    public static int NcHitTest(IntPtr h, int x, int y)
+    {
+        var lp = (IntPtr)(((y & 0xFFFF) << 16) | (x & 0xFFFF));
+        return unchecked((int)SendMessageW(h, 0x0084, IntPtr.Zero, lp));
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SystemParametersInfo(uint action, uint param, string value, uint init);
     public static void SetWallpaper(string path) { SystemParametersInfo(20, 0, path, 3); }
@@ -2335,6 +2343,27 @@ try
     }
     Write-Host "场景 H5 面板客户区断言通过：client ${panelH}px（$($panelH / $panelRowPx) 行 × 32 DIP，行高 ${panelRowPx}px）"
     Write-Host "场景 H5 通过：panel 模式宿主在、悬浮 tile 窗零（两形态二选一）"
+    # H5b 空白区点击穿透（todo 行 65 半项 CI 代验）：直接 WM_NCHITTEST 问宿主命中裁决。
+    # PinnedHostWindow.WndProc 口径：client ∈ [0,行高)×[0,命中宽) → HTCLIENT，其余（外框
+    # chrome 环带）→ HTTRANSPARENT；HTTRANSPARENT 的 Win32 语义即点击落到下层窗/桌面。
+    # 收起态命中宽=12 DIP 细条，probe(1,1) 两种形态都在命中区内。
+    $wr = [WinEnum]::RectOf($panel[0])
+    $cr = [WinEnum]::ClientScreenRectOf($panel[0])
+    $inTile = [WinEnum]::NcHitTest($panel[0], ($cr.Left + 1), ($cr.Top + 1))
+    $inRightBand = [WinEnum]::NcHitTest($panel[0], ($wr.Right - 2), [int](($cr.Top + $cr.Bottom) / 2))
+    $inBottomBand = [WinEnum]::NcHitTest($panel[0], [int](($cr.Left + $cr.Right) / 2), ($wr.Bottom - 2))
+    Write-Host "场景 H5b：WM_NCHITTEST probe tile行=$inTile 右环带=$inRightBand 底环带=$inBottomBand（期望 1 / -1 / -1）"
+    if ($inTile -ne 1)
+    {
+        Save-FullScreenshot "H-FAIL-hittest-tile.png"
+        throw "断言失败（场景 H5b）：tile 行 WM_NCHITTEST 返回 $inTile（期望 1=HTCLIENT）——命中区收窄回归"
+    }
+    if ($inRightBand -ne -1 -or $inBottomBand -ne -1)
+    {
+        Save-FullScreenshot "H-FAIL-hittest-blank.png"
+        throw "断言失败（场景 H5b）：空白区 WM_NCHITTEST 返回 右=$inRightBand 底=$inBottomBand（期望 -1=HTTRANSPARENT）——空白不穿透，点击会被宿主吃掉（B-701 回归）"
+    }
+    Write-Host "场景 H5b 通过：tile 行 HTCLIENT、空白环带 HTTRANSPARENT（空白点击穿透宿主裁决在案，真实点击观感转装机）"
     Stop-Beacon
 }
 catch
