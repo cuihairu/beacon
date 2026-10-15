@@ -19,6 +19,9 @@ public sealed class ComponentDescriptor
 
     /// <summary>子节点（嵌套组合）。</summary>
     public List<ComponentDescriptor> Children { get; init; } = [];
+
+    /// <summary>绑定声明（Phase 3 行 2）：本节点属性槽的取值来源；空 = 无绑定。</summary>
+    public List<ComponentBinding> Bindings { get; init; } = [];
 }
 
 /// <summary>组件树校验结果：Ok=false 时 Errors 给出可读诊断（调用面整树弃用 + 进诊断日志）。</summary>
@@ -33,6 +36,19 @@ public static class ComponentTreeValidator
     public const int MaxDepth = 8;
     public const int MaxChildrenPerNode = 32;
     public const int MaxNodes = 256;
+
+    /// <summary>state 寻址受支持的状态字段（OrdinalIgnoreCase，payload 键走 payload:key）。</summary>
+    private static readonly HashSet<string> StateFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "summary",
+        "severity",
+        "progress",
+        "detailUrl",
+        "lifecycle",
+        "connectionId",
+        "widgetId",
+        "widgetType",
+    };
 
     /// <summary>无树 = 无错（无组件树的组件走传统渲染）。</summary>
     public static ComponentTreeValidation None { get; } = new(true, []);
@@ -96,6 +112,35 @@ public static class ComponentTreeValidator
             errors.Add($"{path}: duplicate id '{node.Id}'");
         }
 
+        foreach (var binding in node.Bindings)
+        {
+            if (binding is null)
+            {
+                errors.Add($"{path}: null binding");
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(binding.Field))
+            {
+                errors.Add($"{path}: binding field is empty");
+                continue;
+            }
+            if (binding.Source is null)
+            {
+                errors.Add($"{path}: binding field '{binding.Field}' source is null");
+                continue;
+            }
+            if (!IsSupportedKind(binding.Source.Kind))
+            {
+                errors.Add($"{path}: binding kind '{binding.Source.Kind}' is unknown");
+                continue;
+            }
+            if (binding.Source.Kind == ComponentBindingSource.KindState
+                && !IsSupportedStatePath(binding.Source.Ref))
+            {
+                errors.Add($"{path}: binding field '{binding.Field}' unsupported state path '{binding.Source.Ref}'");
+            }
+        }
+
         for (var i = 0; i < node.Children.Count; i++)
         {
             var child = node.Children[i];
@@ -106,5 +151,27 @@ public static class ComponentTreeValidator
             }
             Walk(child, path, i, depth + 1, ids, errors);
         }
+    }
+
+    private static bool IsSupportedKind(string kind)
+        => kind == ComponentBindingSource.KindState
+           || kind == ComponentBindingSource.KindSelector
+           || kind == ComponentBindingSource.KindConst;
+
+    /// <summary>state 路径：受支持的状态字段，或 payload:键（单冒号、键非空）。</summary>
+    private static bool IsSupportedStatePath(string refKey)
+    {
+        if (refKey.Length == 0)
+        {
+            return false;
+        }
+        var colon = refKey.IndexOf(':');
+        if (colon < 0)
+        {
+            return StateFields.Contains(refKey);
+        }
+        return refKey[..colon] == "payload"
+            && colon + 1 < refKey.Length
+            && !refKey[(colon + 1)..].Contains(':');
     }
 }
