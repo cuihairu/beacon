@@ -4170,6 +4170,289 @@ catch
     Write-Host "::error::场景 Y 断言失败：$($_.Exception.Message)"
 }
 
+# UIA 子树 dump（取证面）：ControlView 走树，缩进输出 ControlType/AutomationId/Name；深度 6、元素 300 封顶。
+# 通用文件对话框的实际结构因 Windows 版本/主题而异，dump 是失败后一次定因的材料（V4 三轮盲区教训）。
+function Save-UiaTreeDump([System.Windows.Automation.AutomationElement] $root, [string] $fileName)
+{
+    $lines = New-Object System.Collections.Generic.List[string]
+    $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+    $queue = New-Object System.Collections.Queue
+    $queue.Enqueue(@($root, 0))
+    $count = 0
+    while ($queue.Count -gt 0 -and $count -lt 300)
+    {
+        $item = $queue.Dequeue()
+        $el = $item[0]
+        $depth = $item[1]
+        try
+        {
+            $lines.Add(("  " * $depth) + $el.Current.ControlType.ProgrammaticName + " id=[" + $el.Current.AutomationId + "] name=[" + $el.Current.Name + "]")
+        }
+        catch { }
+        $count++
+        if ($depth -lt 6)
+        {
+            $child = $walker.GetFirstChild($el)
+            while ($child)
+            {
+                $queue.Enqueue(@($child, ($depth + 1)))
+                $child = $walker.GetNextSibling($child)
+            }
+        }
+    }
+    [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
+}
+
+# 通用文件对话框驱动（unpackaged picker 的落地形态）：等 #32770 窗（属 ownerPid）→ 文件名 Edit
+# （AutomationId 1148，命中 ComboBox 容器时取其内层 Edit；再退首个 Edit）ValuePattern 设绝对路径 →
+# 确认按钮（AutomationId 1，语言无关；退 Name Open/Save/打开/保存）Invoke（失败退 ClickAt 坐标点击）。
+# 任一步失败：dump 对话框 UIA 树 + 全屏截图进 evidence，返 $false（调用侧按 G7c 口径降级 ::warning 转装机）。
+function Invoke-CommonFileDialog([uint32] $ownerPid, [string] $filePath, [string] $tag)
+{
+    $dlg = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $cands = [WinEnum]::VisibleHandlesByClassAndPid("#32770", $ownerPid)
+        if ($cands.Count -ge 1) { $dlg = $cands[0]; break }
+        Start-Sleep -Milliseconds 300
+    }
+    if ($dlg -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot ($tag + "-FAIL-no-dialog.png")
+        Write-Host "::warning::场景 Z：$tag 20s 内未见 #32770 通用对话框——picker 未走经典对话框落地（读截图定形态）"
+        return $false
+    }
+    $dlgEl = [System.Windows.Automation.AutomationElement]::FromHandle($dlg)
+    $edit = $null
+    try
+    {
+        $edit = $dlgEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "1148")))
+        if ($edit -and $edit.Current.ControlType.ProgrammaticName -notmatch "Edit")
+        {
+            $inner = $edit.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+            if ($inner) { $edit = $inner }
+        }
+    }
+    catch { }
+    if (!$edit)
+    {
+        $edit = $dlgEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)))
+    }
+    if (!$edit)
+    {
+        Save-UiaTreeDump $dlgEl ($tag + "-dialog-tree.txt")
+        Save-FullScreenshot ($tag + "-FAIL-no-edit.png")
+        return $false
+    }
+    try
+    {
+        ($edit.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue($filePath)
+    }
+    catch
+    {
+        Save-UiaTreeDump $dlgEl ($tag + "-dialog-tree.txt")
+        Save-FullScreenshot ($tag + "-FAIL-setvalue.png")
+        return $false
+    }
+    Start-Sleep -Milliseconds 600
+    $btn = $dlgEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "1")))
+    if (!$btn)
+    {
+        foreach ($nm in @("Save", "Open", "保存", "打开"))
+        {
+            $btn = $dlgEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $nm)))
+            if ($btn) { break }
+        }
+    }
+    if (!$btn)
+    {
+        Save-UiaTreeDump $dlgEl ($tag + "-dialog-tree.txt")
+        Save-FullScreenshot ($tag + "-FAIL-no-button.png")
+        return $false
+    }
+    try
+    {
+        ($btn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    }
+    catch
+    {
+        $pt = Get-ClickPoint $btn
+        if (!$pt)
+        {
+            Save-UiaTreeDump $dlgEl ($tag + "-dialog-tree.txt")
+            Save-FullScreenshot ($tag + "-FAIL-invoke.png")
+            return $false
+        }
+        [WinEnum]::ForceForeground($dlg)
+        Start-Sleep -Milliseconds 300
+        [WinEnum]::ClickAt($pt[0], $pt[1])
+    }
+    return $true
+}
+
+# —— 场景 Z：导入导出往返（todo 行 80「导入+重录密钥后行为与原机一致」CI 代验，B-802）——
+# 行 80 导入半原注记「导入依赖 WinUI 文件选择器，CI 会话不稳，需装机半」系未实测假设——本场景实测推翻或坐实：
+# unpackaged 应用的 FileSavePicker/FileOpenPicker 落地为经典通用对话框（#32770，进程内 IFileSaveDialog），
+# UIA 可驱动（Invoke-CommonFileDialog）。包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置
+# 定数（2 连接含 credentialRef conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。
+# 导出红线 CI 层回声：secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按
+# G7c 口径降级 ::warning 转装机（首跑不阻塞其它场景），其余断言均为硬断言。
+try
+{
+    Ensure-MockServer
+    Write-GConfig "" "off" 1.0
+    $zProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" -PassThru
+    $zLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    $settings = Find-SettingsWindow 45
+    if (!$settings)
+    {
+        Save-FullScreenshot "Z-FAIL-no-settings.png"
+        throw "断言失败（场景 Z）：--settings 启动 45s 内未见「Beacon 设置」窗口"
+    }
+    $advRow = Find-UiaById $settings "module-advanced" 25
+    if (!$advRow)
+    {
+        Save-FullScreenshot "Z-FAIL-no-advanced-row.png"
+        throw "断言失败（场景 Z）：设置窗未找到 module-advanced 目录行（高级页承载导入导出分区）"
+    }
+    Invoke-Uia $advRow
+    Start-Sleep -Seconds 2
+    $exportBtn = Find-UiaByName $settings "导出配置…" 25
+    if (!$exportBtn)
+    {
+        Save-FullScreenshot "Z-FAIL-no-export-btn.png"
+        throw "断言失败（场景 Z）：高级页未找到「导出配置…」按钮"
+    }
+    $zExport = Join-Path $env:TEMP "beacon-z-export.json"
+    if (Test-Path $zExport) { Remove-Item $zExport -Force -ErrorAction SilentlyContinue }
+    if ([WinEnum]::VisibleHandlesByClassAndPid("#32770", $zProc.Id).Count -gt 0)
+    {
+        throw "断言失败（场景 Z）：点导出前 Beacon 进程已存在 #32770 对话框——残留窗会干扰 picker 判定"
+    }
+    Invoke-Uia $exportBtn
+    $zPickerOk = Invoke-CommonFileDialog $zProc.Id $zExport "Z-export"
+    if (!$zPickerOk)
+    {
+        Write-Host "::warning::场景 Z：导出 picker 驱动失败——导入导出维持装机半（证据：Z-export-* 截图/UIA dump），下轮按 dump 结构修驱动（G7c 降级口径）"
+    }
+    else
+    {
+        # 导出落盘断言 + 红线：密钥真值不入包
+        $zExportExists = $false
+        $deadline = (Get-Date).AddSeconds(15)
+        while ((Get-Date) -lt $deadline)
+        {
+            if (Test-Path $zExport) { $zExportExists = $true; break }
+            Start-Sleep -Seconds 1
+        }
+        if (!$zExportExists)
+        {
+            Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+            Save-FullScreenshot "Z-FAIL-no-export-file.png"
+            throw "断言失败（场景 Z）：点保存后 15s 内导出文件未落盘（$zExport）——Export 链或对话框提交未达：读 beacon-Z-fail.log 定因"
+        }
+        $zExportText = [System.IO.File]::ReadAllText($zExport)
+        if ($zExportText -match "sk-ds-mock")
+        {
+            Copy-Item $zExport (Join-Path $evidence "export-Z-token-leak.json") -Force -ErrorAction SilentlyContinue
+            Save-FullScreenshot "Z-FAIL-token-in-export.png"
+            throw "断言失败（场景 Z）：导出文件含密钥真值 sk-ds-mock——RFC §13「secrets 绝不入包」红线回归"
+        }
+        $zBundle = ConvertFrom-Json $zExportText
+        $zExpConn = 0
+        if ($zBundle.connections) { $zExpConn = @($zBundle.connections).Count }
+        $zExpWidgets = 0
+        if ($zBundle.widgets) { $zExpWidgets = @($zBundle.widgets).Count }
+        $zExpPins = 0
+        if ($zBundle.pins -and $zBundle.pins.tiles) { $zExpPins = @($zBundle.pins.tiles).Count }
+        $zExpActions = 0
+        if ($zBundle.actions) { $zExpActions = @($zBundle.actions).Count }
+        Write-Host "场景 Z：导出包就位（$zExpConn 连接 / $zExpWidgets 组件 / $zExpPins 钉选 / $zExpActions 动作）——转入导入"
+        # 等导出对话框收净再开导入（残留 #32770 会干扰）
+        $deadline = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $deadline)
+        {
+            if ([WinEnum]::VisibleHandlesByClassAndPid("#32770", $zProc.Id).Count -eq 0) { break }
+            Start-Sleep -Milliseconds 500
+        }
+        $importBtn = Find-UiaByName $settings "导入配置…" 20
+        if (!$importBtn)
+        {
+            Save-FullScreenshot "Z-FAIL-no-import-btn.png"
+            throw "断言失败（场景 Z）：高级页未找到「导入配置…」按钮"
+        }
+        Invoke-Uia $importBtn
+        if (!(Invoke-CommonFileDialog $zProc.Id $zExport "Z-import"))
+        {
+            Write-Host "::warning::场景 Z：导入 picker 驱动失败——导出半已过、导入半维持装机半（证据：Z-import-* 截图/UIA dump）"
+        }
+        else
+        {
+            # 反馈文本轮询：_importFeedback TextBlock 无 AutomationId，按 Name contains「已导入」
+            # （W1/X3 同法：TextBlock 的 UIA Name=文本；导出反馈「已导出」不含「已导入」故不误命中）
+            $zFeedback = $null
+            $deadline = (Get-Date).AddSeconds(25)
+            while ((Get-Date) -lt $deadline)
+            {
+                $texts = $settings.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)))
+                foreach ($t in $texts)
+                {
+                    if ($t.Current.Name -like "*已导入*") { $zFeedback = $t.Current.Name; break }
+                }
+                if ($zFeedback) { break }
+                Start-Sleep -Seconds 1
+            }
+            if (!$zFeedback)
+            {
+                Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+                Save-FullScreenshot "Z-FAIL-no-import-feedback.png"
+                throw "断言失败（场景 Z）：导入后 25s 内高级页无「已导入」反馈文本——Import 链未跑或对话框提交未达：读 beacon-Z-fail.log 定因"
+            }
+            # 逐字段对齐（期望值取自同包，零 schema 假设）
+            $zWant = "已导入 $zExpConn 连接 / $zExpWidgets 组件 / $zExpPins 钉选 / $zExpActions 动作"
+            if ($zFeedback -notlike "*$zWant*")
+            {
+                Copy-Item $zExport (Join-Path $evidence "export-Z-mismatch.json") -Force -ErrorAction SilentlyContinue
+                Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+                Save-FullScreenshot "Z-FAIL-feedback-mismatch.png"
+                throw "断言失败（场景 Z）：导入反馈与包计数不符——反馈=[$zFeedback] 期望含=[$zWant]"
+            }
+            # 重录密钥提示（行 80 后半句）：包内有 credentialRef 才断言（Write-GConfig 预置 conn:ds-main）
+            if ($zExportText -match "credentialRef")
+            {
+                if ($zFeedback -notlike "*重录密钥*" -or $zFeedback -notlike "*conn:ds-main*")
+                {
+                    Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+                    Save-FullScreenshot "Z-FAIL-no-reentry-prompt.png"
+                    throw "断言失败（场景 Z）：导入反馈缺「重录密钥」提示或 credentialRef（conn:ds-main）——反馈=[$zFeedback]（行 80「导入后逐 credentialRef 提示重录」回归）"
+                }
+            }
+            # 落库回读：导入后 connections/widgets 与包计数一致（「行为与原机一致」的最小证据面）
+            $zConnAfter = Get-Content (Join-Path $configDir "connections.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+            $zWidgetsAfter = Get-Content (Join-Path $configDir "widgets.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+            $zConnCount = 0
+            if ($zConnAfter) { $zConnCount = @($zConnAfter).Count }
+            $zWidgetsCount = 0
+            if ($zWidgetsAfter) { $zWidgetsCount = @($zWidgetsAfter).Count }
+            if ($zConnCount -ne $zExpConn -or $zWidgetsCount -ne $zExpWidgets)
+            {
+                Copy-Item $zLogPath (Join-Path $evidence "beacon-Z-fail.log") -Force -ErrorAction SilentlyContinue
+                Save-FullScreenshot "Z-FAIL-state-mismatch.png"
+                throw "断言失败（场景 Z）：导入后落库计数与包不符——connections=$zConnCount（期望 $zExpConn）widgets=$zWidgetsCount（期望 $zExpWidgets）"
+            }
+            Write-Host "场景 Z 通过：导出→导入往返（picker 双驱）——反馈计数逐字段对齐 + 重录密钥提示在案 + 导出全文无密钥真值（行 80 CI 代验）"
+        }
+    }
+}
+catch
+{
+    Stop-Beacon # W 同口径：失败也收尸，防残留进程毒化 J 静默安装
+    Save-FullScreenshot "Z-FAIL-unexpected.png"
+    $failures.Add("场景 Z：$($_.Exception.Message)")
+    Write-Host "::error::场景 Z 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
