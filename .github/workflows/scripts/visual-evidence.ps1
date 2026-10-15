@@ -3146,7 +3146,49 @@ try
         throw "断言失败（场景 R2）：重启后胶囊落位 $($r.Left),$($r.Top)（期望 40,40 ±4）——位置还原不一致"
     }
     Write-Host "场景 R2 通过：重启后胶囊落位一致（40,40 ±4）——位置还原跨重启"
-    Stop-Beacon
+    # R3 胶囊拖动落盘（todo 行 39 手势半项 CI 代验）：SendInput 拖拽（场景 D/H6 同款口径，
+    # 38048738860 已实证 CI 生效）。净位移 50/40 DIP 远过 6 DIP 单击死区（不会误开 L2）；
+    # 拖后 SavePosition 落 shell-state.json（锚点按象限算，TopLeft 象限 offset=窗口左上），
+    # 重启还原到拖后位——旧注释「拖动保存需装机」按 DragMouse 实证口径改判。
+    $r0 = [WinEnum]::RectOf($capsule[0])
+    $cx = [int](($r0.Left + $r0.Right) / 2)
+    $cy = [int](($r0.Top + $r0.Bottom) / 2)
+    Save-FullScreenshot "R3-drag-before.png"
+    [WinEnum]::DragMouse($cx, $cy, ($cx + 50), ($cy + 40))
+    Start-Sleep -Seconds 1
+    Save-FullScreenshot "R3-drag-after.png"
+    $r1 = [WinEnum]::RectOf($capsule[0])
+    if ([Math]::Abs(($r1.Left - $r0.Left) - 50) -gt 6 -or [Math]::Abs(($r1.Top - $r0.Top) - 40) -gt 6)
+    {
+        Write-Host "::warning::场景 R3：拖拽后胶囊位 $($r1.Left),$($r1.Top)（自 $($r0.Left),$($r0.Top) 期望 +50/+40）——合成拖拽手势未生效（截图 before/after 在案），拖动保存链转装机手验"
+        Stop-Beacon
+    }
+    else
+    {
+        Write-Host "场景 R3a 通过：胶囊拖拽 +50/+40 窗随动（$($r0.Left),$($r0.Top) → $($r1.Left),$($r1.Top)，单击死区 6 DIP 已过）"
+        $shellJson = Get-Content (Join-Path $shellDir "shell-state.json") -Raw | ConvertFrom-Json
+        $offX = [double]$shellJson.capsuleLayout.offsetDips.x
+        $offY = [double]$shellJson.capsuleLayout.offsetDips.y
+        if ([Math]::Abs($offX - $r1.Left) -gt 4 -or [Math]::Abs($offY - $r1.Top) -gt 4)
+        {
+            Save-FullScreenshot "R3-FAIL-persist.png"
+            throw "断言失败（场景 R3b）：拖后落盘 offsetDips=$offX,$offY 与窗位 $($r1.Left),$($r1.Top) 不符（±4，TopLeft 象限 offset=左上角）——SavePosition 落盘回归"
+        }
+        Write-Host "场景 R3b 通过：拖后落盘 offsetDips=$offX,$offY（TopLeft 象限=窗位）"
+        Stop-Beacon
+        Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+        Start-Sleep -Seconds 15
+        $capsule = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+        if ($capsule.Count -lt 1) { throw "断言失败（场景 R3）：重启后未见胶囊窗" }
+        $r2 = [WinEnum]::RectOf($capsule[0])
+        if ([Math]::Abs($r2.Left - $r1.Left) -gt 4 -or [Math]::Abs($r2.Top - $r1.Top) -gt 4)
+        {
+            Save-FullScreenshot "R3-FAIL-restore.png"
+            throw "断言失败（场景 R3c）：重启后胶囊 $($r2.Left),$($r2.Top) 未还原到拖后位 $($r1.Left),$($r1.Top)（±4）——拖动结果未进还原链"
+        }
+        Write-Host "场景 R3c 通过：重启还原到拖后位 $($r2.Left),$($r2.Top)（拖动→落盘→还原闭环）"
+        Stop-Beacon
+    }
 }
 catch
 {
