@@ -136,6 +136,8 @@ public static class WinEnum
         DescendantsScan(parent, cls, all);
         return all;
     }
+    // EnumChildWindows 本身即「全部后代」遍历（非直子）——再往里递归会把每层子树重复计入：
+    // 38709869802 实证 2 个 Edit 被列成 68 行（每个重复 34 遍 = 对话框树深度），证据被噪声淹没。
     private static void DescendantsScan(IntPtr parent, string cls, List<IntPtr> all)
     {
         EnumChildWindows(parent, (h, l) =>
@@ -143,9 +145,16 @@ public static class WinEnum
             var sb = new StringBuilder(256);
             GetClassName(h, sb, 256);
             if (sb.ToString() == cls) { all.Add(h); }
-            DescendantsScan(h, cls, all);
             return true;
         }, IntPtr.Zero);
+    }
+    // 全部后代（不过滤类名）：对话框形态取证用——一次列全 class/id/可见/矩形/文本，
+    // 判定「文件名框到底是 Win32 还是 DirectUI」不必再猜（38709869802 的教训）。
+    public static List<IntPtr> Descendants(IntPtr parent)
+    {
+        var all = new List<IntPtr>();
+        EnumChildWindows(parent, (h, l) => { all.Add(h); return true; }, IntPtr.Zero);
+        return all;
     }
     public static void SetText(IntPtr h, string t) { SetWindowTextW(h, t); }
     public static bool Alive(IntPtr h) { return IsWindow(h); }
@@ -4390,13 +4399,28 @@ function Save-EditDump([IntPtr]$dlgH, [string] $fileName)
     [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
 }
 
-# 通用文件对话框驱动（纯 Win32，无 UIA）：EnumWindows 差集发现（Wait-CommonFileDialog）→
-# $fileName 非空时经 Find-FileNameEdit 写入（SetText 先行、GetWindowText 复核不过再退 WM_CHAR 逐字
-# 直注入）→ WM_COMMAND(IDOK) 提交 → 对话框仍存活则 BM_CLICK Save/Open 兜底。$fileName 传空=导出半：
-# 不写名（用 app 的 suggested name，38696676733 实证提交链通），真实路径由调用侧从 app 反馈
-# 「已导出到 <path>」提取——目录/文件名都不猜（picker 记忆目录无 Win32 句柄可导航）。该 picker 拒收
-# 含 \ 与 : 的完整路径（38689737249「Rename」校验错实证），只写裸文件名。任一步失败：dump + 截图进
-# evidence，返 $false（调用侧按 G7c 口径降级 ::warning）。
+# 对话框全后代形态 dump（诊断面）：class/id/可见性/屏幕矩形/文本 逐行。Save-EditDump 只能证「Edit 里有文本」，
+# 证不了「那是不是用户看得见的文件名框」——38709869802 实证：dump 里 id=1148 visible=True 且文本就是文件名，
+# 同期截图文件名框仍空、IDOK 空名 no-op。矩形是判定「幽灵 vs 真框」的关键：矩形落在可见框位置上才是真框。
+function Save-ChildDump([IntPtr]$dlgH, [string] $fileName)
+{
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($h in [WinEnum]::Descendants($dlgH))
+    {
+        $rect = "?"
+        try { $r = [WinEnum]::RectOf($h); $rect = "$($r.Left),$($r.Top),$($r.Right),$($r.Bottom)" } catch { }
+        $lines.Add("class=[" + [WinEnum]::ClassOf($h) + "] id=[" + [WinEnum]::CtrlIdOf($h) + "] visible=[" + ([WinEnum]::Visible($h)) + "] rect=[" + $rect + "] text=[" + ([WinEnum]::TitleOf($h)) + "]")
+    }
+    [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
+}
+
+# 通用文件对话框驱动（纯 Win32，无 UIA）：EnumWindows 差集发现（Wait-CommonFileDialog）→ 键盘路由
+# （WM_CHAR post 给**对话框本体**，由对话框消息循环的 IsDialogMessage 派给当前聚焦控件）→ WM_COMMAND(IDOK)
+# 提交 → 对话框仍开则退 legacy Edit 写入再提交 → 仍开则 child/edit dump + BM_CLICK Save/Open 兜底。
+# $fileName 传空=导出半：不写名（用 app 的 suggested name，38696676733 实证提交链通），真实路径由调用侧
+# 从 app 反馈「已导出到 <path>」提取——目录/文件名都不猜（picker 记忆目录无 Win32 句柄可导航）。该 picker
+# 拒收含 \ 与 : 的完整路径（38689737249「Rename」校验错实证），只写裸文件名。找不到对话框：dump + 截图进
+# evidence，返 $false（调用侧按 G7c 口径降级 ::warning）；其余路径返 $true，成败由调用侧反馈轮询判。
 function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [string] $fileName, [string] $tag)
 {
     $dlgH = Wait-CommonFileDialog $before $titleHints 20 $tag
@@ -4408,51 +4432,64 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
     }
     if ($fileName -ne "")
     {
-        $edit = Find-FileNameEdit $dlgH
-        if ($edit -eq [IntPtr]::Zero)
+        # 键盘路由先行：现代 Explorer 对话框的文件名框是 DirectUI（无 Win32 句柄），写 legacy Edit 只是写幽灵
+        # ——38709869802 实证 SetWindowText 成功且 GetWindowText 复核通过，IDOK 仍空名 no-op、截图框内为空。
+        # 唯一还能喂到 DirectUI 框的通道是「聚焦控件」：WM_CHAR post 给对话框，IsDialogMessage 会转给聚焦控件。
+        foreach ($ch in $fileName.ToCharArray())
         {
-            Save-DesktopWindowDump ($tag + "-windows.txt")
-            Save-FullScreenshot ($tag + "-FAIL-no-edit.png")
-            return $false
+            [WinEnum]::Post($dlgH, 0x0102, ([uint32][char]$ch), 0)   # WM_CHAR
         }
-        [WinEnum]::SetText($edit, $fileName)
-        Start-Sleep -Milliseconds 500
-        if (([WinEnum]::TitleOf($edit)) -ne $fileName)
-        {
-            # SetText 未达（38696676733：写进了非文件名框）——清空后 WM_CHAR 逐字注入目标 edit 本体
-            [WinEnum]::SetText($edit, "")
-            Start-Sleep -Milliseconds 300
-            foreach ($ch in $fileName.ToCharArray())
-            {
-                [WinEnum]::Post($edit, 0x0102, ([uint32][char]$ch), 0)   # WM_CHAR
-            }
-            Start-Sleep -Milliseconds 500
-            if (([WinEnum]::TitleOf($edit)) -ne $fileName)
-            {
-                Save-EditDump $dlgH ($tag + "-edits.txt")
-                Save-FullScreenshot ($tag + "-FAIL-setname.png")
-                Write-Host "::warning::场景 Z：$tag 文件名写入未达（SetText+WM_CHAR 双路后 edit 内容=[$([WinEnum]::TitleOf($edit))]）"
-                return $false
-            }
-        }
+        Start-Sleep -Milliseconds 800
     }
     [WinEnum]::Post($dlgH, 0x0111, 1, 0)              # WM_COMMAND，wParam=MAKEWPARAM(IDOK=1, BN_CLICKED=0)：控制 id 在 LOWORD
     Start-Sleep -Milliseconds 1000
-    if ([WinEnum]::Alive($dlgH))
+    if (-not [WinEnum]::Alive($dlgH))
     {
-        # 提交后对话框仍开=IDOK 空名 no-op（写入没进可见框）——edit 清单留证再走按钮兜底
-        Save-EditDump $dlgH ($tag + "-edits.txt")
-        $btn = [IntPtr]::Zero
-        foreach ($b in [WinEnum]::ChildrenOfClass($dlgH, "Button"))
+        # 空名 IDOK 是 no-op（对话框滞留，38703104601 实证）——故「关掉」即提交生效
+        Write-Host "场景 Z：$tag 提交生效（对话框已关，键盘路由 WM_CHAR→聚焦控件）"
+        return $true
+    }
+    Write-Host "::warning::场景 Z：$tag 键盘路由未关对话框——退 legacy Edit 写入再提交"
+    if ($fileName -ne "")
+    {
+        $edit = Find-FileNameEdit $dlgH
+        if ($edit -ne [IntPtr]::Zero)
         {
-            $t = [WinEnum]::TitleOf($b)
-            if ($t -match "^(Save|Open|保存|打开)") { $btn = $b; break }
+            [WinEnum]::SetText($edit, $fileName)
+            Start-Sleep -Milliseconds 500
+            if (([WinEnum]::TitleOf($edit)) -ne $fileName)
+            {
+                # SetText 未达——清空后 WM_CHAR 逐字注入目标 edit 本体
+                [WinEnum]::SetText($edit, "")
+                Start-Sleep -Milliseconds 300
+                foreach ($ch in $fileName.ToCharArray())
+                {
+                    [WinEnum]::Post($edit, 0x0102, ([uint32][char]$ch), 0)   # WM_CHAR
+                }
+                Start-Sleep -Milliseconds 500
+            }
+            [WinEnum]::Post($dlgH, 0x0111, 1, 0)      # 再提交一次
+            Start-Sleep -Milliseconds 1000
+            if (-not [WinEnum]::Alive($dlgH))
+            {
+                Write-Host "场景 Z：$tag 提交生效（对话框已关，legacy Edit 写入路径）"
+                return $true
+            }
         }
-        if ($btn -ne [IntPtr]::Zero)
-        {
-            [WinEnum]::Post($btn, 0x00F5, 0, 0)       # BM_CLICK
-            Start-Sleep -Milliseconds 1500
-        }
+    }
+    # 两条路都未关对话框：留全形态证据（含矩形）再走按钮兜底
+    Save-ChildDump $dlgH ($tag + "-children.txt")
+    Save-EditDump $dlgH ($tag + "-edits.txt")
+    $btn = [IntPtr]::Zero
+    foreach ($b in [WinEnum]::ChildrenOfClass($dlgH, "Button"))
+    {
+        $t = [WinEnum]::TitleOf($b)
+        if ($t -match "^(Save|Open|保存|打开)") { $btn = $b; break }
+    }
+    if ($btn -ne [IntPtr]::Zero)
+    {
+        [WinEnum]::Post($btn, 0x00F5, 0, 0)           # BM_CLICK
+        Start-Sleep -Milliseconds 1500
     }
     return $true
 }
@@ -4470,6 +4507,12 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
 # 导入半只写裸文件名（SetText + GetWindowText 复核 + WM_CHAR 逐字兜底）。38703104601 三证：打开侧
 # 提交空转——写入命中**隐藏兼容 Edit**（复核自证通过、可见框仍空、IDOK 空名 no-op 对话框滞留），
 # 故文件名框定位必须做 IsWindowVisible 过滤（Find-FileNameEdit），提交后仍开则 Save-EditDump 留证。
+# 38709869802 定案（可见性过滤后仍不通）：dump 里 id=1148 **visible=True 且文本就是文件名**，同期截图
+# 文件名框**仍空**、IDOK 空名 no-op——即该 Edit 是「可见性为真的幽灵」，不是用户看得见的那个框；现代
+# Explorer 对话框的文件名框是 DirectUI（与地址栏同源，无 Win32 句柄可写）。故驱动改走**键盘路由**：
+# WM_CHAR post 给对话框本体，由对话框消息循环的 IsDialogMessage 派给当前聚焦控件（DirectUI 框只能这样喂）；
+# 提交判据=对话框是否关闭（空名 IDOK 恒 no-op，关掉即生效）。legacy Edit 写入退为第二路，全失败留
+# child dump（class/id/可见/矩形/文本——矩形是判「幽灵 vs 真框」的关键）。
 # 发现=EnumWindows 点前快照→点后差集；提交=WM_COMMAND(IDOK)，BM_CLICK 兜底。
 # 包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置定数（2 连接含 credentialRef
 # conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。导出红线 CI 层回声：
