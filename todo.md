@@ -125,7 +125,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 20 勾 / 23 未勾（2026-10-16：Phase 0/1/2 全清；组件库 14 工厂 + 令牌单源 + as-built 文档 + 视觉示例页落地；下一步 Phase 3 Component Descriptor）。
+> 进度：43 条 = 21 勾 / 22 未勾（2026-10-16：Phase 0/1/2 全清；Phase 3 起工——组件描述符契约落地（含嵌套上限与非法弃用防呆，已代决⑤）；下一步 Widget Instance 与 Binding 配置）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -156,9 +156,9 @@
 - [x] 统一主题、尺寸与排版体系（DesignTokens 单源（字号/圆角/间距）+ App.xaml 圆角镜像同步规则 + 色彩/状态/动效/尺寸委托 UiPalette/ThemeColors/MotionEngine/DpiLayoutMath + 14 工厂排版几何全走令牌；体系 as-built 文档 docs/design/redesign-2026-10-16-组件库落地.md（f7ffb12），本地 mkdocs 门过）
 - [x] 独立视觉示例页（SampleGalleryWindow：14 工厂全量实样（含词汇件证明面），DPI/边框补差同 Detail 口径，入口=设置关于区「组件示例页」单实例；纯静态不接数据，e623445）
 
-### Phase 3 组件组合与数据绑定（6 条）
+### Phase 3 组件组合与数据绑定（6 条 = 1 勾 / 5 未勾）
 
-- [ ] 定义 Component Descriptor（待落地 hash）
+- [x] 定义 Component Descriptor（ComponentDescriptor(Id?,Type,Props,Children) 挂 WidgetConfig.Components 面键开集；嵌套允许 + 8 层/32 子/256 节点上限；结构非法整树弃用回传统渲染 + 诊断进 LoadErrors；形状代决记契约.md §4 已代决⑤（Core 13 例 + Storage 1 例锚定），5e076e6）
 - [ ] 定义 Widget Instance 与 Binding 配置（待落地 hash）
 - [ ] 实现 Selector 到组件属性的绑定（待落地 hash）
 - [ ] 实现多个数据源组合（待落地 hash）
