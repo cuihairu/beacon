@@ -85,21 +85,6 @@ public static class WinEnum
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr h);
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr h, int id);
     public static IntPtr DlgItemOf(IntPtr h, int id) { return GetDlgItem(h, id); }
-    public static IntPtr ChildOfClass(IntPtr parent, string cls)
-    {
-        IntPtr found = IntPtr.Zero;
-        EnumChildWindows(parent, (h, l) =>
-        {
-            if (found == IntPtr.Zero)
-            {
-                var sb = new StringBuilder(256);
-                GetClassName(h, sb, 256);
-                if (sb.ToString() == cls) { found = h; }
-            }
-            return true;
-        }, IntPtr.Zero);
-        return found;
-    }
     public static List<IntPtr> ChildrenOfClass(IntPtr parent, string cls)
     {
         var all = new List<IntPtr>();
@@ -164,6 +149,7 @@ public static class WinEnum
     }
     public static void SetText(IntPtr h, string t) { SetWindowTextW(h, t); }
     public static bool Alive(IntPtr h) { return IsWindow(h); }
+    public static bool Visible(IntPtr h) { return IsWindowVisible(h); }
     public static uint CtrlIdOf(IntPtr h) { return (uint)GetDlgCtrlID(h); }
     public static RECT RectOf(IntPtr h) { RECT r; GetWindowRect(h, out r); return r; }
     // DIP→物理像素缩放（GetDpiForWindow/96，与应用侧 DpiLayoutMath 同一换算口径）：
@@ -4371,21 +4357,37 @@ function Wait-CommonFileDialog([System.Collections.Generic.List[string]] $before
 }
 
 # 文件名框定位（纯 Win32）：Explorer 样式模板的文件名 combo 控件 id 固定 1148（cmb13，UIA 同名
-# AutomationId「1148」的来源）——GetDlgItem 直取再取其内层 Edit；拿不到（新版布局无此 combo）退
-# 文本启发式（首个非路径文本 Edit）。地址栏不找：DirectUI 无 Win32 句柄（38696676733 探测落空实证）。
+# AutomationId「1148」的来源）——GetDlgItem 直取其内层 **可见** Edit；拿不到退全量可见 Edit 启发式
+# （首个非路径文本）。可见性过滤必须做：对话框常带隐藏兼容 Edit（38703104601 实证——写入命中隐藏
+# Edit，GetWindowText 复核通过而可见框仍空，IDOK 空名 no-op，对话框滞留），不滤则写错控件还自证通过。
 function Find-FileNameEdit([IntPtr]$dlgH)
 {
     $combo = [WinEnum]::DlgItemOf($dlgH, 1148)
     if ($combo -ne [IntPtr]::Zero)
     {
-        $e = [WinEnum]::ChildOfClass($combo, "Edit")
-        if ($e -ne [IntPtr]::Zero) { return $e }
+        foreach ($e in [WinEnum]::DescendantsOfClassAll($combo, "Edit"))
+        {
+            if ([WinEnum]::Visible($e)) { return $e }
+        }
     }
     foreach ($x in [WinEnum]::DescendantsOfClassAll($dlgH, "Edit"))
     {
-        if (([WinEnum]::TitleOf($x)) -notmatch "^[A-Za-z]:\\") { return $x }
+        if (([WinEnum]::Visible($x)) -and (([WinEnum]::TitleOf($x)) -notmatch "^[A-Za-z]:\\")) { return $x }
     }
     return [IntPtr]::Zero
+}
+
+# 对话框内全部 Edit 清单 dump（诊断面）：hwnd/控件 id/可见性/文本 逐行——文件名写入未达时一次定因。
+function Save-EditDump([IntPtr]$dlgH, [string] $fileName)
+{
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($e in [WinEnum]::DescendantsOfClassAll($dlgH, "Edit"))
+    {
+        $vis = "?"
+        try { $vis = [string]([WinEnum]::Visible($e)) } catch { }
+        $lines.Add("hwnd=[" + [string]$e + "] id=[" + [WinEnum]::CtrlIdOf($e) + "] visible=[" + $vis + "] text=[" + ([WinEnum]::TitleOf($e)) + "]")
+    }
+    [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
 }
 
 # 通用文件对话框驱动（纯 Win32，无 UIA）：EnumWindows 差集发现（Wait-CommonFileDialog）→
@@ -4427,7 +4429,7 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
             Start-Sleep -Milliseconds 500
             if (([WinEnum]::TitleOf($edit)) -ne $fileName)
             {
-                Save-DesktopWindowDump ($tag + "-windows.txt")
+                Save-EditDump $dlgH ($tag + "-edits.txt")
                 Save-FullScreenshot ($tag + "-FAIL-setname.png")
                 Write-Host "::warning::场景 Z：$tag 文件名写入未达（SetText+WM_CHAR 双路后 edit 内容=[$([WinEnum]::TitleOf($edit))]）"
                 return $false
@@ -4438,6 +4440,8 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
     Start-Sleep -Milliseconds 1000
     if ([WinEnum]::Alive($dlgH))
     {
+        # 提交后对话框仍开=IDOK 空名 no-op（写入没进可见框）——edit 清单留证再走按钮兜底
+        Save-EditDump $dlgH ($tag + "-edits.txt")
         $btn = [IntPtr]::Zero
         foreach ($b in [WinEnum]::ChildrenOfClass($dlgH, "Button"))
         {
@@ -4463,8 +4467,10 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
 # /BM_CLICK），但 SetWindowText 落点不受控（写进了非文件名框，suggested name 照旧提交、文件落
 # Documents），地址栏为 DirectUI 无 Win32 句柄——故定案口径：**文件名/目录一概不猜**——导出半不写名
 # 直接提交，真实路径从 app 反馈「已导出到 <path>」提取（TextBlock UIA Name=文本，导入半同法）；
-# 导入半只写裸文件名（SetText + GetWindowText 复核 + WM_CHAR 逐字兜底）。发现=EnumWindows 点前快照
-# →点后差集；文件名框=GetDlgItem(1148) combo 内层 Edit；提交=WM_COMMAND(IDOK)，BM_CLICK 兜底。
+# 导入半只写裸文件名（SetText + GetWindowText 复核 + WM_CHAR 逐字兜底）。38703104601 三证：打开侧
+# 提交空转——写入命中**隐藏兼容 Edit**（复核自证通过、可见框仍空、IDOK 空名 no-op 对话框滞留），
+# 故文件名框定位必须做 IsWindowVisible 过滤（Find-FileNameEdit），提交后仍开则 Save-EditDump 留证。
+# 发现=EnumWindows 点前快照→点后差集；提交=WM_COMMAND(IDOK)，BM_CLICK 兜底。
 # 包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置定数（2 连接含 credentialRef
 # conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。导出红线 CI 层回声：
 # secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按 G7c 口径降级
