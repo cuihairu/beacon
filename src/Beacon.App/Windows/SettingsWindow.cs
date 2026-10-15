@@ -31,6 +31,7 @@ internal sealed class SettingsWindow : Window
 
     private readonly BeaconRuntime _runtime;
     private readonly MotionEngine _motion;
+    private SampleGalleryWindow? _gallery; // 组件示例页单实例（关于区入口）
 
     private TextBox _hotkeyBox = null!;
     private ToggleSwitch _startupToggle = null!;
@@ -672,6 +673,16 @@ internal sealed class SettingsWindow : Window
         links.Children.Add(checkButton);
         links.Children.Add(downloadButton);
         links.Children.Add(AboutLinkButton("项目主页", "https://github.com/cuihairu/beacon"));
+        var galleryButton = new Button { Content = "组件示例页", HorizontalAlignment = HorizontalAlignment.Left };
+        galleryButton.Click += (_, _) =>
+        {
+            if (_gallery is null)
+            {
+                _gallery = new SampleGalleryWindow(_runtime, () => _gallery = null);
+                _gallery.Activate();
+            }
+        };
+        links.Children.Add(galleryButton);
         panel.Children.Add(links);
 
         panel.Children.Add(new TextBlock
