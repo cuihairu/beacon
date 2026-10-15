@@ -54,8 +54,39 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             }
             _connections = LoadFile<List<ConnectionConfig>>("connections.json") ?? [];
             _widgets = LoadFile<List<WidgetConfig>>("widgets.json") ?? [];
+            SanitizeWidgetComponents();
             _pins = LoadFile<PinsConfig>("pins.json") ?? new PinsConfig();
             _actions = LoadFile<List<ActionConfig>>("actions.json") ?? [];
+        }
+    }
+
+    /// <summary>
+    /// 组件树防呆（Phase 3 行 1）：结构非法的树整树弃用回传统渲染，诊断进 LoadErrors——
+    /// 常驻进程不因手坏 widgets.json 崩，也不静默裁剪成半棵。
+    /// </summary>
+    private void SanitizeWidgetComponents()
+    {
+        foreach (var widget in _widgets)
+        {
+            if (widget.Components is not { Count: > 0 } components)
+            {
+                continue;
+            }
+            var invalid = new List<string>();
+            foreach (var pair in components)
+            {
+                var result = ComponentTreeValidator.Validate(pair.Value);
+                if (result.Ok)
+                {
+                    continue;
+                }
+                LoadErrors.Add($"widgets.json {widget.Id}/{pair.Key}: {string.Join("; ", result.Errors)}");
+                invalid.Add(pair.Key);
+            }
+            foreach (var key in invalid)
+            {
+                components.Remove(key);
+            }
         }
     }
 

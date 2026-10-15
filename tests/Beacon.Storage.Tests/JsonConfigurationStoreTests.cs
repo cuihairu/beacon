@@ -292,4 +292,62 @@ public sealed class JsonConfigurationStoreTests
         Assert.NotNull(third.FindAction("a-build"));
         Assert.Null(third.FindAction("a-cmd"));
     }
+
+    /// <summary>组件树防呆（Phase 3 行 1）：坏树整树弃用回传统渲染 + 诊断进 LoadErrors；好树与组件本体不动。</summary>
+    [Fact]
+    public void LoadAll_DropsInvalidComponentTree_KeepsValidAndLogsDiagnostic()
+    {
+        using var dir = new TempDir();
+        var widgets = new List<WidgetConfig>
+        {
+            new()
+            {
+                Id = "w-good",
+                Type = "github.pr.list",
+                Components = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["detail"] = new ComponentDescriptor
+                    {
+                        Type = "surface-card",
+                        Children = [new ComponentDescriptor { Type = "metric" }],
+                    },
+                },
+            },
+            new()
+            {
+                Id = "w-bad",
+                Type = "github.pr.list",
+                Components = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase)
+                {
+                    // 纵深超上限（MaxDepth=8）：模拟手写 widgets.json 出界
+                    ["detail"] = Deep(ComponentTreeValidator.MaxDepth + 1),
+                },
+            },
+        };
+        File.WriteAllText(Path.Combine(dir.Path, "widgets.json"), BeaconJson.Serialize(widgets));
+
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+
+        Assert.Equal(2, store.Widgets.Count); // 组件本体不因坏树被删
+        var good = Assert.Single(store.Widgets, widget => widget.Id == "w-good");
+        Assert.NotNull(good.Components);
+        Assert.Equal("surface-card", Assert.Single(good.Components!).Value.Type);
+
+        var bad = Assert.Single(store.Widgets, widget => widget.Id == "w-bad");
+        Assert.Empty(bad.Components!);
+
+        Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("depth"));
+    }
+
+    /// <summary>纵深链：root → child → … 共 levels 层。</summary>
+    private static ComponentDescriptor Deep(int levels)
+    {
+        var node = new ComponentDescriptor { Type = "row" };
+        for (var level = levels - 1; level >= 1; level--)
+        {
+            node = new ComponentDescriptor { Type = "list", Children = [node] };
+        }
+        return node;
+    }
 }

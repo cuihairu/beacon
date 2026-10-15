@@ -17,4 +17,10 @@ public sealed class WidgetConfig
     public string? ColorOverride { get; set; }
     /// <summary>L0 布局由 pins.json 承载，此处仅为便利引用（与 PinsConfig 保持同步）。</summary>
     public PinLayout? PinLayout { get; set; }
+    /// <summary>
+    /// 组件树（Phase 3 可选增量，契约.md §3.2）：面键（tile/row/detail）→ 组件描述符；
+    /// null = 无声明式树，走传统渲染。增量可选字段：存量 widgets.json 零迁移可读（未落键，ConfigVersion 不动）。
+    /// 结构非法在加载时整树弃用回传统渲染并记诊断（JsonConfigurationStore.LoadAll）。
+    /// </summary>
+    public Dictionary<string, ComponentDescriptor>? Components { get; init; }
 }
