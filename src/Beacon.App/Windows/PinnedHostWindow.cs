@@ -35,14 +35,12 @@ internal sealed class PinTile
     // 提到 4 DIP 并在两端圆角，track 35% 透明底轨 + fill 档位色，暗亮双主题都可辨。
     private const int BarHeightDips = 4;
     private const double BarRadiusDips = 2;
+    // 档位阈值（≥80% warning / ≥98% error）下沉 Core ProgressTiers 单源（Phase 2），此处不再持有
     private const double BarMinFillDips = 2; // 极小进度保底可辨
 
     /// <summary>进度百分比字号随 tile 高度分级（固定 12 会在任何 tile 尺寸变化后裁字——
     /// 5K/200% 裁字同族缺陷；DIP 恒定比例，高缩放下 XAML 按新 DPI 等比放大不裁）。</summary>
     private static double ProgressFontDips => Math.Round(TileHeight * 0.375, 1);
-
-    private const double BarNearFull = 0.8;   // ≥80% 起 warning 档
-    private const double BarFull = 0.98;      // ≥98% 满格 error 红（用户「满了就变成另一颜色」）
 
     /// <summary>圆池水位几何（池水=圆形池底部圆弓形，水位=进度）：满格整圆、空池不画。
     /// 用折线近似圆弧（14 段 LineSegment，弧上点三角函数显式算出）而非 ArcSegment——
@@ -405,9 +403,7 @@ internal sealed class PinTile
     /// <summary>进度条档位配色：≥98% 满格 error 红、≥80% 接近满 warning、其余用组件 severity 色
     /// （正常档保持与状态灯一致； quota 组件 severity 本就随进度分档，两套口径在这里合流）。</summary>
     private global::Windows.UI.Color BarFillColor(double fraction, global::Windows.UI.Color normalColor)
-        => fraction >= BarFull ? _palette.SeverityColor(Severity.Error)
-        : fraction >= BarNearFull ? _palette.SeverityColor(Severity.Warning)
-        : normalColor;
+        => ProgressTiers.Level(fraction) is { } tier ? _palette.SeverityColor(tier) : normalColor; // 档位单一来源 Core ProgressTiers（Phase 2）
 
     /// <summary>按容器实测宽设条几何：track 全宽、fill=比例宽（≥2 DIP 保底可辨）；
     /// 未布局（宽 0）或已隐藏时跳过——SizeChanged 会带着实测宽再进来。

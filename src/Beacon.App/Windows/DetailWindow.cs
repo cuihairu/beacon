@@ -1,3 +1,4 @@
+using Beacon.App.Components;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Models;
@@ -71,14 +72,8 @@ internal sealed class DetailWindow : Window
 
         // 头部：severity 点 + 类型 + 摘要
         var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        header.Children.Add(new Ellipse
-        {
-            Width = 10,
-            Height = 10,
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = new SolidColorBrush(_palette.SeverityColor(_state.Severity,
-                widgetOverride: _runtime.Config.FindWidget(_state.WidgetId)?.ColorOverride)),
-        });
+        header.Children.Add(ComponentStatus.Indicator(new SolidColorBrush(_palette.SeverityColor(_state.Severity,
+            widgetOverride: _runtime.Config.FindWidget(_state.WidgetId)?.ColorOverride))));
         header.Children.Add(new TextBlock
         {
             Text = _state.Summary,
