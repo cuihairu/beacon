@@ -1,3 +1,4 @@
+using Beacon.App.Components;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Abstractions;
@@ -468,33 +469,18 @@ public sealed partial class QuickPanelWindow : Window
     private ListViewItem MakeEventRow(RecentEvent evt)
         => MakeStateRow(evt.State, evt.At.ToString("HH:mm:ss"), tag: evt);
 
-    /// <summary>状态行（当前状态区与 RECENT 共用）：级别点 + 时间 + 摘要；单击进 L3，右键 Pin（B-702 口径）。</summary>
+    /// <summary>状态行（当前状态区与 RECENT 共用）：级别点 + 时间 + 摘要；单击进 L3，右键 Pin（B-702 口径）。
+    /// Phase 2 起经基础组件组合（ComponentIcon/ComponentText，值与原 inline 构造逐项等价）。</summary>
     private ListViewItem MakeStateRow(WidgetState state, string timeText, object? tag = null)
     {
-        var dot = new Ellipse
-        {
-            Width = 8,
-            Height = 8,
-            VerticalAlignment = VerticalAlignment.Center,
-            Fill = new SolidColorBrush(_palette.SeverityColor(state.Severity,
-                widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)),
-        };
-        var time = new TextBlock
-        {
-            Text = timeText,
-            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
-            FontSize = DesignTokens.FontCaption,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var label = new TextBlock
-        {
-            Text = state.Summary,
-            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
-            FontSize = DesignTokens.FontBody,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        var dot = ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(state.Severity,
+            widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)));
+        var time = ComponentText.Caption(timeText, new SolidColorBrush(IsDarkTheme
+            ? SeverityPalette.Rgb(255, 148, 163, 184)
+            : SeverityPalette.Rgb(255, 100, 116, 139)));
+        var label = ComponentText.Body(state.Summary, new SolidColorBrush(IsDarkTheme
+            ? SeverityPalette.Rgb(255, 226, 232, 240)
+            : SeverityPalette.Rgb(255, 30, 41, 59)), maxWidth: 260); // 面板加宽 320→380 后同步放开（原 210）
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
         row.Children.Add(dot);
         row.Children.Add(time);
