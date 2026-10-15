@@ -125,7 +125,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 11 勾 / 32 未勾（2026-10-16 PATROL1016：Phase 0 与 Phase 1 全清，契约冻结生效——决策记录 docs/design/redesign-2026-10-16-契约.md §4，已代决①②③④，仅 HTML 边界留问；下一步 Phase 2 设计令牌，App 面开工）。
+> 进度：43 条 = 12 勾 / 31 未勾（2026-10-16：Phase 0/1 全清、契约冻结生效；Phase 2 令牌层落地，下一步基础组件库 Phase 2 剩余 8 条）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -144,9 +144,9 @@
 - [x] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（订阅/退订沿 IEventBus、写入经 IStateStore（接口注释写明，Abstractions/IStateStore.cs）；刷新失败转 ConnectionHealthChanged + 陈旧重发布、过期保 FetchedAt（RFC §6.2.6/§12，WidgetHostTests + StateStoreTests 锚定），f5d1d91）
 - [x] 确保 UI 只消费状态、不直接请求外部数据（核验表 A03 已确证：单向数据流 RFC-001:54-63、凭据只经 ConnectionContext 注入、UI 侧经 IWidgetProvider 抽象，759742b）
 
-### Phase 2 设计系统与基础组件库（9 条）
+### Phase 2 设计系统与基础组件库（9 条 = 1 勾 / 8 未勾）
 
-- [ ] 统一设计令牌：色彩、字体、间距、圆角、阴影、动效、尺寸、状态（待落地 hash）
+- [x] 统一设计令牌：色彩、字体、间距、圆角、阴影、动效、尺寸、状态（DesignTokens：字号 8 档 + 圆角 6 档 + 间距刻度，C# 四窗 47 处字面量清零、XAML 圆角走 App.xaml 资源镜像；色彩/状态/动效/尺寸委托 UiPalette/ThemeColors/MotionEngine/DpiLayoutMath 单一来源，值零变化；bespoke Thickness 组合待组件化逐面收编，3be4efc）
 - [ ] 基础组件 Text、Icon、Surface、Badge、Divider（待落地 hash）
 - [ ] 基础组件 Metric、Progress、Status Indicator（待落地 hash）
 - [ ] 基础组件 Key-Value、Status Card、List（待落地 hash）
