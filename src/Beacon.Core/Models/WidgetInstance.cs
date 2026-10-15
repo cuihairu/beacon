@@ -4,8 +4,8 @@ namespace Beacon.Core.Models;
 /// 组件实例（Phase 3 行 2）：组件配置在某个渲染面上解析出的装配结果——树 + 静态配置的唯一读面。
 /// App 渲染段与 Core 绑定引擎都只读它（各自再叠加状态/选择器）；解析是纯函数、无 IO，
 /// 改布局只重解析实例，不触发 Provider 请求（Phase 3 行 6 不变量）。
-/// Root 与 Config 指向配置内的原对象（同一配置重复解析共享同一棵树）——按约定只读共享，
-/// 与 WidgetConfig.Config / ActionConfig.Parameters 字典同口径，不复制。
+/// Root / Config / Sources 指向配置内的原对象（同一配置重复解析共享同一棵树与源声明）——
+/// 按约定只读共享，与 WidgetConfig.Config / ActionConfig.Parameters 字典同口径，不复制。
 /// </summary>
 public sealed record WidgetInstance
 {
@@ -23,4 +23,11 @@ public sealed record WidgetInstance
 
     /// <summary>该面组件树根。</summary>
     public required ComponentDescriptor Root { get; init; }
+
+    /// <summary>
+    /// 附加数据源（Phase 3 行 4）：源名 → widgetId。保留键 ""（ComponentBindingSource.OwnStateKey）
+    /// 恒指实例自身状态、不在这里声明；源名大小写敏感精确匹配。
+    /// 空 = 无附加源（只读自身状态）。指向配置内原对象，按约定只读共享，不复制。
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Sources { get; init; } = new Dictionary<string, string>();
 }

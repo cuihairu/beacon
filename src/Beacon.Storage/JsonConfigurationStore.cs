@@ -55,8 +55,39 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             _connections = LoadFile<List<ConnectionConfig>>("connections.json") ?? [];
             _widgets = LoadFile<List<WidgetConfig>>("widgets.json") ?? [];
             SanitizeWidgetComponents();
+            SanitizeComponentSources();
             _pins = LoadFile<PinsConfig>("pins.json") ?? new PinsConfig();
             _actions = LoadFile<List<ActionConfig>>("actions.json") ?? [];
+        }
+    }
+
+    /// <summary>
+    /// 数据源聚合防呆（Phase 3 行 4）：声明非法的面整面弃用附加源（自身状态恒可用），诊断进
+    /// LoadErrors——口径同组件树。null 内层视为无声明，不进诊断。
+    /// </summary>
+    private void SanitizeComponentSources()
+    {
+        foreach (var widget in _widgets)
+        {
+            if (widget.Sources is not { Count: > 0 } sources)
+            {
+                continue;
+            }
+            var invalid = new List<string>();
+            foreach (var pair in sources)
+            {
+                var result = ComponentSourcesValidator.Validate(pair.Value);
+                if (result.Ok)
+                {
+                    continue;
+                }
+                LoadErrors.Add($"widgets.json {widget.Id}/{pair.Key}: {string.Join("; ", result.Errors)}");
+                invalid.Add(pair.Key);
+            }
+            foreach (var key in invalid)
+            {
+                sources.Remove(key);
+            }
         }
     }
 

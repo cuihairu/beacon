@@ -340,6 +340,47 @@ public sealed class JsonConfigurationStoreTests
         Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("depth"));
     }
 
+    [Fact]
+    public void LoadAll_DropsInvalidComponentSources_KeepsValidAndLogsDiagnostic()
+    {
+        using var dir = new TempDir();
+        var widgets = new List<WidgetConfig>
+        {
+            new()
+            {
+                Id = "w-good",
+                Type = "github.pr.list",
+                Sources = new Dictionary<string, Dictionary<string, string>>
+                {
+                    ["detail"] = new Dictionary<string, string> { ["runs"] = "w-2" },
+                },
+            },
+            new()
+            {
+                Id = "w-bad",
+                Type = "github.pr.list",
+                // 源名用了自身状态保留键：模拟手写 widgets.json 出界
+                Sources = new Dictionary<string, Dictionary<string, string>>
+                {
+                    ["detail"] = new Dictionary<string, string> { [""] = "w-2" },
+                },
+            },
+        };
+        File.WriteAllText(Path.Combine(dir.Path, "widgets.json"), BeaconJson.Serialize(widgets));
+
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+
+        Assert.Equal(2, store.Widgets.Count); // 组件本体不因坏声明被删
+        var good = Assert.Single(store.Widgets, widget => widget.Id == "w-good");
+        Assert.Equal("w-2", good.Sources!["detail"]["runs"]);
+
+        var bad = Assert.Single(store.Widgets, widget => widget.Id == "w-bad");
+        Assert.Empty(bad.Sources!);
+
+        Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("reserved"));
+    }
+
     /// <summary>纵深链：root → child → … 共 levels 层。</summary>
     private static ComponentDescriptor Deep(int levels)
     {

@@ -23,4 +23,12 @@ public sealed class WidgetConfig
     /// 结构非法在加载时整树弃用回传统渲染并记诊断（JsonConfigurationStore.LoadAll）。
     /// </summary>
     public Dictionary<string, ComponentDescriptor>? Components { get; init; }
+    /// <summary>
+    /// 数据源聚合（Phase 3 行 4 可选增量，契约.md §3.2）：面键 →（源名 → widgetId）。
+    /// 组合发生在组件层聚合多个 WidgetId，WidgetState 单 ConnectionId 的 Provider 口径不动。
+    /// null = 无附加源（自身状态恒可用）；源名大小写敏感精确匹配、不得使用保留键 ""。
+    /// 增量可选字段：存量 widgets.json 零迁移可读（未落键，ConfigVersion 不动）。
+    /// 声明非法在加载时整面弃用（附加源全丢，自身状态仍可用）并记诊断。
+    /// </summary>
+    public Dictionary<string, Dictionary<string, string>>? Sources { get; init; }
 }

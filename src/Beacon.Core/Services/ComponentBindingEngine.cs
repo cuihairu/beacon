@@ -12,9 +12,6 @@ namespace Beacon.Core.Services;
 /// </summary>
 public static class ComponentBindingEngine
 {
-    /// <summary>自身状态（面内主状态）在数据源映射里的保留键。</summary>
-    public const string OwnStateKey = "";
-
     private static readonly Dictionary<string, Func<WidgetState, string>> StatePaths = new(StringComparer.OrdinalIgnoreCase)
     {
         ["summary"] = state => state.Summary,
@@ -37,9 +34,12 @@ public static class ComponentBindingEngine
 
     /// <summary>整体解析：树内每个绑定节点的 Field 值，键 = "{节点路径}.{字段}"（路径与校验诊断同口径）。</summary>
     public static IReadOnlyDictionary<string, string> Resolve(WidgetInstance instance, WidgetState state)
-        => Resolve(instance, new Dictionary<string, WidgetState> { [OwnStateKey] = state });
+        => Resolve(instance, new Dictionary<string, WidgetState> { [ComponentBindingSource.OwnStateKey] = state });
 
-    /// <summary>带数据源映射的解析：SourceName → 映射键（"" = 自身状态，行 4 由 WidgetInstance 数据源声明构建）。</summary>
+    /// <summary>
+    /// 带数据源映射的解析：SourceName 按精确源名取映射键（"" = 自身状态），映射由
+    /// WidgetInstanceResolver.ResolveSources 按 WidgetInstance.Sources 声明从状态快照构建。
+    /// </summary>
     public static IReadOnlyDictionary<string, string> Resolve(
         WidgetInstance instance,
         IReadOnlyDictionary<string, WidgetState> sources)
@@ -119,7 +119,7 @@ public static class ComponentBindingEngine
         var name = string.IsNullOrEmpty(node.Id) ? $"child{index}" : node.Id;
         var path = string.IsNullOrEmpty(parentPath) ? name : $"{parentPath}/{name}";
         var own = sources is not null
-                  && sources.TryGetValue(OwnStateKey, out var ownState)
+                  && sources.TryGetValue(ComponentBindingSource.OwnStateKey, out var ownState)
                   ? ownState
                   : null;
         foreach (var binding in node.Bindings)

@@ -12,6 +12,12 @@ public sealed record ComponentBindingSource
     public const string KindSelector = "selector";
     public const string KindConst = "const";
 
+    /// <summary>
+    /// 源名映射的保留键：实例自身状态。附加数据源声明不得使用（ComponentSourcesValidator
+    /// 拒绝），所以空 SourceName = 自身状态这一约定不会被声明撞掉。
+    /// </summary>
+    public const string OwnStateKey = "";
+
     /// <summary>source 取值来源键（state 路径 / selector 注册表名 / const 留空）。</summary>
     public string Ref { get; init; } = "";
 
@@ -21,8 +27,8 @@ public sealed record ComponentBindingSource
     /// <summary>附加参数：const 字面值（Args["value"]）、selector 取参；可空。</summary>
     public Dictionary<string, string>? Args { get; init; }
 
-    /// <summary>附加数据源名（指向 WidgetInstance 的数据源映射）；空 = 本组件自身状态。</summary>
-    public string SourceName { get; init; } = "";
+    /// <summary>附加数据源名（指向 WidgetInstance.Sources 的源名 → widgetId）；空 = 本组件自身状态（OwnStateKey）。</summary>
+    public string SourceName { get; init; } = OwnStateKey;
 }
 
 /// <summary>
