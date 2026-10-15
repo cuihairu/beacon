@@ -125,7 +125,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 23 勾 / 20 未勾（2026-10-16：Phase 0/1/2 全清；Phase 3 前 3 行落地——描述符契约（已代决⑤）+ 绑定模型与实例解析 fail-closed（已代决⑥）+ 绑定引擎纯函数解析（已代决⑦）；下一步多个数据源组合）。
+> 进度：43 条 = 25 勾 / 18 未勾（2026-10-16：Phase 0/1/2 全清；Phase 3 前 5 行落地——描述符契约⑤ + 绑定模型与实例解析⑥ + 绑定引擎⑦ + 多数据源组合⑧ + 共享消费⑨；下一步保证修改布局不触发无意义的数据请求）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -156,13 +156,13 @@
 - [x] 统一主题、尺寸与排版体系（DesignTokens 单源（字号/圆角/间距）+ App.xaml 圆角镜像同步规则 + 色彩/状态/动效/尺寸委托 UiPalette/ThemeColors/MotionEngine/DpiLayoutMath + 14 工厂排版几何全走令牌；体系 as-built 文档 docs/design/redesign-2026-10-16-组件库落地.md（f7ffb12），本地 mkdocs 门过）
 - [x] 独立视觉示例页（SampleGalleryWindow：14 工厂全量实样（含词汇件证明面），DPI/边框补差同 Detail 口径，入口=设置关于区「组件示例页」单实例；纯静态不接数据，e623445）
 
-### Phase 3 组件组合与数据绑定（6 条 = 3 勾 / 3 未勾）
+### Phase 3 组件组合与数据绑定（6 条 = 5 勾 / 1 未勾）
 
 - [x] 定义 Component Descriptor（ComponentDescriptor(Id?,Type,Props,Children) 挂 WidgetConfig.Components 面键开集；嵌套允许 + 8 层/32 子/256 节点上限；结构非法整树弃用回传统渲染 + 诊断进 LoadErrors；形状代决记契约.md §4 已代决⑤（Core 13 例 + Storage 1 例锚定），5e076e6）
 - [x] 定义 Widget Instance 与 Binding 配置（ComponentBinding(Field,Source) 随节点进树，源三态 state/selector/const（state 路径受支持字段集封闭 + payload:key，校验前移到加载/解析期）；WidgetInstance 面键解析 fail-closed（无面树/非法树→null→传统渲染），树与 Config 只读共享、解析无 IO；代决记契约.md §4 已代决⑥（Core 21 例锚定），e065107）
 - [x] 实现 Selector 到组件属性的绑定（ComponentBindingEngine 纯函数解析：state 受支持字段集 + payload:key、selector 注册表（value-hint/quota-windows = Core 既有纯函数）、const 三态，取不到值回空串 fail-closed；输出键 = {节点路径}.{字段} 与校验诊断同口径；源名保留键 "" = 自身状态；无 IO 无 Provider 依赖（行 6 不变量构造保证）；代决记契约.md §3.7/§4 已代决⑦，Core 12 例锚定，c9e0b0e）
 - [ ] 实现多个数据源组合（待落地 hash）
-- [ ] 支持不同组件消费同一份状态（待落地 hash）
+- [x] 支持不同组件消费同一份状态（ComponentSourceIndex：ConsumedWidgetIds = 实例所需 widgetId 全集（自身 Id 在前、附加源按声明顺序、同 widgetId 去重）；SourcesOf 反查 widgetId→消费实例集合；解析纯函数只读状态、按引用共享不复制（内容相等 + Assert.Same 锚定），索引按需重建不落缓存无 IO；代决记契约.md §3.9/§4 已代决⑨，Core 8 例锚定，65efa84）
 - [ ] 保证修改布局不触发无意义的数据请求（待落地 hash）
 
 ### Phase 4 HTML 小屏幕（6 条，开工前须先出架构决策，仓内有反向记录）
