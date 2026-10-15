@@ -1299,3 +1299,11 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **本地门**：parse CLEAN + Add-Type CLEAN + BOM 在 + brace/paren 增量持平（braces=+1/parens=0）；新逻辑对归档扁平 JSON 与人工构造嵌套 JSON 两种输入在 pwsh 7 下均得 vRecords=1 / vCrit=1（回归门）；全量 1078 绿（Core 368 / Actions 27 / Connections 652 / Storage 31）。
 - **验证**：nightly 38661655290（316c121）复证中。
 - **遗留**：行 50 引擎链半转「已代验」需复证跑绿；「无打断」观感与 Toast 呈现面仍装机半。
+### 批3-补61 V4 复证绿落账 + BEACON_DEBUG_* 成功路径泄漏修复 + X1 取证补点（2026-10-15 patrol P1015R2，38661655290）
+- **V4 复证绿（批3-补60 摊平修法兑现）**：nightly 38661655290（316c121）全链绿到 X 前——V1（#ff3b30 364px）、V2（脉冲帧差分 60px）、V3（崩溃注入日志堆栈留痕+进程存活+零 #32770+tile 仍在+刷新续跑）、V4（恰 1 条 critical 记录，connection-degraded 跨界）全部通过。行 50（todo 注入 Critical 行）Toast 引擎链半转「已代验」；批3-补59 取证的语义澄清同跑坐实（现场即 connection-degraded 跨界，注入 Critical 落在连接降级通知上）。
+- **红因⑤（X1，V4 首绿后首轮即红）**：「Unpin 后 15s 内 GLM 悬浮 tile 未消失（tile=0，期望 1）」。锁因=**BEACON_DEBUG_* 环境变量成功路径泄漏**：V1/V2 模式 `Start-Process` 后立即 `Remove-Item Env:\BEACON_DEBUG_SEVERITY/CRASH`（V4 同款代码只在 V 块 catch 里清）——V4 首绿走成功路径、不进 catch，注入环境漏给此后每个 app 实例（W/X/Y 全部刷新被改判 Critical/Failed，且每实例武装 +90s 崩溃注入）。相关性吻合：V4 首绿前 X1 三跑全绿（38590456994/38602176751/38608625892），V4 后首轮即红；失败截图 GLM 38% 健康值进 NEEDS ATTENTION + critical connection-degraded 通知在案=强制 Critical 生效实证。x1 红时点距该实例启动约 20s，+90s 注入未及触发，故进程存活、tile=0 是注入改判状态链的可观测结果（W/X/Y 断言在强制 Critical 下全部失真，X1 最先撞上）。
+- **修法⑤**：V4 `Start-Process` 后补 V1/V2 同款两行 `Remove-Item Env:\BEACON_DEBUG_SEVERITY/CRASH -ErrorAction SilentlyContinue`（注入只给本实例：子进程已继承，随即清掉），块内注释留档 38661655290 实证。
+- **随批 X1 取证补点（V4 三轮盲区教训的 X 侧收编）**：X 块起头定义 `$xLogPath`（当日 app 日志）与 `$xWidgetsPath`；X1 两个失败点（widgets.json 未翻 / tile 未消失）把 `widgets-X1-fail.json` 与 `beacon-X1-fail.log` 原样拷进 evidence，失败信息指引读两份归档定因（区分「ReloadWidgets 未跑」「重建了但 tile 被改判/崩溃退出」）。X 场景此前零 app 日志归档（唯一归档点在 F 场景），红时只能靠截图猜。
+- **本地门**：parse CLEAN + Add-Type CLEAN + BOM 在（efbbbf）+ brace delta 0 / paren +7（两侧同增，平衡）+ 全量 1078 绿（Core 368 / Actions 27 / Connections 652 / Storage 31）。
+- **验证**：X1 复证由后续 nightly 承担（env 泄漏修后 X 面应全绿）。
+- **遗留**：行 50「无打断」观感与 Toast 呈现面、行 31 唤起气泡呈现维持装机半。

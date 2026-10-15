@@ -3513,6 +3513,11 @@ try
     $env:BEACON_DEBUG_SEVERITY = "critical"
     $env:BEACON_DEBUG_CRASH = "90"
     $vProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -PassThru
+    # 注入环境变量只给本实例（V1/V2 同款口径）：子进程已继承，随即清掉。此前成功路径不清、只在 catch 清——
+    # 38661655290 实证泄漏：V4 首绿后 W/X/Y 每个 app 都带着注入跑（全部刷新被改判 Critical/Failed、
+    # +90s 崩溃注入随每实例武装），X1 首跑即红「tile=0 期望 1」。
+    Remove-Item Env:\BEACON_DEBUG_SEVERITY -ErrorAction SilentlyContinue
+    Remove-Item Env:\BEACON_DEBUG_CRASH -ErrorAction SilentlyContinue
     # 轮询到 critical 记录才断言：首快照若恰是 Warning（首跳失败或冷却武装中）会误判成「零 critical」
     # 38654763928 红实证：PS 5.1 ConvertFrom-Json 把顶层数组读成嵌套一层（[[r1,r2]]）——.Count=1 而
     # .severity 成员枚举出 "critical critical"、.id 枚举出两条，"-eq critical" 全不命中→恒红。app 侧
@@ -3826,6 +3831,10 @@ catch
 # 行 61 非准入类型半项由场景 Y 代验（「无入口」证据面，见 Y 头注）。
 try
 {
+    # X 场景 app 日志路径（此前 X 失败现场零日志——38661655290 X1 红只能靠截图+widgets.json 猜，V4 三轮
+    # 同盲区教训的 X 侧补点）：X 每个实例都写当日此日志，失败时连同 widgets.json 原样归档进 evidence。
+    $xLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    $xWidgetsPath = Join-Path $configDir "widgets.json"
     Write-GConfig "" "off" 1.0
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 15
@@ -3943,8 +3952,11 @@ try
     if (!$menuSeen) { Save-FullScreenshot "X-FAIL-no-unpin-item.png"; throw "断言失败（场景 X1）：两轮右键后均未见菜单项「Unpin from desktop」——ContextFlyout 未弹出（合成右键不生效？）" }
     if (!$unpinned)
     {
+        # 现场取证：widgets.json 原样 + app 日志随 artifact 归档（V4 三轮盲区教训——X 失败此前零日志）
+        Copy-Item $xWidgetsPath (Join-Path $evidence "widgets-X1-fail.json") -Force -ErrorAction SilentlyContinue
+        Copy-Item $xLogPath (Join-Path $evidence "beacon-X1-fail.log") -Force -ErrorAction SilentlyContinue
         Save-FullScreenshot "X-FAIL-unpin-not-saved.png"
-        throw "断言失败（场景 X1）：右键 Unpin 两轮尝试后 widgets.json GLM pinned 未翻 false——右键 Pin 落库失败（todo 行 55）"
+        throw "断言失败（场景 X1）：右键 Unpin 两轮尝试后 widgets.json GLM pinned 未翻 false——右键 Pin 落库失败（todo 行 55）：读 widgets-X1-fail.json 原样与 beacon-X1-fail.log 定因"
     }
     $tileGone = $false
     $deadline = (Get-Date).AddSeconds(15)
@@ -3955,8 +3967,12 @@ try
     }
     if (!$tileGone)
     {
+        # 现场取证：widgets.json 原样 + app 日志随 artifact 归档——X1 红（tile 数不符）若无日志无法区分
+        # 「ReloadWidgets 未跑」「重建了但 tile 被改判隐藏/崩溃退出」两因（38661655290 X1 红实证此盲区）
+        Copy-Item $xWidgetsPath (Join-Path $evidence "widgets-X1-fail.json") -Force -ErrorAction SilentlyContinue
+        Copy-Item $xLogPath (Join-Path $evidence "beacon-X1-fail.log") -Force -ErrorAction SilentlyContinue
         Save-FullScreenshot "X-FAIL-unpin-tile-alive.png"
-        throw "断言失败（场景 X1）：Unpin 后 15s 内 GLM 悬浮 tile 未消失（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 1）——ReloadWidgets 重建链未跑"
+        throw "断言失败（场景 X1）：Unpin 后 15s 内 GLM 悬浮 tile 未消失（tile=$([WinEnum]::VisibleHandlesByTitle('Beacon Tile').Count)，期望 1）——ReloadWidgets 重建链未跑：读 widgets-X1-fail.json 原样与 beacon-X1-fail.log 定因（查 ReloadWidgets/重建链/异常退出）"
     }
     Write-Host "场景 X1 通过：右键 Unpin → widgets.json 落盘 + GLM tile 移除（余 1 tile）"
     # X2 设置入口复钉（行 60 两入口一致，反向驱动）：X1 实证 Unpin 后 GLM 已注销——面板 RecentList
