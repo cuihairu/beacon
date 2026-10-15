@@ -2676,6 +2676,24 @@ try
     }
     Write-Host "场景 M1 通过：HKCU Run\Beacon = $runVal"
     Stop-Beacon
+    # M3 登录启动链代验（todo 行 96 半项 CI 代验）：用 shell 同款执行器跑注册表原样字符串——
+    # rundll32 ShellExec_RunDll 走的 ShellExecute API 与登录时 explorer 处理 Run 键同一条路。
+    # 进程被拉起即证「Run 值可被 shell 直接执行」（引号/路径串回归在案）；「真登录会话由
+    # explorer 调度」属 OS 行为，留装机。
+    Start-Process -FilePath "$env:WINDIR\System32\rundll32.exe" -ArgumentList @('shell32.dll,ShellExec_RunDll', $runVal) | Out-Null
+    $booted = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -ge 1) { $booted = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$booted)
+    {
+        Save-FullScreenshot "M-FAIL-rundll-no-boot.png"
+        throw "断言失败（场景 M3）：Run 值经 ShellExec_RunDll 20s 未拉起 Beacon 进程（值：'$runVal'）——启动串不可执行（引号/路径回归）"
+    }
+    Write-Host "场景 M3 通过：Run 值经 shell 执行器拉起 Beacon 进程（启动串可执行，真登录会话调度留装机）"
     Write-GConfig "" "off" 1.0 $false
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 12
