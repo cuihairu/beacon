@@ -18,7 +18,11 @@
 
 > **Windows Developer Status & Action Center** — See what needs your attention.
 
-A developer status and action center that lives on the Windows desktop: it aggregates GitHub / CI and other development-environment states, alerts you proactively, and offers one-click actions. **Signal + Action, not a Dashboard.**
+A developer status and action center that lives on the Windows desktop. More precisely it is a resident **data-observation, information-presentation and interaction-feedback system**: it continuously pulls from different data sources, normalizes them into one shared state, hands that state to display components, and turns user intent into actions whose results feed back into the next state update. **Signal + Action, not a Dashboard.**
+
+**One loop, one source of truth.** Data source → processing → state → display → interaction → command → feedback → state update. Display components are consumers of that loop and entry points for intent, never owners of the business logic behind them.
+
+**Boundaries.** Beacon connects to external systems and does not rebuild them. No workflow engine, no script execution platform, no remote machine or server management, no cloud accounts, team collaboration, multi-device control, third-party plugin market, and no full event-sourcing system. The desktop shell is native WinUI 3 and stays native: no embedded web rendering. Complex dashboards, charts for their own sake, and heavy themes are out of scope — the default view shows what needs your attention, not a wall of widgets.
 
 
 <img width="780" height="1496" alt="image" src="https://github.com/user-attachments/assets/14d1eb50-c66c-4515-87eb-6ceee0ca9425" />
@@ -56,7 +60,7 @@ Current releases (v0.1.x) are **not signed** — Windows SmartScreen may warn on
 |---|---|
 | [docs/mission.md](docs/mission.md) | Product positioning / core concepts / phased plan / MVP acceptance criteria (original brief excerpts in the same directory) |
 | [docs/rfc/RFC-001-technical-design.md](docs/rfc/RFC-001-technical-design.md) | Technical design: architecture / domain model / **display-layer architecture (L0 floating widgets + four interaction layers)** / refresh / notifications / storage / risks |
-| [docs/master-plan.md](docs/master-plan.md) | 产品与技术实施总方案 — product scope & design baseline (2026-10-11): boundaries / interaction / architecture / acceptance / agent constraints |
+| [docs/master-plan.md](docs/master-plan.md) | Master plan: product scope & design baseline (2026-10-11) — boundaries / interaction / architecture / acceptance / agent constraints |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / project structure / dependency rules / scaffold commands (runnable on Windows machines) |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 MVP issues (P0–P8, with acceptance criteria and dependencies) |
 | [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 16 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
@@ -72,15 +76,4 @@ Current releases (v0.1.x) are **not signed** — Windows SmartScreen may warn on
 6. 🔨 M5 L0 floating widgets + Quick Panel = MVP (code-complete; remaining: [71-item executable acceptance checklist](docs/acceptance-checklist.md) — each item with prerequisites / steps / expected results; covers the B-803 on-machine walkthrough and B-804 clean-VM run, pending a Windows machine)
 
 > Build requirements: Windows + .NET 10 SDK + Windows App SDK (WinUI 3 does not support cross-platform builds).
-
-## 本地测试口径
-
-CI 与本地开发按改动面三路分流——改一行文档不该全量编译。
-
-1. **文档改动**（`*.md`、`docs/**`、图片）：不编译。主 CI workflow 的
-   `paths-ignore` 已跳过这些路径。
-2. **代码改动**：只跑改动子集，不全量。
-   - `dotnet test <改动 csproj>`
-3. **全量**（`dotnet test Beacon.sln -c Release`）：仅以下情形触发——*.csproj / *.sln、
-   `.github/**`、Docker/Compose 配置、发布前。
 

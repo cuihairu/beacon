@@ -33,7 +33,7 @@
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
-## MVP 待验/未修项（50 项 = 28 勾 / 22 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
+## MVP 待验/未修项（50 项 = 29 勾 / 21 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
 - [ ] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；唤起气泡属 OS Toast 面，需装机半）
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；拖动手势半已代验：R3 SendInput 拖 +50/+40 窗随动 + shell-state.json offsetDips 落盘 90,81 + 重启还原闭环（38750239155）；跨 DPI 拓扑需装机半）
@@ -85,14 +85,14 @@
 - [x] 重置默认一键还原；off 档预览即全静止（场景 G5 重置回默认 + G7b off 三帧差分 ≤12px 已代验）
 - [x] tile 底部进度条显示不全（2026-10-14 缺陷单「还是一样的问题」）（02a5de1 修复，38500538817 复证全绿：client 32px/frame 38px chrome 6px + 条带 620/676 真像素，见决策记录同名条）
 
-## 后续可选（master-plan.md）
+## 后续可选（master-plan.md，5 项 = 4 勾 / 1 未勾）
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化（38434164526 实证 U1-U5 全绿；解锁行 32/38/46）
 - [x] Critical 与崩溃注入机制（debug 门控）（DebugInjection 8 例单测 + DispatcherQueueGuard 兜底；38494525200 实证 V1/V2/V3 全绿，V3 红出真实发现见决策记录）
 - [ ] 厂商私有打包工具 Provider（需真实厂商 API 与认证字段；开源标准 API 的 Jenkins Provider 已落位 2026-10-11）
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1 修复：记忆尺寸存客户区 DIP 直喂外框，每次开窗矮一标题栏）
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
-## MVP 验收标准（master-plan §14，需真实装机验证）
+## MVP 验收标准（master-plan §14，8 项 = 5 勾 / 3 未勾，需真实装机验证）
 - [ ] Windows 登录后按用户设置启动（Run 值可执行半已代验：M3 把注册表原样字符串交 ShellExecute——登录时 explorer 处理 Run 键同一 API——拉起 Beacon 进程（38761946476）；真实登录会话由 explorer 调度属 OS 行为，需装机半）
 - [ ] 托盘与状态胶囊稳定运行（驻留半已代验：场景 E2/E3 关窗驻留 + Exit 唯一退出；长时稳定与胶囊观感需装机半）
 - [x] 全局快捷键正常打开悬浮面板（场景 K1 注册 + N 改键重启注册无失败 + WM_HOTKEY 直驱面板硬断言已代验）
@@ -120,4 +120,75 @@
     2. 既然效果相同，**必须二选一处理**：要么让两者**语义分化**（打开主界面 vs 打开通知面板），要么**合并/去掉其中一个**——**不允许保留两个同义入口**
     3. 若本仓已有 i18n，两个入口的文案都要能被翻译（与上面那条多语言需求一并处理）
   - 验收：给出设计意图的出处；处理方案与理由；真实操作验证两个入口**不再等价**（或只剩一个）
+
+## 组件化重构分期（2026-10-16 用户执行单采纳，依 `docs/design/redesign-plan-2026-10-16.md`；现状核验见 `docs/design/redesign-2026-10-16-核验.md`）
+
+> 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
+> 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
+> Phase 0 的「现状清单」一半已交付（`docs/design/redesign-2026-10-16-核验.md`，50 条核验）；契约冻结、目标模型映射表、差异与迁移计划未开工，正式开工时按 commit hash 记账。
+
+### Phase 0 现状审计与契约冻结（6 条）
+
+- [ ] 列出现有 Provider、Widget、Action 与 Renderer 清单（待落地 hash）
+- [ ] 核对 `WidgetState` 的事件总线、刷新调度与 ActionRunner 契约（待落地 hash）
+- [ ] 识别现有状态模型中哪些字段是业务状态、哪些只是显示字段（待落地 hash）
+- [ ] 确定新组件模型与旧配置的兼容方案（待落地 hash）
+- [ ] 保留现有已完成功能与真机验收要求（待落地 hash）
+- [ ] 冻结状态流契约与组件契约（待落地 hash）
+
+### Phase 1 响应式状态与数据流（5 条）
+
+- [ ] 明确 State、Event、Command 与 Operation Result 四类概念（待落地 hash）
+- [ ] 完善状态变更检测（待落地 hash）
+- [ ] 增加或整理统一的 State Store 与 Selector（待落地 hash）
+- [ ] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（待落地 hash）
+- [ ] 确保 UI 只消费状态、不直接请求外部数据（待落地 hash）
+
+### Phase 2 设计系统与基础组件库（9 条）
+
+- [ ] 统一设计令牌：色彩、字体、间距、圆角、阴影、动效、尺寸、状态（待落地 hash）
+- [ ] 基础组件 Text、Icon、Surface、Badge、Divider（待落地 hash）
+- [ ] 基础组件 Metric、Progress、Status Indicator（待落地 hash）
+- [ ] 基础组件 Key-Value、Status Card、List（待落地 hash）
+- [ ] 交互组件 Action Button、Action Menu、Link（待落地 hash）
+- [ ] 布局组件 Stack、Grid、Section、Conditional（待落地 hash）
+- [ ] 通用状态 Empty、Loading、Error、Offline（待落地 hash）
+- [ ] 统一主题、尺寸与排版体系（待落地 hash）
+- [ ] 独立视觉示例页（待落地 hash）
+
+### Phase 3 组件组合与数据绑定（6 条）
+
+- [ ] 定义 Component Descriptor（待落地 hash）
+- [ ] 定义 Widget Instance 与 Binding 配置（待落地 hash）
+- [ ] 实现 Selector 到组件属性的绑定（待落地 hash）
+- [ ] 实现多个数据源组合（待落地 hash）
+- [ ] 支持不同组件消费同一份状态（待落地 hash）
+- [ ] 保证修改布局不触发无意义的数据请求（待落地 hash）
+
+### Phase 4 HTML 小屏幕（6 条，开工前须先出架构决策，仓内有反向记录）
+
+- [ ] 实现 HTML/CSS 模板加载（待落地 hash）
+- [ ] 实现受控数据桥接（待落地 hash）
+- [ ] 实现 Action ID 桥接（待落地 hash）
+- [ ] 实现模板错误回退、实例生命周期与安全限制（待落地 hash）
+- [ ] 实现主题令牌与基本样式适配（待落地 hash）
+- [ ] 验证数据变化时可以增量更新（待落地 hash）
+
+### Phase 5 完善组件目录与用户体验（5 条）
+
+- [ ] 时间线、表格、图表与趋势组件（待落地 hash）
+- [ ] 更丰富的布局与条件显示（待落地 hash）
+- [ ] 组件实例编辑、尺寸调整与桌面布局配置（待落地 hash）
+- [ ] 统一的空数据、离线与错误状态（待落地 hash）
+- [ ] 主题、密度与可访问性完善（待落地 hash）
+
+### Phase 6 回归与真机验收（6 条）
+
+- [ ] 验证刷新、状态更新与命令执行闭环（待落地 hash）
+- [ ] 验证多窗口订阅与取消订阅（待落地 hash）
+- [ ] 验证显示器切换、DPI、窗口拖动与重启恢复（待落地 hash）
+- [ ] 验证 HTML 安全边界与错误恢复（待落地 hash）
+- [ ] 验证缓存、断网、凭据错误与操作失败（待落地 hash）
+- [ ] 验证现有 Provider、AI 额度显示与通知规则不回归（待落地 hash）
+
 

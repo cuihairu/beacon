@@ -18,7 +18,11 @@
 
 > **Windows Developer Status & Action Center** — See what needs your attention.
 
-常驻 Windows 桌面的开发者状态与操作中心：聚合 GitHub / CI 等开发环境状态，主动提醒，一键操作。**Signal + Action，不是 Dashboard。**
+常驻 Windows 桌面的开发者状态与操作中心。更准确地说，它是一个常驻的**数据观察、信息呈现与交互反馈系统**：持续从不同数据源取数，标准化为一份共享状态，交给显示组件呈现，并把用户意图转化为动作，动作结果与外部状态变化再推动下一轮状态更新。**Signal + Action，不是 Dashboard。**
+
+**一条闭环，一份事实。**数据源 → 处理 → 状态 → 显示 → 交互 → 命令执行 → 反馈 → 状态更新。显示组件只是这条闭环的消费方与交互入口，不是业务逻辑的所有者。
+
+**边界。**Beacon 连接外部系统，不重建外部系统。不做通用 Workflow Engine、不做任意脚本执行平台、不做远程机器与服务器管理、不做云端账号、团队协作或多设备控制、不做第三方插件市场、不做完整的事件溯源。桌面外壳是原生 WinUI 3，保持原生，不引入内嵌网页渲染。复杂仪表盘、为图表而图表、复杂主题均不在范围内——默认视图只呈现需要你关注的事，而不是一墙小组件。
 
 ## 在线文档
 
@@ -52,7 +56,10 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 |---|---|
 | [docs/mission.md](docs/mission.md) | 产品定位 / 核心概念 / 分期 / MVP 验收标准（原始方案见同目录摘录） |
 | [docs/rfc/RFC-001-technical-design.md](docs/rfc/RFC-001-technical-design.md) | 技术方案：架构 / 领域模型 / **显示层架构（L0 悬浮组件 + 四层交互）** / 刷新 / 通知 / 存储 / 风险 |
+| [docs/master-plan.md](docs/master-plan.md) | 产品与技术实施总方案：产品范围与设计基线（2026-10-11）——边界 / 交互 / 架构 / 验收 / agent 约束 |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / 项目结构 / 依赖规则 / 脚手架命令（Windows 机器可执行） |
+| [docs/configuration.md](docs/configuration.md) | 配置手册：全部设置项逐项列明——文件、全局设置、外观、通知规则、16 类连接（含各厂商端点与额度语义）、组件字段、钉选布局、动作、导入导出 |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | 故障排查手册：SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志 |
 | [docs/store-submission.md](docs/store-submission.md) | 商店提交前置清单：MSIX 打包 / 隐私政策页必填字段 / 商店素材（截图尺寸·描述·分类·年龄分级问卷） |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 个 MVP Issue（P0–P8，含验收标准与依赖关系） |
 
@@ -66,3 +73,14 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 6. 🔨 M5 L0 悬浮组件 + Quick Panel = MVP（代码级完成；余 [装机验收执行清单 71 条](docs/acceptance-checklist.md)——每条含前置条件/验证步骤/预期结果，含 B-803 真机走查与 B-804 干净 VM 验收，待 Windows 机器执行）
 
 > 构建要求：Windows + .NET 10 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。
+
+## 本地测试口径
+
+CI 与本地开发按改动面三路分流——改一行文档不该全量编译。
+
+1. **文档改动**（`*.md`、`docs/**`、图片）：不编译。主 CI workflow 的
+   `paths-ignore` 已跳过这些路径。
+2. **代码改动**：只跑改动子集，不全量。
+   - `dotnet test <改动 csproj>`
+3. **全量**（`dotnet test Beacon.sln -c Release`）：仅以下情形触发——*.csproj / *.sln、
+   `.github/**`、Docker/Compose 配置、发布前。
