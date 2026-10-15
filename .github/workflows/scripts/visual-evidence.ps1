@@ -4203,27 +4203,85 @@ function Save-UiaTreeDump([System.Windows.Automation.AutomationElement] $root, [
     [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
 }
 
-# 通用文件对话框驱动（unpackaged picker 的落地形态）：等 #32770 窗（属 ownerPid）→ 文件名 Edit
-# （AutomationId 1148，命中 ComboBox 容器时取其内层 Edit；再退首个 Edit）ValuePattern 设绝对路径 →
-# 确认按钮（AutomationId 1，语言无关；退 Name Open/Save/打开/保存）Invoke（失败退 ClickAt 坐标点击）。
-# 任一步失败：dump 对话框 UIA 树 + 全屏截图进 evidence，返 $false（调用侧按 G7c 口径降级 ::warning 转装机）。
-function Invoke-CommonFileDialog([uint32] $ownerPid, [string] $filePath, [string] $tag)
+# 顶层窗句柄快照（UIA 桌面根 Children，跨进程）：WinRT picker 由外部进程承载（PickerHost 等），
+# 按 class=#32770 + pid(beacon) 找必空——38678998804 首跑实证：截图里「Save As」对话框确在（File name
+# 预填 beacon-config-…、Save/Cancel 齐全），而 #32770+beaconPid 零命中。故改「点前快照 → 点后差集」。
+function Get-DesktopWindowKeys
 {
-    $dlg = [IntPtr]::Zero
-    $deadline = (Get-Date).AddSeconds(20)
+    $keys = New-Object System.Collections.Generic.List[string]
+    $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($w in $wins)
+    {
+        try
+        {
+            $h = [string]$w.Current.NativeWindowHandle
+            if ($h -and $h -ne "0") { $keys.Add($h) }
+        }
+        catch { }
+    }
+    return $keys
+}
+
+# 桌面顶层窗清单 dump（诊断面）：class/name/handle 逐窗一行，picker 形态未预期时定因用。
+function Save-DesktopWindowDump([string] $fileName)
+{
+    $lines = New-Object System.Collections.Generic.List[string]
+    $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($w in $wins)
+    {
+        try
+        {
+            $lines.Add($w.Current.ControlType.ProgrammaticName + " class=[" + $w.Current.ClassName + "] name=[" + $w.Current.Name + "] hwnd=[" + $w.Current.NativeWindowHandle + "] pid=[" + $w.Current.ProcessId + "]")
+        }
+        catch { }
+    }
+    [System.IO.File]::WriteAllLines((Join-Path $evidence $fileName), $lines)
+}
+
+# 等新顶层对话框窗：桌面根 Children 中取「点前快照之外」的新窗（ControlType=Window），标题命中
+# titleHints（*like*）优先，无命中则取首个新窗。跨进程、与 window class 无关。
+function Wait-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [int] $timeoutSec = 20)
+{
+    $deadline = (Get-Date).AddSeconds($timeoutSec)
     while ((Get-Date) -lt $deadline)
     {
-        $cands = [WinEnum]::VisibleHandlesByClassAndPid("#32770", $ownerPid)
-        if ($cands.Count -ge 1) { $dlg = $cands[0]; break }
+        $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+        $fallback = $null
+        foreach ($w in $wins)
+        {
+            try
+            {
+                if ($w.Current.ControlType.ProgrammaticName -ne "ControlType.Window") { continue }
+                $h = [string]$w.Current.NativeWindowHandle
+                if (!$h -or $h -eq "0" -or $before.Contains($h)) { continue }
+                foreach ($hint in $titleHints)
+                {
+                    if ($w.Current.Name -like "*$hint*") { return $w }
+                }
+                if (!$fallback) { $fallback = $w }
+            }
+            catch { }
+        }
+        if ($fallback) { return $fallback }
         Start-Sleep -Milliseconds 300
     }
-    if ($dlg -eq [IntPtr]::Zero)
+    return $null
+}
+
+# 通用文件对话框驱动：等新顶层窗（Wait-CommonFileDialog）→ 文件名 Edit（AutomationId 1148，命中
+# ComboBox 容器时取其内层 Edit；再退首个 Edit）ValuePattern 设绝对路径 → 确认按钮（AutomationId 1，
+# 语言无关；退 Name Open/Save/打开/保存）Invoke（失败退 ClickAt 坐标点击）。任一步失败：dump 对话框
+# UIA 树 + 桌面窗清单 + 截图进 evidence，返 $false（调用侧按 G7c 口径降级 ::warning 转装机）。
+function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $before, [string[]] $titleHints, [string] $filePath, [string] $tag)
+{
+    $dlgEl = Wait-CommonFileDialog $before $titleHints 20
+    if (!$dlgEl)
     {
         Save-FullScreenshot ($tag + "-FAIL-no-dialog.png")
-        Write-Host "::warning::场景 Z：$tag 20s 内未见 #32770 通用对话框——picker 未走经典对话框落地（读截图定形态）"
+        Save-DesktopWindowDump ($tag + "-windows.txt")
+        Write-Host "::warning::场景 Z：$tag 20s 内未见新顶层对话框窗——读 $tag-windows.txt（桌面窗清单）与截图定形态"
         return $false
     }
-    $dlgEl = [System.Windows.Automation.AutomationElement]::FromHandle($dlg)
     $edit = $null
     try
     {
@@ -4284,7 +4342,7 @@ function Invoke-CommonFileDialog([uint32] $ownerPid, [string] $filePath, [string
             Save-FullScreenshot ($tag + "-FAIL-invoke.png")
             return $false
         }
-        [WinEnum]::ForceForeground($dlg)
+        [WinEnum]::ForceForeground([IntPtr]$dlgEl.Current.NativeWindowHandle)
         Start-Sleep -Milliseconds 300
         [WinEnum]::ClickAt($pt[0], $pt[1])
     }
@@ -4292,12 +4350,14 @@ function Invoke-CommonFileDialog([uint32] $ownerPid, [string] $filePath, [string
 }
 
 # —— 场景 Z：导入导出往返（todo 行 80「导入+重录密钥后行为与原机一致」CI 代验，B-802）——
-# 行 80 导入半原注记「导入依赖 WinUI 文件选择器，CI 会话不稳，需装机半」系未实测假设——本场景实测推翻或坐实：
-# unpackaged 应用的 FileSavePicker/FileOpenPicker 落地为经典通用对话框（#32770，进程内 IFileSaveDialog），
-# UIA 可驱动（Invoke-CommonFileDialog）。包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置
-# 定数（2 连接含 credentialRef conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。
-# 导出红线 CI 层回声：secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按
-# G7c 口径降级 ::warning 转装机（首跑不阻塞其它场景），其余断言均为硬断言。
+# 行 80 导入半原注记「导入依赖 WinUI 文件选择器，CI 会话不稳，需装机半」系未实测假设——本场景实测：
+# FileSavePicker/FileOpenPicker 确为经典通用对话框（File name 预填 beacon-config-…、Save/Cancel 齐全，
+# 38678998804 截图实证），但**由外部进程承载**（WinRT PickerHost），按 #32770+beaconPid 必零命中——
+# 故驱动走跨进程差集：点前 Get-DesktopWindowKeys 快照 → 点后 Wait-CommonFileDialog 取新顶层窗。
+# 包用 app 自产（导出→导入同包）零 schema 假设；Write-GConfig 预置定数（2 连接含 credentialRef
+# conn:ds-main / 2 组件 / 0 钉选）→ 反馈文本逐字段断言 +「重录密钥」提示在案。导出红线 CI 层回声：
+# secrets.bin 真值 sk-ds-mock 不得出现在导出文件全文（RFC §13）。picker 驱动失败按 G7c 口径降级
+# ::warning 转装机（首跑不阻塞其它场景），其余断言均为硬断言。
 try
 {
     Ensure-MockServer
@@ -4326,12 +4386,10 @@ try
     }
     $zExport = Join-Path $env:TEMP "beacon-z-export.json"
     if (Test-Path $zExport) { Remove-Item $zExport -Force -ErrorAction SilentlyContinue }
-    if ([WinEnum]::VisibleHandlesByClassAndPid("#32770", $zProc.Id).Count -gt 0)
-    {
-        throw "断言失败（场景 Z）：点导出前 Beacon 进程已存在 #32770 对话框——残留窗会干扰 picker 判定"
-    }
+    # 点前顶层窗快照=差集基准（跨进程）：不查 #32770+pid，picker 由外部进程承载（见 Invoke-CommonFileDialog 注）
+    $zBeforeExport = Get-DesktopWindowKeys
     Invoke-Uia $exportBtn
-    $zPickerOk = Invoke-CommonFileDialog $zProc.Id $zExport "Z-export"
+    $zPickerOk = Invoke-CommonFileDialog $zBeforeExport @("Save As", "另存为") $zExport "Z-export"
     if (!$zPickerOk)
     {
         Write-Host "::warning::场景 Z：导出 picker 驱动失败——导入导出维持装机半（证据：Z-export-* 截图/UIA dump），下轮按 dump 结构修驱动（G7c 降级口径）"
@@ -4369,13 +4427,8 @@ try
         $zExpActions = 0
         if ($zBundle.actions) { $zExpActions = @($zBundle.actions).Count }
         Write-Host "场景 Z：导出包就位（$zExpConn 连接 / $zExpWidgets 组件 / $zExpPins 钉选 / $zExpActions 动作）——转入导入"
-        # 等导出对话框收净再开导入（残留 #32770 会干扰）
-        $deadline = (Get-Date).AddSeconds(10)
-        while ((Get-Date) -lt $deadline)
-        {
-            if ([WinEnum]::VisibleHandlesByClassAndPid("#32770", $zProc.Id).Count -eq 0) { break }
-            Start-Sleep -Milliseconds 500
-        }
+        # 导出文件已落盘=导出 picker 已提交并关闭；重新取顶层窗快照作导入差集基准（不查 #32770+pid）
+        $zBeforeImport = Get-DesktopWindowKeys
         $importBtn = Find-UiaByName $settings "导入配置…" 20
         if (!$importBtn)
         {
@@ -4383,7 +4436,7 @@ try
             throw "断言失败（场景 Z）：高级页未找到「导入配置…」按钮"
         }
         Invoke-Uia $importBtn
-        if (!(Invoke-CommonFileDialog $zProc.Id $zExport "Z-import"))
+        if (!(Invoke-CommonFileDialog $zBeforeImport @("Open", "打开") $zExport "Z-import"))
         {
             Write-Host "::warning::场景 Z：导入 picker 驱动失败——导出半已过、导入半维持装机半（证据：Z-import-* 截图/UIA dump）"
         }
