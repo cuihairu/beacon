@@ -87,16 +87,30 @@ public sealed class StateStoreTests
     }
 
     [Fact]
-    public void DedupOff_IdenticalContent_PublishesEachTime()
+    public void SuppressUnchangedFalse_IdenticalContent_PublishesEachTime()
     {
-        // 默认直通（现行为回归锚点）：内容完全相同也逐次发布
+        // 回退开关开直通（旧现行为锚点）：内容完全相同也逐次发布
         var fixture = new StoreFixture();
-        var store = fixture.CreateStore();
+        var store = fixture.CreateStore(suppressUnchanged: false);
 
         store.Update(State());
         store.Update(State(fetchedAt: DateTimeOffset.UtcNow));
 
         Assert.Equal(2, fixture.Published.Count);
+    }
+
+    [Fact]
+    public void SuppressUnchangedDefaultsOn_IdenticalContent_PublishesOnce()
+    {
+        // 契约默认（已代决②）：不传开关即去重
+        var fixture = new StoreFixture();
+        var store = new StateStore(fixture.Bus);
+        fixture.Bus.Subscribe<WidgetStateChanged>(evt => fixture.Published.Add(evt));
+
+        store.Update(State());
+        store.Update(State(fetchedAt: DateTimeOffset.UtcNow));
+
+        Assert.Single(fixture.Published);
     }
 
     [Fact]

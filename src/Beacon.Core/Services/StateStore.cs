@@ -6,10 +6,10 @@ using Beacon.Core.Models;
 namespace Beacon.Core.Services;
 
 /// <summary>
-/// IStateStore 进程内实现（Phase 1 旁路引入，可整体回退，映射与迁移 §4.1）。
+/// IStateStore 进程内实现（Phase 1，映射与迁移 §4.1；契约冻结见 docs/design/redesign-2026-10-16-契约.md）。
 /// 内容键排除 FetchedAt：仅刷新时间变化不算内容变化；IsStale/ConnectionHealthy 翻转仍算变化
-/// （断网降级/陈旧事件不得被去重吞掉，场景 F5）。默认 suppressUnchanged=false 保持现行为
-/// （每次发布）；启用去重属契约拍板项（映射与迁移 §6.2），拍板前不翻转。
+/// （断网降级/陈旧事件不得被去重吞掉，场景 F5）。默认 suppressUnchanged=true（PATROL1016 已代决②：
+/// 设计稿 §4.1「状态相同的轮询结果不应导致所有组件重新绘制」；false 为回退开关，单 commit 可整体回滚）。
 /// </summary>
 public sealed class StateStore : IStateStore
 {
@@ -19,7 +19,7 @@ public sealed class StateStore : IStateStore
     private readonly Dictionary<string, WidgetState> _states = [];
     private readonly Dictionary<string, string> _contentKeys = [];
 
-    public StateStore(IEventBus bus, bool suppressUnchanged = false)
+    public StateStore(IEventBus bus, bool suppressUnchanged = true)
     {
         _bus = bus;
         _suppressUnchanged = suppressUnchanged;
