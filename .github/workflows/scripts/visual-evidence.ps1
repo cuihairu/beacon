@@ -4435,7 +4435,7 @@ function Invoke-CommonFileDialog([System.Collections.Generic.List[string]] $befo
     }
     [WinEnum]::SetText($nameEdit, $fileName)
     Start-Sleep -Milliseconds 600
-    [WinEnum]::Post($dlgH, 0x0111, 65536, 0)          # WM_COMMAND，wParam=IDOK(1)<<16
+    [WinEnum]::Post($dlgH, 0x0111, 1, 0)              # WM_COMMAND，wParam=MAKEWPARAM(IDOK=1, BN_CLICKED=0)：控制 id 在 LOWORD
     Start-Sleep -Milliseconds 1000
     if ([WinEnum]::Alive($dlgH))
     {
