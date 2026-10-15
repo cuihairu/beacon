@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -34,9 +35,13 @@ public static class BigModelWidgetDescriptors
 /// 响应 data.limits[]：TOKENS_LIMIT(unit=3,number=5) → 5 小时窗口、(6,1) → 周限、TIME_LIMIT(unit=5) → 月度（MCP
 /// 调用数口径，含 usage/currentValue/remaining），每项含 percentage（0-100）与 nextResetTime（epoch ms）。
 /// 2026-10-10 用户令+真 Key 实证：窗口上限无绝对 token 口（监控接口只给百分比，1302 限流消息实测无窗口数字），
-/// 窗口规格以「窗名 窗口已用 N%」+ 重置时间呈现。多窗口口径（2026-10-13 用户令，覆盖 2026-10-10 的
-/// 5h 主位规则）：级别/进度条/主数值一律取**已用最高的窗口**并标窗名（最差窗口优先），
-/// warn/error 阈值仍作用在**最差窗口**的已用 % 上，语义不变。
+/// 窗口规格以「窗名 窗口已用 N%」+ 重置时间呈现。
+/// **嵌套窗口口径（2026-10-15 用户令，覆盖 2026-10-13 的「最差窗口」规则）**：月 ⊇ 周 ⊇ 5h 为嵌套关系，
+/// 外层耗尽 ⇒ 内层必然耗尽，故耗尽判定按 月 → 周 → 5h **外层优先**（不是已用最高——三窗并列 100%
+/// 时并列取先会命中 5h，把月度耗尽报成「5h 已用」，界面遂显示内层还有余额）。耗尽恒 Error + 满格，
+/// 且**只报真实耗尽层**（不再列内层用量）。正常态（三窗均有余额）5h 窗是限流档位
+/// （Z.ai 5h 耗尽触发 300s 降级），故级别/进度条/主数值取展示窗（5h，缺失退周、月），warn/error 阈值作用其上。
+/// 判定逻辑见 <see cref="QuotaWindows.Select"/>（Core 承载，可单测）。
 /// </summary>
 public sealed class BigModelUsageProvider : IWidgetProvider
 {
@@ -77,11 +82,49 @@ public sealed class BigModelUsageProvider : IWidgetProvider
 
         var warnPercent = widget.Config.TryGetValue("warn_percent", out var warnRaw) && double.TryParse(warnRaw, CultureInfo.InvariantCulture, out var warn) ? warn : 60;
         var errorPercent = widget.Config.TryGetValue("error_percent", out var errorRaw) && double.TryParse(errorRaw, CultureInfo.InvariantCulture, out var error) ? error : 90;
-        var worst = usage.Worst();
-        var worstPercent = worst?.Window.Percent;
-        var severity = MapSeverity(worstPercent, warnPercent, errorPercent);
         var head = widget.Config.GetValueOrDefault("label") ?? usage.Level ?? "GLM";
-        var summary = head + Summarize(usage, worst);
+
+        // 嵌套窗口判定（月 ⊇ 周 ⊇ 5h）：耗尽态与正常态分叉，级别/进度条/主数值同源。
+        var decision = QuotaWindows.Select(usage.Rolling?.Percent, usage.Weekly?.Percent, usage.Monthly?.Percent);
+
+        // 耗尽态：最高级别 + 满格，**只报真实耗尽层**——外层已尽时内层不可能有余额，
+        // 再把内层用量列出来即把内层读成「还有余额」（本次缺陷核心），故 payload 不出内层键、
+        // 走 value_text 让 tile 主数值直接读耗尽（绕开多窗形态）。
+        if (decision.Exhausted is { } layer)
+        {
+            return new WidgetState
+            {
+                WidgetId = widget.Id,
+                WidgetType = Descriptor.Type,
+                ConnectionId = connection.Id,
+                Severity = Severity.Error, // 已尽恒错误级，不受阈值配置降级
+                Lifecycle = LifecycleState.Failed,
+                Progress = 1.0, // 数值卡进度条：已尽=满格
+                Summary = $"{head} · {QuotaWindows.Label(layer)} 额度已耗尽"
+                    + (ResetOf(layer, usage) is { } reset ? $"（{FormatReset(reset)} 重置）" : "（待重置）"),
+                DetailUrl = "https://open.bigmodel.cn/usage",
+                Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["value_text"] = $"{QuotaWindows.Label(layer)}额度已尽",
+                    ["percent"] = Format(decision.ExhaustedPercent ?? 100), // 耗尽窗已用 %
+                    ["percent_window"] = KeyOf(layer),
+                    ["exhausted"] = "1",
+                    ["exhausted_window"] = QuotaWindows.Label(layer),
+                    ["exhausted_reason"] = decision.ExhaustedReason ?? "", // 报真实耗尽层，不伪装成内层
+                    ["level"] = usage.Level ?? "",
+                    ["reset_iso"] = ResetOf(layer, usage) is { } resetIso ? FormatReset(resetIso) : "",
+                },
+                FetchedAt = DateTimeOffset.UtcNow,
+            };
+        }
+
+        // 正常态（含无数据兜底：级别 Warning 宁报勿漏、Progress null 不画条）：
+        // 展示窗 = 5h（有额度时看 5h，限流档位），缺失退周、月。
+        var severity = MapSeverity(decision.DisplayPercent, warnPercent, errorPercent);
+        var displayed = decision.DisplayPercent;
+        var displayWindow = decision.Display;
+        var displayKey = displayWindow is { } window ? KeyOf(window) : "";
+        var resetText = displayWindow is { } dWindow ? FormatResetOrNull(ResetOf(dWindow, usage)) : "";
 
         return new WidgetState
         {
@@ -92,14 +135,14 @@ public sealed class BigModelUsageProvider : IWidgetProvider
             Lifecycle = severity == Severity.Error ? LifecycleState.Failed
                 : severity == Severity.Warning ? LifecycleState.Running
                 : LifecycleState.Success,
-            // 数值卡进度条：最差窗口已用（与级别判定同源，2026-10-13 用户令）；无数据 → null（tile 不画条）
-            Progress = worstPercent is { } value ? Math.Clamp(value, 0, 100) / 100.0 : null,
-            Summary = summary,
+            // 数值卡进度条：展示窗已用（与级别判定同源）；无数据 → null（tile 不画条）
+            Progress = displayed is { } value ? Math.Clamp(value, 0, 100) / 100.0 : null,
+            Summary = head + Summarize(usage, decision),
             DetailUrl = "https://open.bigmodel.cn/usage",
             Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["percent"] = worstPercent is { } percent ? Format(percent) : "", // tile 主数值（最差窗口已用 %）
-                ["percent_window"] = worst?.Key ?? "",
+                ["percent"] = displayed is { } percent ? Format(percent) : "", // tile 主数值（展示窗已用 %）
+                ["percent_window"] = displayKey,
                 ["level"] = usage.Level ?? "",
                 ["rolling_percent"] = usage.Rolling?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
                 ["weekly_percent"] = usage.Weekly?.Percent?.ToString("0.#", CultureInfo.InvariantCulture) ?? "",
@@ -107,7 +150,7 @@ public sealed class BigModelUsageProvider : IWidgetProvider
                 ["rolling_reset_ms"] = usage.Rolling?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
                 ["weekly_reset_ms"] = usage.Weekly?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
                 ["monthly_reset_ms"] = usage.Monthly?.ResetMs?.ToString(CultureInfo.InvariantCulture) ?? "",
-                ["reset_iso"] = worst?.Window.ResetMs is { } reset ? FormatReset(reset) : "", // 最差窗口重置时间（本地时区 MM-dd HH:mm）
+                ["reset_iso"] = resetText, // 展示窗重置时间（本地时区 MM-dd HH:mm）
             },
             FetchedAt = DateTimeOffset.UtcNow,
         };
@@ -116,28 +159,8 @@ public sealed class BigModelUsageProvider : IWidgetProvider
     /// <summary>单窗口用量。</summary>
     public sealed record UsageWindow(double? Percent, long? ResetMs);
 
-    /// <summary>归一化后的套餐用量：三窗口 + 套餐等级。</summary>
-    public sealed record PlanUsage(string? Level, UsageWindow? Rolling, UsageWindow? Weekly, UsageWindow? Monthly)
-    {
-        /// <summary>已用最高的窗口（worst-window 规则唯一口径，2026-10-13 用户令；并列按 5h→周→月取先）；
-        /// Key = 5h/weekly/monthly（payload percent_window 值），Label = 窗标；全缺或全部无百分比 → null。</summary>
-        public (string Key, string Label, UsageWindow Window)? Worst()
-        {
-            (string Key, string Label, UsageWindow Window)? worst = null;
-            foreach (var (key, label, window) in new[] { ("5h", "5h", Rolling), ("weekly", "周", Weekly), ("monthly", "月", Monthly) })
-            {
-                if (window?.Percent is not { } candidate)
-                {
-                    continue;
-                }
-                if (worst is null || candidate > worst.Value.Window.Percent)
-                {
-                    worst = (key, label, window);
-                }
-            }
-            return worst;
-        }
-    }
+    /// <summary>归一化后的套餐用量：三窗口 + 套餐等级。窗口判定一律走 <see cref="QuotaWindows.Select"/>（嵌套外层优先）。</summary>
+    public sealed record PlanUsage(string? Level, UsageWindow? Rolling, UsageWindow? Weekly, UsageWindow? Monthly);
 
     /// <summary>解析 quota/limit 响应（纯函数供单测）。结构对齐社区口径：data 包装可选，窗口按 type/unit/number 归类。</summary>
     internal static PlanUsage? ParseUsage(string json)
@@ -213,32 +236,65 @@ public sealed class BigModelUsageProvider : IWidgetProvider
             : worst >= warnPercent ? Severity.Warning
             : Severity.Success;
 
-    /// <summary>摘要尾巴：最差窗口打头（已用 % + 重置时间，2026-10-13 用户令），其余窗口随后；
-    /// 重置时间取监控接口原生 nextResetTime（epoch ms）——源自带字段，不做窗口文案推算。</summary>
-    internal static string Summarize(PlanUsage usage, (string Key, string Label, UsageWindow Window)? worst)
+    /// <summary>摘要尾巴：展示窗打头（已用 % + 重置时间），其余窗口随后（窗序 5h → 周 → 月，只出实际存在的窗）；
+    /// 重置时间取监控接口原生 nextResetTime（epoch ms）——源自带字段，不做窗口文案推算。
+    /// 耗尽态不走此处（已尽分支只报真实耗尽层，不列内层）。</summary>
+    internal static string Summarize(PlanUsage usage, QuotaWindowDecision decision)
     {
+        var windows = new[]
+        {
+            (Window: QuotaWindow.FiveHour, Value: usage.Rolling),
+            (Window: QuotaWindow.Weekly, Value: usage.Weekly),
+            (Window: QuotaWindow.Monthly, Value: usage.Monthly),
+        };
         var parts = new List<string>();
-        if (worst is { } w && w.Window.Percent is { } worstPercent)
+        if (decision.Display is { } dWindow && decision.DisplayPercent is { } usedPercent)
         {
-            parts.Add($"{w.Label} 窗口已用 {Format(worstPercent)}%");
-            if (w.Window.ResetMs is { } worstReset)
+            parts.Add($"{QuotaWindows.Label(dWindow)} 窗口已用 {Format(usedPercent)}%");
+            if (ResetOf(dWindow, usage) is { } displayReset)
             {
-                parts.Add($"{FormatReset(worstReset)} 重置");
+                parts.Add($"{FormatReset(displayReset)} 重置");
             }
         }
-        foreach (var (label, window) in new[] { ("5h", usage.Rolling), ("周", usage.Weekly), ("月", usage.Monthly) })
+        foreach (var (window, value) in windows)
         {
-            if (window?.Percent is { } percent && !ReferenceEquals(window, worst?.Window))
+            if (value?.Percent is { } percent && window != decision.Display)
             {
-                parts.Add($"{label} {Format(percent)}%");
+                parts.Add($"{QuotaWindows.Label(window)} {Format(percent)}%");
             }
         }
-        if (parts.Count == 0 && (usage.Weekly ?? usage.Monthly) is { } fallback)
+        if (parts.Count == 0)
         {
-            parts.Add(fallback.ResetMs is { } fallbackReset ? $"{FormatReset(fallbackReset)} 重置" : "窗口数据");
+            foreach (var (_, value) in windows)
+            {
+                if (value is { } present)
+                {
+                    return present.ResetMs is { } resetMs ? $" · {FormatReset(resetMs)} 重置" : " · 窗口数据";
+                }
+            }
+            return "";
         }
-        return parts.Count == 0 ? "" : " · " + string.Join(" · ", parts);
+        return " · " + string.Join(" · ", parts);
     }
+
+    /// <summary>窗 → 重置时间（epoch ms，源自接口 nextResetTime）。</summary>
+    private static long? ResetOf(QuotaWindow window, PlanUsage usage) => window switch
+    {
+        QuotaWindow.Monthly => usage.Monthly?.ResetMs,
+        QuotaWindow.Weekly => usage.Weekly?.ResetMs,
+        _ => usage.Rolling?.ResetMs,
+    };
+
+    /// <summary>窗 → payload percent_window / exhausted_window 键值（5h / weekly / monthly）。</summary>
+    private static string KeyOf(QuotaWindow window) => window switch
+    {
+        QuotaWindow.Monthly => "monthly",
+        QuotaWindow.Weekly => "weekly",
+        _ => "5h",
+    };
+
+    /// <summary>空安全重置文案（接口 nextResetTime=0 已按缺省解析，此处只防空值）。</summary>
+    private static string FormatResetOrNull(long? resetMs) => resetMs is { } ms ? FormatReset(ms) : "";
 
     /// <summary>epoch ms → 本地时区「MM-dd HH:mm」。</summary>
     internal static string FormatReset(long resetMs)

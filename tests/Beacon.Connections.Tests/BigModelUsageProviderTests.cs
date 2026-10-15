@@ -1,6 +1,7 @@
 using System.Net;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections.Tests;
 
@@ -63,30 +64,28 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(1770000000000, usage.Rolling.ResetMs);
         Assert.Equal(8, usage.Weekly!.Percent);
         Assert.Equal(3, usage.Monthly!.Percent);
-        Assert.Equal("5h", usage.Worst()!.Value.Key); // 最差窗口 = 已用最高（42.5）
+        // 正常态展示窗 = 5h（限流档位，2026-10-15 嵌套口径），不再是「已用最高」
+        Assert.Equal(QuotaWindow.FiveHour,
+            QuotaWindows.Select(usage.Rolling.Percent, usage.Weekly.Percent, usage.Monthly.Percent).Display);
     }
 
     [Fact]
-    public void WorstWindow_PicksHighestPercent_NotFirstAvailable()
+    public async Task GetStateAsync_DisplayFallsBackFiveHourToWeeklyToMonthly()
     {
-        // worst-window 规则（2026-10-13 用户令）：已用最高者胜，不再按 5h→周→月可用性兜底
-        var rollingOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":10}]}""")!;
-        Assert.Equal("5h", rollingOnly.Worst()!.Value.Key);
-        Assert.Equal(10, rollingOnly.Worst()!.Value.Window.Percent);
+        // 正常态展示退让：5h 窗缺（接口只给周/月）→ 展示周窗；再缺 → 月窗（只影响展示，不影响耗尽判定）
+        var (weeklyProvider, _) = Faked(HttpStatusCode.OK,
+            """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20}]}}""");
+        var weeklyState = await weeklyProvider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal("20", weeklyState!.Payload["percent"]);
+        Assert.Equal("weekly", weeklyState.Payload["percent_window"]);
+        Assert.Equal(0.2, weeklyState.Progress!.Value, 5);
 
-        var weeklyOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20}]}""")!;
-        Assert.Equal("weekly", weeklyOnly.Worst()!.Value.Key);
-
-        var monthlyOnly = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TIME_LIMIT","percentage":30}]}""")!;
-        Assert.Equal("monthly", monthlyOnly.Worst()!.Value.Key);
-
-        // 关键回归：5h 低、周高 → 周窗胜出（旧主位口径会错取 5h）
-        var weeklyHigher = BigModelUsageProvider.ParseUsage("""{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":5},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":95},{"type":"TIME_LIMIT","percentage":80}]}""")!;
-        Assert.Equal("weekly", weeklyHigher.Worst()!.Value.Key);
-        Assert.Equal(95, weeklyHigher.Worst()!.Value.Window.Percent);
-
-        var all = BigModelUsageProvider.ParseUsage(Body)!;
-        Assert.Same(all.Rolling, all.Worst()!.Value.Window);
+        var (monthlyProvider, _) = Faked(HttpStatusCode.OK,
+            """{"data":{"limits":[{"type":"TIME_LIMIT","percentage":30}]}}""");
+        var monthlyState = await monthlyProvider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal("30", monthlyState!.Payload["percent"]);
+        Assert.Equal("monthly", monthlyState.Payload["percent_window"]);
+        Assert.Equal(0.3, monthlyState.Progress!.Value, 5);
     }
 
     [Fact]
@@ -203,24 +202,25 @@ public sealed class BigModelUsageProviderTests
         Assert.Contains($"{expectedReset} 重置", state.Summary);
     }
 
-    // ---- worst-window 口径（2026-10-13 用户令：级别/进度条/主数值取已用最高窗并标窗名） ----
+    // ---- 嵌套窗口口径（2026-10-15 用户令：月 ⊇ 周 ⊇ 5h，耗尽外层优先；正常态展示 5h） ----
 
     [Fact]
-    public async Task GetStateAsync_WeeklyHighest_SeverityProgressAndMainValueFollowWeekly()
+    public async Task GetStateAsync_WeeklyHighest_ShowsFiveHourNotWeekly()
     {
-        // 用户实测形态：5h 5%、周 95%、月 80%——旧码按 5h 判级显绿，修复后周窗驱动 Error + 满格
+        // 用户实测形态：5h 5%、周 95%、月 80%——三窗均有余额走正常态，展示窗 = 5h（限流档位），
+        // 不再按「已用最高」取周窗作主数值（2026-10-13 旧口径已废弃）
         var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":5},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":95},{"type":"TIME_LIMIT","percentage":80}]}}""";
         var (provider, _) = Faked(HttpStatusCode.OK, body);
 
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
-        Assert.Equal(Severity.Error, state!.Severity); // 95 ≥ error 90（最差窗）
-        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
-        Assert.Equal(0.95, state.Progress!.Value, 5);
-        Assert.Equal("95", state.Payload["percent"]);
-        Assert.Equal("weekly", state.Payload["percent_window"]);
-        Assert.StartsWith("GLM · 周 窗口已用 95%", state.Summary);
-        Assert.Contains("5h 5%", state.Summary); // 三窗明细保留
+        Assert.Equal(Severity.Success, state!.Severity); // 5h 5% < warn 60
+        Assert.Equal(LifecycleState.Success, state.Lifecycle);
+        Assert.Equal(0.05, state.Progress!.Value, 5);
+        Assert.Equal("5", state.Payload["percent"]);
+        Assert.Equal("5h", state.Payload["percent_window"]);
+        Assert.StartsWith("GLM · 5h 窗口已用 5%", state.Summary);
+        Assert.Contains("周 95%", state.Summary); // 三窗明细保留
         Assert.Contains("月 80%", state.Summary);
     }
 
@@ -233,39 +233,50 @@ public sealed class BigModelUsageProviderTests
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
         Assert.Equal(Severity.Success, state!.Severity);
-        Assert.Equal(0.3, state.Progress!.Value, 5); // 最差窗=月 30%
-        Assert.Equal("30", state.Payload["percent"]);
-        Assert.Equal("monthly", state.Payload["percent_window"]);
+        Assert.Equal(0.1, state.Progress!.Value, 5); // 展示窗 = 5h 10%
+        Assert.Equal("10", state.Payload["percent"]);
+        Assert.Equal("5h", state.Payload["percent_window"]);
     }
 
     [Fact]
     public async Task GetStateAsync_OnlyMonthlyOver_Error()
     {
+        // 月 95 未达 100（不耗尽）→ 正常态展示 5h 10%，级别按 5h 判
         var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":10},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20},{"type":"TIME_LIMIT","percentage":95}]}}""";
         var (provider, _) = Faked(HttpStatusCode.OK, body);
 
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
-        Assert.Equal(Severity.Error, state!.Severity);
-        Assert.Equal(0.95, state.Progress!.Value, 5);
-        Assert.Equal("95", state.Payload["percent"]);
-        Assert.Equal("monthly", state.Payload["percent_window"]);
-        Assert.StartsWith("GLM · 月 窗口已用 95%", state.Summary);
+        Assert.Equal(Severity.Success, state!.Severity);
+        Assert.Equal(0.1, state.Progress!.Value, 5);
+        Assert.Equal("10", state.Payload["percent"]);
+        Assert.Equal("5h", state.Payload["percent_window"]);
+        Assert.StartsWith("GLM · 5h 窗口已用 10%", state.Summary);
     }
 
     [Fact]
     public async Task GetStateAsync_WeeklyAndMonthlyAt100_ErrorFullBar()
     {
-        // 用户令测试形态：5h 5%、周 100%、月 100%——最差窗 100% ≥ error 90 → Error + 满格（bigmodel 无已尽分支）
+        // 用户令测试形态：5h 5%、周 100%、月 100%——嵌套下月耗尽 ⇒ 最高级别；
+        // 旧口径三窗取最差并列先命中 weekly，修复后 percent_window 必须为 monthly
         var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":5},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":100},{"type":"TIME_LIMIT","percentage":100}]}}""";
         var (provider, _) = Faked(HttpStatusCode.OK, body);
 
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
 
         Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
         Assert.Equal(1.0, state.Progress!.Value, 5);
-        Assert.Equal("100", state.Payload["percent"]); // 最差窗已用 %
-        Assert.Equal("weekly", state.Payload["percent_window"]);
+        Assert.Equal("100", state.Payload["percent"]);
+        Assert.Equal("monthly", state.Payload["percent_window"]); // 真实耗尽层 = 月（外层优先）
+        Assert.Equal("月", state.Payload["exhausted_window"]);
+        Assert.Equal("月额度已尽", state.Payload["value_text"]);
+        Assert.Contains("月度", state.Payload["exhausted_reason"]);
+        Assert.StartsWith("GLM · 月 额度已耗尽", state.Summary);
+        // 内层不得再被读成「还有余额」：多窗形态所需键一律不出
+        Assert.False(state.Payload.ContainsKey("rolling_percent"));
+        Assert.False(state.Payload.ContainsKey("weekly_percent"));
+        Assert.False(state.Payload.ContainsKey("monthly_percent"));
     }
 
     [Fact]
@@ -287,7 +298,9 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(59, usage.Rolling!.Percent);
         Assert.Equal(1791604507943, usage.Rolling.ResetMs);
         Assert.Equal(32, usage.Monthly!.Percent); // MCP 月度口径
-        Assert.Same(usage.Rolling, usage.Worst()!.Value.Window); // 5h 窗已用最高即最差窗
+        // 正常态展示窗 = 5h（限流档位，2026-10-15 嵌套口径），不再是「已用最高」
+        Assert.Equal(QuotaWindow.FiveHour,
+            QuotaWindows.Select(usage.Rolling.Percent, usage.Weekly?.Percent, usage.Monthly.Percent).Display);
     }
 
     [Fact]

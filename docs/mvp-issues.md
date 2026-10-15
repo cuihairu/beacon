@@ -597,10 +597,13 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **GLM（用户令：现在显示月用量是错的，z.ai GLM 是 5 小时滚动窗口）**：quota/limit 真 Key 实测——5h 窗
   （TOKENS_LIMIT unit=3 number=5）**只有 percentage+nextResetTime 无绝对 token 数**；月度 TIME_LIMIT
   (unit=5) 才带 usage/currentValue/remaining（MCP 调用数口径）；1302 限流响应实测只有
-  「您的账户已达到速率限制」一句、**无窗口数字**（用户猜测不成立），监控接口是唯一数据源。改法：主位
+  「您的账户已达到速率限制」一句、**无窗口数字**（用户猜测不成立），监控接口是唯一数据源。
+  **勘误（2026-10-15 用户令）**：三窗是**嵌套**关系（月 ⊇ 周 ⊇ 5h）而非并列，「GLM 是 5 小时滚动窗口」
+  的表述与实测不符——外层耗尽 ⇒ 内层必然耗尽，判定须外层优先，详见批3-补62。改法：主位
   =rolling→weekly→monthly 优先级（原 WorstPercent 三窗取最差会让月度占主）——Progress/percent 主数值/
   级别判定全部取主位窗口，payload 加 percent_window/monthly_reset_ms，摘要改「5h 窗口已用 N% · MM-dd
   HH:mm 重置 · 周 X% · 月 Y%」。真 Key 原样响应（整数百分比+usageDetails 数组）锁进回归夹具。
+  **2026-10-15 起「主位」仅对正常态成立**（=展示窗 5h）；耗尽态改按嵌套外层优先（批3-补62）。
 - **验收**： Connections 318 绿（+19）；组件截图待装机走查（小米需先录控制台 Cookie；GLM 直接生效）。
 
 ### 批3-补9 独立悬浮框进度条消失 + 快捷面板底部裁切修复（2026-10-10 用户批7）
@@ -1307,3 +1310,33 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **本地门**：parse CLEAN + Add-Type CLEAN + BOM 在（efbbbf）+ brace delta 0 / paren +7（两侧同增，平衡）+ 全量 1078 绿（Core 368 / Actions 27 / Connections 652 / Storage 31）。
 - **验证**：nightly 38669041567（819b257）全绿收官——V4 复证绿 + X1/X2/X3 全过（右键 Unpin 落盘 + GLM tile 移除/回归 + 重启持久化与两入口读态一致）+ Y 面全绿，run conclusion=success。env 泄漏修后 X 面如期全绿，锁因闭环。
 - **遗留**：行 50「无打断」观感与 Toast 呈现面、行 31 唤起气泡呈现维持装机半。
+### 批3-补62 额度窗口嵌套判定：耗尽态外层优先 + 正常态展示 5h（2026-10-15 用户缺陷单「额度窗口取值逻辑错误」）
+- **缺陷（bigmodel/GLM，用户实测）**：三窗月 ⊇ 周 ⊇ 5h 是**嵌套**关系（月无余额 ⇒ 周、5h 必然耗尽），
+  旧码 `PlanUsage.Worst()` 按「已用最高」取主窗、迭代序 5h→周→月**并列取先**——三窗并列 100% 时命中
+  5h，把「月度额度已耗尽」报成「5h 已用」，界面遂把内层读成「还有余额」（用户原话：月没有余额现在
+  还去读五小时的，这不对）。
+- **同型缺陷（ark/火山方舟）**：①已尽分支 `ExhaustedWindows` 按**重置时间最早**命名主窗——嵌套下外层
+  重置更晚，月尽而周重置更早 ⇒ 报成「周」，与判定口径不符；②已尽态 payload 保留各窗 `*_percent`，
+  `WidgetValueHint.MultiWindow`（需 ≥2 键即渲）把内层余量渲进 tile 主位——周 100%/5h 3% 的数值位读成
+  「5h 还有 97%」。
+- **修法**：判定收敛到 Core 单点 `QuotaWindows.Select`（`src/Beacon.Core/Services/QuotaWindows.cs`，
+  月→周→5h 外层优先判尽，命中即返回不再看内层；否则正常态展示 5h，缺失退周、月；耗尽边界 ≥100
+  同 `IsExhausted`）。bigmodel 已尽分支恒 Error+满格且**只报真实耗尽层**：payload 出
+  `value_text`（WidgetValueHint 链最前）/`exhausted_window`/`exhausted_reason`/`percent_window`，
+  **不出任何 `*_percent`**——MultiWindow 因不足 2 键返回 null，内层不再被读成「有余额」，摘要改
+  「{窗} 额度已耗尽（{重置}）」；正常态级别/进度条/主数值取展示窗（5h=限流档位，Z.ai 5h 耗尽触发
+  300s 降级），三窗明细仍留 Summary 与 payload 供 L3 详情。ark 已尽分支 `ExhaustedWindows` 改按嵌套
+  层序（月→周→5h，首项=主窗，`exhausted_windows` 同序列出全部尽窗），并补 `value_text` +
+  `exhausted_reason`。`PlanUsage.Worst()` 随之删除（口径单点化）。
+- **降级联动（用户令 #4）**：仓库内**无**模型回落/下一档机制（首选/备用/switchModel/preferred_model
+  全 grep 零命中），故按状态忠实上报交付——耗尽恒 `Severity.Error` + `LifecycleState.Failed` +
+  `exhausted_reason` 报真实耗尽层（月尽=「月度额度已耗尽（月 ⊇ 周 ⊇ 5h：周与 5h 随之归零）」），
+  月/周耗尽不伪装成 5h；真实档位切换（z.ai_flash→下一档）需首选-备用表，待用户拍板。
+- **未改（口径分叉留拍板）**：ark **正常态**维持 2026-10-13 用户令的「最差窗口优先」（`WorstWindow`，
+  6 条测试锁定「周/月近满不得被新 5h 窗显绿」）——2026-10-15 令的「一般有额度就显示 5h」若也套
+  ark 正常态，会重新引入该用户报的遮盖问题，故本批只统一**耗尽**判定，ark 正常态是否跟随待拍板。
+- **口径勘误**：批3-补8「z.ai GLM 是 5 小时滚动窗口」表述与实测不符、其「主位=rolling→weekly→monthly」
+  仅对正常态成立——已就地标注勘误与覆盖关系。
+- **门禁**：Core 381 / Actions 27 / Connections 653 / Storage 31 全绿（净增 14 例：`QuotaWindows` 判定
+  12 例=月尽/周尽/5h 尽/全有 四类形态各一 + 三窗并列 100% 回归 + 边界/缺窗退让；ark 重置序外层优先
+  回归 1 例）。tile 主位文案呈现面待装机走查。

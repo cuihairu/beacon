@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -174,12 +175,14 @@ public sealed class ArkUsageProvider : IWidgetProvider
 
         // bug 批9 2026-10-10：任一窗已用 ≥100% 即按「已尽」展示，明确标哪个窗、何时重置——
         // 周/月尽不得被新 5h 窗的低用量掩盖（用户实测：周/月尽、新 5h 窗刚重置，旧码显示健康）。
-        // 多窗尽按重置时间最早取首窗命名，全部尽窗列 payload["exhausted_windows"]。
+        // 嵌套窗口口径（2026-10-15 用户令，同 bigmodel）：月 ⊇ 周 ⊇ 5h，多窗尽按**外层优先**命名主摘要
+        // （不是重置时间最早——嵌套下内层必随之耗尽，重置序会偏向内层），全部尽窗列 payload["exhausted_windows"]。
         var exhausted = ExhaustedWindows(usage);
         if (exhausted.Count > 0)
         {
             var (exhaustedName, exhaustedWindow) = exhausted[0];
             var exhaustedResetText = exhaustedWindow.ResetSeconds is { } exhaustedReset ? FormatReset(exhaustedReset) : null;
+            var reason = QuotaWindows.Select(usage.Session?.Percent, usage.Weekly?.Percent, usage.Monthly?.Percent).ExhaustedReason;
             return new WidgetState
             {
                 WidgetId = widget.Id,
@@ -194,9 +197,13 @@ public sealed class ArkUsageProvider : IWidgetProvider
                 DetailUrl = ConsoleUrl,
                 Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["percent"] = Format(exhaustedWindow.Percent), // tile 主数值（已尽窗已用 %）
+                    // 数值位直接报耗尽层（value_text 在 WidgetValueHint 链最前）：外层已尽时内层 percent
+                    // 会被多窗形态读成「还有余额」（如 5h 3%），报真实原因、不伪装（2026-10-15 用户令 #3/#4）
+                    ["value_text"] = $"{exhaustedName}额度已尽",
+                    ["percent"] = Format(exhaustedWindow.Percent), // 已尽窗已用 %
                     ["exhausted"] = "1",
                     ["exhausted_window"] = exhaustedName,
+                    ["exhausted_reason"] = reason ?? "",
                     ["exhausted_windows"] = string.Join(",", exhausted.Select(entry => entry.Name)),
                     ["rolling_percent"] = usage.Session is { } sessionWindow ? Format(sessionWindow.Percent) : "",
                     ["weekly_percent"] = usage.Weekly is { } weeklyWindow ? Format(weeklyWindow.Percent) : "",
@@ -557,23 +564,27 @@ public sealed class ArkUsageProvider : IWidgetProvider
         return null;
     }
 
-    /// <summary>已用尽窗口（Percent ≥ 100），按重置时间升序（无重置的排末）——主摘要取首窗（最早恢复）。</summary>
+    /// <summary>
+    /// 已用尽窗口（已用占比 ≥100，边界同 <see cref="QuotaWindows.IsExhausted"/>），按嵌套层序**外层优先**
+    /// （月 → 周 → 5h）——主摘要取首窗。旧口径按重置时间最早命名，嵌套下外层重置更晚，会偏到内层
+    /// （月尽但周重置更早 ⇒ 报成「周」），与 <see cref="QuotaWindows.Select"/> 的判定不符，故按层序。
+    /// </summary>
     private static List<(string Name, ArkUsageWindow Window)> ExhaustedWindows(ArkPlanUsage usage)
     {
         var windows = new List<(string Name, ArkUsageWindow Window)>();
-        if (usage.Session is { } session && session.Percent >= 100)
-        {
-            windows.Add(("5h 窗", session));
-        }
-        if (usage.Weekly is { } weekly && weekly.Percent >= 100)
-        {
-            windows.Add(("周", weekly));
-        }
-        if (usage.Monthly is { } monthly && monthly.Percent >= 100)
+        if (usage.Monthly is { } monthly && QuotaWindows.IsExhausted(monthly.Percent))
         {
             windows.Add(("月", monthly));
         }
-        return windows.OrderBy(entry => entry.Window.ResetSeconds ?? long.MaxValue).ToList();
+        if (usage.Weekly is { } weekly && QuotaWindows.IsExhausted(weekly.Percent))
+        {
+            windows.Add(("周", weekly));
+        }
+        if (usage.Session is { } session && QuotaWindows.IsExhausted(session.Percent))
+        {
+            windows.Add(("5h 窗", session));
+        }
+        return windows;
     }
 
     /// <summary>级别阈值：最差窗口 ≥error_percent → Error，≥warn_percent → Warning，否则 Success。</summary>

@@ -464,6 +464,8 @@ public sealed class ArkUsageProviderTests
         Assert.Equal("100", state.Payload["percent"]);
         Assert.Equal("周", state.Payload["exhausted_window"]);
         Assert.Equal("周", state.Payload["exhausted_windows"]);
+        Assert.Equal("周额度已尽", state.Payload["value_text"]); // 数值位报耗尽层，不被 5h 3% 读成「有余额」
+        Assert.Contains("周度", state.Payload["exhausted_reason"]);
         Assert.Equal("3", state.Payload["rolling_percent"]); // 各窗余量仍留 payload 供 L3 详情
     }
 
@@ -482,7 +484,7 @@ public sealed class ArkUsageProviderTests
     }
 
     [Fact]
-    public void ToState_TwoWindowsExhausted_NamesEarliestReset()
+    public void ToState_TwoWindowsExhausted_NamesOutermost()
     {
         var usage = ArkUsageProvider.ParseUsage("""
             {"Result":{"QuotaUsage":[{"Level":"weekly","Percent":100,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":100,"ResetTimestamp":1771500000}]}}
@@ -490,7 +492,21 @@ public sealed class ArkUsageProviderTests
 
         var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
 
-        Assert.Equal("月", state.Payload["exhausted_window"]); // 多窗尽按最早重置命名主摘要
+        Assert.Equal("月", state.Payload["exhausted_window"]); // 嵌套外层优先命名主摘要
+        Assert.Equal("月,周", state.Payload["exhausted_windows"]);
+    }
+
+    [Fact]
+    public void ToState_WeeklyResetsEarlierThanMonthly_StillNamesMonthly()
+    {
+        // 外层优先不看重置序：月尽（重置更晚）⇒ 周必随之耗尽，不得按重置时间偏到周（旧口径缺陷形态）
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[{"Level":"weekly","Percent":100,"ResetTimestamp":1771000000},{"Level":"monthly","Percent":100,"ResetTimestamp":1772000000}]}}
+            """)!;
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal("月", state.Payload["exhausted_window"]);
         Assert.Equal("月,周", state.Payload["exhausted_windows"]);
     }
 
@@ -511,7 +527,7 @@ public sealed class ArkUsageProviderTests
     [Fact]
     public void ToState_WeeklyAndMonthlyAt100_SessionFresh_ExhaustedError()
     {
-        // 用户令测试形态：5h 5%、周 100%、月 100%——任一窗 ≥100 走已尽分支（恒定 Error + 满格，周/月皆尽取最早重置）
+        // 用户令测试形态：5h 5%、周 100%、月 100%——任一窗 ≥100 走已尽分支（恒定 Error + 满格，周/月皆尽取最外层）
         var usage = ArkUsageProvider.ParseUsage("""
             {"Result":{"QuotaUsage":[{"Level":"session","Percent":5,"ResetTimestamp":1771000000},{"Level":"weekly","Percent":100,"ResetTimestamp":1772000000},{"Level":"monthly","Percent":100,"ResetTimestamp":1771500000}]}}
             """);
@@ -521,7 +537,7 @@ public sealed class ArkUsageProviderTests
         Assert.Equal(Severity.Error, state.Severity);
         Assert.Equal(1.0, state.Progress!.Value, 5);
         Assert.Equal("100", state.Payload["percent"]); // 已尽窗已用 %
-        Assert.Equal("月", state.Payload["exhausted_window"]); // 月重置更早（1771500000 < 1772000000）
+        Assert.Equal("月", state.Payload["exhausted_window"]); // 嵌套外层优先（与重置序无关）
         Assert.Equal("月,周", state.Payload["exhausted_windows"]);
     }
 
