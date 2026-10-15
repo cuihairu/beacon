@@ -39,13 +39,14 @@ public sealed class WidgetHostTests
             }
         }
 
-        public WidgetHost CreateHost(RefreshScheduler scheduler)
+        public WidgetHost CreateHost(RefreshScheduler scheduler, IStateStore? stateStore = null)
         {
             Config.ConnectionItems.Add(TestData.Connection());
             Config.WidgetItems.Add(TestData.Widget());
             var host = new WidgetHost(
                 Bus, Clock, scheduler, Cache, Config, new InMemorySecretStore(),
-                new FakeResolver(new Dictionary<string, IWidgetProvider> { ["test.type"] = Provider }));
+                new FakeResolver(new Dictionary<string, IWidgetProvider> { ["test.type"] = Provider }),
+                stateStore: stateStore);
             Bus.Subscribe<WidgetStateChanged>(evt =>
             {
                 lock (_gate)
@@ -81,6 +82,42 @@ public sealed class WidgetHostTests
         var health = Assert.Single(fixture.Healths);
         Assert.Equal(ConnectionHealthState.Healthy, health.State);
         Assert.Same(expected, fixture.Cache.LoadStates("conn-1")["w-1"]);
+    }
+
+    [Fact]
+    public async Task RefreshSuccess_PublishesThroughStore_SnapshotUpdated()
+    {
+        // 发布点经 StateStore（Phase 1）：总线事件契约不变，快照同步落 Store
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var expected = TestData.State(severity: Severity.Info, summary: "5 PRs");
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(expected);
+
+        await host.RefreshWidgetAsync("w-1");
+
+        var stateEvent = Assert.Single(fixture.States);
+        Assert.Same(expected, stateEvent.State);
+        Assert.Same(expected, store.Get("w-1"));
+    }
+
+    [Fact]
+    public async Task RefreshTwice_IdenticalContent_SuppressStore_PublishesOnce()
+    {
+        // 去重开关在真实管线中的行为面（映射与迁移 §6.2 拍板项的前置取证）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus, suppressUnchanged: true);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var state = TestData.State(summary: "same");
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(state);
+
+        await host.RefreshWidgetAsync("w-1");
+        await host.RefreshWidgetAsync("w-1");
+
+        Assert.Single(fixture.States); // 内容未变：第二次不重发
+        Assert.Same(state, store.Get("w-1"));
     }
 
     [Fact]

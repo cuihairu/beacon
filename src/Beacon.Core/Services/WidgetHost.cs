@@ -6,12 +6,14 @@ using Microsoft.Extensions.Logging;
 namespace Beacon.Core.Services;
 
 /// <summary>
-/// Widget 数据管线（B-206/B-207）：调度器回调 → Provider 拉取 → 缓存落盘 → 事件发布。
+/// Widget 数据管线（B-206/B-207）：调度器回调 → Provider 拉取 → 缓存落盘 → 状态发布。
 /// 连接级失败转 ConnectionHealthChanged + 陈旧状态重发布（灰灯 + Last update，不甩异常，RFC §6.2.6/§12）。
+/// 状态发布点经 IStateStore（Phase 1：发布职责移入 Store，事件契约不变；默认直通，去重启用待拍板）。
 /// </summary>
 public sealed class WidgetHost : IAsyncDisposable
 {
     private readonly IEventBus _bus;
+    private readonly IStateStore _store;
     private readonly IClock _clock;
     private readonly RefreshScheduler _scheduler;
     private readonly ICacheStore _cache;
@@ -30,9 +32,11 @@ public sealed class WidgetHost : IAsyncDisposable
         IConfigurationStore config,
         ISecretStore secrets,
         IWidgetProviderResolver resolver,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        IStateStore? stateStore = null)
     {
         _bus = bus;
+        _store = stateStore ?? new StateStore(bus);
         _clock = clock;
         _scheduler = scheduler;
         _cache = cache;
@@ -135,7 +139,7 @@ public sealed class WidgetHost : IAsyncDisposable
             state = DebugInjection.OverrideSeverity(state); // debug 注入面：BEACON_DEBUG_SEVERITY=critical 时改判（缓存/事件/聚合全下游同判）
             _cache.SaveState(connection.Id, state);
             PublishHealth(connection.Id, ConnectionHealthState.Healthy);
-            _bus.Publish(new WidgetStateChanged(state));
+            _store.Update(state);
             _logger?.LogInformation("Widget {WidgetId} refreshed ok: {Summary}", widgetId, state.Summary); // 逐跳诊断：拉取成功一行
             return true;
         }
@@ -187,7 +191,7 @@ public sealed class WidgetHost : IAsyncDisposable
             // builtin.connection-degraded 在真正的「连接降级」（有数据后断网）路径永不开火
             // （场景 F 首跑实证）。tile 灰显由 ConnectionHealthy 驱动，不受 severity 抬升影响。
             : cached with { IsStale = true, ConnectionHealthy = false, Severity = cached.Severity.Max(Severity.Warning) };
-        _bus.Publish(new WidgetStateChanged(state));
+        _store.Update(state);
     }
 
     public async ValueTask DisposeAsync()

@@ -139,8 +139,8 @@
 ### Phase 1 响应式状态与数据流（5 条）
 
 - [ ] 明确 State、Event、Command 与 Operation Result 四类概念（待落地 hash）
-- [ ] 完善状态变更检测（待落地 hash）
-- [ ] 增加或整理统一的 State Store 与 Selector（待落地 hash）
+- [ ] 完善状态变更检测（检测机制已落地旁路：StateStore 内容键排除 FetchedAt、stale/健康翻转仍发布并有单测锚定；去重启用属行为变化待拍板 §6.2）
+- [ ] 增加或整理统一的 State Store 与 Selector（Store 契约+实现+15 测试已落地：Abstractions/IStateStore.cs + Services/StateStore.cs，WidgetHost 发布点已改经 Store 且事件契约不变；Selector 收编未动）
 - [ ] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（待落地 hash）
 - [ ] 确保 UI 只消费状态、不直接请求外部数据（待落地 hash）
 
