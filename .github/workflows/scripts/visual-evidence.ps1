@@ -376,12 +376,17 @@ public static class WinEnum
         SendInput(1, new[] { up }, size);
         System.Threading.Thread.Sleep(60);
     }
-    // 全局热键和弦（如 Ctrl+Alt+B）：修饰键按下 → 主键敲击 → 修饰键抬起
-    public static void SendChord(ushort modifier, ushort key)
+    // 全局热键和弦（如 Ctrl+Alt+B）：修饰键按下 → 主键敲击 → 修饰键抬起。
+    // modifier2 可选：注册热键 Ctrl+Alt+B 要两个修饰键——旧签名只发 Ctrl+B 与注册热键
+    // 恒不匹配，K1 一直被 WM_HOTKEY 兜底带着走（38743014862 实证：type 修 1 后 Esc
+    // 可达而和弦仍不触发，根因即和弦缺 Alt）。
+    public static void SendChord(ushort modifier, ushort key, ushort modifier2 = 0)
     {
         SendKeyDown(modifier);
+        if (modifier2 != 0) { SendKeyDown(modifier2); }
         SendKeyDown(key);
         SendKeyUp(key);
+        if (modifier2 != 0) { SendKeyUp(modifier2); }
         SendKeyUp(modifier);
     }
     // 单击注入（前景不被打断断言用）：绝对坐标 move+down+up
@@ -2472,7 +2477,7 @@ try
     $before = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count
     if ($before -ne 0) { throw "断言失败（场景 K1）：面板在热键前已可见（$before）" }
     $via = "SendInput 和弦"
-    [WinEnum]::SendChord(0x11, 0x42) # VK_CONTROL + VK_B
+    [WinEnum]::SendChord(0x11, 0x42, 0x12) # VK_CONTROL + VK_B + VK_MENU(Alt)——注册热键是 Ctrl+Alt+B，缺 Alt 恒不匹配
     $panel = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(3)
     while ((Get-Date) -lt $deadline)
@@ -3913,7 +3918,7 @@ try
     if (!$settings) { Save-FullScreenshot "W-FAIL-no-settings.png"; throw "断言失败（场景 W 前置）：设置窗未出现" }
     # 唤起面板：SendInput 和弦优先，WM_HOTKEY 直驱兜底（场景 K 同款双路）
     $panel = [IntPtr]::Zero
-    [WinEnum]::SendChord(0x11, 0x42)
+    [WinEnum]::SendChord(0x11, 0x42, 0x12)
     $deadline = (Get-Date).AddSeconds(3)
     while ((Get-Date) -lt $deadline)
     {
@@ -3975,7 +3980,7 @@ try
     # 隐藏则经热键重开（SendInput 和弦 + WM_HOTKEY 双路，与 W1 前置同款）——重开见 English 即切换生效
     if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -lt 1)
     {
-        [WinEnum]::SendChord(0x11, 0x42)
+        [WinEnum]::SendChord(0x11, 0x42, 0x12)
         $deadline = (Get-Date).AddSeconds(3)
         while ((Get-Date) -lt $deadline)
         {
