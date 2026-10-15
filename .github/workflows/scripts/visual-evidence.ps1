@@ -198,6 +198,14 @@ public static class WinEnum
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool SystemParametersInfo(uint action, uint param, string value, uint init);
     public static void SetWallpaper(string path) { SystemParametersInfo(20, 0, path, 3); }
 
+    // 登录自启链代验（todo 行 96）：把注册表 Run 值**原样**交给 ShellExecute——登录时 explorer
+    // 处理 Run 键走的就是这条 API。返回 >32 为成功，≤32 是失败码（2=文件未找到 / 5=拒绝访问 /
+    // 31=无关联），随返回值带出便于断言定位。旧实现用 rundll32 shell32.dll,ShellExec_RunDll，
+    // 该入口在新 shell32 仅序号导出、按名解析失败（38750239155 取证：RunDLL「Missing entry:
+    // ShellExec_RunDll」对话框），故改直调文档化 API。
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr ShellExecuteW(IntPtr hwnd, string op, string file, string pars, string dir, int show);
+    public static int ShellExec(string command) { return (int)ShellExecuteW(IntPtr.Zero, "open", command, null, null, 1); }
+
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
@@ -2743,11 +2751,16 @@ try
     }
     Write-Host "场景 M1 通过：HKCU Run\Beacon = $runVal"
     Stop-Beacon
-    # M3 登录启动链代验（todo 行 96 半项 CI 代验）：用 shell 同款执行器跑注册表原样字符串——
-    # rundll32 ShellExec_RunDll 走的 ShellExecute API 与登录时 explorer 处理 Run 键同一条路。
-    # 进程被拉起即证「Run 值可被 shell 直接执行」（引号/路径串回归在案）；「真登录会话由
-    # explorer 调度」属 OS 行为，留装机。
-    Start-Process -FilePath "$env:WINDIR\System32\rundll32.exe" -ArgumentList @('shell32.dll,ShellExec_RunDll', $runVal) | Out-Null
+    # M3 登录启动链代验（todo 行 96 半项 CI 代验）：把注册表 Run 值原样交给 ShellExecute——
+    # 与登录时 explorer 处理 Run 键同一条 API（rundll32 ShellExec_RunDll 入口按名不可解析，
+    # 38750239155 已废）。进程被拉起即证「Run 值可被 shell 直接执行」（引号/路径串回归在案）；
+    # 「真登录会话由 explorer 调度」属 OS 行为，留装机。
+    $rc = [WinEnum]::ShellExec($runVal)
+    if ($rc -le 32)
+    {
+        Save-FullScreenshot "M-FAIL-shellexec-code.png"
+        throw "断言失败（场景 M3）：ShellExecute 返回 $rc（≤32 即失败码，2=未找到 5=拒绝访问）——Run 值不可执行（值：'$runVal'）"
+    }
     $booted = $false
     $deadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $deadline)
@@ -2757,10 +2770,10 @@ try
     }
     if (!$booted)
     {
-        Save-FullScreenshot "M-FAIL-rundll-no-boot.png"
-        throw "断言失败（场景 M3）：Run 值经 ShellExec_RunDll 20s 未拉起 Beacon 进程（值：'$runVal'）——启动串不可执行（引号/路径回归）"
+        Save-FullScreenshot "M-FAIL-shellexec-no-boot.png"
+        throw "断言失败（场景 M3）：ShellExecute 返回 $rc（成功）但 20s 未拉起 Beacon 进程（值：'$runVal'）——启动后即退？"
     }
-    Write-Host "场景 M3 通过：Run 值经 shell 执行器拉起 Beacon 进程（启动串可执行，真登录会话调度留装机）"
+    Write-Host "场景 M3 通过：Run 值经 ShellExecute 拉起 Beacon 进程（启动串可执行，真登录会话调度留装机）"
     Write-GConfig "" "off" 1.0 $false
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 12
