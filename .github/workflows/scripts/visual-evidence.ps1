@@ -3514,6 +3514,10 @@ try
     $env:BEACON_DEBUG_CRASH = "90"
     $vProc = Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -PassThru
     # 轮询到 critical 记录才断言：首快照若恰是 Warning（首跳失败或冷却武装中）会误判成「零 critical」
+    # 38654763928 红实证：PS 5.1 ConvertFrom-Json 把顶层数组读成嵌套一层（[[r1,r2]]）——.Count=1 而
+    # .severity 成员枚举出 "critical critical"、.id 枚举出两条，"-eq critical" 全不命中→恒红。app 侧
+    # SaveAsync(IReadOnlyList<NotificationRecord>) 经 System.Text.Json 只可能写扁平数组（原样归档为证），
+    # 故此处摊平一层再过滤；severity 判定改 -contains（标量与枚举两态皆命中）。
     $vRecords = @()
     $vCrit = @()
     $deadline = (Get-Date).AddSeconds(60)
@@ -3521,8 +3525,10 @@ try
     {
         if (Test-Path $vNotifPath)
         {
-            $vRecords = @(Get-Content $vNotifPath -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
-            $vCrit = @($vRecords | Where-Object { "$($_.severity)" -eq "critical" })
+            $vJson = Get-Content $vNotifPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($vJson -is [System.Array] -and $vJson.Count -ge 1 -and $vJson[0] -is [System.Array]) { $vJson = @($vJson[0]) }
+            $vRecords = @($vJson | Where-Object { $_.sourceWidgetId -eq "bigmodel.usage:GLM" })
+            $vCrit = @($vRecords | Where-Object { @($_.severity) -contains "critical" })
             if ($vCrit.Count -ge 1) { break }
         }
         Start-Sleep -Seconds 3
@@ -3534,7 +3540,7 @@ try
         Copy-Item $vLogPath (Join-Path $evidence "beacon-V4-fail.log") -Force -ErrorAction SilentlyContinue
         $sevDump = ($vRecords | ForEach-Object { "$($_.severity)@id=$($_.id)" }) -join " | "
         Save-FullScreenshot "V-FAIL-critical-record.png"
-        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1；GLM 记录 $($vRecords.Count) 条：$sevDump）——首跳刷新失败致 Warning 先行投递+15min 冷却武装，注入 Critical 被去重（行 50 Toast 半回归）"
+        throw "断言失败（场景 V4）：GLM Critical 通知记录 $($vCrit.Count) 条（期望恰 1；GLM 记录 $($vRecords.Count) 条：$sevDump）——PS 5.1 嵌套读已摊平仍无 critical：读 notifications-V4-fail.json 原样与 beacon-V4-fail.log 定因（行 50 Toast 半回归）"
     }
     Write-Host "场景 V4 通过：注入 Critical → 通知引擎恰 1 条 critical 记录（connection-degraded 跨界）——Toast 引擎面在案，呈现面同 F5 转装机"
     # V3 崩溃兜底（注入点 = 启动后 90s）：等「DispatcherQueue unhandled exception」落日志——注入走
