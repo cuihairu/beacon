@@ -1358,3 +1358,12 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **二级缺陷（467bfa7 修）**：`SendChord(0x11, 0x42)` 只发 Ctrl+B，而应用注册热键是 **Ctrl+Alt+B**（`App.xaml.cs:295` 默认值）——和弦与注册热键恒不匹配，K1 从首跑起即被 WM_HOTKEY 直驱兜底带着走。`SendChord` 增第三参 `modifier2`，三处 Ctrl+Alt+B 站点补 `0x12`（VK_MENU）；Ctrl+A 单修饰键站点（场景 Z）不受影响。
 - **W2 隐患顺手封**：W2 面板重开处 `WM_HOTKEY` Post 原无条件兜底发射——和弦一旦真生效，toggle 会把已唤起的面板再关掉；补「面板未在才兜底」守卫（W1/K1 原本就有同款守卫）。
 - **验收转化**：todo 行 62 注释升级（Esc 半转「已代验」，仅余 100ms 精确计时装机半）。
+
+### 批3-补65 键盘注入全链兑现：K1 和弦真通过 + 四处新取证面（H5b/H6/R3/M3）（2026-10-15 patrol PATROL1015R2，run 38750239155，467bfa7）
+- **K1 首次真通过（SendInput 分支）**：`场景 K1 通过：SendInput Ctrl+Alt+B 和弦唤起快速面板（全局键盘注入可用，注册+触发全链实证）`——批3-补64 的两处叠加缺陷（INPUT.type=0 + 和弦缺 Alt）修完后，全局热键「注册→合成和弦→WndProc 触发」全链在 CI 内闭合，WM_HOTKEY 直驱降为纯兜底。行 14/36（已勾）的全局唤起证据由「应用侧链 + 兜底」升级为「真实键盘链」。
+- **H5b 空白穿透宿主裁决（行 65）**：`WM_NCHITTEST probe tile行=1 右环带=-1 底环带=-1` 与期望一致——`PinnedHostWindow.WndProc` 命中区（client ∈ [0,行高)×[0,命中宽)）=HTCLIENT、外框 chrome 环带=HTTRANSPARENT。以探针直问取代注入点击（无 z 序/焦点竞态）；HTTRANSPARENT 的 Win32 语义即点击落到下层窗，真实点击观感仍留装机。
+- **H6 悬浮 tile 拖放全链（行 67）**：`120,120 → 200,180` 窗随动（远过 3px 死区）→ widgets.json `floatingX/Y=200,180` 落盘（PersistPosition 双写）→ 重启还原到 200,180。旧「合成拖拽不可靠」先例（mouse_event 时代）就此按 SendInput 口径改判。
+- **R3 胶囊拖动落盘（行 39）**：`40,40 → 90,81` 窗随动（远过 6 DIP 单击死区，不误触 L2）→ shell-state.json `offsetDips=90,81`（TopLeft 象限 offset=窗位）→ 重启还原闭环。场景 R 头注「拖动保存半需装机」按实证改判。
+- **M3 登录启动链（行 96）红→修**：`rundll32 shell32.dll,ShellExec_RunDll` 在新 shell32 仅序号导出、按名解析失败——取证截图坐实 RunDLL「Missing entry: ShellExec_RunDll」对话框，且该对话框残留到作业清理（`Terminate orphan process: pid (8356) (rundll32)`）。改用文档化 `ShellExecuteW`（WinEnum.ShellExec，4d10299）：把注册表 Run 值原样交给 ShellExecute，返回 ≤32 即失败码随断言带出。
+- **W2 隐患封口（467bfa7）**：W2 面板重开处 WM_HOTKEY 兜底原无条件发射——和弦一旦真生效，toggle 会把刚唤起的面板再关掉；补「面板未在才兜底」守卫（W1/K1 原有同款）。
+- **旁证**：run 2 的 visual evidence 因 M3 单点红而整体红（其余场景全绿），publish 步未执行——「发布 403」问题该跑未触及，转 run 38761946476 复核。
