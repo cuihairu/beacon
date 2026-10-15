@@ -1351,3 +1351,10 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
   - ④`WM_COMMAND` IDOK 的按钮 id 须入 wParam **LOWORD**（旧码 65536 置进 HIWORD 无效，ebf9f5e 修）；本次主路径未用此招（真实点击生效），保留作兜底。
 - **随批取证升级**：每步 `Save-FullScreenshot`（typed/FAIL-still-open 命名），失败信息指引读 `Z-import-children.txt` 类控件树 dump（rect 与截图 1:1 对齐，round 8 起为标准证据面）。
 - **验收转化**：todo 行 80 勾（204b884，run 38725138151）；装机清单 B-802 由 ⬜ 未修移入 ✅ 已验（三表复算 2+16+49=67，旧文 53/70 系漂移一并修正）。
+
+### 批3-补64 键盘注入 INPUT.type 缺陷修复：Esc 关面板全链实证 + K3 改硬断言 + 和弦缺 Alt 二级缺陷（2026-10-15 patrol P1015R4，run 38743014862，84f9aad）
+- **根因（两处叠加）**：`SendVirtualKey`/`SendKeyDown`/`SendKeyUp` 的 `INPUT.type` 全部误写 **0**（INPUT_MOUSE），键盘事件（`INPUTUNION.ki`）被系统当畸形鼠标事件丢弃——「CI 会话键盘注入不可达」自批3-补60 时代起就是这个缺陷的自证。真键盘路径（`TypeText`，type=1）在 38725138151 早已实证可达（墨迹 376 px）。修复 84f9aad：四处 KEYBDINPUT 站点 `type 0→1`。
+- **K3 升硬断言**：Esc 关面板从「失败降级 + 热键 toggle 兜底」改为硬 throw（"Esc 未关闭快速面板——Esc 键路径回归"），「Esc 半转装机」标签撤销。38743014862 实证：`场景 K3 通过：Esc 键盘关闭面板（键盘注入可用，全链实证）`。K1 和弦仍走兜底 → 二级缺陷见下。
+- **二级缺陷（467bfa7 修）**：`SendChord(0x11, 0x42)` 只发 Ctrl+B，而应用注册热键是 **Ctrl+Alt+B**（`App.xaml.cs:295` 默认值）——和弦与注册热键恒不匹配，K1 从首跑起即被 WM_HOTKEY 直驱兜底带着走。`SendChord` 增第三参 `modifier2`，三处 Ctrl+Alt+B 站点补 `0x12`（VK_MENU）；Ctrl+A 单修饰键站点（场景 Z）不受影响。
+- **W2 隐患顺手封**：W2 面板重开处 `WM_HOTKEY` Post 原无条件兜底发射——和弦一旦真生效，toggle 会把已唤起的面板再关掉；补「面板未在才兜底」守卫（W1/K1 原本就有同款守卫）。
+- **验收转化**：todo 行 62 注释升级（Esc 半转「已代验」，仅余 100ms 精确计时装机半）。
