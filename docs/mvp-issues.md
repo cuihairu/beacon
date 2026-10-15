@@ -1367,3 +1367,5 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **M3 登录启动链（行 96）红→修**：`rundll32 shell32.dll,ShellExec_RunDll` 在新 shell32 仅序号导出、按名解析失败——取证截图坐实 RunDLL「Missing entry: ShellExec_RunDll」对话框，且该对话框残留到作业清理（`Terminate orphan process: pid (8356) (rundll32)`）。改用文档化 `ShellExecuteW`（WinEnum.ShellExec，4d10299）：把注册表 Run 值原样交给 ShellExecute，返回 ≤32 即失败码随断言带出。
 - **W2 隐患封口（467bfa7）**：W2 面板重开处 WM_HOTKEY 兜底原无条件发射——和弦一旦真生效，toggle 会把刚唤起的面板再关掉；补「面板未在才兜底」守卫（W1/K1 原有同款）。
 - **旁证**：run 2 的 visual evidence 因 M3 单点红而整体红（其余场景全绿），publish 步未执行——「发布 403」问题该跑未触及，转 run 38761946476 复核。
+- **run 38761946476 全绿复证（4d10299）**：M3 改 ShellExecute 后通过（`场景 M3 通过：Run 值经 ShellExecute 拉起 Beacon 进程`），与 K1 和弦、K3 Esc 硬断言、H5b/H6c/R3c 同跑全绿；`发布断言通过：TAG=nightly，资产时间戳均为本次 run，SHA256SUMS 与本地构建一致`。**发布 403 系瞬时故障**（38743014862 单跑 403、同文件同日两跑均成功），非仓库权限变更——`gh api .../actions/permissions/workflow` 读得 `default_workflow_permissions=write`，workflow 自身 `permissions: contents: write`。行 96 由「需真实登录会话」升级为「Run 值可执行半已代验」。
+- **额度显示缺陷随本次 nightly 出货**：run 38761946476 的 nightly（4d10299，含 fee4b0f）已发布——用户报的「GLM 5h 27% / 月 78% 却显示 78%」即 fee4b0f 修的旧 worst-window 口径，装该 nightly 后显示随 5h 走（27%）。
