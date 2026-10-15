@@ -100,21 +100,15 @@ internal sealed class DetailWindow : Window
         if (_state.Payload.Count > 0)
         {
             root.Children.Add(SectionLabel("DETAILS"));
-            var table = new StackPanel { Spacing = 3 };
+            var table = ComponentList.Vertical();
             foreach (var pair in _state.Payload)
             {
                 if (pair.Key == "value_text")
                 {
                     continue; // tile 数值位提示键（machine/MiMo）：内容与 Summary/数据行重复，详情表不重复占行
                 }
-                table.Children.Add(new TextBlock
-                {
-                    Text = $"{pair.Key}  {pair.Value}",
-                    FontSize = DesignTokens.FontBody,
-                    FontFamily = new FontFamily("Consolas"),
-                    Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                });
+                table.Children.Add(ComponentKeyValue.Row(pair.Key, pair.Value,
+                    new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240))));
             }
             root.Children.Add(table);
         }
