@@ -125,7 +125,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 17 勾 / 26 未勾（2026-10-16：Phase 0/1 全清；Phase 2 令牌层 + 五组基础件 + Key-Value/List/StatusCard + ActionButton/Menu/Link + Stack/Grid/Section/Conditional 落地；下一步 Empty/Loading/Error/Offline）。
+> 进度：43 条 = 18 勾 / 25 未勾（2026-10-16：Phase 0/1 全清；Phase 2 组件库七行落地（令牌层 + 基础件 + 交互件 + 布局件 + 通用状态词汇件）；余统一主题体系与视觉示例页）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -144,7 +144,7 @@
 - [x] 明确订阅、取消订阅、刷新失败与过期状态的处理方式（订阅/退订沿 IEventBus、写入经 IStateStore（接口注释写明，Abstractions/IStateStore.cs）；刷新失败转 ConnectionHealthChanged + 陈旧重发布、过期保 FetchedAt（RFC §6.2.6/§12，WidgetHostTests + StateStoreTests 锚定），f5d1d91）
 - [x] 确保 UI 只消费状态、不直接请求外部数据（核验表 A03 已确证：单向数据流 RFC-001:54-63、凭据只经 ConnectionContext 注入、UI 侧经 IWidgetProvider 抽象，759742b）
 
-### Phase 2 设计系统与基础组件库（9 条 = 6 勾 / 3 未勾）
+### Phase 2 设计系统与基础组件库（9 条 = 7 勾 / 2 未勾）
 
 - [x] 统一设计令牌：色彩、字体、间距、圆角、阴影、动效、尺寸、状态（DesignTokens：字号 8 档 + 圆角 6 档 + 间距刻度，C# 四窗 47 处字面量清零、XAML 圆角走 App.xaml 资源镜像；色彩/状态/动效/尺寸委托 UiPalette/ThemeColors/MotionEngine/DpiLayoutMath 单一来源，值零变化；bespoke Thickness 组合待组件化逐面收编，3be4efc）
 - [x] 基础组件 Text、Icon、Surface、Badge、Divider（src/Beacon.App/Components/ 五工厂，字号/圆角/间距全走 DesignTokens；Text+Icon 已收编 MakeStateRow 状态行/事件行（值逐项等价），Surface/Badge/Divider 备组合件逐面收编（a517594））
@@ -152,7 +152,7 @@
 - [x] 基础组件 Key-Value、Status Card、List（ComponentList.Vertical + ComponentKeyValue.Row 收编 DetailWindow 详情表（容器行距/等宽行值逐项等价），Status Card 词汇件组合 Surface.Card 待示例页收编，1db70de）
 - [x] 交互组件 Action Button、Action Menu、Link（ComponentAction.Button 收编 DetailWindow 动作区（内边距走令牌、触发链等价）、Item+Menu 收编 QuickPanel 行右键 pin 菜单，Link 词汇件待示例页，bb86927）
 - [x] 布局组件 Stack、Grid、Section、Conditional（ComponentLayout：Row 收编 QuickPanel 三行与 Detail 头行/动作行、Columns 收编 PinnedHost 主行六列、SectionLabel 收编 Detail 两区段签、When 收编 QuickPanel 空区收起（值逐项等价、像素断言全绿），Column 词汇件，8caf0b5）
-- [ ] 通用状态 Empty、Loading、Error、Offline（待落地 hash）
+- [x] 通用状态 Empty、Loading、Error、Offline（ComponentFeedback 四词汇件：Empty 居中说明/Loading/Error 换行正文/Offline 空心灯+说明行（同胶囊横幅口径）；现 UX=空区隐藏+XAML 横幅故无调用面，供示例页与 Phase 3 收编，5489352）
 - [ ] 统一主题、尺寸与排版体系（待落地 hash）
 - [ ] 独立视觉示例页（待落地 hash）
 
