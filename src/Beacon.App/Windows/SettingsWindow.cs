@@ -163,7 +163,7 @@ internal sealed class SettingsWindow : Window
         _searchBox = new TextBox
         {
             PlaceholderText = "搜索设置（模块/字段），回车跳转",
-            FontSize = 12,
+            FontSize = DesignTokens.FontBody,
             Margin = new Thickness(0, 0, 0, 8),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_searchBox, "settings-search");
@@ -381,7 +381,7 @@ internal sealed class SettingsWindow : Window
         {
             // 2026-10-10 修：可见计数——用户要求列表条数一眼可见，不靠滚动到底确认
             Text = $"配置中心 · {_modules.Count} 个模块",
-            FontSize = 12,
+            FontSize = DesignTokens.FontBody,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             Margin = new Thickness(10, 2, 0, 8),
@@ -391,11 +391,11 @@ internal sealed class SettingsWindow : Window
             var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
             content.Children.Add(MakeModuleIcon(module));
             var nameStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
-            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = 13, TextTrimming = TextTrimming.CharacterEllipsis }); // 200 窄列不挤烂（用户规格 min 200）
+            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = DesignTokens.FontSubtitle, TextTrimming = TextTrimming.CharacterEllipsis }); // 200 窄列不挤烂（用户规格 min 200）
             nameStack.Children.Add(new TextBlock
             {
                 Text = module.Subtitle,
-                FontSize = 10.5,
+                FontSize = DesignTokens.FontFootnote,
                 Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
                 TextTrimming = TextTrimming.CharacterEllipsis,
             });
@@ -435,7 +435,7 @@ internal sealed class SettingsWindow : Window
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Padding = new Thickness(10, 7, 8, 7),
-                CornerRadius = new CornerRadius(6),
+                CornerRadius = DesignTokens.RadiusCard,
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
             var captured = module;
@@ -487,14 +487,14 @@ internal sealed class SettingsWindow : Window
             ?? new FontIcon
             {
                 Glyph = module.Glyph,
-                FontSize = 15,
+                FontSize = DesignTokens.FontHeader,
                 Foreground = new SolidColorBrush(iconForeground),
             };
         return new Border
         {
             Width = 30,
             Height = 30,
-            CornerRadius = new CornerRadius(7),
+            CornerRadius = DesignTokens.RadiusControl,
             Background = new SolidColorBrush(tint),
             VerticalAlignment = VerticalAlignment.Center,
             Child = content,
@@ -545,7 +545,7 @@ internal sealed class SettingsWindow : Window
     private static TextBlock Hint(string text) => new()
     {
         Text = text,
-        FontSize = 12,
+        FontSize = DesignTokens.FontBody,
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
         TextWrapping = TextWrapping.Wrap,
     };
@@ -639,12 +639,12 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(new TextBlock
         {
             Text = $"Beacon 版本：{(string.IsNullOrEmpty(informational) ? UpdateCheckService.LocalVersion() : informational)}",
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
         });
-        var remoteText = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
-        var verdictText = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
-        var checkedText = new TextBlock { FontSize = 11, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
+        var remoteText = new TextBlock { FontSize = DesignTokens.FontCaption, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
+        var verdictText = new TextBlock { FontSize = DesignTokens.FontCaption, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
+        var checkedText = new TextBlock { FontSize = DesignTokens.FontCaption, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)) };
         panel.Children.Add(remoteText);
         panel.Children.Add(verdictText);
         panel.Children.Add(checkedText);
@@ -678,7 +678,7 @@ internal sealed class SettingsWindow : Window
         {
             Text = "检查更新走 GitHub Releases：仅正式发布参与比较（nightly 预发布不参与；每日构建日期版本恒视为已最新）。"
                 + "启动约 20 秒后自动查一次并缓存，结果仅供提示、不自动安装；升级 = 下载覆盖安装后托盘 Exit 重启（单实例常驻）。",
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             TextWrapping = TextWrapping.Wrap,
         });
@@ -763,14 +763,14 @@ internal sealed class SettingsWindow : Window
         page.Children.Add(SectionTitle("通知规则"));
         page.Children.Add(new TextBlock
         {
-            FontSize = 12,
+            FontSize = DesignTokens.FontBody,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
             Text = DescribeRules(),
             TextWrapping = TextWrapping.Wrap,
         });
         page.Children.Add(new TextBlock
         {
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             Text = "规则经 config.json 的 notificationRules 自定义；留空使用内置默认。",
             TextWrapping = TextWrapping.Wrap,
@@ -815,7 +815,7 @@ internal sealed class SettingsWindow : Window
         var save = new Button { Content = "保存动作" };
         save.Click += (_, _) => SaveAction();
 
-        _actionFeedback = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        _actionFeedback = new TextBlock { FontSize = DesignTokens.FontBody, TextWrapping = TextWrapping.Wrap };
         _actionList = new StackPanel { Spacing = 4 };
 
         var form = new StackPanel { Spacing = 8 };
@@ -834,7 +834,7 @@ internal sealed class SettingsWindow : Window
         return new Border
         {
             Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = DesignTokens.RadiusCard,
             Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
             Child = form,
         };
@@ -953,7 +953,7 @@ internal sealed class SettingsWindow : Window
             row.Children.Add(new TextBlock
             {
                 Text = $"{action.Name ?? action.Id} · {action.Type}{(action.RequireConfirmation ? " · 需确认" : "")}{scope}",
-                FontSize = 12,
+                FontSize = DesignTokens.FontBody,
                 VerticalAlignment = VerticalAlignment.Center,
             });
             var delete = new Button { Content = "删除", Padding = new Thickness(8, 2, 8, 2) };
@@ -997,11 +997,11 @@ internal sealed class SettingsWindow : Window
                     VerticalAlignment = VerticalAlignment.Center,
                     Children =
                     {
-                        new TextBlock { Text = module.DisplayName, FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+                        new TextBlock { Text = module.DisplayName, FontSize = DesignTokens.FontDisplay, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
                         new TextBlock
                         {
                             Text = ProviderStatus(module, connections, widgets.Count),
-                            FontSize = 11.5,
+                            FontSize = DesignTokens.FontCaptionEmphasis,
                             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
                             TextWrapping = TextWrapping.Wrap,
                         },
@@ -1022,7 +1022,7 @@ internal sealed class SettingsWindow : Window
         }
         page.Children.Add(_connectionList);
         page.Children.Add(BuildConnectionEditor(type));
-        page.Children.Add(_connFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        page.Children.Add(_connFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connFeedback, "conn-feedback"); // UIA 取证：测试反馈文本可硬断言
 
         page.Children.Add(SectionTitle("组件"));
@@ -1044,7 +1044,7 @@ internal sealed class SettingsWindow : Window
             quick.Click += (_, _) => AddGlmQuotaExample();
             page.Children.Add(quick);
         }
-        page.Children.Add(_widgetFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        page.Children.Add(_widgetFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
         return page;
     }
 
@@ -1196,7 +1196,7 @@ internal sealed class SettingsWindow : Window
         _previewHost = new Border
         {
             Padding = new Thickness(12),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = DesignTokens.RadiusCard,
             Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
             Child = _previewLight,
             HorizontalAlignment = HorizontalAlignment.Left,
@@ -1224,15 +1224,15 @@ internal sealed class SettingsWindow : Window
                 PreviewButton("脉冲", "pulse"), PreviewButton("滑入", "slide"), PreviewButton("静止", "stop"), _previewHost,
             },
         });
-        form.Children.Add(_appearanceFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        form.Children.Add(_appearanceFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
         form.Children.Add(new TextBlock
         {
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             Text = "改动即时预览并写入 config.json appearance；off 档预览即全静止，静止按钮复位循环动画。",
             TextWrapping = TextWrapping.Wrap,
         });
-        return new Border { Padding = new Thickness(10), CornerRadius = new CornerRadius(6), Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)), Child = form };
+        return new Border { Padding = new Thickness(10), CornerRadius = DesignTokens.RadiusCard, Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)), Child = form };
     }
 
     private void SaveSeverityColor(string key, string text)
@@ -1325,12 +1325,12 @@ internal sealed class SettingsWindow : Window
         panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { export, import } });
         panel.Children.Add(new TextBlock
         {
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
             Text = "导出包含 config/connections/widgets/pins/actions 五份配置（含自定义动作库）；密钥绝不入包（JSON 只存 credentialRef），导入后按提示在连接里重录。",
             TextWrapping = TextWrapping.Wrap,
         });
-        panel.Children.Add(_importFeedback = new TextBlock { FontSize = 12, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(_importFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
         return panel;
     }
 
@@ -1463,7 +1463,7 @@ internal sealed class SettingsWindow : Window
         return new Border
         {
             Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = DesignTokens.RadiusCard,
             Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
             Child = form,
         };
@@ -1736,7 +1736,7 @@ internal sealed class SettingsWindow : Window
         var label = new TextBlock
         {
             Text = $"{connection.Id}{(connection.CredentialRef is null ? " · 无凭据" : " · 凭据已存")}{(connection.Enabled ? "" : " · 已停用")}",
-            FontSize = 13,
+            FontSize = DesignTokens.FontSubtitle,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
@@ -1917,7 +1917,7 @@ internal sealed class SettingsWindow : Window
         var root = new Border
         {
             Padding = new Thickness(10),
-            CornerRadius = new CornerRadius(6),
+            CornerRadius = DesignTokens.RadiusCard,
             Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
             Child = form,
         };
@@ -2105,7 +2105,7 @@ internal sealed class SettingsWindow : Window
                    + (widget.Pinned ? " · 已钉" : "")
                    + (widget.ColorOverride is { } color ? $" · 覆盖 {color}" : "")
                    + (missingConnection ? " · 连接缺失" : ""),
-            FontSize = 13,
+            FontSize = DesignTokens.FontSubtitle,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
@@ -2160,7 +2160,7 @@ internal sealed class SettingsWindow : Window
     private static TextBlock SectionTitle(string text) => new()
     {
         Text = text,
-        FontSize = 15,
+        FontSize = DesignTokens.FontHeader,
         FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         Margin = new Thickness(0, 8, 0, 0),
     };

@@ -10,7 +10,7 @@
         <StackPanel Spacing="4">
             <Border
                 x:Name="RootBorder"
-                CornerRadius="16"
+                CornerRadius="{StaticResource RadiusPill}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
@@ -29,7 +29,7 @@
             <!-- 离线横幅：灰空心灯 + Last update（§4.1 Offline 灰空心），主题化半透明底 -->
             <Border
                 x:Name="OfflineBanner"
-                CornerRadius="8"
+                CornerRadius="{StaticResource RadiusInner}"
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"

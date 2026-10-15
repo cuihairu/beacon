@@ -6,7 +6,7 @@
     Title="Beacon Quick Panel">
     <!-- RFC §6.4：Flyout——亚克力瞬态面 + Fluent 主题资源（WinUI 栈规范：颜色走 ThemeResource，不硬编码 hex） -->
     <Border
-        CornerRadius="12"
+        CornerRadius="{StaticResource RadiusPanel}"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
         BorderThickness="1"
         Padding="14">
@@ -27,7 +27,7 @@
                 <Border
                     x:Name="UnreadBadge"
                     Visibility="Collapsed"
-                    CornerRadius="8"
+                    CornerRadius="{StaticResource RadiusInner}"
                     Padding="7,1,7,1"
                     VerticalAlignment="Center"
                     HorizontalAlignment="Right"

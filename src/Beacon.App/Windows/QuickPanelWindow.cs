@@ -318,7 +318,7 @@ public sealed partial class QuickPanelWindow : Window
         {
             Text = $"{label} {count}",
             Foreground = new SolidColorBrush(active ? SeverityPalette.Rgb(255, 255, 255, 255) : IsDarkTheme ? SeverityPalette.Rgb(255, 241, 245, 249) : SeverityPalette.Rgb(255, 30, 41, 59)),
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
@@ -328,7 +328,7 @@ public sealed partial class QuickPanelWindow : Window
         var chip = new Border
         {
             Background = new SolidColorBrush(active ? SeverityPalette.Rgb(255, 37, 99, 235) : IsDarkTheme ? SeverityPalette.Rgb(28, 255, 255, 255) : SeverityPalette.Rgb(20, 15, 23, 42)),
-            CornerRadius = new CornerRadius(9),
+            CornerRadius = DesignTokens.RadiusChip,
             Padding = new Thickness(8, 3, 8, 3),
             Child = row,
         };
@@ -430,14 +430,14 @@ public sealed partial class QuickPanelWindow : Window
         {
             Text = record.Timestamp.ToLocalTime().ToString("MM-dd HH:mm"),
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var title = new TextBlock
         {
             Text = record.Title,
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
-            FontSize = 12,
+            FontSize = DesignTokens.FontBody,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
             VerticalAlignment = VerticalAlignment.Center,
@@ -483,14 +483,14 @@ public sealed partial class QuickPanelWindow : Window
         {
             Text = timeText,
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
-            FontSize = 11,
+            FontSize = DesignTokens.FontCaption,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var label = new TextBlock
         {
             Text = state.Summary,
             Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
-            FontSize = 12,
+            FontSize = DesignTokens.FontBody,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
             VerticalAlignment = VerticalAlignment.Center,

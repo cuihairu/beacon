@@ -117,7 +117,7 @@ internal sealed class PinTile
     private readonly TextBlock _label = new()
     {
         Foreground = new SolidColorBrush(ThemeColors.Label()),
-        FontSize = 12,
+        FontSize = DesignTokens.FontBody,
         FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center,
@@ -125,7 +125,7 @@ internal sealed class PinTile
     private readonly TextBlock _value = new()
     {
         Foreground = new SolidColorBrush(ThemeColors.Value()),
-        FontSize = 11,
+        FontSize = DesignTokens.FontCaption,
         TextTrimming = TextTrimming.CharacterEllipsis,
         VerticalAlignment = VerticalAlignment.Center,
         HorizontalAlignment = HorizontalAlignment.Right,
@@ -206,7 +206,7 @@ internal sealed class PinTile
             ?? new FontIcon
             {
                 Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底
-                FontSize = 14,
+                FontSize = DesignTokens.FontTitle,
                 VerticalAlignment = VerticalAlignment.Center,
                 Foreground = new SolidColorBrush(ThemeColors.Label()),
             };

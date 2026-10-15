@@ -30,7 +30,7 @@ internal sealed class DetailWindow : Window
     private readonly TextBlock _resultText = new()
     {
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
-        FontSize = 12,
+        FontSize = DesignTokens.FontBody,
         TextWrapping = TextWrapping.Wrap,
     };
 
@@ -82,7 +82,7 @@ internal sealed class DetailWindow : Window
         header.Children.Add(new TextBlock
         {
             Text = _state.Summary,
-            FontSize = 16,
+            FontSize = DesignTokens.FontDisplay,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
             TextWrapping = TextWrapping.Wrap,
@@ -95,7 +95,7 @@ internal sealed class DetailWindow : Window
                    + (_state.Lifecycle is { } lifecycle ? $" · {lifecycle}" : "")
                    + (_state.IsStale ? " · stale" : "")
                    + $" · fetched {_state.FetchedAt.ToLocalTime():HH:mm:ss}",
-            FontSize = 12,
+            FontSize = DesignTokens.FontBody,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
             TextWrapping = TextWrapping.Wrap,
         };
@@ -115,7 +115,7 @@ internal sealed class DetailWindow : Window
                 table.Children.Add(new TextBlock
                 {
                     Text = $"{pair.Key}  {pair.Value}",
-                    FontSize = 12,
+                    FontSize = DesignTokens.FontBody,
                     FontFamily = new FontFamily("Consolas"),
                     Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240)),
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -175,7 +175,7 @@ internal sealed class DetailWindow : Window
     private static TextBlock SectionLabel(string text) => new()
     {
         Text = text,
-        FontSize = 11,
+        FontSize = DesignTokens.FontCaption,
         Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
         Margin = new Thickness(0, 6, 0, 0),
     };

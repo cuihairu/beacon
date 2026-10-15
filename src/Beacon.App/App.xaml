@@ -8,6 +8,14 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- 设计令牌（圆角）：与 Services/DesignTokens.cs 同名镜像，两处须同步改（WinUI 3 无 x:Static；
+                 Phase 2 组件化逐步把 XAML 面收编到 C# 构造后此镜像收缩） -->
+            <CornerRadius x:Key="RadiusCard">6</CornerRadius>
+            <CornerRadius x:Key="RadiusControl">7</CornerRadius>
+            <CornerRadius x:Key="RadiusChip">9</CornerRadius>
+            <CornerRadius x:Key="RadiusInner">8</CornerRadius>
+            <CornerRadius x:Key="RadiusPanel">12</CornerRadius>
+            <CornerRadius x:Key="RadiusPill">16</CornerRadius>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
