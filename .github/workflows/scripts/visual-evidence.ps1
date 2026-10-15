@@ -342,10 +342,11 @@ public static class WinEnum
         return found;
     }
     // 键盘注入（托盘原生菜单导航）：dwFlags=0 按下 / 2 抬起
+    // INPUT.type 必须为 1（INPUT_KEYBOARD）；0 是 INPUT_MOUSE，键事件会被丢弃
     public static void SendVirtualKey(ushort vk)
     {
-        var down = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0000 } } };
-        var up = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0002 } } };
+        var down = new INPUT { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0000 } } };
+        var up = new INPUT { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0002 } } };
         int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
         SendInput(1, new[] { down }, size);
         System.Threading.Thread.Sleep(90);
@@ -355,14 +356,14 @@ public static class WinEnum
     // 单键按下/抬起分离（全局热键和弦用，如 Ctrl+Alt+B：MOD 修饰键按住期间敲主键）
     public static void SendKeyDown(ushort vk)
     {
-        var down = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0000 } } };
+        var down = new INPUT { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0000 } } };
         int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
         SendInput(1, new[] { down }, size);
         System.Threading.Thread.Sleep(60);
     }
     public static void SendKeyUp(ushort vk)
     {
-        var up = new INPUT { type = 0, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0002 } } };
+        var up = new INPUT { type = 1, u = new INPUTUNION { ki = new KEYBDINPUT { wVk = vk, dwFlags = 0x0002 } } };
         int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
         SendInput(1, new[] { up }, size);
         System.Threading.Thread.Sleep(60);
@@ -2369,8 +2370,9 @@ try
     if (!($texts | Where-Object { $_ -match '\d+\s*%' })) { throw "断言失败（场景 K 前置）：缓存未填充（30s 无百分比读数）" }
     Stop-MockServer # 断网：面板打开必须走缓存（「无网络等待白屏」的反证）
     # K1 全局热键链：①启动日志无 RegisterHotKey 失败（注册成功）→ ②SendInput 和弦唤起 →
-    # 失败则 Post WM_HOTKEY 直驱（引擎只查 wParam==HotkeyId，与真实触发同一 WndProc 入口；
-    # 键盘注入在 CI 会话不可靠与鼠标手势同环境限制，真实键盘半转装机）
+    # 失败则 Post WM_HOTKEY 直驱（引擎只查 wParam==HotkeyId，与真实触发同一 WndProc 入口）
+    # 键盘注入曾因 INPUT.type 写成 0（INPUT_MOUSE）静默丢键——38725138151 起场景 Z 的
+    # KEYEVENTF_UNICODE 已实证 CI 会话可达，故和弦应直接生效，WM_HOTKEY 仅作兜底。
     $log = Get-TodayLog
     if ($log -match "RegisterHotKey.*failed")
     {
@@ -2416,7 +2418,7 @@ try
     }
     else
     {
-        Write-Host "::warning::SendInput 和弦在 CI 会话未生效（键盘注入环境限制，与鼠标手势同款）——WM_HOTKEY 直驱实证应用侧触发链；注册失败日志断言在案；真实键盘全局唤起转装机"
+        Write-Host "::warning::SendInput 和弦在 CI 会话未生效（INPUT.type 曾误写 0，已修）——WM_HOTKEY 直驱实证应用侧触发链；注册失败日志断言在案；真实键盘全局唤起转装机"
     }
     # K2 缓存优先：断网状态下面板有数据（百分比读数在，无白屏）；<100ms 精确计时留装机（CI 时钟分辨率不够）
     $panelTexts = @()
@@ -2433,8 +2435,9 @@ try
         throw "断言失败（场景 K2）：断网打开面板无缓存读数（白屏回归）；实际文本：$($panelTexts -join ' | ')"
     }
     Write-Host "场景 K2 通过：断网打开面板显示缓存数据（缓存优先）"
-    # K3 Esc 键盘关闭（先 ForceForeground 保证键盘焦点在面板）；键盘注入不可达时降级 warning
-    # 并用二次热键 toggle 硬断言「面板可关」（Esc 半转装机）
+    # K3 Esc 键盘关闭（先 ForceForeground 保证键盘焦点在面板）——硬断言，不再降级：
+    # INPUT.type 修 1 后键盘注入在 CI 会话可达（场景 Z 的 KEYEVENTF_UNICODE 已实证），
+    # 「CI 会话不可达」是 type 误写造成的自证，Esc 关面板不再半转装机。
     [WinEnum]::ForceForeground($panel)
     Start-Sleep -Milliseconds 400
     [WinEnum]::SendVirtualKey(0x1B) # VK_ESCAPE
@@ -2447,27 +2450,10 @@ try
     }
     if (!$closed)
     {
-        Write-Host "::warning::Esc 未关闭面板（SendInput 键盘注入在 CI 会话不可达）——Esc 半转装机；改用热键 toggle 验证面板可关"
-        $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
-        if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
-        [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # Toggle 再收
-        $deadline = (Get-Date).AddSeconds(4)
-        while ((Get-Date) -lt $deadline)
-        {
-            if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -eq 0) { $closed = $true; break }
-            Start-Sleep -Milliseconds 250
-        }
-        if (!$closed)
-        {
-            Save-FullScreenshot "K-FAIL-toggle-close.png"
-            throw "断言失败（场景 K3）：热键 toggle 后面板仍未关闭——显式隐藏链回归"
-        }
-        Write-Host "场景 K3 通过：热键 toggle 关闭面板（Esc 键盘半转装机）"
+        Save-FullScreenshot "K-FAIL-esc-close.png"
+        throw "断言失败（场景 K3）：Esc 未关闭快速面板——Esc 键路径回归（键盘注入已修 type=1）"
     }
-    else
-    {
-        Write-Host "场景 K3 通过：Esc 键盘关闭面板（键盘注入可用，全链实证）"
-    }
+    Write-Host "场景 K3 通过：Esc 键盘关闭面板（键盘注入可用，全链实证）"
     Ensure-MockServer # 还原 mock（后续场景/收尾统一管理）
 }
 catch
@@ -3845,16 +3831,20 @@ try
             if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -ge 1) { break }
             Start-Sleep -Milliseconds 250
         }
-        $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
-        if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
-        if ($msgWindow -ne [IntPtr]::Zero)
+        # WM_HOTKEY 是 toggle：和弦已唤起则再发一次会把面板关掉，必须只在未唤起时兜底
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -lt 1)
         {
-            [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId
-            $deadline = (Get-Date).AddSeconds(5)
-            while ((Get-Date) -lt $deadline)
+            $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+            if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+            if ($msgWindow -ne [IntPtr]::Zero)
             {
-                if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -ge 1) { break }
-                Start-Sleep -Milliseconds 250
+                [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId
+                $deadline = (Get-Date).AddSeconds(5)
+                while ((Get-Date) -lt $deadline)
+                {
+                    if ([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板").Count -ge 1) { break }
+                    Start-Sleep -Milliseconds 250
+                }
             }
         }
     }
