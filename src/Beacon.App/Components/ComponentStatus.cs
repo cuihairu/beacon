@@ -1,5 +1,3 @@
-using Beacon.App.Services;
-using Beacon.Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -28,7 +26,7 @@ internal static class ComponentStatus
         Width = size,
         Height = size,
         VerticalAlignment = VerticalAlignment.Center,
-        Fill = new SolidColorBrush(SeverityPalette.Rgb(0, 0, 0, 0)),
+        Fill = new SolidColorBrush(global::Microsoft.UI.Colors.Transparent),
         Stroke = stroke,
         StrokeThickness = 1.5,
     };
