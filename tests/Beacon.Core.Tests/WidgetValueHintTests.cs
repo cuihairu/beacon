@@ -1,4 +1,5 @@
 using Beacon.Core.Models;
+using Beacon.Core.Selectors;
 using Beacon.Core.Services;
 
 namespace Beacon.Core.Tests;

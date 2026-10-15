@@ -1,4 +1,6 @@
-namespace Beacon.Core.Services;
+using Beacon.Core.Services;
+
+namespace Beacon.Core.Selectors;
 
 /// <summary>
 /// L2 看板来源分组与点击过滤（2026-10-14 用户单①：默认全部 + 可点击过滤 + 当前类目界面可见）。

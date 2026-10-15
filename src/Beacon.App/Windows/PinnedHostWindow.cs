@@ -4,6 +4,7 @@ using Beacon.App.Services;
 using Beacon.Connections;
 using Beacon.Core.Events;
 using Beacon.Core.Models;
+using Beacon.Core.Selectors;
 using Beacon.Core.Services;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;

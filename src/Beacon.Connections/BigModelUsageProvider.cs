@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Selectors;
 using Beacon.Core.Services;
 
 namespace Beacon.Connections;

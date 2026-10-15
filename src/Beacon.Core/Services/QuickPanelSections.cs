@@ -1,6 +1,6 @@
 using Beacon.Core.Models;
 
-namespace Beacon.Core.Services;
+namespace Beacon.Core.Selectors;
 
 /// <summary>L2 Quick Panel 当前状态的三分区归属（master-plan §3.2，2026-10-11 拍板④落地）。</summary>
 public enum QuickPanelSection

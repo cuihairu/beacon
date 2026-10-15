@@ -1,4 +1,4 @@
-namespace Beacon.Core.Services;
+namespace Beacon.Core.Selectors;
 
 /// <summary>嵌套额度窗口层：5 小时 ⊂ 周 ⊂ 月。</summary>
 public enum QuotaWindow

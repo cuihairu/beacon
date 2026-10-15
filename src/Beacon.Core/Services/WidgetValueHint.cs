@@ -1,7 +1,7 @@
 using System.Globalization;
 using Beacon.Core.Models;
 
-namespace Beacon.Core.Services;
+namespace Beacon.Core.Selectors;
 
 /// <summary>
 /// 悬浮 tile 数值位短文本（纯函数，Core 承载供 Linux 单测；App 的 PinTile 只委托）。
