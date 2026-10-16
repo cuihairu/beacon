@@ -1212,6 +1212,33 @@ function Select-ComboItemById([System.Windows.Automation.AutomationElement] $set
     Start-Sleep -Milliseconds 400
 }
 
+# 下拉当前选中项文本（SelectionPattern 首 selection 的 Name）——密度档回读断言用（场景 AA）
+function Get-ComboSelectionName([System.Windows.Automation.AutomationElement] $combo)
+{
+    $sel = ($combo.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern)).Current.GetSelection()
+    if ($sel.Length -eq 0) { return "" }
+    try { return $sel[0].Current.Name } catch { return "" }
+}
+
+# 按选项完整 Name 选中（Select-ComboItemById 的 AutomationId 口径不可得时用 Name；
+# WinUI 弹层可能独立 HWND——combo 子树找不到时退桌面根子树找，同款双域兜底）
+function Select-ComboItemByName([System.Windows.Automation.AutomationElement] $combo, [string] $name)
+{
+    ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+    Start-Sleep -Seconds 1
+    $nameCondition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $name)
+    $item = $combo.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $nameCondition)
+    if (!$item)
+    {
+        $item = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants, $nameCondition)
+    }
+    if (!$item) { throw "UIA 未找到下拉选项「$name」（展开后仍未见）" }
+    ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Milliseconds 400
+}
+
+
 function Assert-DropdownHasItem([System.Windows.Automation.AutomationElement] $settings, [string] $itemId, [string] $what)
 {
     $nameCondition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $itemId)
@@ -4928,6 +4955,89 @@ catch
     Save-FullScreenshot "Z-FAIL-unexpected.png"
     $failures.Add("场景 Z：$($_.Exception.Message)")
     Write-Host "::error::场景 Z 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 AA：界面密度档（Phase 5 行 5「密度可调」CI 代验）——设置改档 → 落盘 → 重启还原 → 回切净态。
+# 无像素断言（间距 ×0.75 的视觉差走截图人工近景；像素级断言易碎，见 G 系阈值重标定教训）：
+# AA 断的是「可调、可存、可恢复、可回切」的机器可证面——下拉选中态 ↔ config.json appearance.density 双向一致。
+try
+{
+    Write-GConfig "" "off" 1.0 $false
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings)
+    {
+        Save-FullScreenshot "AA-FAIL-no-settings.png"
+        throw "断言失败（场景 AA）：--settings 启动 30s 内未见「Beacon 设置」窗口"
+    }
+    $row = Find-UiaById $settings "module-appearance" 10
+    if (!$row) { throw "断言失败（场景 AA）：UIA 未找到 module-appearance" }
+    Invoke-Uia $row
+    Start-Sleep -Seconds 2
+    $densityBox = Find-UiaById $settings "appearance-density-box" 10
+    if (!$densityBox)
+    {
+        Save-FullScreenshot "AA-FAIL-no-density-box.png"
+        throw "断言失败（场景 AA）：UIA 未找到 appearance-density-box（密度下拉锚点丢失）"
+    }
+    # AA1：默认档=常规（AppearanceConfig.Density 默认 regular，Write-GConfig 不落 density 键）
+    $sel0 = Get-ComboSelectionName $densityBox
+    if ($sel0 -notlike "常规*")
+    {
+        Save-FullScreenshot "AA-FAIL-default-not-regular.png"
+        throw "断言失败（场景 AA1）：密度下拉初始选中「$sel0」（期望 常规…）——默认档回归"
+    }
+    Write-Host "场景 AA1 通过：密度下拉初始=常规（默认 regular 未显式落键）"
+    # AA2：选紧凑 → SelectionChanged → SaveDensity 落盘 compact
+    Select-ComboItemByName $densityBox "紧凑（组件间距 ×0.75）"
+    Start-Sleep -Seconds 2
+    $cfgAa = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($cfgAa.appearance.density)" -ne "compact")
+    {
+        Save-FullScreenshot "AA-FAIL-not-saved.png"
+        throw "断言失败（场景 AA2）：选紧凑后 config appearance.density=$($cfgAa.appearance.density)（期望 compact）——改档未落盘"
+    }
+    Write-Host "场景 AA2 通过：紧凑选中 → config appearance.density=compact 落盘"
+    Stop-Beacon
+    # AA3：重启读档还原：下拉回读=紧凑（持久化+还原机器证）
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings2 = Find-SettingsWindow
+    if (!$settings2)
+    {
+        Save-FullScreenshot "AA-FAIL-no-settings2.png"
+        throw "断言失败（场景 AA3）：重启后 --settings 窗 30s 内未现"
+    }
+    $row2 = Find-UiaById $settings2 "module-appearance" 10
+    if (!$row2) { throw "断言失败（场景 AA3）：重启后 UIA 未找到 module-appearance" }
+    Invoke-Uia $row2
+    Start-Sleep -Seconds 2
+    $densityBox2 = Find-UiaById $settings2 "appearance-density-box" 10
+    if (!$densityBox2) { throw "断言失败（场景 AA3）：重启后 UIA 未找到 appearance-density-box" }
+    $sel2 = Get-ComboSelectionName $densityBox2
+    if ($sel2 -notlike "紧凑*")
+    {
+        Save-FullScreenshot "AA-FAIL-restore.png"
+        throw "断言失败（场景 AA3）：重启后密度下拉选中「$sel2」（期望 紧凑…）——档位还原回归"
+    }
+    Write-Host "场景 AA3 通过：重启后密度下拉=紧凑（档位持久化+还原）"
+    # AA4：回切常规（净态口径——J 静默安装不读 config，但场景间不留脏档）
+    Select-ComboItemByName $densityBox2 "常规（默认）"
+    Start-Sleep -Seconds 2
+    $cfgAa2 = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($cfgAa2.appearance.density)" -ne "regular")
+    {
+        throw "断言失败（场景 AA4）：回切常规后 config appearance.density=$($cfgAa2.appearance.density)（期望 regular）"
+    }
+    Write-Host "场景 AA4 通过：回切常规 → config=regular（净态）"
+    Stop-Beacon
+    Write-Host "场景 AA 通过：密度可调、可存、可恢复、可回切 全链"
+}
+catch
+{
+    Stop-Beacon # Z 同口径：失败也收尸，防残留进程毒化 J 静默安装
+    Save-FullScreenshot "AA-FAIL-unexpected.png"
+    $failures.Add("场景 AA：$($_.Exception.Message)")
+    Write-Host "::error::场景 AA 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——

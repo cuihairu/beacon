@@ -1212,6 +1212,7 @@ internal sealed class SettingsWindow : Window
         // Phase 5 行 5：界面密度（regular 恒等 / compact 间距 ×0.75，Core UiDensity 单源 fail-open）。
         // 与 progressStyle 同「构造期实时读」口径：改档后下次开窗生效，无需重渲染。
         _densityBox = new ComboBox { Header = "界面密度", Width = 260 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_densityBox, "appearance-density-box"); // UIA 取证：密度档锚点（场景 AA 驱动）
         foreach (var (value, label) in new[]
         {
             ("regular", "常规（默认）"),
