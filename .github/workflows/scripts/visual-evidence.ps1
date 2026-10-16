@@ -3586,7 +3586,19 @@ try
     if (!$attentionListEl) { throw "断言失败（场景 U2）：UIA 未找到 AttentionList" }
     $rowItem = $attentionListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
     if (!$rowItem) { throw "断言失败（场景 U2）：AttentionList 无 ListItem 可激活" }
-    ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    try
+    {
+        ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    }
+    catch
+    {
+        # 行容器竞态兜底（38942131834 实证）：FindFirst 与 Invoke 之间刷新 tick 重建列表 → 元素失联
+        # Invoke 抛「Value does not fall within the expected range」。重找重试一次——若为确定性失败，二炸仍红不掩盖。
+        Start-Sleep -Seconds 2
+        $rowItem = $attentionListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+        if (!$rowItem) { throw "断言失败（场景 U2）：Invoke 失败后重找 AttentionList 无 ListItem" }
+        ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    }
     $detailHandle = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(8)
     while ((Get-Date) -lt $deadline)
