@@ -1312,16 +1312,22 @@ internal sealed class SettingsWindow : Window
         var motion = _runtime.Config.App.Appearance.Motion;
         motion.Mode = TagOf(_motionModeBox) ?? "reduced";
         motion.Intensity = _motionIntensitySlider.Value;
-        _runtime.Config.SaveApp(); // MotionEngine 每次调用实时读配置——无需重渲染
+        _runtime.Config.SaveApp();
+        // 状态去重（StateStore suppressUnchanged，已代决②）后「靠下一刷新 tick 重渲染」不再可靠：
+        // mock/恒定值永不重发布 → 既有 tile 永不 Update → 呼吸起不来（场景 G7c 38960663429 实证 0 差分）。
+        // 触发 SettingsApplied 重建 L0（同改色口径），新 PinTile 构造时按新档挂/摘动画。
+        SettingsApplied?.Invoke();
     }
 
     /// <summary>额度显示方式（2026-10-10 用户令「设置里让用户自己选表现方式」；2026-10-11 用户令重设计后
     /// bar=4 DIP 圆角进度条 + NN% 读数为默认，pool=圆池注水为可选旧特效）。
-    /// PinTile 构造时读 MotionEngine.ProgressStyle（实时读配置，无需重渲染）。</summary>
+    /// PinTile 构造时读 MotionEngine.ProgressStyle——状态去重后既有 tile 无重渲染时机，
+    /// 保存即触发 SettingsApplied 重建 L0 让新样式即刻生效（同动效档口径）。</summary>
     private void SaveProgressStyle()
     {
         _runtime.Config.App.Appearance.ProgressStyle = TagOf(_progressStyleBox) ?? "bar";
         _runtime.Config.SaveApp();
+        SettingsApplied?.Invoke();
     }
 
     /// <summary>界面密度（Phase 5 行 5）：regular 恒等 / compact ×0.75。组件化窗面（L3 Detail 等）构造时
