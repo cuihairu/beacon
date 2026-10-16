@@ -68,12 +68,14 @@ internal sealed class DetailWindow : Window
 
     private UIElement BuildContent()
     {
-        // Column 词汇件（Phase 5 行 2 收编调用面；值逐项等价于旧 new StackPanel { Spacing = 10 }）
-        var root = ComponentLayout.Column(10);
+        // Column 词汇件（Phase 5 行 2 收编调用面；值逐项等价于旧 new StackPanel { Spacing = 10 }）。
+        // 间距走 DesignTokens.Spacing 密度收编口（Phase 5 行 5）：regular 恒等（G 系像素锚不动），compact ×0.75
+        var density = _runtime.Config.App.Appearance.Density;
+        var root = ComponentLayout.Column(DesignTokens.Spacing(10, density));
         root.Padding = new Thickness(18, 16, 18, 16);
 
         // 头部：severity 点 + 类型 + 摘要
-        var header = ComponentLayout.Row(8);
+        var header = ComponentLayout.Row(DesignTokens.Spacing(8, density));
         header.Children.Add(ComponentStatus.Indicator(new SolidColorBrush(_palette.SeverityColor(_state.Severity,
             widgetOverride: _runtime.Config.FindWidget(_state.WidgetId)?.ColorOverride))));
         header.Children.Add(new TextBlock
@@ -136,7 +138,7 @@ internal sealed class DetailWindow : Window
                 TrendDirection.Down => Severity.Error,
                 _ => Severity.Info,
             };
-            var chartRow = ComponentLayout.Row(8);
+            var chartRow = ComponentLayout.Row(DesignTokens.Spacing(8, density));
             chartRow.Children.Add(ComponentChart.Sparkline(trend, 180, 32,
                 new SolidColorBrush(_palette.SeverityColor(direction))));
             chartRow.Children.Add(ComponentText.Caption(ComponentChart.Caption(trendSummary), muted));
@@ -155,7 +157,7 @@ internal sealed class DetailWindow : Window
         {
             root.Children.Add(ComponentLayout.SectionLabel(UiStrings.BoardRecentEvents,
                 new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
-            var timeline = ComponentLayout.Column(6);
+            var timeline = ComponentLayout.Column(DesignTokens.Spacing(6, density));
             foreach (var entry in entries)
             {
                 timeline.Children.Add(ComponentTimeline.Row(entry.Time, entry.Title,
@@ -166,7 +168,7 @@ internal sealed class DetailWindow : Window
 
         // Action 区（按能力显隐，B-603）
         var widget = _runtime.Config.FindWidget(_state.WidgetId);
-        var actions = ComponentLayout.Row(8);
+        var actions = ComponentLayout.Row(DesignTokens.Spacing(8, density));
         actions.Margin = new Thickness(0, 4, 0, 0);
 
         if (!string.IsNullOrEmpty(_state.DetailUrl))

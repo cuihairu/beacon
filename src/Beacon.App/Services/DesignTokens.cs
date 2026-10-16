@@ -1,3 +1,4 @@
+using Beacon.Core.Services;
 using Microsoft.UI.Xaml;
 
 namespace Beacon.App.Services;
@@ -39,4 +40,12 @@ internal static class DesignTokens
     public const double Space12 = 12;
     public const double Space16 = 16;
     public const double Space18 = 18;
+
+    /// <summary>
+    /// 密度档收编口（Phase 5 行 5）：间距值经 Core UiDensity 按当前档缩放（regular 恒等——G 系像素断言锚的值不动；
+    /// compact ×0.75 四舍五入 AwayFromZero）。各窗构造时传当前 Appearance.Density，「构造期实时读」口径与
+    /// MotionEngine.ProgressStyle 一致：改档后下次开窗生效。未知档 Core 侧回 regular（fail-open）。
+    /// </summary>
+    public static double Spacing(double space, string? density)
+        => UiDensity.Spacing(space, UiDensity.Parse(density));
 }

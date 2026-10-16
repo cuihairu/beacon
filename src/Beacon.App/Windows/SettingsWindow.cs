@@ -85,6 +85,7 @@ internal sealed class SettingsWindow : Window
     private ComboBox _motionModeBox = null!;
     private Slider _motionIntensitySlider = null!;
     private ComboBox _progressStyleBox = null!;
+    private ComboBox _densityBox = null!;
     private Border _previewHost = null!;
     private Ellipse _previewLight = null!;
     private TextBlock _importFeedback = null!;
@@ -1200,6 +1201,20 @@ internal sealed class SettingsWindow : Window
         {
             _progressStyleBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
         }
+
+        // Phase 5 行 5：界面密度（regular 恒等 / compact 间距 ×0.75，Core UiDensity 单源 fail-open）。
+        // 与 progressStyle 同「构造期实时读」口径：改档后下次开窗生效，无需重渲染。
+        _densityBox = new ComboBox { Header = "界面密度", Width = 260 };
+        foreach (var (value, label) in new[]
+        {
+            ("regular", "常规（默认）"),
+            ("compact", "紧凑（组件间距 ×0.75）"),
+        })
+        {
+            _densityBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        _densityBox.SelectedIndex = Math.Max(0, IndexOfTag(_densityBox, _runtime.Config.App.Appearance.Density));
+        _densityBox.SelectionChanged += (_, _) => SaveDensity();
         _progressStyleBox.SelectedIndex = Math.Max(0, IndexOfTag(_progressStyleBox, _runtime.Config.App.Appearance.ProgressStyle));
         _progressStyleBox.SelectionChanged += (_, _) => SaveProgressStyle();
 
@@ -1225,6 +1240,7 @@ internal sealed class SettingsWindow : Window
         form.Children.Add(reset);
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _motionModeBox, _motionIntensitySlider } });
         form.Children.Add(_progressStyleBox);
+        form.Children.Add(_densityBox);
         form.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -1294,6 +1310,14 @@ internal sealed class SettingsWindow : Window
     private void SaveProgressStyle()
     {
         _runtime.Config.App.Appearance.ProgressStyle = TagOf(_progressStyleBox) ?? "bar";
+        _runtime.Config.SaveApp();
+    }
+
+    /// <summary>界面密度（Phase 5 行 5）：regular 恒等 / compact ×0.75。组件化窗面（L3 Detail 等）构造时
+    /// 读 Appearance.Density 经 DesignTokens.Spacing 缩放——同 progressStyle 的构造期实时读口径。</summary>
+    private void SaveDensity()
+    {
+        _runtime.Config.App.Appearance.Density = TagOf(_densityBox) ?? "regular";
         _runtime.Config.SaveApp();
     }
 
