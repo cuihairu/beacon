@@ -33,7 +33,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | settingsSidebarWidth | 数值（DIP） | `264` | 设置窗口左栏宽度。拖拽左右栏之间的分隔条（悬停变蓝）自动落盘，启动恢复；钳位 [200, 420] | 重启恢复（拖完即存） |
 | settingsWindowWidth / settingsWindowHeight | 数值（DIP） | `0` | 设置窗口尺寸记忆，`0` = 用默认 880×640。拖动窗口边缘改大小、静止 0.8 秒后落盘，启动恢复 | 重启恢复 |
 | notificationRules | 规则数组 | `[]` | 自定义通知规则，空数组用内置默认四条。见下节 | 即时（导入包路径）；手改文件重启 |
-| appearance | 对象 | 见下节 | 级别色覆盖与动效 | 即时 |
+| appearance | 对象 | 见下节 | 级别色覆盖、动效与密度 | 即时 |
 | configVersion | 整数 | `1` | 配置结构版本号，程序迁移用，不要手改 | 程序维护 |
 | numericFloatingResetDone | 布尔 | `false` | 已废弃（2026-10-11 数量悬浮窗改默认开，一次性置关迁移撤除），字段仅为旧配置兼容保留，不要手改 | 程序维护 |
 
@@ -52,6 +52,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | appearance.motion.mode | `full` / `reduced` / `off` | `reduced` | 动效档位：完全 / 适度 / 关闭。off 档全部动画静止 |
 | appearance.motion.intensity | 数值 0.5–2.0 | `1.0` | 动效时长与幅度缩放。设置页滑杆步进 0.1 |
 | appearance.progressStyle | `"bar"` / `"pool"` | `"bar"` | tile 额度显示方式：**进度条**（2026-10-11 重设计默认：底部 4 DIP 圆角条 + NN% 读数，≥80% warning、≥98% Error 红）/**圆池注水**（旧特效：水位=进度，满格 Error 红）。实时生效，无需重启 |
+| appearance.density | `"regular"` / `"compact"` / `"spacious"` | `"regular"` | 组件间距密度档：常规（恒等）/ 紧凑（间距 ×0.75）/ 宽松（间距 ×1.25），系数后四舍五入。窗面按档重建后生效（tile/面板随下次渲染，详情/快捷面板随下次打开），未知值回常规 |
 
 改色即时生效（托盘/胶囊/L0 按新色表重渲染），格式支持 `#RRGGBB` 和 `#AARRGGBB`，非法值报错不落盘。组件可以用 widgets.json 的 colorOverride 单独再覆盖某盏灯。
 

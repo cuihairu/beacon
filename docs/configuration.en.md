@@ -33,7 +33,7 @@ Read failures are never silent: when a main file is corrupt it first tries the `
 | settingsSidebarWidth | number (DIP) | `264` | Settings window left-column width. Dragging the splitter between the columns (turns blue on hover) persists automatically and restores on launch; clamped to [200, 420] | Restored on restart (saved right after the drag) |
 | settingsWindowWidth / settingsWindowHeight | number (DIP) | `0` | Settings window size memory; `0` = use the default 880×640. Resizing the window edge persists after 0.8 s at rest and restores on launch | Restored on restart |
 | notificationRules | rule array | `[]` | Custom notification rules; an empty array uses the four built-in defaults. See the next section | Immediate (import-package path); manual file edits need a restart |
-| appearance | object | see next section | Severity color overrides and motion | Immediate |
+| appearance | object | see next section | Severity color overrides, motion, and density | Immediate |
 | configVersion | int | `1` | Configuration structure version, used by program migrations — do not edit by hand | Maintained by the program |
 | numericFloatingResetDone | bool | `false` | Deprecated (the one-time set-to-off migration was removed when the 2026-10-11 numeric floating window switched to on by default); the field is kept only for old-config compatibility — do not edit by hand | Maintained by the program |
 
@@ -52,6 +52,7 @@ Severity colors apply to the tray dot, the capsule, and widget status lights. Wh
 | appearance.motion.mode | `full` / `reduced` / `off` | `reduced` | Motion tier: full / moderate / off. On off, every animation is still |
 | appearance.motion.intensity | number 0.5–2.0 | `1.0` | Scales motion duration and magnitude. Settings slider steps by 0.1 |
 | appearance.progressStyle | `"bar"` / `"pool"` | `"bar"` | How tiles show quota usage: **progress bar** (2026-10-11 redesign default: a 4 DIP rounded bar at the bottom + an NN% readout, ≥80% warning, ≥98% Error red) / **circular pool fill** (the legacy effect: water level = progress, full = Error red). Takes effect live, no restart needed |
+| appearance.density | `"regular"` / `"compact"` / `"spacious"` | `"regular"` | Component spacing density tier: Regular (identity) / Compact (spacing ×0.75) / Spacious (spacing ×1.25), rounded half away from zero. Surfaces pick the tier up when rebuilt (tiles and the panel on their next render, detail and quick panel on next open); unknown values fall back to Regular |
 
 Color changes take effect immediately (tray / capsule / L0 re-render with the new palette). Formats `#RRGGBB` and `#AARRGGBB` are accepted; invalid values report an error and are not saved. A widget can additionally override its own light via colorOverride in widgets.json.
 
