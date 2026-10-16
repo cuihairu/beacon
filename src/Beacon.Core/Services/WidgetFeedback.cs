@@ -62,6 +62,13 @@ public static class WidgetFeedback
     public static bool HasDetailRows(IReadOnlyDictionary<string, string> payload)
         => payload.Any(pair => pair.Key != ValueHintKey && !string.IsNullOrWhiteSpace(pair.Value));
 
+    /// <summary>详情表行物料（表格件数据面，三诊口径「表格走 payload 多行」）：
+    /// 跳过数值位提示键与纯空白值，保字典枚举序。空态由 ComponentFeedback.Empty 承担。</summary>
+    public static IReadOnlyList<(string Key, string Value)> DetailRows(IReadOnlyDictionary<string, string> payload)
+        => [.. payload
+            .Where(pair => pair.Key != ValueHintKey && !string.IsNullOrWhiteSpace(pair.Value))
+            .Select(pair => (pair.Key, pair.Value))];
+
     private static string? PayloadText(IReadOnlyDictionary<string, string> payload, string key)
     {
         if (!payload.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))

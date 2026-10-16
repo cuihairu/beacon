@@ -72,6 +72,9 @@ internal sealed class SampleGalleryWindow : Window
         AddKeyValueListSection(root);
         AddActionSection(root);
         AddLayoutSection(root);
+        AddTimelineSection(root);
+        AddTableSection(root);
+        AddChartSection(root);
         AddFeedbackSection(root);
 
         return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Visible };
@@ -189,6 +192,70 @@ internal sealed class SampleGalleryWindow : Window
         column.Children.Add(ComponentText.Caption(
             "同条件两条目各喂一份状态样例：条件显示按状态字段驱动而非写死", _muted));
         root.Children.Add(column);
+    }
+
+    private void AddTimelineSection(StackPanel root)
+    {
+        root.Children.Add(Section("TIMELINE"));
+        // 时间线走事件历史（Phase 5 行 1）：Core TimelineEntries 把引擎记录翻成展示序（新在前）
+        var timeline = ComponentLayout.Column(6);
+        foreach (var entry in TimelineEntries.Of(TimelineSample()))
+        {
+            timeline.Children.Add(ComponentTimeline.Row(entry.Time, entry.Title,
+                new SolidColorBrush(_palette.SeverityColor(entry.Severity)), _muted, _body));
+        }
+        root.Children.Add(timeline);
+    }
+
+    private void AddTableSection(StackPanel root)
+    {
+        root.Children.Add(Section("TABLE"));
+        // 表格走 payload 多行（Phase 5 行 1）：表头 Caption + 逐行两列网格
+        var table = ComponentLayout.Column(4);
+        table.Children.Add(ComponentTable.Header("KEY", "VALUE", _muted));
+        table.Children.Add(ComponentTable.Body(TableSample(), _muted, _body));
+        root.Children.Add(table);
+    }
+
+    private void AddChartSection(StackPanel root)
+    {
+        root.Children.Add(Section("CHART"));
+        // 图表走趋势序列（Phase 5 行 1）：payload 键 → Core TrendSeries（归一化单源），本件只画线
+        var points = TrendSeries.Parse(new Dictionary<string, string>
+        {
+            [TrendSeries.PayloadKey] = "12,9,14,20,16",
+        });
+        var summary = TrendSeries.Summarize(points)!; // 示例常量恒 ≥2 点
+        var chartRow = ComponentLayout.Row(8);
+        chartRow.Children.Add(ComponentChart.Sparkline(points, 180, 32,
+            new SolidColorBrush(_palette.SeverityColor(Severity.Success))));
+        chartRow.Children.Add(ComponentText.Caption(ComponentChart.Caption(summary), _muted));
+        root.Children.Add(chartRow);
+    }
+
+    private static IReadOnlyList<NotificationRecord> TimelineSample()
+    {
+        NotificationRecord[] records =
+        [
+            new() { Id = "n1", SourceWidgetId = "sample", Severity = Severity.Warning,
+                Title = "部署完成 · 2 warn", Timestamp = new DateTimeOffset(2026, 10, 16, 14, 5, 0, TimeSpan.Zero) },
+            new() { Id = "n2", SourceWidgetId = "sample", Severity = Severity.Error,
+                Title = "重跑失败 job · gh run 918", Timestamp = new DateTimeOffset(2026, 10, 16, 14, 2, 0, TimeSpan.Zero) },
+            new() { Id = "n3", SourceWidgetId = "sample", Severity = Severity.Critical, Read = true,
+                Title = "额度低于 5%", Timestamp = new DateTimeOffset(2026, 10, 16, 13, 48, 0, TimeSpan.Zero) },
+        ];
+        return records;
+    }
+
+    private static IReadOnlyList<(string Key, string Value)> TableSample()
+    {
+        (string Key, string Value)[] rows =
+        [
+            ("repo", "cuihairu/beacon"),
+            ("branch", "main"),
+            ("duration", "2m 14s"),
+        ];
+        return rows;
     }
 
     private void AddFeedbackSection(StackPanel root)

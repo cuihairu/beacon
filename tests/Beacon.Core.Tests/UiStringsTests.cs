@@ -3,7 +3,9 @@ using Beacon.Core.Services;
 
 namespace Beacon.Core.Tests;
 
-/// <summary>2026-10-14 用户单②：界面文案目录（唯一 i18n 机制）——双语键集一致、切换即时生效、缺键回退。</summary>
+/// <summary>2026-10-14 用户单②：界面文案目录（唯一 i18n 机制）——双语键集一致、切换即时生效、缺键回退。
+/// 与 WidgetFeedbackTests 同集合串行：UiStrings 语言是静态全局量，两班并行时互相改语言、断言被打断。</summary>
+[Collection("UiStrings")]
 public class UiStringsTests
 {
     public UiStringsTests()
@@ -23,6 +25,7 @@ public class UiStringsTests
         Assert.Equal("最近事件", UiStrings.BoardRecentEvents);
         Assert.Equal("打开 Beacon", UiStrings.TrayOpenPanel);
         Assert.Equal("通知中心", UiStrings.TrayNotifications);
+        UiStrings.SetLanguage("en"); // 收尾复位：静态语言跨类并行跑时不许外溢
     }
 
     [Fact]
@@ -51,6 +54,7 @@ public class UiStringsTests
         UiStrings.SetLanguage("zh");
         Assert.Contains("{0}", UiStrings.Get("board.warnError"));
         Assert.Contains("{1}", UiStrings.Get("board.warnError"));
+        UiStrings.SetLanguage("en"); // 收尾复位：静态语言跨类并行跑时不许外溢
     }
 
     [Fact]
@@ -66,6 +70,7 @@ public class UiStringsTests
         var expected = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh" ? "zh" : "en";
         UiStrings.SetLanguage("klingon");
         Assert.Equal(expected, UiStrings.Language);
+        UiStrings.SetLanguage("en"); // 收尾复位：非法值跟随系统的测试不把非法语言留给并行类
     }
 
     [Fact]

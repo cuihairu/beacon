@@ -113,30 +113,55 @@ internal sealed class DetailWindow : Window
                 new SolidColorBrush(_palette.SeverityColor(Severity.Error))));
         }
 
-        // Provider 附加数据（仓库/分支/时长/阶段/错误摘要…）
-        var detailLabel = ComponentLayout.SectionLabel("DETAILS",
-            new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)));
-        if (WidgetFeedback.HasDetailRows(_state.Payload))
+        // Provider 附加数据（仓库/分支/时长/阶段/错误摘要…）——表格件（Phase 5 行 1）：
+        // 行物料走 WidgetFeedback.DetailRows 单源（跳过数值位提示键与空白值）
+        var muted = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184));
+        var foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240));
+        root.Children.Add(ComponentLayout.SectionLabel("DETAILS",
+            new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+        var detailRows = WidgetFeedback.DetailRows(_state.Payload);
+        root.Children.Add(detailRows.Count == 0
+            ? ComponentFeedback.Empty(UiStrings.FeedbackEmpty, muted) // 空数据明示（含只有数值位提示键的情形）
+            : ComponentTable.Body(detailRows, muted, foreground));
+
+        // 趋势 sparkline（Phase 5 行 1）：Provider 往 payload 写 TrendSeries.PayloadKey 时画线；
+        // 解析不出（缺席/坏值/非有限）恒不画线——宁缺不画错线
+        var trend = TrendSeries.Parse(_state.Payload);
+        var trendSummary = TrendSeries.Summarize(trend);
+        if (trendSummary is not null)
         {
-            root.Children.Add(detailLabel);
-            var table = ComponentList.Vertical();
-            foreach (var pair in _state.Payload)
+            var direction = trendSummary.Direction switch
             {
-                if (pair.Key == WidgetFeedback.ValueHintKey)
-                {
-                    continue; // tile 数值位提示键（machine/MiMo）：内容与 Summary/数据行重复，详情表不重复占行
-                }
-                table.Children.Add(ComponentKeyValue.Row(pair.Key, pair.Value,
-                    new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240))));
-            }
-            root.Children.Add(table);
+                TrendDirection.Up => Severity.Success,
+                TrendDirection.Down => Severity.Error,
+                _ => Severity.Info,
+            };
+            var chartRow = ComponentLayout.Row(8);
+            chartRow.Children.Add(ComponentChart.Sparkline(trend, 180, 32,
+                new SolidColorBrush(_palette.SeverityColor(direction))));
+            chartRow.Children.Add(ComponentText.Caption(ComponentChart.Caption(trendSummary), muted));
+            root.Children.Add(ComponentLayout.SectionLabel("TREND",
+                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+            root.Children.Add(chartRow);
         }
-        else
+
+        // 该组件最近事件（Phase 5 行 1 时间线）：通知中心记录按 SourceWidgetId 过滤，
+        // 展示序新在前 + 上限走 Core TimelineEntries；无记录整区不出（空态不占行）
+        var entries = TimelineEntries.Of(
+            _runtime.Notifications.Records
+                .Where(record => record.SourceWidgetId == _state.WidgetId)
+                .ToList());
+        if (entries.Count > 0)
         {
-            // 空数据明示：此前静默缺区（或 payload 只有数值位提示键时画出「区段签 + 空表」）
-            root.Children.Add(detailLabel);
-            root.Children.Add(ComponentFeedback.Empty(UiStrings.FeedbackEmpty,
-                new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184))));
+            root.Children.Add(ComponentLayout.SectionLabel(UiStrings.BoardRecentEvents,
+                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+            var timeline = ComponentLayout.Column(6);
+            foreach (var entry in entries)
+            {
+                timeline.Children.Add(ComponentTimeline.Row(entry.Time, entry.Title,
+                    new SolidColorBrush(_palette.SeverityColor(entry.Severity)), muted, foreground));
+            }
+            root.Children.Add(timeline);
         }
 
         // Action 区（按能力显隐，B-603）

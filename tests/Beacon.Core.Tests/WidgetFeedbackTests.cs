@@ -6,7 +6,9 @@ namespace Beacon.Core.Tests;
 
 /// <summary>
 /// Phase 5「统一的空数据、离线与错误状态」：附加提示面四态判定（错误 &gt; 离线 &gt; 空数据 &gt; 无）。
+/// 与 UiStringsTests 同集合串行：本班断言本地化标题时语言不得被并行班改掉（见 UiStringsTests 注释）。
 /// </summary>
+[Collection("UiStrings")]
 public sealed class WidgetFeedbackTests
 {
     private static readonly Regex MinuteStamp = new("^Last update \\d{2}:\\d{2}$", RegexOptions.Compiled);
