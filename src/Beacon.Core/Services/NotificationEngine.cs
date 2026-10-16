@@ -166,7 +166,7 @@ public sealed class NotificationEngine : IDisposable
             WidgetType = state.WidgetType,
             Severity = state.Severity,
             Title = state.Summary,
-            Message = state.IsStale ? $"Last update {state.FetchedAt:HH:mm:ss}" : null,
+            Message = state.IsStale ? WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true) : null,
             DetailUrl = state.DetailUrl,
             Timestamp = _clock.UtcNow,
         };

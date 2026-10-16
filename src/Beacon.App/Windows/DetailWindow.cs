@@ -96,15 +96,31 @@ internal sealed class DetailWindow : Window
         };
         root.Children.Add(meta);
 
-        // Provider 附加数据（仓库/分支/时长/阶段/错误摘要…）
-        if (_state.Payload.Count > 0)
+        // Phase 5 统一附加提示面（WidgetFeedback 纯函数判定，Core 侧单测锚定）：错误/离线/空数据
+        // 三态共用 ComponentFeedback 词汇件——此前同一条件各窗口各写一遍且格式不齐
+        var feedback = WidgetFeedback.Resolve(_state);
+        if (feedback.Kind is FeedbackKind.Offline)
         {
-            root.Children.Add(ComponentLayout.SectionLabel("DETAILS",
-                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+            root.Children.Add(ComponentFeedback.Offline($"{feedback.Headline} · {feedback.Caption}",
+                new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+                new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184))));
+        }
+        else if (feedback.Kind is FeedbackKind.Error)
+        {
+            root.Children.Add(ComponentFeedback.Error($"{feedback.Headline} · {feedback.Caption}",
+                new SolidColorBrush(_palette.SeverityColor(Severity.Error))));
+        }
+
+        // Provider 附加数据（仓库/分支/时长/阶段/错误摘要…）
+        var detailLabel = ComponentLayout.SectionLabel("DETAILS",
+            new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)));
+        if (WidgetFeedback.HasDetailRows(_state.Payload))
+        {
+            root.Children.Add(detailLabel);
             var table = ComponentList.Vertical();
             foreach (var pair in _state.Payload)
             {
-                if (pair.Key == "value_text")
+                if (pair.Key == WidgetFeedback.ValueHintKey)
                 {
                     continue; // tile 数值位提示键（machine/MiMo）：内容与 Summary/数据行重复，详情表不重复占行
                 }
@@ -112,6 +128,13 @@ internal sealed class DetailWindow : Window
                     new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240))));
             }
             root.Children.Add(table);
+        }
+        else
+        {
+            // 空数据明示：此前静默缺区（或 payload 只有数值位提示键时画出「区段签 + 空表」）
+            root.Children.Add(detailLabel);
+            root.Children.Add(ComponentFeedback.Empty(UiStrings.FeedbackEmpty,
+                new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184))));
         }
 
         // Action 区（按能力显隐，B-603）

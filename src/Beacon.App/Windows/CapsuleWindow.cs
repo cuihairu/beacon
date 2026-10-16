@@ -360,7 +360,7 @@ public sealed partial class CapsuleWindow : Window
         if (offline)
         {
             var since = _lastFetchedAt == default ? status.Timestamp : _lastFetchedAt;
-            OfflineText.Text = $"Last update {since:HH:mm}";
+            OfflineText.Text = WidgetFeedback.LastUpdate(since);
         }
         // 横幅/文案变化会改变内容尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
         ApplySize();

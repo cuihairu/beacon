@@ -34,6 +34,9 @@ public static class UiStrings
         ["settings.language"] = "Language (board & tray apply immediately)",
         ["settings.languageAuto"] = "Auto (follow system)",
         ["settings.edgeCollapse"] = "Edge collapse (panel collapses to a strip at screen edge)",
+        ["feedback.offline"] = "Offline",
+        ["feedback.error"] = "Error",
+        ["feedback.empty"] = "No details",
     };
 
     private static readonly Dictionary<string, string> Chinese = new()
@@ -56,6 +59,9 @@ public static class UiStrings
         ["settings.language"] = "语言（看板与托盘即时生效）",
         ["settings.languageAuto"] = "自动（跟随系统）",
         ["settings.edgeCollapse"] = "贴边收起（拖到屏幕边缘收成细条）",
+        ["feedback.offline"] = "离线",
+        ["feedback.error"] = "错误",
+        ["feedback.empty"] = "暂无明细",
     };
 
     private static IReadOnlyDictionary<string, string> _current = English;
@@ -120,4 +126,7 @@ public static class UiStrings
     public static string SettingsLanguage => Get("settings.language");
     public static string SettingsLanguageAuto => Get("settings.languageAuto");
     public static string SettingsEdgeCollapse => Get("settings.edgeCollapse");
+    public static string FeedbackOffline => Get("feedback.offline");
+    public static string FeedbackError => Get("feedback.error");
+    public static string FeedbackEmpty => Get("feedback.empty");
 }

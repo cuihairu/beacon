@@ -305,7 +305,8 @@ internal sealed class PinTile
             _light.Stroke = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _value.Text = ValueOf(state);
             UpdateProgress(state, color);
-            ToolTipService.SetToolTip(_root, state.IsStale ? $"Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}" : null);
+            ToolTipService.SetToolTip(_root,
+                state.IsStale ? WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true) : null);
 
             if (changed && !_suspended)
             {
@@ -318,11 +319,12 @@ internal sealed class PinTile
             _lastFillColor = null; // 灰空心灯→实色灯的恢复算色变，恢复时同样走过渡渐入
             _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
-            _value.Text = $"Last update {state.FetchedAt.ToLocalTime():HH:mm}";
+            _value.Text = WidgetFeedback.LastUpdate(state.FetchedAt);
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
             CollapseBar(); // 先停推进动画再收条（HoldEnd 值压本地值）
-            ToolTipService.SetToolTip(_root, $"Offline · Last update {state.FetchedAt.ToLocalTime():HH:mm:ss}");
+            ToolTipService.SetToolTip(_root,
+                UiStrings.FeedbackOffline + " · " + WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true));
             _motion.StopLoops(_light);
             _motion.StopLoops(_root);
         }
