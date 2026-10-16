@@ -63,61 +63,74 @@ public sealed class JsonConfigurationStore : IConfigurationStore
 
     /// <summary>
     /// 数据源聚合防呆（Phase 3 行 4）：声明非法的面整面弃用附加源（自身状态恒可用），诊断进
-    /// LoadErrors——口径同组件树。null 内层视为无声明，不进诊断。
+    /// LoadErrors——口径同组件树。null 内层视为无声明，不进诊断。加载与写入（UpsertWidget）共用。
     /// </summary>
     private void SanitizeComponentSources()
     {
         foreach (var widget in _widgets)
         {
-            if (widget.Sources is not { Count: > 0 } sources)
-            {
-                continue;
-            }
-            var invalid = new List<string>();
-            foreach (var pair in sources)
-            {
-                var result = ComponentSourcesValidator.Validate(pair.Value);
-                if (result.Ok)
-                {
-                    continue;
-                }
-                LoadErrors.Add($"widgets.json {widget.Id}/{pair.Key}: {string.Join("; ", result.Errors)}");
-                invalid.Add(pair.Key);
-            }
-            foreach (var key in invalid)
-            {
-                sources.Remove(key);
-            }
+            SanitizeWidgetSources(widget);
         }
     }
 
     /// <summary>
     /// 组件树防呆（Phase 3 行 1）：结构非法的树整树弃用回传统渲染，诊断进 LoadErrors——
-    /// 常驻进程不因手坏 widgets.json 崩，也不静默裁剪成半棵。
+    /// 常驻进程不因手坏 widgets.json 崩，也不静默裁剪成半棵。加载与写入（UpsertWidget）共用。
     /// </summary>
     private void SanitizeWidgetComponents()
     {
         foreach (var widget in _widgets)
         {
-            if (widget.Components is not { Count: > 0 } components)
+            SanitizeWidgetSurfaces(widget);
+        }
+    }
+
+    /// <summary>写入面防呆（Phase 5 行 3，组件实例编辑）：UpsertWidget 与加载同一 fail-closed
+    /// 口径——编辑器/手改落盘的坏树不再等下次重启才被清。入参 widget 是调用方私有对象，
+    /// 尚未共享，净化无需持锁。</summary>
+    private void SanitizeWidgetSurfaces(WidgetConfig widget)
+    {
+        if (widget.Components is not { Count: > 0 } components)
+        {
+            return;
+        }
+        var invalid = new List<string>();
+        foreach (var pair in components)
+        {
+            var result = ComponentTreeValidator.Validate(pair.Value);
+            if (result.Ok)
             {
                 continue;
             }
-            var invalid = new List<string>();
-            foreach (var pair in components)
+            LoadErrors.Add($"widgets.json {widget.Id}/{pair.Key}: {string.Join("; ", result.Errors)}");
+            invalid.Add(pair.Key);
+        }
+        foreach (var key in invalid)
+        {
+            components.Remove(key);
+        }
+    }
+
+    private void SanitizeWidgetSources(WidgetConfig widget)
+    {
+        if (widget.Sources is not { Count: > 0 } sources)
+        {
+            return;
+        }
+        var invalid = new List<string>();
+        foreach (var pair in sources)
+        {
+            var result = ComponentSourcesValidator.Validate(pair.Value);
+            if (result.Ok)
             {
-                var result = ComponentTreeValidator.Validate(pair.Value);
-                if (result.Ok)
-                {
-                    continue;
-                }
-                LoadErrors.Add($"widgets.json {widget.Id}/{pair.Key}: {string.Join("; ", result.Errors)}");
-                invalid.Add(pair.Key);
+                continue;
             }
-            foreach (var key in invalid)
-            {
-                components.Remove(key);
-            }
+            LoadErrors.Add($"widgets.json {widget.Id}/{pair.Key}: {string.Join("; ", result.Errors)}");
+            invalid.Add(pair.Key);
+        }
+        foreach (var key in invalid)
+        {
+            sources.Remove(key);
         }
     }
 
@@ -177,6 +190,9 @@ public sealed class JsonConfigurationStore : IConfigurationStore
 
     public void UpsertWidget(WidgetConfig widget)
     {
+        // 写入面防呆（Phase 5 行 3）：与加载同一 fail-closed 口径——坏树/坏源不落盘
+        SanitizeWidgetSurfaces(widget);
+        SanitizeWidgetSources(widget);
         lock (_gate)
         {
             var index = _widgets.FindIndex(w => w.Id == widget.Id);
