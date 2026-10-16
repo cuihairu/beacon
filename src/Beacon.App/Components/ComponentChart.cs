@@ -37,7 +37,7 @@ internal static class ComponentChart
         for (var index = 0; index < normalized.Count; index++)
         {
             var fraction = (double)index / (normalized.Count - 1);
-            polyline.Points.Add(new Point(
+            polyline.Points.Add(new global::Windows.Foundation.Point(
                 SparklineEdgeInsetDips + innerWidth * fraction,
                 SparklineEdgeInsetDips + innerHeight * (1 - normalized[index])));
         }
