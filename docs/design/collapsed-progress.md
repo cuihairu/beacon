@@ -1,3 +1,5 @@
+[English](collapsed-progress.en.md) | [中文](collapsed-progress.md)
+
 # 坍缩态进度显示设计（logo + 进度环）
 
 > 用户设计单 2026-10-15。参考对象 [jazzenchen/agent-hud-open](https://github.com/jazzenchen/agent-hud-open)（macOS 常驻 HUD，Swift/SwiftUI）。

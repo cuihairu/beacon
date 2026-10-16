@@ -1,3 +1,5 @@
+[English](redesign-plan-2026-10-16.en.md) | [中文](redesign-plan-2026-10-16.md)
+
 # beacon 重新设计计划（外部设计稿）
 
 > 来源：https://chatgpt.com/s/t_6ad1038aa6f0819193d8efe0e81a9b7f
