@@ -121,10 +121,10 @@
     3. 若本仓已有 i18n，两个入口的文案都要能被翻译（与上面那条多语言需求一并处理）
   - 验收：给出设计意图的出处；处理方案与理由；真实操作验证两个入口**不再等价**（或只剩一个）
 
-## 文档双语补全（2026-10-16 用户令；2 项 = 1 勾 / 1 未勾）
+## 文档双语补全（2026-10-16 用户令；2 项全勾）
 
 - [x] docs/ 根目录实质文档全部成对，当前 16 篇（13 篇真实完整译本：index / mission / positioning / configuration / solution-structure / troubleshooting / privacy-policy / store-submission / 审计-文档一致性 / acceptance-checklist / acceptance-B705-L0-behavior / acceptance-B803-e2e-walkthrough / todo-triage-2026-10-16；3 篇过长只留切换器与「暂无译版」说明：master-plan 1134 行 / mvp-issues 1371 行 / mission-excerpt 1579 行；16/16 双份第 1 行语言切换器且在首屏；命令、路径、代码块、专有名词与台账 ID 原样保留不译；本目录链接 0 断链；mkdocs build --strict 绿）
-- [ ] docs/design/ 6 篇与 docs/rfc/ 1 篇双语配对（口径同根目录，本轮用户令限根目录，下轮再做）
+- [x] docs/design/ 6 篇与 docs/rfc/ 1 篇双语配对（口径同根目录；6 篇真实完整译本：collapsed-progress / redesign-2026-10-16-契约 / 映射与迁移 / 核验 / 组件库落地 / RFC-001-technical-design，6/6 行数与标题/表行/围栏/勾选计数全等（如 RFC-001 487 行 17+18 标题 83 表行 22 围栏）；1 篇过长只留切换器与「暂无译版」说明：redesign-plan-2026-10-16 1395 行；7/7 双份第 1 行语言切换器；代码跨度内源注释/模板串与 `已代决①-⑩` 等台账 ID 原样保留；链接 0 断链；mkdocs build --strict 绿；`51492ae`）
 
 ## 组件化重构分期（2026-10-16 用户执行单采纳，依 `docs/design/redesign-plan-2026-10-16.md`；现状核验见 `docs/design/redesign-2026-10-16-核验.md`）
 
