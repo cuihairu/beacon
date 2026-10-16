@@ -72,7 +72,7 @@
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
 - [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（L0 变色+脉冲半已代验：场景 V1/V2，38459944253；Toast 引擎链半已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290；「无打断」观感与 Toast 呈现面需装机半）
 - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录（四条含真实网络环境与真人操作流，需装机）
-- [ ] 设置改级别色后 L0 tile、胶囊、托盘图标同步变色（tile 与胶囊半已代验：场景 G4/G5 改色后 tile 与胶囊灯同步换橙、重置回绿，run 38561621450；托盘图标像素取证需装机半）
+- [ ] 设置改级别色后 L0 tile、胶囊、托盘图标同步变色（tile 与胶囊半已代验：场景 G4/G5 改色后 tile 与胶囊灯同步换橙、重置回绿，run 38561621450；其间 d71bdc8 状态去重曾断悬浮窗改色重绘链（既有窗不重放状态），920e23c 补重放后 run 38953986133 重证 380px/57px；托盘图标像素取证需装机半）
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验：品红 ≥8px + DeepSeek 零渗 ≤4px）
 - [x] 非法颜色值回退默认色不崩溃；重启后保持（场景 G2 两轮启动已代验：进程存活 + 非法值零渗 + 默认绿 ≥8px）
 - [x] Success 到 Error 状态变化有平滑变色过渡（reduced 档）（场景 L1/L2 已代验：38284623093 三轮渐入中间态帧 + 同色 tick 不闪灯）
@@ -130,7 +130,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 29 勾 / 14 未勾（2026-10-16 复算：Phase 0/1/2/3 全清；Phase 3 六行落地——描述符契约⑤ + 绑定模型与实例解析⑥ + 绑定引擎⑦ + 多数据源组合⑧ + 共享消费⑨ + 纯函数边界⑩；Phase 5 行 187/185/184 已勾、186/188 半落地带注记未勾；Phase 4 开工前须先裁定 HTML 边界留问）。
+> 进度：43 条 = 30 勾 / 13 未勾（2026-10-16 复算：Phase 0/1/2/3 全清；Phase 3 六行落地——描述符契约⑤ + 绑定模型与实例解析⑥ + 绑定引擎⑦ + 多数据源组合⑧ + 共享消费⑨ + 纯函数边界⑩；Phase 5 行 187/185/184/188 已勾、186 半落地带注记未勾；Phase 4 开工前须先裁定 HTML 边界留问）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -185,7 +185,7 @@
 - [x] 更丰富的布局与条件显示（ComponentVisibility 纯函数条件判定收编「此时要不要画」：封闭语法 stale/offline/has:字段/字段 op 值（severity 枚举序、progress 数值、其余字符串等值），字段表复用 ComponentBindingEngine.ResolveStatePath 单源；缺省=可见、声明解析不出=隐藏；ComponentVisibilityTests 27 例 + 不变量守入列 + 四测试项目 1247 全绿；Column 词汇件收编 DetailWindow 主列调用面、示例页补 Column+When 状态驱动标本，CS 人工核待 CI 编译门，af22955）
 - [ ] 组件实例编辑、尺寸调整与桌面布局配置（写入面已设防：UpsertWidget 与加载同 fail-closed 口径，坏树/坏源不落盘 + 诊断进 LoadErrors，UpsertSanitizeTests 4 例 + Storage 37 全绿，016ba97；实例面第一片已落：设置页组件行「组件树」钮 → JSON 编辑器（载入/清空=回传统渲染/保存），ComponentTreeValidator 前置校验非法整次拒绝 + UpsertWidget 写入面二次防呆双闸，Components init-only 走克隆整体替换，删除行同步失效编辑目标防 upsert 复活；Storage 37 绿，CI 编译 b06efd2 实证（首跑 672af03 CS7036 Feedback 必填参，补 error: false 修复）；余=尺寸档与桌面布局区、可视化树编辑器）
 - [x] 统一的空数据、离线与错误状态（WidgetFeedback 纯函数四态判定 错误&gt;离线&gt;空数据&gt;无；LastUpdate 时戳单源收编胶囊横幅/tile 值与工具提示/通知消息三处口径；DetailWindow 空数据明示修 value_text-only 画「区段签+空表」缺陷；WidgetFeedbackTests 19 例 + 四测试项目 1220 全绿；App 三窗接 ComponentFeedback 词汇件，CS 人工核待 CI 编译门，986ea52）
-- [ ] 主题、密度与可访问性完善（基础已落：Core UiDensity 单源（紧凑=间距 ×0.75 取整 AwayFromZero，缺省/未知回常规 fail-open）+ AppearanceConfig.Density 字段（默认 regular）+ 往返双断言，UiDensityTests 20 例 + Core 581 全绿，6241649；App 半已落三片：设置页「界面密度」下拉（构造期实时读口径同 progressStyle）+ DesignTokens.Spacing 收编口 + L3 Detail 五处/L2 面板三处/L0 tile 主行（PinTile 经 UiPalette.Density 新访问器，悬浮窗同享）组件间距随档缩放——regular 恒等，G 系像素锚不动；Core 581 绿，f3c2bf9/6330885，CI 编译 b06efd2 全绿实证；余=UIA SetName 补 peer 与密度场景断言核对）
+- [x] 主题、密度与可访问性完善（Core UiDensity 三档单源（redesign-plan §6.1 紧凑/标准/宽松齐套：常规恒等/紧凑 ×0.75/宽松 ×1.25 取整 AwayFromZero，缺省/未知回常规 fail-open）+ AppearanceConfig.Density（默认 regular）+ 往返断言，UiDensityTests 29 例 + Core 590 全绿，6241649/85b4ab9；App 三片：设置页「界面密度」下拉三档（构造期实时读口径同 progressStyle）+ DesignTokens.Spacing 收编口 + L3 五处/L2 三处/L0 tile 主行（PinTile 经 UiPalette.Density，悬浮窗同享）间距随档缩放，regular 恒等 G 系像素锚不动，f3c2bf9/6330885；场景 AA 五断言 CI 代验「可调可存可恢复可回切+宽松档」，run 38953986133 全绿，178efce/671c947；可访问性审计收口：设置页全控件 Header 即 UIA Name、chip 行 SetName、搜索框补显式 Name ac19cb3、tile/详情文本隐式 Name；CI 编译 b06efd2/85b4ab9/2bb3707 全绿实证）
 
 ### Phase 6 回归与真机验收（6 条）
 
