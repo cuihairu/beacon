@@ -25,7 +25,7 @@ A developer status and action center that lives on the Windows desktop. More pre
 **Boundaries.** Beacon connects to external systems and does not rebuild them. No workflow engine, no script execution platform, no remote machine or server management, no cloud accounts, team collaboration, multi-device control, third-party plugin market, and no full event-sourcing system. The desktop shell is native WinUI 3 and stays native: no embedded web rendering. Complex dashboards, charts for their own sake, and heavy themes are out of scope — the default view shows what needs your attention, not a wall of widgets.
 
 
-<img width="780" height="1496" alt="image" src="https://github.com/user-attachments/assets/14d1eb50-c66c-4515-87eb-6ceee0ca9425" />
+<img width="64" height="64" alt="image" src="https://github.com/user-attachments/assets/14d1eb50-c66c-4515-87eb-6ceee0ca9425" />
 
 
 ## Online Documentation
