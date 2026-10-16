@@ -4,6 +4,7 @@ using System.Threading;
 using Beacon.App.Services;
 using Beacon.Connections;
 using Beacon.Core.Abstractions;
+using Beacon.Core.Json;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
 using Beacon.Storage;
@@ -79,6 +80,11 @@ internal sealed class SettingsWindow : Window
     private TextBox _widgetColorBox = null!;
     private ToggleSwitch _widgetPinBox = null!;
     private TextBlock _widgetFeedback = null!;
+    // 组件树编辑（Phase 5 行 4 第一片）：既有组件的声明式树 JSON 编辑——载入/校验/保存，清空=回传统渲染
+    private WidgetConfig? _componentEditTarget;
+    private TextBlock _componentEditHeader = null!;
+    private TextBox _componentJsonBox = null!;
+    private TextBlock _componentFeedback = null!;
 
     private readonly Dictionary<string, TextBox> _colorBoxes = [];
     private TextBlock _appearanceFeedback = null!;
@@ -1057,6 +1063,7 @@ internal sealed class SettingsWindow : Window
             page.Children.Add(quick);
         }
         page.Children.Add(_widgetFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
+        page.Children.Add(BuildComponentTreeEditor());
         return page;
     }
 
@@ -2129,6 +2136,142 @@ internal sealed class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// 组件树 JSON 编辑器（Phase 5 行 4 第一片，契约.md §3.2 声明式树的编辑面）：
+    /// 面键 → 树根；组件行「组件树」载入，保存走 ComponentTreeValidator 前置校验
+    /// （非法整次拒绝不落盘）+ UpsertWidget 写入面二次防呆（016ba97）双闸。
+    /// 清空保存 = Components 置 null 回传统渲染（无树无错）。Components 是 init-only
+    /// （契约「实例与配置只读共享」），更新走克隆整体替换（UpsertWidget 按 Id 替换）。
+    /// </summary>
+    private UIElement BuildComponentTreeEditor()
+    {
+        _componentEditHeader = new TextBlock
+        {
+            Text = "组件树编辑（点组件行「组件树」载入）",
+            FontSize = DesignTokens.FontSubtitle,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        };
+        _componentJsonBox = new TextBox
+        {
+            Header = "组件树 JSON（surface 键 → 树根；留空保存=清空树回传统渲染）",
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 180,
+            FontFamily = new FontFamily("Consolas"),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_componentJsonBox, "component-json-box"); // UIA 取证：JSON 面可断言
+        _componentFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_componentFeedback, "component-feedback");
+        var save = new Button { Content = "保存组件树" };
+        save.Click += (_, _) => SaveComponentTree();
+
+        var form = new StackPanel { Spacing = 8 };
+        form.Children.Add(_componentEditHeader);
+        form.Children.Add(_componentJsonBox);
+        form.Children.Add(save);
+        form.Children.Add(_componentFeedback);
+        return new Border
+        {
+            Padding = new Thickness(10),
+            CornerRadius = DesignTokens.RadiusCard,
+            Background = new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40)),
+            Child = form,
+        };
+    }
+
+    private void OpenComponentTreeEditor(WidgetConfig widget)
+    {
+        if (_componentJsonBox is null)
+        {
+            return; // 非组件页（常规/外观/高级）无编辑器，理论不可达（行钮只在组件页），空守卫防 NRE
+        }
+        _componentEditTarget = widget;
+        _componentEditHeader.Text = $"组件树编辑 · {widget.Id}";
+        _componentJsonBox.Text = widget.Components is { Count: > 0 } components
+            ? BeaconJson.Serialize(components, indented: true)
+            : "";
+        _componentFeedback.Text = "";
+    }
+
+    private void SaveComponentTree()
+    {
+        var widget = _componentEditTarget;
+        if (widget is null)
+        {
+            Feedback(_componentFeedback, "✗ 先点组件行的「组件树」载入要编辑的组件。", error: true);
+            return;
+        }
+
+        // 清空保存 = 无声明式树（无树无错，契约 §3.2）
+        if (string.IsNullOrWhiteSpace(_componentJsonBox.Text))
+        {
+            ReplaceWidgetComponents(widget, null);
+            Feedback(_componentFeedback, "✓ 组件树已清空——该组件回传统渲染。");
+            return;
+        }
+
+        Dictionary<string, ComponentDescriptor>? surfaces;
+        try
+        {
+            surfaces = BeaconJson.Deserialize<Dictionary<string, ComponentDescriptor>>(_componentJsonBox.Text);
+        }
+        catch (Exception ex)
+        {
+            // JSON 语法错 / required 字段缺失（Type）都从这里出，未保存不落盘
+            Feedback(_componentFeedback, $"✗ JSON 解析失败（未保存）：{ex.Message}", error: true);
+            return;
+        }
+        if (surfaces is not { Count: > 0 })
+        {
+            ReplaceWidgetComponents(widget, null);
+            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染。");
+            return;
+        }
+
+        // 前置校验（与存储同口径 ComponentTreeValidator）：非法整次拒绝，不让写入面默默清树
+        var problems = new List<string>();
+        foreach (var (surface, root) in surfaces)
+        {
+            var validation = ComponentTreeValidator.Validate(root);
+            if (!validation.Ok)
+            {
+                problems.Add($"{surface}: {string.Join("; ", validation.Errors)}");
+            }
+        }
+        if (problems.Count > 0)
+        {
+            Feedback(_componentFeedback, $"✗ 组件树非法（未保存）：{string.Join("；", problems)}", error: true);
+            return;
+        }
+
+        ReplaceWidgetComponents(widget, surfaces);
+        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface），正在重渲染。");
+    }
+
+    /// <summary>克隆整体替换（Components init-only；UpsertWidget 按 Id 替换并落盘+二次防呆），
+    /// 随后重建注册与首拉、刷新行区并把编辑目标切到新对象。</summary>
+    private void ReplaceWidgetComponents(WidgetConfig widget, Dictionary<string, ComponentDescriptor>? surfaces)
+    {
+        var updated = new WidgetConfig
+        {
+            Id = widget.Id,
+            Type = widget.Type,
+            ConnectionId = widget.ConnectionId,
+            Config = widget.Config,
+            RefreshTier = widget.RefreshTier,
+            RefreshIntervalSeconds = widget.RefreshIntervalSeconds,
+            Pinned = widget.Pinned,
+            ColorOverride = widget.ColorOverride,
+            PinLayout = widget.PinLayout,
+            Components = surfaces,
+            Sources = widget.Sources,
+        };
+        _runtime.Config.UpsertWidget(updated);
+        _runtime.ReloadWidgets([updated.Id]);
+        _componentEditTarget = updated;
+        RebuildWidgets();
+    }
+
     private UIElement MakeWidgetRow(WidgetConfig widget)
     {
         var descriptor = AllWidgetDescriptors().FirstOrDefault(d => d.Type == widget.Type);
@@ -2167,10 +2310,19 @@ internal sealed class SettingsWindow : Window
             _runtime.InvalidateWidgets([widget.Id]); // 面板/聚合器丢弃残留状态
             _runtime.Config.RemoveWidget(widget.Id);
             _runtime.ReloadWidgets(); // 调度器同步移除（防幽灵刷新）
+            if (_componentEditTarget?.Id == widget.Id)
+            {
+                _componentEditTarget = null; // 防已删组件经编辑器 upsert 复活
+                _componentEditHeader.Text = "组件树编辑（点组件行「组件树」载入）";
+            }
             RebuildWidgets();
             PinsChanged?.Invoke();
         };
+        // 组件树编辑入口（Phase 5 行 4）：载入该组件的声明式树到下方 JSON 编辑器
+        var treeButton = new Button { Content = "组件树" };
+        treeButton.Click += (_, _) => OpenComponentTreeEditor(widget);
         row.Children.Add(label);
+        row.Children.Add(treeButton);
         row.Children.Add(delete);
         return row;
     }
