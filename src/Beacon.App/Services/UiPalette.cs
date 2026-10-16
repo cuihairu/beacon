@@ -14,6 +14,10 @@ internal sealed class UiPalette
 
     public UiPalette(JsonConfigurationStore config) => _config = config;
 
+    /// <summary>密度档（Phase 5 行 5）：每次渲染实时读 config——与 SeverityColor 同「设置改档即刻生效、无需重启」口径。
+    /// PinTile 等拿不到 runtime 的构造面经 palette 读档（Core UiDensity fail-open 解析在上游）。</summary>
+    public string Density => _config.App.Appearance.Density;
+
     /// <summary>解析状态灯最终色；widgetOverride 为该 Widget 的 colorOverride（可空）。</summary>
     public global::Windows.UI.Color SeverityColor(Severity severity, bool offline = false, string? widgetOverride = null)
     {

@@ -240,7 +240,7 @@ internal sealed class PinTile
         _progressText.Text = "加载中"; // 首态静态可读量：首个状态事件到达即被 NN% 覆盖
         _progressText.Visibility = Visibility.Visible;
 
-        var grid = ComponentLayout.Columns(6, GridLength.Auto, GridLength.Auto,
+        var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, palette.Density), GridLength.Auto, GridLength.Auto,
             new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto);
         Grid.SetColumn(_light, 0);
         Grid.SetColumn(icon, 1);
