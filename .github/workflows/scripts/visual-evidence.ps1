@@ -3628,7 +3628,15 @@ try
     if (!$invoked)
     {
         Save-FullScreenshot "U-FAIL-row-invoke.png"
-        throw "断言失败（场景 U2）：AttentionList 行 Invoke 三连失败：$invokeErr（面板失焦自隐已重开/行容器重建已重找，仍失败）"
+        # 应用侧异常落日志（App.xaml UnhandledException 含堆栈）——尾巴拼进断言消息直读现场
+        $uLogTail = ""
+        try
+        {
+            $uLogLines = (Get-TodayLog) -split "`n"
+            $uLogTail = ($uLogLines | Select-Object -Last 25) -join "`n"
+        }
+        catch { $uLogTail = "（日志读取失败：$($_.Exception.Message)）" }
+        throw "断言失败（场景 U2）：AttentionList 行 Invoke 三连失败：$invokeErr（面板失焦自隐已重开/行容器重建已重找，仍失败）`n--- app log tail ---`n$uLogTail"
     }
     $detailHandle = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(8)
