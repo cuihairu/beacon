@@ -175,6 +175,8 @@ internal sealed class SettingsWindow : Window
             Margin = new Thickness(0, 0, 0, 8),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_searchBox, "settings-search");
+        // 可访问性（Phase 5 行 5）：占位文本输入后消失且不作 Name，屏幕阅读器只念「编辑」——补显式 Name
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(_searchBox, "搜索设置（模块/字段）");
         _searchBox.TextChanged += (_, _) => ApplyModuleFilter();
         _searchBox.KeyDown += (sender, e) =>
         {
