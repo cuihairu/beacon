@@ -82,7 +82,9 @@ public static class ComponentBindingEngine
             ? ownState
             : (sources is not null && sources.TryGetValue(sourceName, out var state) ? state : null);
 
-    private static string ResolveStatePath(WidgetState state, string path)
+    /// <summary>状态路径单源求值（受支持字段集封闭 + payload:key）；条件显示（ComponentVisibility）
+    /// 复用同一张字段表，两个消费面不各写一遍。</summary>
+    public static string ResolveStatePath(WidgetState state, string path)
     {
         var colon = path.IndexOf(':');
         if (colon >= 0

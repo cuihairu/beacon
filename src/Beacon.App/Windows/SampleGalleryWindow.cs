@@ -166,6 +166,29 @@ internal sealed class SampleGalleryWindow : Window
         columns.Children.Add(ComponentText.Caption("标签列", _muted));
         columns.Children.Add(ComponentText.Body("Columns 列网格：Auto + Star（PinnedHost 主行口径）", _body));
         root.Children.Add(columns);
+
+        // Column 竖排 + When 条件显示（Phase 5 行 2 收编：条件从写死 if 走 Core
+        // ComponentVisibility 状态字段求值；两条同条件行各喂一份状态样例，可见性由右值决定）
+        var column = ComponentLayout.Column(6);
+        column.Children.Add(ComponentText.Body("Column 竖排容器：通用竖列（DetailWindow 主列口径）", _body));
+        var errorState = new WidgetState
+        {
+            WidgetId = "sample",
+            WidgetType = "sample",
+            ConnectionId = "sample",
+            Severity = Severity.Error,
+            Summary = "sample",
+        };
+        var visibleRow = ComponentText.Caption("severity>=error → 本行可见（Error 样例）", _muted);
+        visibleRow.Visibility = ComponentLayout.When(ComponentVisibility.Evaluate("severity>=error", errorState));
+        var hiddenRow = ComponentText.Caption("severity>=error → 本行隐藏（Success 样例）", _muted);
+        hiddenRow.Visibility = ComponentLayout.When(
+            ComponentVisibility.Evaluate("severity>=error", errorState with { Severity = Severity.Success }));
+        column.Children.Add(visibleRow);
+        column.Children.Add(hiddenRow);
+        column.Children.Add(ComponentText.Caption(
+            "同条件两条目各喂一份状态样例：条件显示按状态字段驱动而非写死", _muted));
+        root.Children.Add(column);
     }
 
     private void AddFeedbackSection(StackPanel root)

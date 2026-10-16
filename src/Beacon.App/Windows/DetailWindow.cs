@@ -68,7 +68,9 @@ internal sealed class DetailWindow : Window
 
     private UIElement BuildContent()
     {
-        var root = new StackPanel { Spacing = 10, Padding = new Thickness(18, 16, 18, 16) };
+        // Column 词汇件（Phase 5 行 2 收编调用面；值逐项等价于旧 new StackPanel { Spacing = 10 }）
+        var root = ComponentLayout.Column(10);
+        root.Padding = new Thickness(18, 16, 18, 16);
 
         // 头部：severity 点 + 类型 + 摘要
         var header = ComponentLayout.Row(8);
