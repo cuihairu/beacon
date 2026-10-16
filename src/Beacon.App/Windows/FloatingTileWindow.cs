@@ -170,6 +170,13 @@ internal sealed class FloatingTileHost
             {
                 existing.CascadeIndex = index;
                 existing.ApplyDesignSize(); // 重排尺寸+落位：show 改动会变推算宽，即时生效（Loaded 前内部自跳）
+                // 改色即刻生效（B-805 口径，场景 G4 三连红 38942131834 根因）：既有窗重放最近状态触发重渲染——
+                // 状态事件驱动的重绘兜底已被 StateStore 默认去重吞死（suppressUnchanged，值不变不重发），
+                // 不重放则 palette 改色永无渲染时机（新窗走下面 Update 分支所以只伤既有窗）。
+                if (_latest.TryGetValue(widget.Id, out var state))
+                {
+                    existing.Update(state);
+                }
             }
             else
             {
