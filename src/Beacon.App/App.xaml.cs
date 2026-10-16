@@ -433,14 +433,25 @@ public partial class App : Application
     /// <summary>L3 详情窗（B-603）：每 Widget 一窗，重复请求前置激活。</summary>
     private void OpenDetail(BeaconRuntime runtime, Beacon.Core.Models.WidgetState state)
     {
-        if (_detailWindows.TryGetValue(state.WidgetId, out var existing))
+        try
         {
-            existing.Activate();
-            return;
+            if (_detailWindows.TryGetValue(state.WidgetId, out var existing))
+            {
+                existing.Activate();
+                return;
+            }
+            var window = new Windows.DetailWindow(state, runtime, () => _detailWindows.Remove(state.WidgetId));
+            _detailWindows[state.WidgetId] = window;
+            window.Activate();
         }
-        var window = new Windows.DetailWindow(state, runtime, () => _detailWindows.Remove(state.WidgetId));
-        _detailWindows[state.WidgetId] = window;
-        window.Activate();
+        catch (Exception exception)
+        {
+            // UIA 行 Invoke（场景 U）的 provider 侧异常对客户端只回裸 HRESULT（E_INVALIDARG →
+            // 「Value does not fall within the expected range」），且 UnhandledException 不收 UIA
+            // 回调链内的异常——详情窗构造现场唯一可观测点在此：落日志后再抛，红跑日志尾巴直读堆栈。
+            _logger.LogError(exception, "打开 L3 详情窗失败（widget={WidgetId}）", state.WidgetId);
+            throw;
+        }
     }
 
     /// <summary>托盘提示文本（B-503）：分级计数 + 离线连接数。</summary>
