@@ -5020,6 +5020,16 @@ try
         throw "断言失败（场景 AA3）：重启后密度下拉选中「$sel2」（期望 紧凑…）——档位还原回归"
     }
     Write-Host "场景 AA3 通过：重启后密度下拉=紧凑（档位持久化+还原）"
+    # AA4a：三档覆盖（宽松档，85b4ab9）：选宽松 → 落盘 spacious（机制与 AA2 同款）
+    Select-ComboItemByName $densityBox2 "宽松（组件间距 ×1.25）"
+    Start-Sleep -Seconds 2
+    $cfgAaS = Get-Content (Join-Path $configDir "config.json") -Raw | ConvertFrom-Json
+    if ("$($cfgAaS.appearance.density)" -ne "spacious")
+    {
+        Save-FullScreenshot "AA-FAIL-not-saved-spacious.png"
+        throw "断言失败（场景 AA4a）：选宽松后 config appearance.density=$($cfgAaS.appearance.density)（期望 spacious）——宽松档未落盘"
+    }
+    Write-Host "场景 AA4a 通过：宽松选中 → config appearance.density=spacious 落盘"
     # AA4：回切常规（净态口径——J 静默安装不读 config，但场景间不留脏档）
     Select-ComboItemByName $densityBox2 "常规（默认）"
     Start-Sleep -Seconds 2
