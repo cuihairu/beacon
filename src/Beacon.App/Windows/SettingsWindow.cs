@@ -2206,7 +2206,7 @@ internal sealed class SettingsWindow : Window
         if (string.IsNullOrWhiteSpace(_componentJsonBox.Text))
         {
             ReplaceWidgetComponents(widget, null);
-            Feedback(_componentFeedback, "✓ 组件树已清空——该组件回传统渲染。");
+            Feedback(_componentFeedback, "✓ 组件树已清空——该组件回传统渲染。", error: false);
             return;
         }
 
@@ -2224,7 +2224,7 @@ internal sealed class SettingsWindow : Window
         if (surfaces is not { Count: > 0 })
         {
             ReplaceWidgetComponents(widget, null);
-            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染。");
+            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染。", error: false);
             return;
         }
 
@@ -2245,7 +2245,7 @@ internal sealed class SettingsWindow : Window
         }
 
         ReplaceWidgetComponents(widget, surfaces);
-        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface），正在重渲染。");
+        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface），正在重渲染。", error: false);
     }
 
     /// <summary>克隆整体替换（Components init-only；UpsertWidget 按 Id 替换并落盘+二次防呆），
