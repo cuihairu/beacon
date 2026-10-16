@@ -178,6 +178,7 @@ public class SerializationRoundTripTests
                     ["offline"] = "#808080",
                 },
                 Motion = new MotionConfig { Mode = "full", Intensity = 1.5 },
+                Density = "compact",
             },
         };
         var restoredApp = BeaconJson.RoundTrip(app);
@@ -197,6 +198,7 @@ public class SerializationRoundTripTests
         Assert.Equal("#808080", restoredApp.Appearance.SeverityColors["offline"]);
         Assert.Equal("full", restoredApp.Appearance.Motion.Mode);
         Assert.Equal(1.5, restoredApp.Appearance.Motion.Intensity);
+        Assert.Equal("compact", restoredApp.Appearance.Density); // Phase 5 行 5 密度档随外观区往返
 
         var pins = new PinsConfig
         {
@@ -228,6 +230,7 @@ public class SerializationRoundTripTests
         Assert.Equal("reduced", restored.Appearance.Motion.Mode);
         Assert.Equal(1.0, restored.Appearance.Motion.Intensity);
         Assert.Equal("bar", restored.Appearance.ProgressStyle); // 2026-10-11 用户令翻转默认：进度条（pool 仅显式选择）
+        Assert.Equal("regular", restored.Appearance.Density); // 密度默认常规（Phase 5 行 5）
         Assert.Empty(restored.Appearance.SeverityColors);
     }
 }

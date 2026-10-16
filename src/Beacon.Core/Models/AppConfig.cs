@@ -58,6 +58,9 @@ public sealed class AppearanceConfig
     /// "bar"=底部 4DIP 线性进度条 + NN% 静态读数（默认）；"pool"=圆池注水（旧特效，仅显式选择）。
     /// 组件级 widgets.json config.progressStyle 可覆盖；旧配置已显式写 "pool" 的保持不动（不迁移不覆盖）。</summary>
     public string ProgressStyle { get; set; } = "bar";
+    /// <summary>密度档（Phase 5 行 5）："regular"（默认恒等）/ "compact"（间距 ×0.75）；
+    /// 未知值回常规（Core UiDensity 单源，fail-open）。设置页开关与窗面间距收编随 CI 批次走。</summary>
+    public string Density { get; set; } = "regular";
 }
 
 /// <summary>动效配置（B-707 承载行为；RFC §6.2.8：默认适度动效、可调可关）。</summary>
