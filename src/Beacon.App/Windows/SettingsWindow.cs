@@ -1219,6 +1219,7 @@ internal sealed class SettingsWindow : Window
         {
             ("regular", "常规（默认）"),
             ("compact", "紧凑（组件间距 ×0.75）"),
+            ("spacious", "宽松（组件间距 ×1.25）"),
         })
         {
             _densityBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
