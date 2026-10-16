@@ -183,7 +183,7 @@
 
 - [x] 时间线、表格、图表与趋势组件（三诊口径落地：Core TrendSeries（payload 键 trend 不变文化数字串，非有限值/坏项弃全序列 fail-closed、归一化 [0,1] 全等回 0.5 平线、方向死区 10% 跨度）+ TimelineEntries（引擎记录旧→新翻展示序新在前、截 8 条）+ WidgetFeedback.DetailRows（表格行物料单源，跳过数值位提示键）；App 三工厂 ComponentTimeline/Table/Chart（sparkline 归一化单源 Core 不重算）+ DetailWindow 接线（详情表收编、TREND 区按 payload 画线、按 SourceWidgetId 过滤的最近事件区）+ 示例页三标本；ComponentDataTests 27 例并修 UiStringsTests 静态语言跨类竞争（三例收尾复位 + 两班同 [Collection] 串行，20 连跑零失败）；四测试项目 1274 全绿，CS 人工核待 CI 编译门，98f7a2d）
 - [x] 更丰富的布局与条件显示（ComponentVisibility 纯函数条件判定收编「此时要不要画」：封闭语法 stale/offline/has:字段/字段 op 值（severity 枚举序、progress 数值、其余字符串等值），字段表复用 ComponentBindingEngine.ResolveStatePath 单源；缺省=可见、声明解析不出=隐藏；ComponentVisibilityTests 27 例 + 不变量守入列 + 四测试项目 1247 全绿；Column 词汇件收编 DetailWindow 主列调用面、示例页补 Column+When 状态驱动标本，CS 人工核待 CI 编译门，af22955）
-- [ ] 组件实例编辑、尺寸调整与桌面布局配置（待落地 hash）
+- [ ] 组件实例编辑、尺寸调整与桌面布局配置（写入面已设防：UpsertWidget 与加载同 fail-closed 口径，坏树/坏源不落盘 + 诊断进 LoadErrors，UpsertSanitizeTests 4 例 + Storage 37 全绿，016ba97；余设置页实例面（组件树编辑、尺寸档、桌面布局区）属 App 大面，待 CI 编译门可承批次）
 - [x] 统一的空数据、离线与错误状态（WidgetFeedback 纯函数四态判定 错误&gt;离线&gt;空数据&gt;无；LastUpdate 时戳单源收编胶囊横幅/tile 值与工具提示/通知消息三处口径；DetailWindow 空数据明示修 value_text-only 画「区段签+空表」缺陷；WidgetFeedbackTests 19 例 + 四测试项目 1220 全绿；App 三窗接 ComponentFeedback 词汇件，CS 人工核待 CI 编译门，986ea52）
 - [ ] 主题、密度与可访问性完善（待落地 hash）
 
