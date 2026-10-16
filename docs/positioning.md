@@ -1,3 +1,5 @@
+[English](positioning.en.md) | [中文](positioning.md)
+
 # 定位与首批场景（P0 方向）
 
 > 2026-10-07 定向记录：把 **公司打包工具 + AI 套餐额度** 确立为 Beacon 的两个第一类场景，

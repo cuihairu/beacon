@@ -1,3 +1,5 @@
+[English](acceptance-checklist.en.md) | [中文](acceptance-checklist.md)
+
 # 装机验收执行清单（71 条 · 2026-10-12）
 
 > 源头：`docs/mvp-issues.md`「装机对照清单」三类台账（✅ 已验 1 + 🔧 已修待验 17 + ⬜ 未修 53 = **71 条**，2026-10-12 十一次整理修正原 51/68 加和漂移；批3-补47 增 2.17 后逐行重算）。

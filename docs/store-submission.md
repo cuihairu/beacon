@@ -1,3 +1,5 @@
+[English](store-submission.en.md) | [中文](store-submission.md)
+
 # 商店提交前置清单
 
 Beacon 本体仍是 **unpackaged 自包含**（RFC §10，`WindowsPackageType=None`）——商店提交只是多产一个 MSIX 包，把 publish 输出整体包起来，包内 Identity 给商店识别用；应用运行形态不变。本页记三件事：MSIX 怎么产、隐私政策页要什么字段、商店素材要备什么。

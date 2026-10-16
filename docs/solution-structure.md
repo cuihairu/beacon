@@ -1,3 +1,5 @@
+[English](solution-structure.en.md) | [中文](solution-structure.md)
+
 # Beacon Solution / 项目目录
 
 > 配套 [RFC-001](rfc/RFC-001-technical-design.md)。本文以**当前仓库实际结构**为准（2026-10-09 同步）。

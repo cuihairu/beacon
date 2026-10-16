@@ -1,3 +1,5 @@
+[English](configuration.en.md) | [中文](configuration.md)
+
 # 配置项参考
 
 Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置页改的、导入包导的，都是这几份文件的内容。本文逐项列出每个配置的键名、类型、默认值和实际效果。

@@ -1,3 +1,5 @@
+[English](index.en.md) | [中文](index.md)
+
 # Beacon
 
 <p align="center">

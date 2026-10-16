@@ -1,3 +1,5 @@
+[English](master-plan.en.md) | [中文](master-plan.md)
+
 # Beacon — 产品与技术实施总方案
 
 > | | |

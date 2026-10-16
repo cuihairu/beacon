@@ -121,6 +121,11 @@
     3. 若本仓已有 i18n，两个入口的文案都要能被翻译（与上面那条多语言需求一并处理）
   - 验收：给出设计意图的出处；处理方案与理由；真实操作验证两个入口**不再等价**（或只剩一个）
 
+## 文档双语补全（2026-10-16 用户令；2 项 = 1 勾 / 1 未勾）
+
+- [x] docs/ 根目录 15 篇实质文档全部成对（12 篇真实完整译本：index / mission / positioning / configuration / solution-structure / troubleshooting / privacy-policy / store-submission / 审计-文档一致性 / acceptance-checklist / acceptance-B705-L0-behavior / acceptance-B803-e2e-walkthrough；3 篇过长只留切换器与「暂无译版」说明：master-plan 1134 行 / mvp-issues 1371 行 / mission-excerpt 1579 行；15/15 双份第 1 行语言切换器且在首屏；命令、路径、代码块、专有名词与台账 ID 原样保留不译；本目录链接 0 断链；mkdocs build --strict 绿）
+- [ ] docs/design/ 6 篇与 docs/rfc/ 1 篇双语配对（口径同根目录，本轮用户令限根目录，下轮再做）
+
 ## 组件化重构分期（2026-10-16 用户执行单采纳，依 `docs/design/redesign-plan-2026-10-16.md`；现状核验见 `docs/design/redesign-2026-10-16-核验.md`）
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。

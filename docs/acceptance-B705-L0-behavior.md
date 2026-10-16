@@ -1,3 +1,5 @@
+[English](acceptance-B705-L0-behavior.en.md) | [中文](acceptance-B705-L0-behavior.md)
+
 # B-705 L0 行为铁律检查（只看不弹，RFC §6.2.7）
 
 > 状态：代码侧静态审计完成（本文档记录）；逐条真机手动验证归入 B-803 全流程走查（首台 Windows 环境执行）。

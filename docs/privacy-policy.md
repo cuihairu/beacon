@@ -1,3 +1,5 @@
+[English](privacy-policy.en.md) | [中文](privacy-policy.md)
+
 # Beacon 隐私政策
 
 最后更新：2026-10-12 · 适用版本：v0.1.x（含每日构建）

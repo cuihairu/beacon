@@ -1,3 +1,5 @@
+[English](mvp-issues.en.md) | [中文](mvp-issues.md)
+
 # Beacon MVP Issue 列表
 
 > 配套 [RFC-001](rfc/RFC-001-technical-design.md) 与 [Solution 目录](solution-structure.md)。
