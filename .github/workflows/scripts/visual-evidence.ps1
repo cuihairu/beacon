@@ -2246,6 +2246,14 @@ try
             [System.Windows.Automation.TreeScope]::Descendants,
             (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "呼吸")))
         if (!$breathBtn) { throw "断言失败（场景 G7c）：tile 帧差分 $fullDiff px 且设置页「呼吸」预览按钮未找到——无法分诊，按真实回归处理" }
+        # 外观区 1254 加密度下拉后预览行推出 640 视口（38953986133 首证：按钮在树、矩形空）——滚入视口再取证；
+        # 无 ScrollItem 模式（已可见/宿主非滚动）则原样继续
+        try
+        {
+            ($breathBtn.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView()
+            Start-Sleep -Seconds 1
+        }
+        catch { }
         ($breathBtn.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
         Start-Sleep -Seconds 1
         $br = $breathBtn.Current.BoundingRectangle
@@ -3582,22 +3590,45 @@ try
     Write-Host "场景 U1 通过：失败 run 进需要关注（ci.yml · failure · 5m00s）"
     # U2 行 Invoke 开 L3 详情窗（S4 已证 InvokeableListItem 链）：run_id/重试按钮在窗
     $uBefore = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
-    $attentionListEl = Find-UiaById $panelEl "AttentionList" 5
-    if (!$attentionListEl) { throw "断言失败（场景 U2）：UIA 未找到 AttentionList" }
-    $rowItem = $attentionListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
-    if (!$rowItem) { throw "断言失败（场景 U2）：AttentionList 无 ListItem 可激活" }
-    try
+    # 两类失败都吃重试（38942131834/38953986133 两连红实证同一签名）：
+    #   ① 面板失焦自隐（Flyout 语义，Deactivated→Hide）——runner 控制台抢焦点后句柄不可见，隐藏元素 Invoke 必抛
+    #     「Value does not fall within the expected range」；② FindFirst 与 Invoke 之间刷新 tick 重建行容器 → 元素失联。
+    # 每轮先验面板可见性（不可见=重发 WM_HOTKEY 重开），再重找 AttentionList/行，再 Invoke——确定性失败三连炸仍红不掩盖。
+    $invokeErr = ""
+    $invoked = $false
+    for ($attempt = 1; $attempt -le 3 -and !$invoked; $attempt++)
     {
-        ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
-    }
-    catch
-    {
-        # 行容器竞态兜底（38942131834 实证）：FindFirst 与 Invoke 之间刷新 tick 重建列表 → 元素失联
-        # Invoke 抛「Value does not fall within the expected range」。重找重试一次——若为确定性失败，二炸仍红不掩盖。
-        Start-Sleep -Seconds 2
+        if (@([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")) -notcontains $panelHandle)
+        {
+            [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY 重开面板
+            $reopen = (Get-Date).AddSeconds(5)
+            while ((Get-Date) -lt $reopen -and @([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")).Count -lt 1)
+            {
+                Start-Sleep -Milliseconds 250
+            }
+            $panelHandle = @([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")) | Select-Object -First 1
+            if ($panelHandle) { $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle) }
+            Start-Sleep -Seconds 1
+        }
+        $attentionListEl = Find-UiaById $panelEl "AttentionList" 5
+        if (!$attentionListEl) { $invokeErr = "AttentionList 未找到（第 $attempt 轮）"; Start-Sleep -Seconds 2; continue }
         $rowItem = $attentionListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
-        if (!$rowItem) { throw "断言失败（场景 U2）：Invoke 失败后重找 AttentionList 无 ListItem" }
-        ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+        if (!$rowItem) { $invokeErr = "AttentionList 无 ListItem 可激活（第 $attempt 轮）"; Start-Sleep -Seconds 2; continue }
+        try
+        {
+            ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
+            $invoked = $true
+        }
+        catch
+        {
+            $invokeErr = $_.Exception.Message.Trim()
+            Start-Sleep -Seconds 2
+        }
+    }
+    if (!$invoked)
+    {
+        Save-FullScreenshot "U-FAIL-row-invoke.png"
+        throw "断言失败（场景 U2）：AttentionList 行 Invoke 三连失败：$invokeErr（面板失焦自隐已重开/行容器重建已重找，仍失败）"
     }
     $detailHandle = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(8)
