@@ -3612,8 +3612,24 @@ try
         }
         $attentionListEl = Find-UiaById $panelEl "AttentionList" 5
         if (!$attentionListEl) { $invokeErr = "AttentionList 未找到（第 $attempt 轮）"; Start-Sleep -Seconds 2; continue }
-        $rowItem = $attentionListEl.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+        # 行选取防虚拟化（UIA 实证：视口外/未实化容器 BoundingRectangle 空或 NaN，pattern 调用高发
+        # E_INVALIDARG）——优先取矩形非空且宽度有效行；全退化才拿首行（诊断消息仍可见实际元素）。
+        $rowCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)
+        $rowItems = $attentionListEl.FindAll([System.Windows.Automation.TreeScope]::Descendants, $rowCond)
+        $rowItem = $null
+        foreach ($ri in $rowItems)
+        {
+            $riRect = $ri.Current.BoundingRectangle
+            if (-not $riRect.IsEmpty -and -not [double]::IsNaN($riRect.Width) -and $riRect.Width -gt 0) { $rowItem = $ri; break }
+        }
+        if (!$rowItem -and $rowItems.Count -gt 0) { $rowItem = $rowItems[0] }
         if (!$rowItem) { $invokeErr = "AttentionList 无 ListItem 可激活（第 $attempt 轮）"; Start-Sleep -Seconds 2; continue }
+        # 行先滚入视口再激活（G7c 同款兜底：ScrollItemPattern 不可用则跳过）
+        try
+        {
+            ($rowItem.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView()
+            Start-Sleep -Milliseconds 500
+        } catch { }
         try
         {
             ($rowItem.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
@@ -3621,7 +3637,14 @@ try
         }
         catch
         {
-            $invokeErr = $_.Exception.Message.Trim()
+            # 诊断快照（38942131834 起 E_INVALIDARG 签名恒定但根因未明）：失败时记录实际命中元素身份与 pattern 面
+            $rowDiag = ""
+            try
+            {
+                $rowPatterns = ($rowItem.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName }) -join ","
+                $rowDiag = "row=[$($rowItem.Current.Name)] offscreen=$($rowItem.Current.IsOffscreen) rect=$($rowItem.Current.BoundingRectangle) patterns=$rowPatterns"
+            } catch { $rowDiag = "（行诊断失败：$($_.Exception.Message)）" }
+            $invokeErr = "$($_.Exception.Message.Trim()) | $rowDiag"
             Start-Sleep -Seconds 2
         }
     }
@@ -3636,7 +3659,7 @@ try
             $uLogTail = ($uLogLines | Select-Object -Last 25) -join "`n"
         }
         catch { $uLogTail = "（日志读取失败：$($_.Exception.Message)）" }
-        throw "断言失败（场景 U2）：AttentionList 行 Invoke 三连失败：$invokeErr（面板失焦自隐已重开/行容器重建已重找，仍失败）`n--- app log tail ---`n$uLogTail"
+        throw "断言失败（场景 U2）：AttentionList 行 Invoke 三连失败：$invokeErr（面板失焦自隐已重开/行容器重建已重找/视口外已滚入，仍失败）`n--- app log tail ---`n$uLogTail"
     }
     $detailHandle = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(8)
