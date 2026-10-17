@@ -5126,6 +5126,16 @@ catch
     Write-Host "::error::场景 AA 断言失败：$($_.Exception.Message)"
 }
 
+# PS 5.1 顶层数组分叉（V4 案同型，run 39050990738 定谳）：5.1 的 ConvertFrom-Json 把顶层数组
+# 当单元素留在管道（外层 count=1），直接 Where 再 $x[0].prop 会成员枚举出全表拼串、判据恒假；
+# pwsh 7 则摊平成记录流。统一经此助手摊平一层，两版语义一致。
+function Get-ConfigRecords([string]$Path)
+{
+    $records = @(Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
+    if ($records.Count -eq 1 -and $records[0] -is [System.Array]) { return @($records[0]) }
+    return $records
+}
+
 # —— 场景 AB：订阅重建链——连接停用/组件删除后调度器停止消费、未停用组件不误伤（todo 行 193 装机半）——
 # 驱动面：conn-toggle-{connId} / widget-delete-{widgetId} 两个 UIA id（同批落 SettingsWindow）驱动
 #   停用链（UpsertConnection→InvalidateWidgets→Rebuild→PinsChanged→ReloadTiles）与删除链
@@ -5187,13 +5197,13 @@ try
         {
             if ($abAttempt -eq 2)
             {
-                # 上轮已翻（UI 链已走）而 20s 磁盘判据未过——run 39044697350 实证：CI 负载下 UI 线程
-                # 停顿可把同步落盘推出判据窗（归档 json 已 false、GLM 循环已停）。补 30s 有界宽限；
-                # 再不落盘才是真产品缺陷，红门不放松。
+                # 上轮已翻（UI 链已走）而判据窗内未读到落盘——run 39050990738 定谳根因是 5.1 读法
+                # 分叉（见 Get-ConfigRecords），产品链本身即 Toggle 即落（GLM 循环当刻即停）；读法
+                # 修复后此处仅作 CI 负载兜底，30s 有界宽限，再不落盘才是真产品缺陷，红门不放松。
                 $graceDeadline = (Get-Date).AddSeconds(30)
                 while ((Get-Date) -lt $graceDeadline)
                 {
-                    $z = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+                    $z = @(Get-ConfigRecords $abConns | Where-Object { $_.id -eq "zhipu" })
                     if ($z.Count -ge 1 -and "$($z[0].enabled)" -eq "False") { $disabled = $true; break }
                     Start-Sleep -Seconds 2
                 }
@@ -5209,7 +5219,7 @@ try
         $abDeadline = (Get-Date).AddSeconds(20)
         while ((Get-Date) -lt $abDeadline)
         {
-            $z = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+            $z = @(Get-ConfigRecords $abConns | Where-Object { $_.id -eq "zhipu" })
             if ($z.Count -ge 1 -and "$($z[0].enabled)" -eq "False") { $disabled = $true; break }
             Start-Sleep -Seconds 2
         }
@@ -5261,7 +5271,7 @@ try
     $deadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $deadline)
     {
-        $z2 = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+        $z2 = @(Get-ConfigRecords $abConns | Where-Object { $_.id -eq "zhipu" })
         if ($z2.Count -ge 1 -and "$($z2[0].enabled)" -eq "True") { $reEnabled = $true; break }
         Start-Sleep -Seconds 2
     }
@@ -5304,7 +5314,7 @@ try
     $deadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $deadline)
     {
-        $w = @(Get-Content $abWidgets -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "deepseek.balance:ds" })
+        $w = @(Get-ConfigRecords $abWidgets | Where-Object { $_.id -eq "deepseek.balance:ds" })
         if ($w.Count -eq 0) { $gone = $true; break }
         Start-Sleep -Seconds 2
     }
