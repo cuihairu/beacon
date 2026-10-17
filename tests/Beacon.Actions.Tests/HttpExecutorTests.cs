@@ -126,6 +126,7 @@ public sealed class HttpExecutorTests
         // Responder 抛 OCE：请求 token 未取消 → 归类为超时
         Assert.False(result.Success);
         Assert.Contains("超时", result.Message);
+        Assert.Equal(ActionOutcome.TimedOut, result.Outcome); // P5-01：超时态显式携带
     }
 
     [Fact]

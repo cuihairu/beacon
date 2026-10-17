@@ -63,8 +63,12 @@ public sealed class LocalCommandExecutor : IActionExecutor
                 var output = await SafeRead(outputTask).ConfigureAwait(false);
                 var error = await SafeRead(errorTask).ConfigureAwait(false);
                 WriteLog(outputPath, output, error);
-                var reason = cancellationToken.IsCancellationRequested ? "已取消" : $"执行超时（>{timeout.TotalSeconds:0}s），进程已终止";
-                return new ActionResult(action.Id, Success: false, Message: reason, OutputPath: outputPath, CompletedAt: DateTimeOffset.UtcNow);
+                var cancelled = cancellationToken.IsCancellationRequested;
+                var reason = cancelled ? "已取消" : $"执行超时（>{timeout.TotalSeconds:0}s），进程已终止";
+                return new ActionResult(action.Id, Success: false, Message: reason, OutputPath: outputPath, CompletedAt: DateTimeOffset.UtcNow)
+                {
+                    Outcome = cancelled ? ActionOutcome.Cancelled : ActionOutcome.TimedOut,
+                };
             }
 
             var stdout = await SafeRead(outputTask).ConfigureAwait(false);

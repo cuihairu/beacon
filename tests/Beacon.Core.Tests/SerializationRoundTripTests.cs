@@ -152,6 +152,15 @@ public class SerializationRoundTripTests
         var result = new ActionResult("a-retry-client", true, "dispatched", null, new DateTimeOffset(2026, 10, 7, 3, 35, 0, TimeSpan.Zero));
         var restoredResult = BeaconJson.RoundTrip(result);
         Assert.Equal(result, restoredResult);
+
+        // P5-01 五态：显式 Outcome 落盘往返保留；旧构造/旧 JSON（无 Outcome 字段）按 Success 派生
+        Assert.Equal(ActionOutcome.Succeeded, result.Outcome);
+        Assert.Equal(ActionOutcome.Failed,
+            new ActionResult("a-1", false, "boom", null, DateTimeOffset.UtcNow).Outcome);
+        var timedOut = result with { Outcome = ActionOutcome.TimedOut };
+        var restoredTimedOut = BeaconJson.RoundTrip(timedOut);
+        Assert.Equal(ActionOutcome.TimedOut, restoredTimedOut.Outcome);
+        Assert.Equal(timedOut, restoredTimedOut);
     }
 
     [Fact]

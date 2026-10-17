@@ -72,11 +72,19 @@ public sealed class HttpExecutor : IActionExecutor
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return Fail(action.Id, "HTTP 请求超时");
+            return new ActionResult(action.Id, Success: false, Message: "HTTP 请求超时", OutputPath: null,
+                CompletedAt: DateTimeOffset.UtcNow)
+            {
+                Outcome = ActionOutcome.TimedOut,
+            };
         }
         catch (OperationCanceledException)
         {
-            return Fail(action.Id, "已取消");
+            return new ActionResult(action.Id, Success: false, Message: "已取消", OutputPath: null,
+                CompletedAt: DateTimeOffset.UtcNow)
+            {
+                Outcome = ActionOutcome.Cancelled,
+            };
         }
         catch (HttpRequestException exception)
         {

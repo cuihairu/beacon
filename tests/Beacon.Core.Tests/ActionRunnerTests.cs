@@ -51,6 +51,7 @@ public sealed class ActionRunnerTests
         Assert.Equal(1, http.CallCount);
         Assert.Equal(0, open.CallCount);
         Assert.True(result.Success);
+        Assert.Equal(ActionOutcome.Succeeded, result.Outcome);
         Assert.Single(events); // ActionExecuted 已发布
     }
 
@@ -63,6 +64,7 @@ public sealed class ActionRunnerTests
 
         Assert.False(result.Success);
         Assert.Contains("未知 Action 类型", result.Message);
+        Assert.Equal(ActionOutcome.Unsupported, result.Outcome); // P5-01：未知动作不混作普通失败
         Assert.Single(events);
     }
 
@@ -77,6 +79,7 @@ public sealed class ActionRunnerTests
 
         Assert.False(result.Success);
         Assert.Equal("已取消", result.Message);
+        Assert.Equal(ActionOutcome.Cancelled, result.Outcome);
         Assert.Equal(0, executor.CallCount);
     }
 
@@ -131,6 +134,7 @@ public sealed class ActionRunnerTests
 
         Assert.False(result.Success);
         Assert.Contains("超时", result.Message);
+        Assert.Equal(ActionOutcome.TimedOut, result.Outcome); // P5-01：超时态显式携带
     }
 
     [Fact]
@@ -143,6 +147,7 @@ public sealed class ActionRunnerTests
 
         Assert.False(result.Success);
         Assert.Equal("disk full", result.Message);
+        Assert.Equal(ActionOutcome.Failed, result.Outcome);
         Assert.Single(events); // 失败也发事件 → UI 可见反馈
     }
 
@@ -163,6 +168,7 @@ public sealed class ActionRunnerTests
 
         Assert.False(result.Success);
         Assert.Equal("已取消", result.Message);
+        Assert.Equal(ActionOutcome.Cancelled, result.Outcome);
     }
 
     // ---- 重试（批3-补42：DSL actions.retry 落到 Parameters，默认 1 次 = 不重试） ----

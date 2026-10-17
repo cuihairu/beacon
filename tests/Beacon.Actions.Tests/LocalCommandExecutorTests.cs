@@ -130,6 +130,7 @@ public sealed class LocalCommandExecutorTests
 
         Assert.False(result.Success);
         Assert.Contains("超时", result.Message);
+        Assert.Equal(ActionOutcome.TimedOut, result.Outcome); // P5-01：超时态显式携带
         Assert.NotNull(result.OutputPath);
         Assert.True(File.Exists(result.OutputPath)); // 部分输出也落盘
     }

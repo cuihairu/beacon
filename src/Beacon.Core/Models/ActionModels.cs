@@ -25,9 +25,24 @@ public sealed class ActionExecutionContext
     public ConnectionContext? ConnectionContext { get; init; }
 }
 
+/// <summary>单次 Action 执行终态（P5-01 五态）：取消/超时/未知动作不再靠解析提示文字判定。</summary>
+public enum ActionOutcome
+{
+    Succeeded,
+    Failed,
+    Cancelled,
+    TimedOut,
+    Unsupported,
+}
+
 public sealed record ActionResult(
     string ActionId,
     bool Success,
     string? Message,
     string? OutputPath,
-    DateTimeOffset CompletedAt);
+    DateTimeOffset CompletedAt)
+{
+    /// <summary>执行终态：显式携带五态；未显式指定时按 Success 兼容派生（旧构造/旧落盘数据零迁移），
+    /// 兼容映射不变式 Success == (Outcome == Succeeded) 由 Runner 落枚举处保证。</summary>
+    public ActionOutcome Outcome { get; init; } = Success ? ActionOutcome.Succeeded : ActionOutcome.Failed;
+}

@@ -205,6 +205,7 @@ public sealed class WebhookExecutorTests
 
         Assert.False(result.Success);
         Assert.Contains("超时", result.Message);
+        Assert.Equal(ActionOutcome.TimedOut, result.Outcome); // P5-01：超时态显式携带
     }
 
     [Fact]

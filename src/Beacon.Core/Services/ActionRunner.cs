@@ -74,7 +74,7 @@ public sealed class ActionRunner
 
         if (!_executors.TryGetValue(action.Type, out var executor))
         {
-            return Fail(action.Id, $"未知 Action 类型：{action.Type}");
+            return Unsupported(action.Id, $"未知 Action 类型：{action.Type}"); // P5-01：未知动作不混作普通失败
         }
 
         // 重试参数（DSL actions.retry 落到 Parameters；手改配置非法值回退默认）。默认 1 次 = 不重试，
@@ -95,7 +95,7 @@ public sealed class ActionRunner
                 }
                 catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
                 {
-                    return Fail(action.Id, $"执行超时（>{Timeout.TotalSeconds:0}s）");
+                    return TimedOut(action.Id, $"执行超时（>{Timeout.TotalSeconds:0}s）");
                 }
                 catch (OperationCanceledException)
                 {
@@ -125,7 +125,7 @@ public sealed class ActionRunner
         }
         catch (OperationCanceledException) when (timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            return Fail(action.Id, $"执行超时（>{Timeout.TotalSeconds:0}s）");
+            return TimedOut(action.Id, $"执行超时（>{Timeout.TotalSeconds:0}s）");
         }
         catch (OperationCanceledException)
         {
@@ -161,8 +161,26 @@ public sealed class ActionRunner
     }
 
     private ActionResult Cancelled(string actionId, string message)
-        => new(actionId, Success: false, Message: message, OutputPath: null, CompletedAt: _clock.UtcNow);
+        => new(actionId, Success: false, Message: message, OutputPath: null, CompletedAt: _clock.UtcNow)
+        {
+            Outcome = ActionOutcome.Cancelled,
+        };
+
+    private ActionResult TimedOut(string actionId, string message)
+        => new(actionId, Success: false, Message: message, OutputPath: null, CompletedAt: _clock.UtcNow)
+        {
+            Outcome = ActionOutcome.TimedOut,
+        };
+
+    private ActionResult Unsupported(string actionId, string message)
+        => new(actionId, Success: false, Message: message, OutputPath: null, CompletedAt: _clock.UtcNow)
+        {
+            Outcome = ActionOutcome.Unsupported,
+        };
 
     private ActionResult Fail(string actionId, string message)
-        => new(actionId, Success: false, Message: message, OutputPath: null, CompletedAt: _clock.UtcNow);
+        => new(actionId, Success: false, Message: message, OutputPath: null, CompletedAt: _clock.UtcNow)
+        {
+            Outcome = ActionOutcome.Failed,
+        };
 }
