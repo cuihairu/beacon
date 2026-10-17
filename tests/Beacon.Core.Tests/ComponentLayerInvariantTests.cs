@@ -23,6 +23,7 @@ public sealed class ComponentLayerInvariantTests
         typeof(ComponentBindingEngine),
         typeof(ComponentSourceIndex),
         typeof(ComponentVisibility),
+        typeof(HtmlTemplateParser),
     ];
 
     /// <summary>任何都会产生数据请求或状态读写的运行时服务——组件层不得接收。</summary>

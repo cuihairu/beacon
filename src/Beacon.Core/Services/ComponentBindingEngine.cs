@@ -32,6 +32,12 @@ public static class ComponentBindingEngine
             ["quota-windows"] = (state, _) => WidgetValueHint.MultiWindow(state.Payload),
         };
 
+    /// <summary>受支持的状态字段名（Phase 4 模板解析期白名单校验同一张表，不另写第二份）。</summary>
+    public static IReadOnlyCollection<string> StateFieldNames { get; } = StatePaths.Keys.ToArray();
+
+    /// <summary>选择器注册表名（Phase 4 模板插值 {{selector.x}} 解析期白名单校验用）。</summary>
+    public static IReadOnlyCollection<string> SelectorNames { get; } = Selectors.Keys.ToArray();
+
     /// <summary>整体解析：树内每个绑定节点的 Field 值，键 = "{节点路径}.{字段}"（路径与校验诊断同口径）。</summary>
     public static IReadOnlyDictionary<string, string> Resolve(WidgetInstance instance, WidgetState state)
         => Resolve(instance, new Dictionary<string, WidgetState> { [ComponentBindingSource.OwnStateKey] = state });
