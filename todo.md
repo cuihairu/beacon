@@ -86,7 +86,7 @@
 - [x] tile 底部进度条显示不全（2026-10-14 缺陷单「还是一样的问题」）（02a5de1 修复，38500538817 复证全绿：client 32px/frame 38px chrome 6px + 条带 620/676 真像素，见决策记录同名条）
 
 ## 后续可选（master-plan.md，5 项 = 4 勾 / 1 未勾）
-- [x] L3 内动作链（[Retry] 全链路）CI 场景化（38434164526 实证 U1-U5 全绿；解锁行 32/38/46）
+- [x] L3 内动作链（[Retry] 全链路）CI 场景化（38434164526 实证 U1-U5 全绿；解锁行 32/38/46；98f7a2d 后 U 连红根因=ComponentText.Body MaxWidth=NaN 恒 E_INVALIDARG 致 L3 详情窗必炸：896758c 修复 + 0df60a8 取证（38976398309 拿到栈）+ e9f393c 场景加固，38999120347 复证全绿）
 - [x] Critical 与崩溃注入机制（debug 门控）（DebugInjection 8 例单测 + DispatcherQueueGuard 兜底；38494525200 实证 V1/V2/V3 全绿，V3 红出真实发现见决策记录）
 - [ ] 厂商私有打包工具 Provider（需真实厂商 API 与认证字段；开源标准 API 的 Jenkins Provider 已落位 2026-10-11）
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1 修复：记忆尺寸存客户区 DIP 直喂外框，每次开窗矮一标题栏）
