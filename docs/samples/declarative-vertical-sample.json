@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "exportedAt": "2026-10-17T00:00:00Z",
+  "app": {},
+  "connections": [
+    {
+      "id": "conn-sample-github",
+      "type": "github",
+      "endpoint": "https://api.github.com",
+      "credentialRef": "beacon/sample-github",
+      "settings": {}
+    },
+    {
+      "id": "conn-sample-quota",
+      "type": "http",
+      "endpoint": "https://api.github.com/rate_limit",
+      "credentialRef": "",
+      "settings": {}
+    }
+  ],
+  "widgets": [
+    {
+      "id": "w-sample-ci",
+      "type": "github.actions.runs",
+      "connectionId": "conn-sample-github",
+      "config": {
+        "repository": "owner/repo",
+        "workflow": "ci.yml"
+      },
+      "pinned": true,
+      "components": {
+        "tile": {
+          "type": "column",
+          "props": { "spacing": "2" },
+          "children": [
+            {
+              "type": "row",
+              "props": { "spacing": "6" },
+              "children": [
+                {
+                  "type": "statusdot",
+                  "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+                },
+                {
+                  "type": "text",
+                  "props": { "size": "caption" },
+                  "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+                }
+              ]
+            }
+          ]
+        },
+        "row": {
+          "type": "row",
+          "props": { "spacing": "7" },
+          "children": [
+            {
+              "type": "statusdot",
+              "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+            },
+            {
+              "type": "text",
+              "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+            }
+          ]
+        },
+        "detail": {
+          "type": "column",
+          "props": { "spacing": "8" },
+          "children": [
+            { "type": "sectionlabel", "props": { "text": "RUN" } },
+            { "type": "keyvalue", "props": { "key": "workflow" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:workflow" } } ] },
+            { "type": "keyvalue", "props": { "key": "branch" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:branch" } } ] },
+            { "type": "keyvalue", "props": { "key": "run" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:run_id" } } ] },
+            { "type": "keyvalue", "props": { "key": "result" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:conclusion" } } ] },
+            { "type": "divider" },
+            { "type": "sectionlabel", "props": { "text": "QUOTA" } },
+            { "type": "keyvalue", "props": { "key": "status" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "summary", "sourceName": "quota" } } ] },
+            { "type": "progress", "props": { "width": "160" }, "bindings": [ { "field": "progress", "source": { "kind": "state", "ref": "progress", "sourceName": "quota" } } ] }
+          ]
+        }
+      },
+      "sources": {
+        "detail": { "quota": "w-sample-quota" }
+      }
+    },
+    {
+      "id": "w-sample-quota",
+      "type": "http.quota",
+      "connectionId": "conn-sample-quota",
+      "config": {
+        "label": "GitHub API 配额",
+        "unit": "次/h",
+        "total_path": "resources.core.limit",
+        "remaining_path": "resources.core.remaining"
+      },
+      "pinned": true,
+      "components": {
+        "tile": {
+          "type": "column",
+          "props": { "spacing": "2" },
+          "children": [
+            {
+              "type": "row",
+              "props": { "spacing": "6" },
+              "children": [
+                {
+                  "type": "statusdot",
+                  "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+                },
+                {
+                  "type": "text",
+                  "props": { "size": "caption" },
+                  "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+                }
+              ]
+            }
+          ]
+        },
+        "row": {
+          "type": "row",
+          "props": { "spacing": "7" },
+          "children": [
+            {
+              "type": "statusdot",
+              "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+            },
+            {
+              "type": "text",
+              "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "pins": { "tiles": [] },
+  "actions": []
+}
