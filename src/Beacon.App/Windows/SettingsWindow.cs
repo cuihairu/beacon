@@ -2666,7 +2666,7 @@ internal sealed class SettingsWindow : Window
         if (surfaces is not { Count: > 0 })
         {
             ReplaceWidgetComponents(widget, null);
-            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染。", error: false);
+            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染（随下一次状态到达生效）。", error: false);
             return;
         }
 
@@ -2687,7 +2687,9 @@ internal sealed class SettingsWindow : Window
         }
 
         ReplaceWidgetComponents(widget, surfaces);
-        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface），正在重渲染。", error: false);
+        // P0-01 文案对齐真实能力：保存链只落盘+重排注册（P3-02 分流，不取数、不发布重渲事件）——
+        // 面随下一次状态到达按新树渲染；状态内容无变化被去重压住时，重开对应面可见。
+        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface）；不取数，面随下一次状态到达按新树渲染。", error: false);
     }
 
     /// <summary>克隆整体替换（Components init-only；UpsertWidget 按 Id 替换并落盘+二次防呆），

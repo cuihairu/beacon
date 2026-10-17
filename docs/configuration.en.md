@@ -213,6 +213,25 @@ Conventions: **the declaration layer only supplies data-extraction defaults** �
 | colorOverride | `#RRGGBB` | `null` | Status-light color override; priority: widget > global palette; invalid values fall back to the default |
 | pinLayout | object | `null` | Layout convenience reference (pins.json is authoritative; both are written together) |
 
+### Declarative component surfaces (components / sources)
+
+Each widget in widgets.json may carry two incremental optional fields (optional fields write no keys; existing configs read with zero migration):
+
+| Field | Type | Notes |
+|---|---|---|
+| components | object | Surface key → component tree root (current surface keys `tile` / `row` / `detail`); structurally invalid discards the whole tree, falling back to traditional rendering + diagnostics |
+| sources | object | Surface key → { source name → widgetId }, declaring extra data sources; the reserved key `""` = own state and must not be used by extra declarations, ≤16 sources per surface; an illegal declaration drops only that surface's extra sources — own state stays available |
+
+**Capability boundary, three tiers** (P0-01 convention: do not mistake "can be written" for "accepted"):
+
+| Tier | Coverage | Status |
+|---|---|---|
+| Core model available | Tree/source validation, instance resolution, binding engine, source index (all static pure functions, Core unit tests evergreen) | ✅ Available |
+| App wired | Declarative rendering on all three surfaces `tile` / `row` / `detail` + extra-source routing + missing-source display ("⚠ 缺少数据源") | ✅ Wired |
+| Real user scenario accepted | Runtime behavior: look of the three surfaces, missing-source refill, offline self-healing, etc. | ⏳ Pending on-machine (Phase 6 regression) |
+
+Saving a component tree fetches no data: a surface renders with the new tree on the **next state arrival**; when no content change is suppressed by dedup, reopening the surface shows it. Importable sample (complete surface trees + cross-source bindings): `docs/samples/declarative-vertical-sample.json`.
+
 ### Refresh tiers (refreshTier)
 
 | Tier | Period | Applies to |
