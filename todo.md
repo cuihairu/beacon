@@ -33,7 +33,7 @@
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
-## MVP 待验/未修项（50 项 = 30 勾 / 20 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
+## MVP 待验/未修项（50 项 = 31 勾 / 19 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；**2026-10-17 真机实证双半**：本机双击（os.startfile 同路径）二次启动进程数恒 1，主实例日志 `Balloon dispatched: Beacon - Beacon 已在运行。`（Shell_NotifyIconW 返回 true=Windows 已接受气泡）+ `Secondary instance exit.` 双锚；随批给 ShowBalloon 补日志锚——原实现丢弃 Shell_NotifyIconW 返回值，装机复测无取证点，现成功落 Information/失败落 Warning（TrayIconService.cs:99-110））
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
 - [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；拖动手势半已代验：R3 SendInput 拖 +50/+40 窗随动 + shell-state.json offsetDips 落盘 90,81 + 重启还原闭环（38750239155）；跨 DPI 拓扑需装机半）
@@ -77,7 +77,7 @@
 - [x] 非法颜色值回退默认色不崩溃；重启后保持（场景 G2 两轮启动已代验：进程存活 + 非法值零渗 + 默认绿 ≥8px）
 - [x] Success 到 Error 状态变化有平滑变色过渡（reduced 档）（场景 L1/L2 已代验：38284623093 三轮渐入中间态帧 + 同色 tick 不闪灯）
 - [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调（四半已代验：G7b off 静止 + G7c full 呼吸 + G6 强度落盘 + V2 脉冲帧差分；观感与强度裁量需装机半）
-- [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）（焦点半已代验：场景 H1 前台不变；发声与隐藏期循环需装机半）
+- [x] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）（焦点半：场景 H1 前台不变；发声半：常青门 AudioApiAbsenceTests 全源 206 文件 ×10 发声 API 词断言红绿自证，新增发声面即红，通知链显式 Sound:false、OS toast 声属用户规则面非动效面；循环半代码审计：Forever 循环仅 MotionEngine.StartBreathing/StartPulse 两入口，消费面仅 PinTile.ApplyLoops 与设置页预览（显式 stop），收起帘控 PinnedHostWindow.ApplyLayout strip→SuspendMotion 全 tile、悬停/拖拽/Reconcile 全路径经 ApplyLayout，悬浮窗只挂一次性 Flash/SlideIn 且 stale 窗 Close 销毁非隐藏常驻；真机听声目检仍可装机复核）
 - [x] 导出文件全文无 token；导入+重录密钥后行为与原机一致（场景 Z picker 双驱代验：导出→导入往返反馈计数逐字段对齐+重录密钥提示在案+导出全文无密钥真值；204b884，run 38725138151）
 - [ ] 全流程录屏/截图归档至 docs/；发现问题全部修复或开 Issue（截图已归档至 visual-evidence 工件；真人全流程录屏需装机半）
 - [ ] 干净 Windows 11 虚拟机：下载后运行并完成 B-803 脚本（用户验收终局；CI 是构建证明不是验收替代）
@@ -130,7 +130,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 30 勾 / 13 未勾（2026-10-16 复算：Phase 0/1/2/3 全清；Phase 3 六行落地——描述符契约⑤ + 绑定模型与实例解析⑥ + 绑定引擎⑦ + 多数据源组合⑧ + 共享消费⑨ + 纯函数边界⑩；Phase 5 行 187/185/184/188 已勾、186 半落地带注记未勾；Phase 4 开工前须先裁定 HTML 边界留问）。
+> 进度：43 条 = 33 勾 / 10 未勾（2026-10-17 复算：Phase 0/1/2/3/5 全清——Phase 3 六行与 Phase 5 五行含 186 可视化树编辑器（de528f9 起）均已落地；未勾 = Phase 4 六条 + Phase 6 四条；Phase 4 开工前须先裁定 HTML 边界留问）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 

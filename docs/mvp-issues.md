@@ -386,8 +386,8 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
     - CI 代验（2026-10-13，run 38284623093，场景 L）：三轮翻档连拍均取到渐入中间态帧（与两端差分 ≥8px）；同色 tick 不闪灯（L1 连拍灯恒在）。渐入观感最终裁量仍可装机复核。
   - [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调
     - CI 已代验四半（场景 G7b off 三帧差分 ≤12px 全静止 + G7c full 帧差分 32px 呼吸可见，run 38274507626 + G6 强度 1.5 落盘 + 场景 V2 Critical 脉冲帧差分 85px，run 38459944253）；观感与强度可调的最终裁量——待 Windows 装机。
-  - [ ] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）
-    - CI 已代验焦点半（2026-10-12 批3-补50 场景 H1）：翻档期间前台窗句柄不变硬断言；发声与隐藏期动画循环——待 Windows 装机。
+  - [x] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）
+    - 焦点半：CI 已代验（2026-10-12 批3-补50 场景 H1）：翻档期间前台窗句柄不变硬断言。发声半：代码级常青门收口（2026-10-17，AudioApiAbsenceTests）——全源 206 文件 ×10 发声 API 词断言红绿自证，新增发声面即红；通知链显式 Sound:false、OS toast 声属用户规则面非动效面。循环半：调用面全量代码审计——Forever 循环仅 MotionEngine.StartBreathing/StartPulse 两入口，消费面仅 PinTile.ApplyLoops 与设置页预览（显式 stop 分支）；收起帘控在 PinnedHostWindow.ApplyLayout（strip=收起且未悬停展开→SuspendMotion 全 tile），悬停展开/回落/拖拽起止/Reconcile 全路径经 ApplyLayout；悬浮窗无 Forever 循环（只挂一次性 Flash/SlideIn），stale 窗 unpin/停用时 Close 销毁非隐藏常驻。真机听声/目检最终裁量仍可装机复核。
 
 ---
 
