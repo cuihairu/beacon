@@ -164,8 +164,16 @@ public sealed class WidgetHost : IAsyncDisposable
             }
             if (state is null)
             {
-                // 条件请求未变化（ETag 304）：连接健康，但内容无新值，不重发不重写缓存
+                // 条件请求未变化（ETag 304）：连接健康，但内容无新值，不重发不重写缓存。
+                // 新鲜度恢复（P1-01）：失败期落进 Store 的陈旧视图在此抬回——IsStale/ConnectionHealthy
+                // 翻转属内容键变化，去重仍会发布一次，恢复后不再一直灰显；缓存内容/FetchedAt/摘要全冻结。
                 PublishHealth(connection.Id, ConnectionHealthState.Healthy);
+                var cached = _cache.LoadStates(connection.Id).GetValueOrDefault(widgetId);
+                var current = _store.Get(widgetId);
+                if (cached is not null && current is not null && (current.IsStale || !current.ConnectionHealthy))
+                {
+                    _store.Update(cached with { IsStale = false, ConnectionHealthy = true });
+                }
                 return true;
             }
             state = DebugInjection.OverrideSeverity(state); // debug 注入面：BEACON_DEBUG_SEVERITY=critical 时改判（缓存/事件/聚合全下游同判）

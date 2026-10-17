@@ -425,4 +425,34 @@ public sealed class WidgetHostTests
 
         Assert.Null(store.Get("w-1"));
     }
+
+    [Fact]
+    public async Task NullStateAfterFailure_LiftsStaleFlags_ContentFrozen()
+    {
+        // P1-01 新鲜度恢复：失败落陈旧视图后 304（未变化）——连接已健康，灰显必须抬起且内容全冻结
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var fresh = TestData.State(severity: Severity.Success, summary: "3 PRs");
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(fresh);
+        await host.RefreshWidgetAsync("w-1");
+
+        fixture.Provider.Handler = (_, _, _, _) =>
+            throw new ConnectionException("down", ConnectionHealthState.Offline);
+        await host.RefreshWidgetAsync("w-1");
+        Assert.True(store.Get("w-1")!.IsStale); // 前置：失败确实落下陈旧视图
+
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(null); // 304：未变化
+        var before = fixture.StatesSnapshot().Length;
+        await host.RefreshWidgetAsync("w-1");
+
+        var recovered = store.Get("w-1")!;
+        Assert.False(recovered.IsStale);
+        Assert.True(recovered.ConnectionHealthy);
+        Assert.Equal(fresh.FetchedAt, recovered.FetchedAt);        // 内容冻结：恢复不刷时间戳
+        Assert.Equal(fresh.Summary, recovered.Summary);
+        Assert.Equal(Severity.Success, recovered.Severity);        // 失败期的 Warning 抬升一并复位
+        Assert.Equal(before + 1, fixture.StatesSnapshot().Length); // 健康翻转穿过去重发布一次
+    }
 }
