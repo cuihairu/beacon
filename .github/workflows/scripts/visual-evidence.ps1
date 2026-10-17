@@ -5318,6 +5318,81 @@ catch
     Write-Host "::error::场景 AB 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 AC：空白环带真实点击落到下层跨进程窗（todo 行 65 行为半）——
+# H5b 已证宿主 WM_NCHITTEST 裁决（tile 行 HTCLIENT / 空白环带 HTTRANSPARENT）；HTTRANSPARENT 的
+#   同线程限制是 Win32 文档口径——跨进程（Beacon 宿主 vs 任意应用窗）真实点击是否真穿到下层窗，
+#   唯一可信裁决是行为实测：双 notepad——np1 抢走前台作前置，np2 移到面板右空白环带正下方，
+#   ClickAt 合成真实点击环带点 → 前台应翻到 np2。红=点击被宿主吃掉（真发现，行 65 验收不达，
+#   fail closed 如实暴露转用户裁定，不降级 warning）。观感半（手感/自然度）仍装机。
+try
+{
+    Write-HConfig "panel"
+    Ensure-MockServer # 防御：不依赖前序场景收尾
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    $panel = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        $hosts = [WinEnum]::VisibleHandlesByTitle("Beacon Pinned")
+        if ($hosts.Count -ge 1) { $panel = $hosts[0]; break }
+        Start-Sleep -Seconds 2
+    }
+    if ($panel -eq [IntPtr]::Zero) { Save-FullScreenshot "AC-FAIL-no-host.png"; throw "断言失败（场景 AC 前置）：panel 模式 30s 内未见「Beacon Pinned」宿主窗" }
+    $np1 = Start-Process notepad -PassThru
+    $np2 = Start-Process notepad -PassThru
+    $null = $np1.WaitForInputIdle(15000)
+    $null = $np2.WaitForInputIdle(15000)
+    $np1.Refresh(); $np2.Refresh()
+    $np1H = $np1.MainWindowHandle
+    $np2H = $np2.MainWindowHandle
+    if ($np1H -eq [IntPtr]::Zero -or $np2H -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "AC-FAIL-no-notepad.png"
+        throw "断言失败（场景 AC 前置）：notepad 未开窗（np1=$np1H np2=$np2H）——CI 镜像缺经典 notepad？"
+    }
+    # np2 移到面板右空白环带正下方（现有尺寸居中对准环带点）；np1 挪远处避免盖住环带
+    $wr = [WinEnum]::RectOf($panel)
+    $cr = [WinEnum]::ClientScreenRectOf($panel)
+    $bandX = $wr.Right - 2
+    $bandY = [int](($cr.Top + $cr.Bottom) / 2)
+    $r2 = [WinEnum]::RectOf($np2H)
+    $w2 = $r2.Right - $r2.Left
+    $h2 = $r2.Bottom - $r2.Top
+    [WinEnum]::MoveNoFocus($np2H, ($bandX - [int]($w2 / 2)), ($bandY - [int]($h2 / 2)))
+    [WinEnum]::MoveNoFocus($np1H, 40, 40)
+    Start-Sleep -Seconds 1
+    # 前置：np1 抢走前台（双开时前台属谁不确定，统一压到 np1）
+    [WinEnum]::ForceForeground($np1H)
+    Start-Sleep -Seconds 1
+    $fg0 = [WinEnum]::Foreground()
+    if ($fg0 -eq $np2H) { Save-FullScreenshot "AC-FAIL-precondition.png"; throw "断言失败（场景 AC 前置）：点击前前台已是 np2——前置失效，判据作废" }
+    Save-FullScreenshot "AC-before-click.png"
+    [WinEnum]::ClickAt($bandX, $bandY)
+    Start-Sleep -Seconds 2
+    $fg1 = [WinEnum]::Foreground()
+    Save-FullScreenshot "AC-after-click.png"
+    if ($fg1 -ne $np2H)
+    {
+        throw "断言失败（场景 AC）：点击空白环带后前台句柄 $fg1 未翻到下层 notepad（$np2H）——跨进程穿透不生效：真实点击被宿主吃掉（HTTRANSPARENT 同线程限制坐实），行 65 验收不达，转用户裁定"
+    }
+    Write-Host "场景 AC 通过：空白环带真实点击穿透到下层跨进程窗（前台 np1→np2）——H5b 裁决半 + 本行为半齐，观感半留装机"
+    Stop-Beacon
+    $null = $np1.CloseMainWindow()
+    $null = $np2.CloseMainWindow()
+    Start-Sleep -Seconds 1
+    Stop-Process -Id $np1.Id -ErrorAction SilentlyContinue
+    Stop-Process -Id $np2.Id -ErrorAction SilentlyContinue
+}
+catch
+{
+    Stop-Beacon
+    if ($np1) { Stop-Process -Id $np1.Id -ErrorAction SilentlyContinue }
+    if ($np2) { Stop-Process -Id $np2.Id -ErrorAction SilentlyContinue }
+    Save-FullScreenshot "AC-FAIL-unexpected.png"
+    $failures.Add("场景 AC：$($_.Exception.Message)")
+    Write-Host "::error::场景 AC 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
