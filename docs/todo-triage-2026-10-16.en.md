@@ -2,6 +2,7 @@
 
 # todo 42-item triage (2026-10-16 user order)
 
+> **Historical snapshot, archive only** (DOC-01): the line numbers below are `todo.md` line numbers as of 2026-10-16 and have since drifted with new entries; do not dispatch work by them. The current authoritative ledger is the repo-root [`todo.md`](../todo.md); judge by item text.
 > Criteria: classify each of the 42 unchecked items in `todo.md` into A (implementable directly) / B (needs the user's environment or a user decision) / C (already proxy-verified, can be closed).
 > Red line per the order: a C-class checkoff must cite evidence (scenario name or a test file at `file:line`); no checkoffs to clear the ledger.
 > This version's conclusion is **C is the empty set** — rationale in the next section. The 6 items the user named (37/39/57/62/65/67) do carry「已代验」 in their parentheses, but each parenthesis also retains its own「需装机半」(installation half) — and per the acceptance criteria todo.md sets for itself ("a change that was not verified does not count as done"), checkoff would be self-contradictory. All 6 go to B, with their proxy-verified halves listed separately in the B table along with the matching installation-checklist row.
