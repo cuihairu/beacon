@@ -322,4 +322,107 @@ public sealed class WidgetHostTests
         await Poll.UntilAsync(() => delayer.Calls.Count >= 3);
         Assert.Equal(TimeSpan.FromSeconds(1), delayer.Calls[2].Requested);
     }
+
+    [Fact]
+    public async Task RefreshCompletingAfterWidgetDeleted_DropsLateResult()
+    {
+        // P1-01 晚到保护：取数 await 期间组件被删——缓存/状态/健康一律不写回（幽灵快照不得复活）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var expected = TestData.State(severity: Severity.Info, summary: "late arrival");
+        var release = new TaskCompletionSource();
+        fixture.Provider.Handler = async (_, _, _, _) =>
+        {
+            await release.Task;
+            return (WidgetState?)expected;
+        };
+
+        var refresh = host.RefreshWidgetAsync("w-1"); // 停在 Provider await：模拟在途拉取
+        fixture.Config.WidgetItems.RemoveAll(w => w.Id == "w-1");
+        release.SetResult();
+        var ok = await refresh;
+
+        Assert.True(ok); // 跳过不当作失败（组退避不受牵连）
+        Assert.Null(store.Get("w-1"));
+        Assert.Empty(fixture.Cache.LoadStates("conn-1"));
+        Assert.Empty(fixture.StatesSnapshot());
+        Assert.Empty(fixture.HealthsSnapshot());
+    }
+
+    [Fact]
+    public async Task RefreshCompletingAfterConnectionDeleted_DropsLateResult()
+    {
+        // P1-01 晚到保护（连接消失分支）：同上，故障路径的陈旧重发布也不得复活
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var release = new TaskCompletionSource();
+        fixture.Provider.Handler = async (_, _, _, _) =>
+        {
+            await release.Task;
+            throw new ConnectionException("late failure", ConnectionHealthState.Offline);
+        };
+
+        var refresh = host.RefreshWidgetAsync("w-1");
+        fixture.Config.ConnectionItems.Clear();
+        release.SetResult();
+        var ok = await refresh;
+
+        Assert.True(ok);
+        Assert.Null(store.Get("w-1"));
+        Assert.Empty(fixture.StatesSnapshot());
+        Assert.Empty(fixture.HealthsSnapshot());
+    }
+
+    [Fact]
+    public async Task RefreshCompletingAfterConnectionDisabled_DropsLateResult()
+    {
+        // P1-01 晚到保护（停用分支）：Enabled=false 的连接晚到结果不写回（SetConnectionTypeEnabled 同型）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var expected = TestData.State(severity: Severity.Info, summary: "late arrival");
+        var release = new TaskCompletionSource();
+        fixture.Provider.Handler = async (_, _, _, _) =>
+        {
+            await release.Task;
+            return (WidgetState?)expected;
+        };
+
+        var refresh = host.RefreshWidgetAsync("w-1");
+        fixture.Config.ConnectionItems[0] = new ConnectionConfig
+        {
+            Id = "conn-1",
+            Type = "github",
+            Endpoint = "https://example.invalid",
+            Enabled = false,
+        };
+        release.SetResult();
+        var ok = await refresh;
+
+        Assert.True(ok);
+        Assert.Null(store.Get("w-1"));
+        Assert.Empty(fixture.StatesSnapshot());
+    }
+
+    [Fact]
+    public async Task WidgetsInvalidated_ClearsStoreSnapshot()
+    {
+        // P1-01 接线：删除/停用发布的 WidgetsInvalidated 同步清 Store（原先仅聚合器/面板订阅）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(TestData.State());
+        await host.RefreshWidgetAsync("w-1");
+        Assert.NotNull(store.Get("w-1"));
+
+        fixture.Bus.Publish(new WidgetsInvalidated(["w-1"]));
+
+        Assert.Null(store.Get("w-1"));
+    }
 }

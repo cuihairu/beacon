@@ -23,6 +23,7 @@ public sealed class WidgetHost : IAsyncDisposable
     private readonly ILogger? _logger;
     private readonly object _gate = new();
     private readonly Dictionary<string, ConnectionHealthState> _health = [];
+    private readonly IDisposable _invalidationSubscription;
 
     public WidgetHost(
         IEventBus bus,
@@ -44,6 +45,32 @@ public sealed class WidgetHost : IAsyncDisposable
         _secrets = secrets;
         _resolver = resolver;
         _logger = logger;
+        _invalidationSubscription = bus.Subscribe<WidgetsInvalidated>(OnWidgetsInvalidated);
+    }
+
+    /// <summary>失效联动（P1-01）：删除/停用发布的 WidgetsInvalidated 同步清 Store 快照——
+    /// 原先仅聚合器/面板订阅丢灯，Store 留着可被新消费者读出的幽灵快照。</summary>
+    private void OnWidgetsInvalidated(WidgetsInvalidated evt)
+    {
+        _store.Invalidate(evt.WidgetIds);
+    }
+
+    /// <summary>晚到结果保护（P1-01）：取数 await 期间组件被删或连接停用/删除——缓存/状态/健康/陈旧提示一律不写回。</summary>
+    private bool RefreshResultDropped(string widgetId)
+    {
+        var live = _config.FindWidget(widgetId);
+        if (live is null)
+        {
+            _logger?.LogWarning("Widget {WidgetId} disappeared during refresh; late result dropped.", widgetId);
+            return true;
+        }
+        var connection = _config.FindConnection(live.ConnectionId);
+        if (connection is null || !connection.Enabled)
+        {
+            _logger?.LogWarning("Connection {ConnectionId} for widget {WidgetId} gone or disabled during refresh; late result dropped.", live.ConnectionId, widgetId);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>注册全部 Widget 并启动调度；启动即 kick 第一轮拉取。</summary>
@@ -130,6 +157,11 @@ public sealed class WidgetHost : IAsyncDisposable
             var state = await provider
                 .GetStateAsync(widget, connection, new ConnectionContext { Secrets = _secrets }, cancellationToken)
                 .ConfigureAwait(false);
+            // 晚到结果闸门：await 期间组件/连接可能已被删停，写回前复核配置现值
+            if (RefreshResultDropped(widgetId))
+            {
+                return true;
+            }
             if (state is null)
             {
                 // 条件请求未变化（ETag 304）：连接健康，但内容无新值，不重发不重写缓存
@@ -145,6 +177,10 @@ public sealed class WidgetHost : IAsyncDisposable
         }
         catch (ConnectionException exception)
         {
+            if (RefreshResultDropped(widgetId))
+            {
+                return true; // 失败结果同样晚到：不复活幽灵陈旧态
+            }
             _logger?.LogWarning(exception, "Widget {WidgetId} refresh failed: {Health}.", widgetId, exception.Health);
             PublishHealth(connection.Id, exception.Health);
             PublishStale(widget, connection.Id, exception.Message); // 失败原因直显 tile（空白/静默吞错零容忍）
@@ -152,6 +188,10 @@ public sealed class WidgetHost : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            if (RefreshResultDropped(widgetId))
+            {
+                return true;
+            }
             _logger?.LogError(exception, "Widget {WidgetId} refresh failed unexpectedly.", widgetId);
             PublishHealth(connection.Id, ConnectionHealthState.Degraded);
             PublishStale(widget, connection.Id, exception.Message);
@@ -196,6 +236,7 @@ public sealed class WidgetHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _invalidationSubscription.Dispose();
         _scheduler.Stop();
         await Task.CompletedTask.ConfigureAwait(false);
     }
