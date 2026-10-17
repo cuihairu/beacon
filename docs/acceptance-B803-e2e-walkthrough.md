@@ -1,4 +1,3 @@
-[English](acceptance-B803-e2e-walkthrough.en.md) | [中文](acceptance-B803-e2e-walkthrough.md)
 
 # B-803 MVP 端到端走查（任务书 §成功标准）
 

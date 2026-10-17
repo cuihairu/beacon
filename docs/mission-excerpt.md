@@ -1,4 +1,3 @@
-[English](mission-excerpt.en.md) | [中文](mission-excerpt.md)
 
 可以。下面这份我会按**可以直接交给其他 Code Agent 执行**的程度来写，不只是产品想法，而是把定位、UX、架构、模块、MVP、插件机制、Windows 实现、后续演进和验收标准都明确下来。
 

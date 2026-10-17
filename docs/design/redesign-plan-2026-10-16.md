@@ -1,4 +1,3 @@
-[English](redesign-plan-2026-10-16.en.md) | [中文](redesign-plan-2026-10-16.md)
 
 # beacon 重新设计计划（外部设计稿）
 

@@ -1,4 +1,3 @@
-[English](positioning.en.md) | [中文](positioning.md)
 
 # 定位与首批场景（P0 方向）
 

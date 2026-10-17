@@ -1,4 +1,3 @@
-[English](mission.en.md) | [中文](mission.md)
 
 # Beacon 任务书（提炼自原始方案，原文见 mission-excerpt.md）
 

@@ -1,4 +1,3 @@
-[English](acceptance-checklist.en.md) | [中文](acceptance-checklist.md)
 
 # 装机验收执行清单（71 条 · 2026-10-12）
 

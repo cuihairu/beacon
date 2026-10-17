@@ -1,4 +1,3 @@
-[English](mission.en.md) | [中文](mission.md)
 
 # Beacon mission brief (distilled from the original plan; the original text is in mission-excerpt.md)
 

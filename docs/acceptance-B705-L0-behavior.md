@@ -1,4 +1,3 @@
-[English](acceptance-B705-L0-behavior.en.md) | [中文](acceptance-B705-L0-behavior.md)
 
 # B-705 L0 行为铁律检查（只看不弹，RFC §6.2.7）
 

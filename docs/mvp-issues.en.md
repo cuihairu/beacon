@@ -1,4 +1,3 @@
-[English](mvp-issues.en.md) | [中文](mvp-issues.md)
 
 # Beacon MVP Issue List
 

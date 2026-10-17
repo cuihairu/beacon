@@ -1,4 +1,3 @@
-[English](positioning.en.md) | [中文](positioning.md)
 
 # Positioning and First Scenarios (P0 Direction)
 

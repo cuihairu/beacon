@@ -1,4 +1,3 @@
-[English](troubleshooting.en.md) | [中文](troubleshooting.md)
 
 # Troubleshooting (FAQ)
 

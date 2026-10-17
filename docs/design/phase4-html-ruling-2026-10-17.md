@@ -1,4 +1,3 @@
-[English](phase4-html-ruling-2026-10-17.en.md) | [中文](phase4-html-ruling-2026-10-17.md)
 
 # Phase 4 HTML 小屏幕 · 边界裁定与架构决策（2026-10-17）
 

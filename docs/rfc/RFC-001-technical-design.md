@@ -1,4 +1,3 @@
-[English](RFC-001-technical-design.en.md) | [中文](RFC-001-technical-design.md)
 
 # RFC-001：Beacon 技术方案
 

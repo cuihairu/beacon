@@ -1,4 +1,3 @@
-[English](privacy-policy.en.md) | [中文](privacy-policy.md)
 
 # Beacon privacy policy
 

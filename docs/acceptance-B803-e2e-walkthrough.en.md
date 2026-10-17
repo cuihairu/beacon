@@ -1,4 +1,3 @@
-[English](acceptance-B803-e2e-walkthrough.en.md) | [中文](acceptance-B803-e2e-walkthrough.md)
 
 # B-803 MVP end-to-end walkthrough (mission brief §Success criteria)
 

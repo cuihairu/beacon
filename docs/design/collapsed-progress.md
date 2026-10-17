@@ -1,4 +1,3 @@
-[English](collapsed-progress.en.md) | [中文](collapsed-progress.md)
 
 # 坍缩态进度显示设计（logo + 进度环）
 

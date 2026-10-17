@@ -1,4 +1,3 @@
-[English](configuration.en.md) | [中文](configuration.md)
 
 # Configuration reference
 

@@ -1,4 +1,3 @@
-[English](mission-excerpt.en.md) | [中文](mission-excerpt.md)
 
 # Appendix — Original mission brief excerpt
 

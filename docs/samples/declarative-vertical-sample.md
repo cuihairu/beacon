@@ -1,4 +1,3 @@
-[English](declarative-vertical-sample.en.md) | [中文](declarative-vertical-sample.md)
 
 # 可导入样例：GitHub Actions 纵向面（P3-04）
 

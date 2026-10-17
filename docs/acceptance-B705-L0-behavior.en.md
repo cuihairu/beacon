@@ -1,4 +1,3 @@
-[English](acceptance-B705-L0-behavior.en.md) | [中文](acceptance-B705-L0-behavior.md)
 
 # B-705 L0 behavior invariants check (show only, never interrupt — RFC §6.2.7)
 

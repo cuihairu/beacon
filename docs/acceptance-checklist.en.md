@@ -1,4 +1,3 @@
-[English](acceptance-checklist.en.md) | [中文](acceptance-checklist.md)
 
 # Installation acceptance checklist (71 items · 2026-10-12)
 

@@ -1,4 +1,3 @@
-[English](declarative-vertical-sample.en.md) | [中文](declarative-vertical-sample.md)
 
 # Importable sample: GitHub Actions vertical slice (P3-04)
 

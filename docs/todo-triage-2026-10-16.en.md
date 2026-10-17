@@ -1,4 +1,3 @@
-[中文](todo-triage-2026-10-16.md) | [English](todo-triage-2026-10-16.en.md)
 
 # todo 42-item triage (2026-10-16 user order)
 

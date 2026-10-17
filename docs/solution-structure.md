@@ -1,4 +1,3 @@
-[English](solution-structure.en.md) | [中文](solution-structure.md)
 
 # Beacon Solution / 项目目录
 

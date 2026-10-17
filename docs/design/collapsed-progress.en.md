@@ -1,4 +1,3 @@
-[English](collapsed-progress.en.md) | [中文](collapsed-progress.md)
 
 # Collapsed-State Progress Display Design (logo + progress ring)
 

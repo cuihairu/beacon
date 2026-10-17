@@ -1,4 +1,3 @@
-[English](master-plan.en.md) | [中文](master-plan.md)
 
 # Beacon — Product & Technical Master Plan
 

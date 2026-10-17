@@ -1,4 +1,3 @@
-[English](store-submission.en.md) | [中文](store-submission.md)
 
 # Store submission pre-checklist
 
