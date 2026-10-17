@@ -24,6 +24,7 @@ public sealed class WidgetHost : IAsyncDisposable
     private readonly object _gate = new();
     private readonly Dictionary<string, ConnectionHealthState> _health = [];
     private readonly IDisposable _invalidationSubscription;
+    private readonly IDisposable _actionSubscription;
 
     public WidgetHost(
         IEventBus bus,
@@ -46,6 +47,7 @@ public sealed class WidgetHost : IAsyncDisposable
         _resolver = resolver;
         _logger = logger;
         _invalidationSubscription = bus.Subscribe<WidgetsInvalidated>(OnWidgetsInvalidated);
+        _actionSubscription = bus.Subscribe<ActionExecuted>(OnActionExecuted);
     }
 
     /// <summary>失效联动（P1-01）：删除/停用发布的 WidgetsInvalidated 同步清 Store 快照——
@@ -53,6 +55,17 @@ public sealed class WidgetHost : IAsyncDisposable
     private void OnWidgetsInvalidated(WidgetsInvalidated evt)
     {
         _store.Invalidate(evt.WidgetIds);
+    }
+
+    /// <summary>动作后刷源（P5-02 请求接受与远端终态分离）：请求被接受不等于任务终态——
+    /// 动作结算后立即拉一次来源 Widget，让「已接受→运行中→终态」由 Provider 权威状态驱动呈现，
+    /// 不改权威状态制造成功假象；组件已删/连接停用由刷新链晚到保护拦截。</summary>
+    private void OnActionExecuted(ActionExecuted evt)
+    {
+        if (evt.Result.SourceWidgetId is { } widgetId && _config.FindWidget(widgetId) is not null)
+        {
+            _ = RefreshWidgetAsync(widgetId);
+        }
     }
 
     /// <summary>晚到结果保护（P1-01）：取数 await 期间组件被删或连接停用/删除——缓存/状态/健康/陈旧提示一律不写回。</summary>
@@ -282,6 +295,7 @@ public sealed class WidgetHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _invalidationSubscription.Dispose();
+        _actionSubscription.Dispose();
         _scheduler.Stop();
         await Task.CompletedTask.ConfigureAwait(false);
     }

@@ -113,7 +113,8 @@ public sealed class GitHubWorkflowRerunExecutor : GitHubWorkflowExecutorBase
         var ok = await client
             .PostAsync($"/repos/{repo}/actions/runs/{Uri.EscapeDataString(runId)}/rerun-failed-jobs", cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        return Ok(action.Id, $"已重跑 run {runId} 的失败 job");
+        // 请求接受语义（P5-02）：rerun API 202 只表示请求被接受，终态由运行轮询呈现，不说「已重跑完成」
+        return Ok(action.Id, $"已请求重跑 run {runId} 的失败 job");
     }
 }
 

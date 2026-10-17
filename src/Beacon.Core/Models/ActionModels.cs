@@ -45,4 +45,8 @@ public sealed record ActionResult(
     /// <summary>执行终态：显式携带五态；未显式指定时按 Success 兼容派生（旧构造/旧落盘数据零迁移），
     /// 兼容映射不变式 Success == (Outcome == Succeeded) 由 Runner 落枚举处保证。</summary>
     public ActionOutcome Outcome { get; init; } = Success ? ActionOutcome.Succeeded : ActionOutcome.Failed;
+
+    /// <summary>动作来源 Widget（P5-02 动作后刷源）：Runner 按 SourceState 盖章；null=无来源，不触发刷新。
+    /// 关联的是配置 ID 而非 run——远端任务关联仍看各执行器的消息与 Widget 状态流转。</summary>
+    public string? SourceWidgetId { get; init; }
 }

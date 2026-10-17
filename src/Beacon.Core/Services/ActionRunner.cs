@@ -49,6 +49,10 @@ public sealed class ActionRunner
         CancellationToken cancellationToken = default)
     {
         var result = await RunCoreAsync(action, context, cancellationToken).ConfigureAwait(false);
+        if (context.SourceState is { } source)
+        {
+            result = result with { SourceWidgetId = source.WidgetId }; // P5-02：动作后按来源刷源
+        }
         _bus.Publish(new ActionExecuted(result));
         return result;
     }

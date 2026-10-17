@@ -304,4 +304,19 @@ public sealed class ActionRunnerTests
         Assert.Contains("执行超时", result.Message); // 重试共享总超时预算：预算耗尽打断退避、按超时收口
         Assert.Equal(1, executor.CallCount); // 退避被打断即收口，不再发起下一次尝试
     }
+
+    [Fact]
+    public async Task SourceState_StampsSourceWidgetId_OnEveryOutcome()
+    {
+        var executor = new StubExecutor("open.url");
+        var (runner, _, _) = Build(executor);
+        var state = new WidgetState { WidgetId = "w-9", WidgetType = "test.type", ConnectionId = "conn-1", Severity = Severity.Success, Summary = "OK" };
+
+        var succeeded = await runner.ExecuteAsync(Action("open.url"), new ActionExecutionContext { SourceState = state });
+        var cancelled = await runner.ExecuteAsync(Action("nope"), new ActionExecutionContext { SourceState = state }); // 未知类型走 Unsupported 路径
+
+        Assert.Equal("w-9", succeeded.SourceWidgetId); // P5-02：动作后按来源刷源的关联盖章
+        Assert.Equal("w-9", cancelled.SourceWidgetId); // 非成功结算同样带来源（失败后刷权威状态更诚实）
+        Assert.Null(new ActionResult("a-1", true, "done", null, DateTimeOffset.UtcNow).SourceWidgetId); // 无来源构造不触发刷新
+    }
 }

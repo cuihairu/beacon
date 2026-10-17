@@ -574,4 +574,47 @@ public sealed class WidgetHostTests
         Assert.Equal("fresh now", afterReload.Summary);
         gate.SetResult();
     }
+
+    // ---- 动作后刷源（P5-02：请求接受 ≠ 远端终态） ----
+
+    [Fact]
+    public async Task ActionExecuted_WithSourceWidget_TriggersSourceRefresh()
+    {
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        var fetched = new TaskCompletionSource();
+        fixture.Provider.Handler = (_, _, _, _) =>
+        {
+            fetched.TrySetResult();
+            return Task.FromResult<WidgetState?>(TestData.State());
+        };
+
+        fixture.Bus.Publish(new ActionExecuted(
+            new ActionResult("a-1", true, "已触发 repo/wf@main", null, DateTimeOffset.UtcNow) { SourceWidgetId = "w-1" }));
+
+        var done = await Task.WhenAny(fetched.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        Assert.Same(fetched.Task, done); // 动作结算即拉来源：已接受→运行中→终态由权威状态驱动
+    }
+
+    [Fact]
+    public async Task ActionExecuted_WithoutSourceOrDeadWidget_NoFetch()
+    {
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        var calls = 0;
+        fixture.Provider.Handler = (_, _, _, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult<WidgetState?>(TestData.State());
+        };
+
+        fixture.Bus.Publish(new ActionExecuted(
+            new ActionResult("a-1", true, "无来源动作", null, DateTimeOffset.UtcNow))); // 无 SourceWidgetId
+        fixture.Bus.Publish(new ActionExecuted(
+            new ActionResult("a-1", true, "来源已删", null, DateTimeOffset.UtcNow) { SourceWidgetId = "w-gone" })); // 已不在配置
+
+        Assert.Equal(0, Volatile.Read(ref calls)); // 不猜测、不复活：无来源/幽灵来源都不取数
+    }
 }

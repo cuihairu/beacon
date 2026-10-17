@@ -273,7 +273,17 @@ internal sealed class DetailWindow : Window
         try
         {
             var result = await _runtime.Actions.ExecuteAsync(action, new ActionExecutionContext { SourceState = _state });
-            _resultText.Text = $"{(result.Success ? "✓" : "✗")} {result.Message}";
+            // 五态符号（P5-01/P5-02）：取消/超时/未知动作不再误标 ✗ 失败；「已触发/已重跑」是请求接受语义，
+            // 远端终态由 Provider 刷新链呈现（动作结算即触发来源重拉，见 WidgetHost.OnActionExecuted）。
+            var prefix = result.Outcome switch
+            {
+                ActionOutcome.Succeeded => "✓",
+                ActionOutcome.Cancelled => "⊘",
+                ActionOutcome.TimedOut => "⏱",
+                ActionOutcome.Unsupported => "？",
+                _ => "✗",
+            };
+            _resultText.Text = $"{prefix} {result.Message}";
         }
         catch (Exception exception)
         {
