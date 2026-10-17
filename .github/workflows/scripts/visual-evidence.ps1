@@ -3721,7 +3721,9 @@ try
     $deadline = (Get-Date).AddSeconds(15)
     while ((Get-Date) -lt $deadline)
     {
-        if ((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '✓ 已重跑 run 12345' }) { $okText = $true; break }
+        # 宽松匹配（✓ + run id）：e0363e6 把结果文案改成请求接受语义（「已请求重跑」），
+        # 精确文案断言随措辞再改易碎——断执行成功语义（✓）+ 目标 run 在案即可
+        if ((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '✓' -and $_ -match 'run 12345' }) { $okText = $true; break }
         Start-Sleep -Milliseconds 500
     }
     if (!$okText -or !(Test-Path $hitPath))
@@ -5167,25 +5169,44 @@ try
         Start-Sleep -Seconds 3
     }
     if (!$bothSeen) { Save-FullScreenshot "AB-FAIL-baseline-refresh.png"; throw "断言失败（场景 AB 前置）：60s 内未见双 id「refreshed ok」（GLM/ds 任一未上刷——读当日日志定因）" }
-    # AB1 停用：模块页 conn-toggle-zhipu 读态 On → Toggle Off
-    $bigRow = Find-UiaById $settings "module-bigmodel" 10
-    if (!$bigRow) { Save-FullScreenshot "AB-FAIL-no-bigmodel.png"; throw "断言失败（场景 AB1）：UIA 未找到 module-bigmodel" }
-    Invoke-Uia $bigRow
-    Start-Sleep -Seconds 2
-    $connToggle = Find-UiaById $settings "conn-toggle-zhipu" 10
-    if (!$connToggle) { Save-FullScreenshot "AB-FAIL-no-conn-toggle.png"; throw "断言失败（场景 AB1）：UIA 未找到 conn-toggle-zhipu（锚点丢失？）" }
-    $toggleState = "$(($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
-    if ($toggleState -ne "On") { throw "断言失败（场景 AB1）：停用前 conn-toggle ToggleState=$toggleState（期望 On）" }
-    ($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    # AB1 停用：模块页 conn-toggle-zhipu 读态 On → Toggle Off（两轮整链重试：读取与点击间隙
+    # 页面若被重建，Toggle 会静默打空——X1 同款口径；失败归档 connections.json+当日日志定因）
     $disabled = $false
-    $deadline = (Get-Date).AddSeconds(20)
-    while ((Get-Date) -lt $deadline)
+    $stateAfter = ""
+    for ($abAttempt = 1; $abAttempt -le 2 -and !$disabled; $abAttempt++)
     {
-        $z = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
-        if ($z.Count -ge 1 -and "$($z[0].enabled)" -eq "False") { $disabled = $true; break }
+        if ($abAttempt -gt 1) { Start-Sleep -Seconds 2 }
+        $bigRow = Find-UiaById $settings "module-bigmodel" 10
+        if (!$bigRow) { Save-FullScreenshot "AB-FAIL-no-bigmodel.png"; throw "断言失败（场景 AB1）：UIA 未找到 module-bigmodel" }
+        Invoke-Uia $bigRow
         Start-Sleep -Seconds 2
+        $connToggle = Find-UiaById $settings "conn-toggle-zhipu" 10
+        if (!$connToggle) { Save-FullScreenshot "AB-FAIL-no-conn-toggle.png"; throw "断言失败（场景 AB1）：UIA 未找到 conn-toggle-zhipu（锚点丢失？）" }
+        $toggleState = "$(($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
+        if ($toggleState -ne "On")
+        {
+            if ($abAttempt -eq 2) { $stateAfter = "$toggleState(第2轮读态)"; break } # 上轮已翻而判据未过——带诊断走失败
+            throw "断言失败（场景 AB1）：停用前 conn-toggle ToggleState=$toggleState（期望 On）"
+        }
+        ($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+        Start-Sleep -Milliseconds 800
+        # 事后回读：区分「Toggle 打空（仍 On）」与「已翻而落盘判据未过（Off）」
+        $stateAfter = "$(($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
+        $abDeadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $abDeadline)
+        {
+            $z = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+            if ($z.Count -ge 1 -and "$($z[0].enabled)" -eq "False") { $disabled = $true; break }
+            Start-Sleep -Seconds 2
+        }
     }
-    if (!$disabled) { Save-FullScreenshot "AB-FAIL-disable-not-saved.png"; throw "断言失败（场景 AB1）：Toggle Off 后 20s 内 connections.json zhipu enabled 未翻 false" }
+    if (!$disabled)
+    {
+        Save-FullScreenshot "AB-FAIL-disable-not-saved.png"
+        Copy-Item $abConns (Join-Path $evidence "connections-AB1-fail.json") -Force -ErrorAction SilentlyContinue
+        Copy-Item $abLog (Join-Path $evidence "beacon-AB1-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AB1）：Toggle 后 20s（两轮）connections.json zhipu enabled 未翻 false——事后 ToggleState=$stateAfter（Off=停用链已走、磁盘判据面问题；On=Toggle 打空），读 connections-AB1-fail.json / beacon-AB1-fail.log 定因"
+    }
     $tiles1 = -1
     $deadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $deadline)
@@ -5350,17 +5371,27 @@ try
         Save-FullScreenshot "AC-FAIL-no-notepad.png"
         throw "断言失败（场景 AC 前置）：notepad 未开窗（np1=$np1H np2=$np2H）——CI 镜像缺经典 notepad？"
     }
-    # np2 移到面板右空白环带正下方（现有尺寸居中对准环带点）；np1 挪远处避免盖住环带
+    # 窗位编排（39035130342 红的定因修正：np1 挪 (40,40) 会盖住环带点——宿主之下的下一窗是
+    # np1，点击穿到了 np1 而 np2 被居中算出负坐标挪出屏——红≠吞掉，是断言对象错位）：
+    # np2 = 环带点正下层唯一窗（左上角放环带点左 150/上 60——点落客户区，避标题栏）；
+    # np1 = 前台供体，挪环带点右下远处（+450/+380）绝不覆盖环带点。
     $wr = [WinEnum]::RectOf($panel)
     $cr = [WinEnum]::ClientScreenRectOf($panel)
     $bandX = $wr.Right - 2
     $bandY = [int](($cr.Top + $cr.Bottom) / 2)
-    $r2 = [WinEnum]::RectOf($np2H)
-    $w2 = $r2.Right - $r2.Left
-    $h2 = $r2.Bottom - $r2.Top
-    [WinEnum]::MoveNoFocus($np2H, ($bandX - [int]($w2 / 2)), ($bandY - [int]($h2 / 2)))
-    [WinEnum]::MoveNoFocus($np1H, 40, 40)
+    [WinEnum]::MoveNoFocus($np2H, ($bandX - 150), ($bandY - 60))
+    [WinEnum]::MoveNoFocus($np1H, ($bandX + 450), ($bandY + 380))
     Start-Sleep -Seconds 1
+    # 覆盖核验：环带点必须落在 np2 矩形内、且不在 np1 矩形内（编排失效即前置红，不再出假阴/假阳）
+    $r2 = [WinEnum]::RectOf($np2H)
+    $r1 = [WinEnum]::RectOf($np1H)
+    $inNp2 = ($bandX -ge $r2.Left -and $bandX -le $r2.Right -and $bandY -ge $r2.Top -and $bandY -le $r2.Bottom)
+    $inNp1 = ($bandX -ge $r1.Left -and $bandX -le $r1.Right -and $bandY -ge $r1.Top -and $bandY -le $r1.Bottom)
+    if (!$inNp2 -or $inNp1)
+    {
+        Save-FullScreenshot "AC-FAIL-placement.png"
+        throw "断言失败（场景 AC 前置）：窗位编排失效（环带点在 np2=$inNp2 / 在 np1=$inNp1——须 True/False），前置红不判穿透"
+    }
     # 前置：np1 抢走前台（双开时前台属谁不确定，统一压到 np1）
     [WinEnum]::ForceForeground($np1H)
     Start-Sleep -Seconds 1
@@ -5373,7 +5404,7 @@ try
     Save-FullScreenshot "AC-after-click.png"
     if ($fg1 -ne $np2H)
     {
-        throw "断言失败（场景 AC）：点击空白环带后前台句柄 $fg1 未翻到下层 notepad（$np2H）——跨进程穿透不生效：真实点击被宿主吃掉（HTTRANSPARENT 同线程限制坐实），行 65 验收不达，转用户裁定"
+        throw "断言失败（场景 AC）：点击空白环带后前台句柄 $fg1 未翻到下层 notepad（$np2H）——跨进程穿透不生效：真实点击被宿主吃掉（Win32 HTTRANSPARENT 同线程限制），行 65 验收不达，转用户裁定"
     }
     Write-Host "场景 AC 通过：空白环带真实点击穿透到下层跨进程窗（前台 np1→np2）——H5b 裁决半 + 本行为半齐，观感半留装机"
     Stop-Beacon
