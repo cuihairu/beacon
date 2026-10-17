@@ -22,13 +22,22 @@ internal static class ComponentText
     };
 
     /// <summary>正文（标签/值位）：FontBody + 字符省略截断；maxWidth 限宽（null = 不限）。</summary>
-    public static TextBlock Body(string text, Brush foreground, double? maxWidth = null) => new()
+    public static TextBlock Body(string text, Brush foreground, double? maxWidth = null)
     {
-        Text = text,
-        FontSize = DesignTokens.FontBody,
-        Foreground = foreground,
-        TextTrimming = TextTrimming.CharacterEllipsis,
-        MaxWidth = maxWidth ?? double.NaN,
-        VerticalAlignment = VerticalAlignment.Center,
-    };
+        var block = new TextBlock
+        {
+            Text = text,
+            FontSize = DesignTokens.FontBody,
+            Foreground = foreground,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        // WinUI 的 MaxWidth 不收 NaN（WPF 口径不可搬，NaN/负值 E_INVALIDARG——38976398309 场景 U 实证：
+        // 详情窗表格行恒 NaN 即恒炸构造）；不限宽=不设值，Star 列截断由 TextTrimming 兜底。
+        if (maxWidth is { } limit)
+        {
+            block.MaxWidth = limit;
+        }
+        return block;
+    }
 }
