@@ -5393,6 +5393,66 @@ catch
     Write-Host "::error::场景 AC 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 AD：驻留浸泡（todo 行 97「长时稳定」CI 可达半）——单实例 15min 静置：
+# 刷新续跑（ok 行增量 ≥50，ci 档 15s×2 组件理论 ~120）+ 进程恒 1 + 零「refresh failed
+# unexpectedly」/零「Fatal」；句柄/内存增长走 ::warning 降级取证（VM 抖动阈值不设红门）。
+# 数小时级驻留与胶囊观感仍装机半——本场景只把「慢性泄漏在 15 分钟窗内现形」收进夜门。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Ensure-MockServer
+    $adLog = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 90 # 首跳刷新 + 窗集建稳
+    $tiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+    if ($tiles -ne 2) { Save-FullScreenshot "AD-FAIL-baseline-tiles.png"; throw "断言失败（场景 AD 前置）：浸泡基线 tile=$tiles（期望 2）" }
+    $log0 = Get-Content $adLog -Raw -Encoding UTF8
+    $ok0 = ([regex]::Matches($log0, [regex]::Escape("refreshed ok"))).Count
+    $proc0 = Get-Process Beacon.App -ErrorAction Stop | Select-Object -First 1
+    $handles0 = $proc0.HandleCount
+    $ws0 = $proc0.WorkingSet64
+    $len0 = $log0.Length
+    Save-FullScreenshot "AD-soak-start.png"
+    Write-Host "场景 AD：浸泡开始（句柄 $handles0 / WS $([int]($ws0 / 1MB))MB / ok 行 $ok0）——静置 15min"
+    Start-Sleep -Seconds 900
+    $procs = @(Get-Process Beacon.App -ErrorAction SilentlyContinue)
+    if ($procs.Count -ne 1) { Save-FullScreenshot "AD-FAIL-proc-gone.png"; throw "断言失败（场景 AD）：15min 静置后进程数=$($procs.Count)（期望 1——驻留期进程退出/重启即长时稳定不达）" }
+    $log1 = Get-Content $adLog -Raw -Encoding UTF8
+    $slice = if ($log1.Length -ge $len0) { $log1.Substring($len0) } else { $log1 }
+    $ok1 = ([regex]::Matches($slice, [regex]::Escape("refreshed ok"))).Count
+    if ($ok1 -lt 50)
+    {
+        Copy-Item $adLog (Join-Path $evidence "beacon-AD-refresh-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AD）：15min 窗内 refreshed ok 新行=$ok1（期望 ≥50）——刷新循环在静置期停摆（长时稳定不达）"
+    }
+    $unexpected = ([regex]::Matches($slice, [regex]::Escape("refresh failed unexpectedly"))).Count
+    $fatal = ([regex]::Matches($slice, [regex]::Escape("Fatal"))).Count
+    if ($unexpected -ne 0 -or $fatal -ne 0)
+    {
+        Copy-Item $adLog (Join-Path $evidence "beacon-AD-crash-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AD）：静置窗内 unexpected=$unexpected / Fatal=$fatal（期望 0/0）——静置期异常"
+    }
+    $warnCount = ([regex]::Matches($slice, [regex]::Escape("refresh failed"))).Count
+    if ($warnCount -gt 0) { Write-Host "::warning::场景 AD：静置窗内 refresh failed(Warning) $warnCount 行——mock 瞬断或健康降级，读 beacon-AD 日志复核" }
+    $proc1 = Get-Process Beacon.App -ErrorAction Stop | Select-Object -First 1
+    $handleGrowth = $proc1.HandleCount - $handles0
+    $wsGrowthMb = [int](($proc1.WorkingSet64 - $ws0) / 1MB)
+    if ($handleGrowth -gt 800 -or $wsGrowthMb -gt 150)
+    {
+        Write-Host "::warning::场景 AD：15min 句柄增长 $handleGrowth / WS 增长 ${wsGrowthMb}MB（阈 800/150MB）——慢性泄漏疑点，装机复核；不设红门（VM 抖动）"
+    }
+    Save-FullScreenshot "AD-soak-end.png"
+    Write-Host "场景 AD 通过：15min 浸泡进程恒 1 + 刷新续跑（ok 新行 $ok1）+ 零 unexpected/零 Fatal（句柄 Δ$handleGrowth / WS Δ${wsGrowthMb}MB 留档）——长时稳定的 CI 可达半"
+    Stop-Beacon
+}
+catch
+{
+    Stop-Beacon
+    Save-FullScreenshot "AD-FAIL-unexpected.png"
+    $failures.Add("场景 AD：$($_.Exception.Message)")
+    Write-Host "::error::场景 AD 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
