@@ -76,6 +76,17 @@ public sealed class WidgetHost : IAsyncDisposable
     /// <summary>注册全部 Widget 并启动调度；启动即 kick 第一轮拉取。</summary>
     public void Start()
     {
+        // 启动水合（P1-01）：磁盘缓存 → Store 先于首轮拉取——离线启动不等网络即亮旧数据与时间。
+        // 旧数据诚实标 IsStale（灰显+Last update）；首轮成功由新鲜态替换，未变化（304）由新鲜度恢复抬起。
+        foreach (var widget in _config.Widgets)
+        {
+            var cached = _cache.LoadStates(widget.ConnectionId).GetValueOrDefault(widget.Id);
+            if (cached is not null)
+            {
+                _store.Update(cached with { IsStale = true });
+            }
+        }
+
         // 全局检查频率（设置「检查频率」，0=按档位策略表）：组件级检测间隔优先，未设组件级的按全局走
         var globalPoll = _config.App.PollIntervalSeconds > 0
             ? TimeSpan.FromSeconds(_config.App.PollIntervalSeconds)

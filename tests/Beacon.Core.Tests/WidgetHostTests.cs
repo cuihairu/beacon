@@ -455,4 +455,62 @@ public sealed class WidgetHostTests
         Assert.Equal(Severity.Success, recovered.Severity);        // 失败期的 Warning 抬升一并复位
         Assert.Equal(before + 1, fixture.StatesSnapshot().Length); // 健康翻转穿过去重发布一次
     }
+
+    [Fact]
+    public async Task Start_HydratesStoreFromCache_OfflineShowsOldState()
+    {
+        // P1-01 启动水合：磁盘缓存 → Store 先于首轮拉取——离线启动不等网络即亮旧数据与时间
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var cachedState = TestData.State(severity: Severity.Warning, summary: "cached PRs");
+        fixture.Cache.SaveState("conn-1", cachedState);
+        var block = new TaskCompletionSource(); // 首轮拉取悬停：水合断言不受后台刷新竞态干扰
+        fixture.Provider.Handler = async (_, _, _, _) =>
+        {
+            await block.Task;
+            return (WidgetState?)null;
+        };
+
+        host.Start();
+        try
+        {
+            var hydrated = store.Get("w-1");
+            Assert.NotNull(hydrated);
+            Assert.True(hydrated!.IsStale); // 旧数据诚实标陈旧（灰显 + Last update 时间可见）
+            Assert.Equal("cached PRs", hydrated.Summary);
+            Assert.Equal(cachedState.FetchedAt, hydrated.FetchedAt);
+        }
+        finally
+        {
+            block.SetResult();
+        }
+    }
+
+    [Fact]
+    public async Task Start_WithoutCache_LeavesStoreEmpty()
+    {
+        // 水合只补缓存已有的组件：净态启动不造空壳状态（首拉前 tile 空白属既有契约）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        var block = new TaskCompletionSource();
+        fixture.Provider.Handler = async (_, _, _, _) =>
+        {
+            await block.Task;
+            return (WidgetState?)null;
+        };
+
+        host.Start();
+        try
+        {
+            Assert.Null(store.Get("w-1"));
+        }
+        finally
+        {
+            block.SetResult();
+        }
+    }
 }
