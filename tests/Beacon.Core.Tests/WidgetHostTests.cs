@@ -513,4 +513,65 @@ public sealed class WidgetHostTests
             block.SetResult();
         }
     }
+
+    [Fact]
+    public async Task ReloadRegistrations_RebuildsRegistrationsWithoutFetching()
+    {
+        // P3-02 分流：展示面保存（布局/颜色/密度/树）走 ReloadRegistrations——不 kick 不取数
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromHours(1), JitterFraction: 0),
+            randomSeed: 42);
+        await using var host = fixture.CreateHost(scheduler, new StateStore(fixture.Bus));
+        var calls = 0;
+        fixture.Provider.Handler = (_, _, _, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult<WidgetState?>(TestData.State());
+        };
+
+        host.Start();
+        await Poll.UntilAsync(() => Volatile.Read(ref calls) >= 1); // 启动首拉落位
+        var before = Volatile.Read(ref calls);
+
+        host.ReloadRegistrations();
+        await Task.Delay(200); // 静默窗口：展示面重建不产生任何额外请求
+
+        Assert.Equal(before, Volatile.Read(ref calls));
+    }
+
+    [Fact]
+    public async Task Reload_DoesNotRestompFreshStatesFromCache()
+    {
+        // 启动水合的回归闸：Reload（设置增删路径）只重建注册+重拉，不把缓存陈旧视图盖回 Store
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromHours(1), JitterFraction: 0),
+            randomSeed: 42);
+        var store = new StateStore(fixture.Bus);
+        await using var host = fixture.CreateHost(scheduler, store);
+        fixture.Cache.SaveState("conn-1", TestData.State(severity: Severity.Warning, summary: "cached old"));
+        var fresh = TestData.State(severity: Severity.Info, summary: "fresh now");
+        var first = true;
+        var gate = new TaskCompletionSource();
+        fixture.Provider.Handler = async (_, _, _, _) =>
+        {
+            if (first)
+            {
+                first = false;
+                return fresh; // 首拉：新鲜态落位
+            }
+            await gate.Task; // Reload 后的重拉悬停：冻结「重拉未落地」窗口
+            return fresh;
+        };
+
+        host.Start();
+        await Poll.UntilAsync(() => store.Get("w-1") is { IsStale: false });
+
+        host.Reload(); // 若误水合，此刻缓存陈旧视图已同步盖进 Store，断言当场红
+        var afterReload = store.Get("w-1")!;
+        Assert.False(afterReload.IsStale);
+        Assert.Equal("fresh now", afterReload.Summary);
+        gate.SetResult();
+    }
 }

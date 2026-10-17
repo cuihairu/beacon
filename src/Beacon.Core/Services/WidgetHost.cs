@@ -73,11 +73,40 @@ public sealed class WidgetHost : IAsyncDisposable
         return false;
     }
 
-    /// <summary>注册全部 Widget 并启动调度；启动即 kick 第一轮拉取。</summary>
+    /// <summary>注册全部 Widget 并启动调度；启动即水合缓存并 kick 第一轮拉取。</summary>
     public void Start()
     {
-        // 启动水合（P1-01）：磁盘缓存 → Store 先于首轮拉取——离线启动不等网络即亮旧数据与时间。
-        // 旧数据诚实标 IsStale（灰显+Last update）；首轮成功由新鲜态替换，未变化（304）由新鲜度恢复抬起。
+        HydrateFromCache();
+
+        _logger?.LogInformation("调度启动：全局检查频率 {PollSeconds}s（0=按档位），组件 {Count} 个。",
+            _config.App.PollIntervalSeconds, _config.Widgets.Count);
+        RegisterWidgets();
+        _scheduler.Start(OnGroupRefreshAsync);
+        KickAll();
+    }
+
+    /// <summary>配置变化（Settings 增删 Widget）后重建注册并重拉。不清缓存、不水合——
+    /// 新鲜态不得被缓存陈旧视图盖回（ReloadRegistrations 同口径，见回归闸测试）。</summary>
+    public void Reload()
+    {
+        _scheduler.Clear();
+        RegisterWidgets();
+        _scheduler.Start(OnGroupRefreshAsync);
+        KickAll();
+    }
+
+    /// <summary>展示面配置变化（布局/颜色/密度/树结构）后的注册重建（P3-02 分流）：
+    /// 只重排调度注册，不 kick 不取数——展示保存零网络请求；检测间隔有变由注册周期自然接管。</summary>
+    public void ReloadRegistrations()
+    {
+        _scheduler.Clear();
+        RegisterWidgets();
+    }
+
+    /// <summary>启动水合（P1-01）：磁盘缓存 → Store 先于首轮拉取——离线启动不等网络即亮旧数据与时间。
+    /// 旧数据诚实标 IsStale（灰显+Last update）；首轮成功由新鲜态替换，未变化（304）由新鲜度恢复抬起。</summary>
+    private void HydrateFromCache()
+    {
         foreach (var widget in _config.Widgets)
         {
             var cached = _cache.LoadStates(widget.ConnectionId).GetValueOrDefault(widget.Id);
@@ -86,13 +115,14 @@ public sealed class WidgetHost : IAsyncDisposable
                 _store.Update(cached with { IsStale = true });
             }
         }
+    }
 
-        // 全局检查频率（设置「检查频率」，0=按档位策略表）：组件级检测间隔优先，未设组件级的按全局走
+    /// <summary>全局检查频率（设置「检查频率」，0=按档位策略表）：组件级检测间隔优先，未设组件级的按全局走。</summary>
+    private void RegisterWidgets()
+    {
         var globalPoll = _config.App.PollIntervalSeconds > 0
             ? TimeSpan.FromSeconds(_config.App.PollIntervalSeconds)
             : (TimeSpan?)null;
-        _logger?.LogInformation("调度启动：全局检查频率 {PollSeconds}s（0=按档位），组件 {Count} 个。",
-            _config.App.PollIntervalSeconds, _config.Widgets.Count);
         foreach (var widget in _config.Widgets)
         {
             // 组件级检测间隔覆盖（设置页「检测间隔」）：null=按刷新档策略表
@@ -101,18 +131,14 @@ public sealed class WidgetHost : IAsyncDisposable
                 : globalPoll;
             _scheduler.Register(new WidgetRegistration(widget.Id, widget.ConnectionId, widget.RefreshTier, intervalOverride));
         }
-        _scheduler.Start(OnGroupRefreshAsync);
+    }
+
+    private void KickAll()
+    {
         foreach (var widget in _config.Widgets)
         {
             _scheduler.KickWidget(widget.Id);
         }
-    }
-
-    /// <summary>配置变化（Settings 增删 Widget）后重建注册。</summary>
-    public void Reload()
-    {
-        _scheduler.Clear();
-        Start();
     }
 
     /// <summary>手动刷新入口（L2/L3 的 [Retry]，B-207）。</summary>
