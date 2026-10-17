@@ -66,14 +66,10 @@ internal sealed class DetailWindow : Window
         });
     }
 
-    private UIElement BuildContent()
+    /// <summary>传统详情主体（头部/meta/反馈/附加表/趋势）——声明式分支（P3-01）的对照与回退面，
+    /// 内容与原 BuildContent 内联段逐项等价。</summary>
+    private void AddTraditionalDetailBody(StackPanel root, double density)
     {
-        // Column 词汇件（Phase 5 行 2 收编调用面；值逐项等价于旧 new StackPanel { Spacing = 10 }）。
-        // 间距走 DesignTokens.Spacing 密度收编口（Phase 5 行 5）：regular 恒等（G 系像素锚不动），compact ×0.75
-        var density = _runtime.Config.App.Appearance.Density;
-        var root = ComponentLayout.Column(DesignTokens.Spacing(10, density));
-        root.Padding = new Thickness(18, 16, 18, 16);
-
         // 头部：severity 点 + 类型 + 摘要
         var header = ComponentLayout.Row(DesignTokens.Spacing(8, density));
         header.Children.Add(ComponentStatus.Indicator(new SolidColorBrush(_palette.SeverityColor(_state.Severity,
@@ -146,9 +142,32 @@ internal sealed class DetailWindow : Window
                 new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
             root.Children.Add(chartRow);
         }
+    }
+
+    private UIElement BuildContent()
+    {
+        // Column 词汇件（Phase 5 行 2 收编调用面；值逐项等价于旧 new StackPanel { Spacing = 10 }）。
+        // 间距走 DesignTokens.Spacing 密度收编口（Phase 5 行 5）：regular 恒等（G 系像素锚不动），compact ×0.75
+        var density = _runtime.Config.App.Appearance.Density;
+        var root = ComponentLayout.Column(DesignTokens.Spacing(10, density));
+        root.Padding = new Thickness(18, 16, 18, 16);
+
+        // 声明式详情面（P3-01）：widgets.json 带 detail 树时，头部/meta/反馈/附加表/趋势整体换成
+        // 渲染器输出（绑定驱动自身状态）；最近事件与动作区恒保留（时间线跨状态、动作反馈是契约面）。
+        var detailWidget = _runtime.Config.FindWidget(_state.WidgetId);
+        if (detailWidget is not null && WidgetInstanceResolver.Resolve(detailWidget, "detail") is { } declarative)
+        {
+            root.Children.Add(ComponentSurfaceRenderer.Render(declarative, _state, _palette));
+        }
+        else
+        {
+            AddTraditionalDetailBody(root, density);
+        }
 
         // 该组件最近事件（Phase 5 行 1 时间线）：通知中心记录按 SourceWidgetId 过滤，
         // 展示序新在前 + 上限走 Core TimelineEntries；无记录整区不出（空态不占行）
+        var muted = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)); // 传统主体已抽方法，时间线自带同值笔刷
+        var foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240));
         var entries = TimelineEntries.Of(
             _runtime.Notifications.Records
                 .Where(record => record.SourceWidgetId == _state.WidgetId)
@@ -167,7 +186,7 @@ internal sealed class DetailWindow : Window
         }
 
         // Action 区（按能力显隐，B-603）
-        var widget = _runtime.Config.FindWidget(_state.WidgetId);
+        var widget = detailWidget; // 头部查找共用（声明式分支已取）
         var actions = ComponentLayout.Row(DesignTokens.Spacing(8, density));
         actions.Margin = new Thickness(0, 4, 0, 0);
 

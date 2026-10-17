@@ -470,8 +470,26 @@ public sealed partial class QuickPanelWindow : Window
         => MakeStateRow(evt.State, evt.At.ToString("HH:mm:ss"), tag: evt);
 
     /// <summary>状态行（当前状态区与 RECENT 共用）：级别点 + 时间 + 摘要；单击进 L3，右键 Pin（B-702 口径）。
-    /// Phase 2 起经基础组件组合（ComponentIcon/ComponentText，值与原 inline 构造逐项等价）。</summary>
+    /// Phase 2 起经基础组件组合（ComponentIcon/ComponentText，值与原 inline 构造逐项等价）。
+    /// 声明式行面（P3-01）：组件带 row 树时整行内容换渲染器输出，单击/右键/Tag 语义不变。</summary>
     private ListViewItem MakeStateRow(WidgetState state, string timeText, object? tag = null)
+    {
+        var widget = _runtime.Config.FindWidget(state.WidgetId);
+        UIElement content = widget is not null
+            && WidgetInstanceResolver.Resolve(widget, "row") is { } rowInstance
+            ? ComponentSurfaceRenderer.Render(rowInstance, state, _palette)
+            : BuildTraditionalStateRow(state, timeText);
+
+        var item = new InvokeableListItem { Content = content, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
+        item.InvokeRequested += () => OpenDetailFromRow(item); // UIA Invoke 与 ItemClick 同链（行 46 解锁面）
+        var pinned = _runtime.Config.FindWidget(state.WidgetId)?.Pinned == true;
+        item.ContextFlyout = ComponentAction.Menu(ComponentAction.Item(
+            pinned ? "Unpin from desktop" : "Pin to desktop", () => PinWidget(state.WidgetId)));
+        return item;
+    }
+
+    /// <summary>传统状态行内容（级别点 + 时间 + 摘要）——原 MakeStateRow 内联段，声明式行的对照回退面。</summary>
+    private UIElement BuildTraditionalStateRow(WidgetState state, string timeText)
     {
         var dot = ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(state.Severity,
             widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)));
@@ -485,13 +503,7 @@ public sealed partial class QuickPanelWindow : Window
         row.Children.Add(dot);
         row.Children.Add(time);
         row.Children.Add(label);
-
-        var item = new InvokeableListItem { Content = row, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
-        item.InvokeRequested += () => OpenDetailFromRow(item); // UIA Invoke 与 ItemClick 同链（行 46 解锁面）
-        var pinned = _runtime.Config.FindWidget(state.WidgetId)?.Pinned == true;
-        item.ContextFlyout = ComponentAction.Menu(ComponentAction.Item(
-            pinned ? "Unpin from desktop" : "Pin to desktop", () => PinWidget(state.WidgetId)));
-        return item;
+        return row;
     }
 
     /// <summary>行激活统一入口：人手 ItemClick 与 UIA Invoke 同链（B-603）。Tag 两形态——状态区行带
