@@ -232,6 +232,26 @@ Each widget in widgets.json may carry two incremental optional fields (optional 
 
 Saving a component tree fetches no data: a surface renders with the new tree on the **next state arrival**; when no content change is suppressed by dedup, reopening the surface shows it. Importable sample (complete surface trees + cross-source bindings): `docs/samples/declarative-vertical-sample.json`.
 
+#### Component type vocabulary (P0-01 registry cross-reference)
+
+The single source of truth = `ComponentSurfaceRenderer.Registry` (exported as `KnownTypes`); the table below is a hand-maintained cross-reference — any registry change must update this table in the same change:
+
+| Type key | Minimal props | Binding target | Allowed children | Defaults |
+|---|---|---|---|---|
+| row | none required | none | any, laid out horizontally | spacing = Space2 |
+| column | none required | none | any, laid out vertically | spacing = Space2 |
+| card | none required | none | single content (first child fills the card, the rest ignored) | none |
+| text | `text` (or binding) | `text` | ignored | size defaults to body (may be caption) |
+| sectionlabel | `text` (or binding) | `text` | ignored | none |
+| metric | `value` (or binding) | `value` | ignored | unit defaults to none, fontSize = FontHeader |
+| progress | `progress` (or binding) | `progress` | ignored | progress defaults to 0, width = 96; value clamped to [0,1] |
+| statusdot | `severity` (or binding) | `severity` | ignored | size = 8; unresolvable severity falls back to the default color |
+| badge | `text` (or binding) | `text` | ignored | none |
+| keyvalue | `key` + `value` (or binding) | `value` | ignored | none |
+| divider | none required | none | ignored | none |
+
+**Error fallback** (shared by all types, fail-closed, never crashes the process): structurally invalid trees (8 levels / 32 children / 256 nodes / duplicate Id / bad binding source) discard the whole tree back to traditional rendering + diagnostics; unknown types and factory exceptions render a 「⚠ 未注册组件类型 / ⚠ 组件渲染失败」 placeholder while siblings render normally; unresolvable bindings return an empty string; a missing extra source shows the 「⚠ 缺少数据源」 wrapper. Surfaces: all of the above types work on all three surfaces (tile / row / detail) — no surface-exclusive types.
+
 ### Refresh tiers (refreshTier)
 
 | Tier | Period | Applies to |

@@ -232,6 +232,26 @@ widgets.json 每个组件可带两个增量可选字段（可选字段不落键�
 
 保存组件树不取数：面随**下一次状态到达**按新树渲染；状态内容无变化被去重压住时，重开对应面可见。可导入样例（含完整面树与跨源绑定）：`docs/samples/declarative-vertical-sample.json`。
 
+#### 组件类型词汇（P0-01 注册表对照稿）
+
+唯一事实来源 = `ComponentSurfaceRenderer.Registry`（`KnownTypes` 导出）；下表为人工对照稿，改注册表须同步本表：
+
+| 类型键 | 最小属性 | 绑定目标 | 允许子节点 | 默认值 |
+|---|---|---|---|---|
+| row | 无必填 | 无 | 任意，水平排布 | spacing = Space2 |
+| column | 无必填 | 无 | 任意，纵向排布 | spacing = Space2 |
+| card | 无必填 | 无 | 单内容（首子进卡，其余忽略） | 无 |
+| text | `text`（或绑定） | `text` | 忽略 | size 缺省 body（可 caption） |
+| sectionlabel | `text`（或绑定） | `text` | 忽略 | 无 |
+| metric | `value`（或绑定） | `value` | 忽略 | unit 缺省无、fontSize = FontHeader |
+| progress | `progress`（或绑定） | `progress` | 忽略 | progress 缺省 0、width = 96；值钳位 [0,1] |
+| statusdot | `severity`（或绑定） | `severity` | 忽略 | size = 8；severity 解析不出回默认色 |
+| badge | `text`（或绑定） | `text` | 忽略 | 无 |
+| keyvalue | `key` + `value`（或绑定） | `value` | 忽略 | 无 |
+| divider | 无必填 | 无 | 忽略 | 无 |
+
+**错误回退**（全类型共用，fail-closed 不炸进程）：结构非法（8 层 / 32 子 / 256 节点 / 重复 Id / 坏绑定源）整树弃用回传统渲染 + 诊断；未知类型或工厂异常渲染「⚠ 未注册组件类型 / ⚠ 组件渲染失败」占位，兄弟节点照常；绑定取不到值回空串；附加源缺席显示「⚠ 缺少数据源」包装。所在面：以上类型三面（tile / row / detail）通用，无面专属类型。
+
 ### 刷新档（refreshTier）
 
 | 档 | 周期 | 适用 |
