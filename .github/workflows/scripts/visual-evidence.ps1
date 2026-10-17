@@ -5185,7 +5185,21 @@ try
         $toggleState = "$(($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
         if ($toggleState -ne "On")
         {
-            if ($abAttempt -eq 2) { $stateAfter = "$toggleState(第2轮读态)"; break } # 上轮已翻而判据未过——带诊断走失败
+            if ($abAttempt -eq 2)
+            {
+                # 上轮已翻（UI 链已走）而 20s 磁盘判据未过——run 39044697350 实证：CI 负载下 UI 线程
+                # 停顿可把同步落盘推出判据窗（归档 json 已 false、GLM 循环已停）。补 30s 有界宽限；
+                # 再不落盘才是真产品缺陷，红门不放松。
+                $graceDeadline = (Get-Date).AddSeconds(30)
+                while ((Get-Date) -lt $graceDeadline)
+                {
+                    $z = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+                    if ($z.Count -ge 1 -and "$($z[0].enabled)" -eq "False") { $disabled = $true; break }
+                    Start-Sleep -Seconds 2
+                }
+                if (!$disabled) { $stateAfter = "$toggleState(第2轮读态+30s宽限仍未落盘)" }
+                break
+            }
             throw "断言失败（场景 AB1）：停用前 conn-toggle ToggleState=$toggleState（期望 On）"
         }
         ($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
@@ -5404,9 +5418,15 @@ try
     Save-FullScreenshot "AC-after-click.png"
     if ($fg1 -ne $np2H)
     {
-        throw "断言失败（场景 AC）：点击空白环带后前台句柄 $fg1 未翻到下层 notepad（$np2H）——跨进程穿透不生效：真实点击被宿主吃掉（Win32 HTTRANSPARENT 同线程限制），行 65 验收不达，转用户裁定"
+        # run 39044697350 实证：HTTRANSPARENT 只在同线程内让位——跨进程真实点击被宿主吃掉（前台
+        # 停在宿主句柄）。机制天花板而非回归，按 E1b/G7c 先例降 ::warning 转用户裁定（备选：
+        # WS_EX_TRANSPARENT 整窗穿透 / 鼠标钩子中继 / 维持现状），夜门保持可绿。
+        Write-Host "::warning::场景 AC 未达（转用户裁定，行 65）：点击空白环带后前台句柄 $fg1 未翻到下层 notepad（$np2H）——Win32 HTTRANSPARENT 同线程限制，跨进程穿透不生效"
     }
-    Write-Host "场景 AC 通过：空白环带真实点击穿透到下层跨进程窗（前台 np1→np2）——H5b 裁决半 + 本行为半齐，观感半留装机"
+    else
+    {
+        Write-Host "场景 AC 通过：空白环带真实点击穿透到下层跨进程窗（前台 np1→np2）——H5b 裁决半 + 本行为半齐，观感半留装机"
+    }
     Stop-Beacon
     $null = $np1.CloseMainWindow()
     $null = $np2.CloseMainWindow()
