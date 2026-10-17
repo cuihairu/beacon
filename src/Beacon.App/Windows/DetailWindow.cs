@@ -188,10 +188,15 @@ internal sealed class DetailWindow : Window
 
         // 声明式详情面（P3-01）：widgets.json 带 detail 树时，头部/meta/反馈/附加表/趋势整体换成
         // 渲染器输出（绑定驱动自身状态）；最近事件与动作区恒保留（时间线跨状态、动作反馈是契约面）。
+        // Phase 4（2026-10-17 裁定）：HTML 载体面可能声明 actionbutton——动作全集（actions.json +
+        // 连接 DSL）与既有执行链注入渲染器；执行走 RunCustomAsync（确认/反馈与手写动作按钮同一链）。
         var detailWidget = _runtime.Config.FindWidget(_state.WidgetId);
         if (detailWidget is not null && WidgetInstanceResolver.Resolve(detailWidget, "detail") is { } declarative)
         {
-            root.Children.Add(ComponentSurfaceRenderer.Render(declarative, _state, _palette));
+            var actionBridge = new ComponentActionContext(
+                _runtime.Config.Actions.Concat(_runtime.DslActions).ToList(),
+                RunCustomAsync);
+            root.Children.Add(ComponentSurfaceRenderer.Render(declarative, _state, _palette, actionBridge));
         }
         else
         {
