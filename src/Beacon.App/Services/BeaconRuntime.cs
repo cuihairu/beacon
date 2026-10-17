@@ -230,6 +230,14 @@ public sealed class BeaconRuntime : IAsyncDisposable
         Logger?.LogInformation("组件注册已重建并立即拉取 {Count} 个：{Ids}", ids.Count, string.Join(", ", ids));
     }
 
+    /// <summary>展示面配置变化（组件树/布局/颜色/密度）后的注册重建（P3-02 分流）：
+    /// 只重排调度注册，不 kick 不取数——展示保存零网络请求，与增删/钉选的 ReloadWidgets 区分。</summary>
+    public void ReloadWidgetRegistrations()
+    {
+        Host.ReloadRegistrations();
+        Logger?.LogInformation("组件注册已重建（展示面保存，未取数）：{Count} 个", Config.Widgets.Count);
+    }
+
     /// <summary>
     /// 模块启停（PowerToys 形态配置中心）：按连接类型整体开关。停用即失活——宿主按 Enabled 跳过刷新，
     /// 已有状态经 WidgetsInvalidated 从聚合器/面板丢弃（不留旧灯）。

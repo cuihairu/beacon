@@ -2277,7 +2277,7 @@ internal sealed class SettingsWindow : Window
             Sources = widget.Sources,
         };
         _runtime.Config.UpsertWidget(updated);
-        _runtime.ReloadWidgets([updated.Id]);
+        _runtime.ReloadWidgetRegistrations(); // 树保存属展示面（P3-02 分流）：只重排注册不取数，与增删/钉选区分
         _componentEditTarget = updated;
         RebuildWidgets();
     }
