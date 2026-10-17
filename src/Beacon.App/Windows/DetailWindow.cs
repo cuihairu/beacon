@@ -261,6 +261,16 @@ internal sealed class DetailWindow : Window
         {
             root.Children.Add(ComponentLayout.SectionLabel("ACTIONS",
                 new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+            // P5-02 run 关联显示：状态带 run_id → 关联实际任务；run 型组件无 run_id → 明示「尚未关联」
+            // ——dispatch 响应不携带 run id，不猜测最近一次 run；新 run 出现后随状态刷新自动接上。
+            if (runId is not null)
+            {
+                root.Children.Add(ComponentText.Caption($"run 关联：{runId}", muted));
+            }
+            else if (_state.Payload.ContainsKey("repo") && _state.Payload.ContainsKey("workflow"))
+            {
+                root.Children.Add(ComponentText.Caption("run 关联：尚未关联（状态未携带 run id，不猜测最近一次 run）", muted));
+            }
             root.Children.Add(actions);
         }
 
