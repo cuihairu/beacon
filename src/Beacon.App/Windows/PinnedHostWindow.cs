@@ -188,6 +188,10 @@ internal sealed class PinTile
 
     public string WidgetId { get; }
 
+    /// <summary>状态查询（P3-03 依赖路由）：宿主把最新状态表（快照口径）交给面——声明式面的
+    /// 附加源绑定按 widgetId 从这里取，不触发数据请求；null = 只用自身状态（P3-01 切片语义）。</summary>
+    public Func<string, WidgetState?>? StateLookup { get; set; }
+
     /// <summary>本 tile 推算宽（DIP）：所有类型同一路径逐列字宽预算（TileSizing——数值列按各类型最坏
     /// ValueHint 文本、machine 值行按所选展示项构造），面板列宽取钉选 tile 的最大值，值行恒不裁
     /// （2026-10-12 用户令二修：真字宽预算扩到全部 tile）。</summary>
@@ -207,10 +211,12 @@ internal sealed class PinTile
 
         // 声明式 tile（P3-01）：带合法 tile 树时整面走渲染器——传统六列不建（BuildTraditionalContent
         // 可随时重建，配置清空树后 RefreshConfig 走它恢复旧面）；非法树 Resolve 已回 null（传统渲染）。
+        // 此处走自身状态单源渲染（state: 具名消歧）：StateLookup 尚未挂（对象初始化器在构造后执行），
+        // 带源渲染会把未到齐的附加源误报缺失态——首帧后宿主重放状态即换带源渲染（P3-03）。
         _declarative = WidgetInstanceResolver.Resolve(widget, "tile");
         if (_declarative is not null)
         {
-            _root.Child = ComponentSurfaceRenderer.Render(_declarative, null, _palette);
+            _root.Child = ComponentSurfaceRenderer.Render(_declarative, state: null, _palette);
             return;
         }
         BuildTraditionalContent();
@@ -306,7 +312,7 @@ internal sealed class PinTile
         _declarative = declarative;
         if (declarative is not null)
         {
-            _root.Child = ComponentSurfaceRenderer.Render(declarative, _lastState, _palette);
+            RenderDeclarativeFace(declarative);
         }
         else
         {
@@ -328,9 +334,10 @@ internal sealed class PinTile
         _lastState = state;
         if (_declarative is { } declarative)
         {
-            // 声明式分支（P3-01）：整树重渲（≤256 节点、无跨帧局部状态）+ 沿用传统面的陈旧/离线
-            // tooltip 口径；动效（闪烁/脉冲/呼吸）暂不作用于声明式树，色彩语义由绑定档位色承担。
-            _root.Child = ComponentSurfaceRenderer.Render(declarative, state, _palette);
+            // 声明式分支（P3-01/P3-03）：整树重渲（≤256 节点、无跨帧局部状态；附加源经 StateLookup
+            // 取宿主快照）+ 沿用传统面的陈旧/离线 tooltip 口径；动效（闪烁/脉冲/呼吸）暂不作用于
+            // 声明式树，色彩语义由绑定档位色承担。
+            RenderDeclarativeFace(declarative);
             ToolTipService.SetToolTip(_root,
                 !state.ConnectionHealthy
                     ? UiStrings.FeedbackOffline + " · " + WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true)
@@ -388,6 +395,32 @@ internal sealed class PinTile
                 UiStrings.FeedbackOffline + " · " + WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true));
             _motion.StopLoops(_light);
             _motion.StopLoops(_root);
+        }
+    }
+
+    /// <summary>声明式面渲染统一入口（P3-03）：附加源经 ResolveSources 从 StateLookup 取宿主快照；
+    /// 未接 lookup 回自身状态单源（P3-01 切片语义不变）。缺席源由渲染器出缺失态，不冒充空值。</summary>
+    private void RenderDeclarativeFace(WidgetInstance declarative)
+    {
+        var lookup = StateLookup;
+        var sources = WidgetInstanceResolver.ResolveSources(declarative, lookup
+            ?? (id => string.Equals(id, declarative.Id, StringComparison.Ordinal) ? _lastState : null));
+        _root.Child = ComponentSurfaceRenderer.Render(declarative, sources, _palette);
+    }
+
+    /// <summary>该面是否消费此 widget 的状态（P3-03 依赖路由）：传统面只认自身；声明式面按
+    /// ComponentSourceIndex 全集（自身 + Sources 声明的附加源）——无关源变化不触达本面。</summary>
+    public bool ConsumesWidget(string widgetId)
+        => _declarative is { } instance
+            ? ComponentSourceIndex.ConsumedWidgetIds(instance).Contains(widgetId)
+            : string.Equals(WidgetId, widgetId, StringComparison.Ordinal);
+
+    /// <summary>被消费源变化而自身状态未变（P3-03 依赖路由）：只重渲声明式面；传统面无附加源语义，无动作。</summary>
+    public void RefreshSources()
+    {
+        if (_declarative is { } declarative)
+        {
+            RenderDeclarativeFace(declarative);
         }
     }
 
@@ -676,7 +709,10 @@ internal sealed class PinnedHostWindow
                 continue;
             }
             var tile = new PinTile(widget, _palette, _motion,
-                _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type);
+                _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type)
+            {
+                StateLookup = id => _latest.TryGetValue(id, out var source) ? source : null, // P3-03 附加源快照
+            };
             AttachTileInput(tile.Root);
             _tiles[widget.Id] = tile;
             placed.Add(tile);
@@ -726,11 +762,20 @@ internal sealed class PinnedHostWindow
     private bool IsPinSupported(string widgetType)
         => _runtime.Resolver.Resolve(widgetType)?.Descriptor.PinSupported == true;
 
+    /// <summary>状态路由（P3-03 依赖路由）：自身状态直达本面（B-701）；声明式面声明的附加源变化
+    /// 只重渲消费它的面——无关源变化不重建任何 tile。</summary>
     private void UpdateTile(WidgetState state)
     {
-        if (_tiles.TryGetValue(state.WidgetId, out var tile))
+        foreach (var tile in _tiles.Values)
         {
-            tile.Update(state);
+            if (string.Equals(tile.WidgetId, state.WidgetId, StringComparison.Ordinal))
+            {
+                tile.Update(state);
+            }
+            else if (tile.ConsumesWidget(state.WidgetId))
+            {
+                tile.RefreshSources();
+            }
         }
     }
 

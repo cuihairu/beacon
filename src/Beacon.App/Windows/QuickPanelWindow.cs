@@ -477,7 +477,7 @@ public sealed partial class QuickPanelWindow : Window
         var widget = _runtime.Config.FindWidget(state.WidgetId);
         UIElement content = widget is not null
             && WidgetInstanceResolver.Resolve(widget, "row") is { } rowInstance
-            ? ComponentSurfaceRenderer.Render(rowInstance, state, _palette)
+            ? RenderDeclarativeRow(rowInstance, state)
             : BuildTraditionalStateRow(state, timeText);
 
         var item = new InvokeableListItem { Content = content, Padding = new Thickness(2, 3, 2, 3), Tag = tag ?? state };
@@ -487,6 +487,18 @@ public sealed partial class QuickPanelWindow : Window
             pinned ? "Unpin from desktop" : "Pin to desktop", () => PinWidget(state.WidgetId)));
         return item;
     }
+
+    /// <summary>声明式行渲染（P3-03 附加源）：自身状态用行携带的快照（RECENT 行保留事件时点），
+    /// 附加源按面板状态表取最新快照；缺席源由渲染器出缺失态。行面随面板 OnStateChanged 现场
+    /// 全量重建（面板既有口径），无行级增量路由。</summary>
+    private UIElement RenderDeclarativeRow(WidgetInstance rowInstance, WidgetState state)
+        => ComponentSurfaceRenderer.Render(
+            rowInstance,
+            WidgetInstanceResolver.ResolveSources(rowInstance, id =>
+                string.Equals(id, state.WidgetId, StringComparison.Ordinal)
+                    ? state
+                    : _states.TryGetValue(id, out var source) ? source : null),
+            _palette);
 
     /// <summary>传统状态行内容（级别点 + 时间 + 摘要）——原 MakeStateRow 内联段，声明式行的对照回退面。</summary>
     private UIElement BuildTraditionalStateRow(WidgetState state, string timeText)

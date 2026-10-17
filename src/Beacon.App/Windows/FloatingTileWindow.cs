@@ -81,9 +81,18 @@ internal sealed class FloatingTileHost
             dispatcherQueue.EnqueueGuarded(() =>
             {
                 _latest[evt.State.WidgetId] = evt.State;
-                if (_windows.TryGetValue(evt.State.WidgetId, out var window))
+                // P3-03 依赖路由：自身状态直达窗口；声明式面声明的附加源变化只重渲消费它的面，
+                // 无关源变化不触达任何窗（_latest 先行更新，StateLookup 读到的一定是最新快照）
+                foreach (var window in _windows.Values)
                 {
-                    window.Update(evt.State);
+                    if (string.Equals(window.WidgetId, evt.State.WidgetId, StringComparison.Ordinal))
+                    {
+                        window.Update(evt.State);
+                    }
+                    else if (window.ConsumesWidget(evt.State.WidgetId))
+                    {
+                        window.RefreshSources();
+                    }
                 }
             })));
         ReloadTiles();
@@ -182,7 +191,10 @@ internal sealed class FloatingTileHost
             else
             {
                 var window = new FloatingTileWindow(this, widget, _palette, _motion, index, _fallbackMonitor,
-                    _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type);
+                    _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId)?.Type)
+                {
+                    StateLookup = id => _latest.TryGetValue(id, out var source) ? source : null, // P3-03 附加源快照
+                };
                 _windows[widget.Id] = window;
                 window.Initialize();
                 window.ApplyOpacity(_uiOpacity); // 新建窗补挂当前透明度（批8：新窗不重置为 1.0）
@@ -324,6 +336,20 @@ internal sealed class FloatingTileHost
                 _ = NativeMethods.DestroyWindow(_hwnd);
             }
         }
+
+        public string WidgetId => _widget.Id;
+
+        /// <summary>P3-03 依赖路由透传：宿主把最新状态表交给内部 tile（声明式附加源取数口）。</summary>
+        public Func<string, WidgetState?>? StateLookup
+        {
+            get => _tile.StateLookup;
+            set => _tile.StateLookup = value;
+        }
+
+        public bool ConsumesWidget(string widgetId) => _tile.ConsumesWidget(widgetId);
+
+        /// <summary>被消费源变化（P3-03）：透传给 tile 只重渲声明式面。</summary>
+        public void RefreshSources() => _tile.RefreshSources();
 
         public void Update(WidgetState state) => _tile.Update(state);
 

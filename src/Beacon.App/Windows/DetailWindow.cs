@@ -25,15 +25,12 @@ internal sealed class DetailWindow : Window
     private const double DetailMinHeightDips = 320;
     private const double DetailMaxHeightDips = 560;
 
-    private readonly WidgetState _state;
+    private WidgetState _state; // 非只读（P3-03）：详情按 WidgetId 消费最新状态，事件到达整树重建
     private readonly BeaconRuntime _runtime;
     private readonly UiPalette _palette;
-    private readonly TextBlock _resultText = new()
-    {
-        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
-        FontSize = DesignTokens.FontBody,
-        TextWrapping = TextWrapping.Wrap,
-    };
+    private TextBlock _resultText = null!; // 非 readonly：状态重建换新实例（XAML 元素不可二次挂父）
+    private IDisposable? _subscription; // 关闭即退订（P3-03：重复开关详情回调不倍增）
+    private bool _dialogOpen; // 确认对话框打开期间跳过状态重建（XamlRoot 挂旧树，重建会把对话框踢出可视树）
 
     public DetailWindow(WidgetState state, BeaconRuntime runtime, Action? closed = null)
     {
@@ -44,8 +41,42 @@ internal sealed class DetailWindow : Window
         Title = $"Beacon · {state.Summary}";
         Content = BuildContent();
         ((FrameworkElement)Content).Loaded += OnContentLoaded; // 量内容需视觉树就绪（Activate 前触发，无闪跳）
-        Closed += (_, _) => closed?.Invoke();
+        // P3-03 快照-再-订阅：先订阅再取 Store 快照（总线发布同步落 Store，间隙事件不丢；
+        // 同对象重复投递 ApplyState 幂等跳过）。事件发布在刷新线程，UI 对象回本窗 DispatcherQueue。
+        _subscription = runtime.Bus.Subscribe<WidgetStateChanged>(evt =>
+            DispatcherQueue.EnqueueGuarded(() =>
+            {
+                if (string.Equals(evt.State.WidgetId, _state.WidgetId, StringComparison.Ordinal))
+                {
+                    ApplyState(evt.State);
+                }
+            }));
+        if (runtime.Host.GetState(_state.WidgetId) is { } latest && !ReferenceEquals(latest, _state))
+        {
+            ApplyState(latest); // 行 Tag 可能是开面板前的旧影：打开即对齐 Store 最新快照
+        }
+        Closed += (_, _) =>
+        {
+            _subscription?.Dispose();
+            closed?.Invoke();
+        };
         Services.AppIcon.Apply(AppWindow, runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
+    }
+
+    /// <summary>最新状态落地（P3-03）：整树重建（声明式与传统同口径——状态每次变化重渲；动作区
+    /// 按新状态重判显隐，动作上下文执行时读 _state 字段即当前态）。确认对话框打开期间跳过；
+    /// 同一对象重复投递幂等跳过。</summary>
+    private void ApplyState(WidgetState state)
+    {
+        if (_dialogOpen || ReferenceEquals(state, _state))
+        {
+            return;
+        }
+        _state = state;
+        Title = $"Beacon · {state.Summary}";
+        var content = (FrameworkElement)BuildContent();
+        content.Loaded += OnContentLoaded; // 新内容重量高（内容随状态变化，clamp 口径不变）
+        Content = content;
     }
 
     /// <summary>窗尺寸：客户区 = 宽 DIP 设计值 × DPI、高 = 内容自然高 clamp 到 [min,max]（超出走 ScrollViewer）。
@@ -230,7 +261,13 @@ internal sealed class DetailWindow : Window
             root.Children.Add(actions);
         }
 
-        root.Children.Add(_resultText);
+        // 动作结果反馈（P3-03 起每次重建换新实例——XAML 元素不可二次挂父；RunActionAsync 写字段即当前实例）
+        root.Children.Add(_resultText = new TextBlock
+        {
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+            FontSize = DesignTokens.FontBody,
+            TextWrapping = TextWrapping.Wrap,
+        });
         // UI/UX 审计：Auto 档滚动条不显眼，底部还有 ACTIONS/结果反馈这件事无提示——常驻 Visible
         return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Visible };
     }
@@ -321,6 +358,14 @@ internal sealed class DetailWindow : Window
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        _dialogOpen = true; // 对话框打开期间 ApplyState 跳过整树重建（XamlRoot 不可被换树）
+        try
+        {
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
     }
 }

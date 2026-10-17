@@ -20,19 +20,24 @@ namespace Beacon.App.Components;
 /// </summary>
 internal static class ComponentSurfaceRenderer
 {
-    /// <summary>渲染节点上下文：注册表工厂只从这里取数据（节点 + 自身状态 + 配色）。</summary>
-    private sealed class NodeContext(ComponentDescriptor node, WidgetState? state, UiPalette palette)
+    /// <summary>渲染节点上下文：注册表工厂只从这里取数据（节点 + 自身状态 + 附加源映射 + 配色）。</summary>
+    private sealed class NodeContext(
+        ComponentDescriptor node,
+        WidgetState? state,
+        UiPalette palette,
+        IReadOnlyDictionary<string, WidgetState>? sources)
     {
         public ComponentDescriptor Node { get; } = node;
         public WidgetState? State { get; } = state;
         public UiPalette Palette { get; } = palette;
 
-        /// <summary>绑定槽取值（fail-closed 空串）：只看本节点绑定，不猜别的槽。</summary>
+        /// <summary>绑定槽取值（fail-closed 空串）：只看本节点绑定，不猜别的槽；
+        /// 带源映射时 SourceName 按精确源名取附加源（P3-03），映射缺席仍回空串。</summary>
         public string Binding(string field)
         {
             var binding = Node.Bindings.FirstOrDefault(b =>
                 b is not null && string.Equals(b.Field, field, StringComparison.OrdinalIgnoreCase));
-            return binding is null ? "" : ComponentBindingEngine.ResolveBinding(binding, State);
+            return binding is null ? "" : ComponentBindingEngine.ResolveBinding(binding, State, sources);
         }
 
         public string Prop(string key, string fallback = "") => Node.Props.GetValueOrDefault(key, fallback);
@@ -89,11 +94,44 @@ internal static class ComponentSurfaceRenderer
         ["divider"] = context => ComponentDivider.Horizontal(context.Foreground),
     };
 
-    /// <summary>整树渲染。tile 首切片只接自身状态源（附加源映射属 P3-03 依赖路由）。</summary>
+    /// <summary>整树渲染（自身状态单源）：SourceName 绑定 fail-closed 空串（P3-01 切片语义保留）。</summary>
     public static FrameworkElement Render(WidgetInstance instance, WidgetState? state, UiPalette palette)
-        => RenderNode(instance.Root, state, palette);
+        => RenderNode(instance.Root, state, palette, null);
 
-    private static FrameworkElement RenderNode(ComponentDescriptor node, WidgetState? state, UiPalette palette)
+    /// <summary>
+    /// 带附加源映射的整树渲染（P3-03 依赖路由）：own 状态在保留键 ""，绑定 SourceName 按精确源名取值；
+    /// 映射由 WidgetInstanceResolver.ResolveSources 按 Sources 声明构建（调用面快照口径，不触发数据请求）。
+    /// 声明却缺席的源出缺失态标题（缺源不是空值，不拿健康旧值冒充）；零缺失零包装，与无附加源的面同构。
+    /// </summary>
+    public static FrameworkElement Render(
+        WidgetInstance instance,
+        IReadOnlyDictionary<string, WidgetState> sources,
+        UiPalette palette)
+    {
+        var own = sources.TryGetValue(ComponentBindingSource.OwnStateKey, out var state) ? state : null;
+        var content = RenderNode(instance.Root, own, palette, sources);
+        var missing = ComponentSourceIndex.MissingSources(instance, sources);
+        if (missing.Count == 0)
+        {
+            return content;
+        }
+        var host = new StackPanel { Spacing = 2 };
+        foreach (var name in missing)
+        {
+            var widgetId = instance.Sources.GetValueOrDefault(name, "");
+            host.Children.Add(ComponentText.Caption(
+                $"⚠ 缺少数据源：{name}（{widgetId}）",
+                new SolidColorBrush(ThemeColors.Label())));
+        }
+        host.Children.Add(content);
+        return host;
+    }
+
+    private static FrameworkElement RenderNode(
+        ComponentDescriptor node,
+        WidgetState? state,
+        UiPalette palette,
+        IReadOnlyDictionary<string, WidgetState>? sources)
     {
         if (!Registry.TryGetValue(node.Type, out var factory))
         {
@@ -104,7 +142,7 @@ internal static class ComponentSurfaceRenderer
         FrameworkElement element;
         try
         {
-            element = factory(new NodeContext(node, state, palette));
+            element = factory(new NodeContext(node, state, palette, sources));
         }
         catch (Exception)
         {
@@ -117,7 +155,7 @@ internal static class ComponentSurfaceRenderer
         {
             var first = node.Children.FirstOrDefault(c => c is not null);
             element = ComponentSurface.Card(
-                first is null ? new Grid() : RenderNode(first, state, palette),
+                first is null ? new Grid() : RenderNode(first, state, palette, sources),
                 new SolidColorBrush(ThemeColors.Surface()));
         }
         else if (element is Panel panel)
@@ -126,7 +164,7 @@ internal static class ComponentSurfaceRenderer
             {
                 if (child is not null)
                 {
-                    panel.Children.Add(RenderNode(child, state, palette));
+                    panel.Children.Add(RenderNode(child, state, palette, sources));
                 }
             }
         }
