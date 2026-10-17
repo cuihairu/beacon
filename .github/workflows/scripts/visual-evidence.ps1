@@ -5124,6 +5124,200 @@ catch
     Write-Host "::error::场景 AA 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 AB：订阅重建链——连接停用/组件删除后调度器停止消费、未停用组件不误伤（todo 行 193 装机半）——
+# 驱动面：conn-toggle-{connId} / widget-delete-{widgetId} 两个 UIA id（同批落 SettingsWindow）驱动
+#   停用链（UpsertConnection→InvalidateWidgets→Rebuild→PinsChanged→ReloadTiles）与删除链
+#   （InvalidateWidgets+RemoveWidget+ReloadWidgets→PinsChanged）。
+# 断言三段（「refreshed ok」逐跳日志为唯一写 verdict 口径，WidgetHost.cs:244）：
+#   AB1 停用：Toggle Off → connections.json enabled=false + GLM tile 摘除 + 静默窗 50s（ci 档 15s ≥3 跳）
+#     零新 GLM 行而 ds 新行 ≥2（调度器只摘受影响者）；
+#   AB2 恢复：重建行读态 Off → Toggle On → enabled=true + tile 回归 + 静默窗 GLM 新行 ≥2（复订恢复）；
+#   AB3 删除：widget-delete Invoke → widgets.json 行消失 + ds tile 摘除 + 静默窗零新 ds 行（无幽灵刷新）
+#     且 GLM 行 ≥2 + 进程恒 1（删除链不炸进程）。
+# 种子直接用 Write-GConfig（zhipu+ds-main 双连接 / GLM+ds 双钉选组件，浮窗开、密钥齐）。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Ensure-MockServer # 防御：不依赖前序场景收尾（38470370548 级联红根因）
+    $abLog = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    $abWidgets = Join-Path $configDir "widgets.json"
+    $abConns = Join-Path $configDir "connections.json"
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { Save-FullScreenshot "AB-FAIL-no-settings.png"; throw "断言失败（场景 AB 前置）：--settings 启动 30s 内未见设置窗" }
+    # 基线：两 tile + 双 id 都已在刷（启动 Reload 立即拉一跳，ci 档 15s 续跳）
+    $tiles0 = -1
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tiles0 = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+        if ($tiles0 -eq 2) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($tiles0 -ne 2) { Save-FullScreenshot "AB-FAIL-baseline-tiles.png"; throw "断言失败（场景 AB 前置）：基线悬浮 tile=$tiles0（期望 2——GLM/ds 预置钉选）" }
+    $bothSeen = $false
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline)
+    {
+        if (Test-Path $abLog)
+        {
+            $logNow = Get-Content $abLog -Raw -Encoding UTF8
+            if (($logNow -match "Widget bigmodel\.usage:GLM refreshed ok") -and ($logNow -match "Widget deepseek\.balance:ds refreshed ok")) { $bothSeen = $true; break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    if (!$bothSeen) { Save-FullScreenshot "AB-FAIL-baseline-refresh.png"; throw "断言失败（场景 AB 前置）：60s 内未见双 id「refreshed ok」（GLM/ds 任一未上刷——读当日日志定因）" }
+    # AB1 停用：模块页 conn-toggle-zhipu 读态 On → Toggle Off
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { Save-FullScreenshot "AB-FAIL-no-bigmodel.png"; throw "断言失败（场景 AB1）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    $connToggle = Find-UiaById $settings "conn-toggle-zhipu" 10
+    if (!$connToggle) { Save-FullScreenshot "AB-FAIL-no-conn-toggle.png"; throw "断言失败（场景 AB1）：UIA 未找到 conn-toggle-zhipu（锚点丢失？）" }
+    $toggleState = "$(($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
+    if ($toggleState -ne "On") { throw "断言失败（场景 AB1）：停用前 conn-toggle ToggleState=$toggleState（期望 On）" }
+    ($connToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    $disabled = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $z = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+        if ($z.Count -ge 1 -and "$($z[0].enabled)" -eq "False") { $disabled = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$disabled) { Save-FullScreenshot "AB-FAIL-disable-not-saved.png"; throw "断言失败（场景 AB1）：Toggle Off 后 20s 内 connections.json zhipu enabled 未翻 false" }
+    $tiles1 = -1
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tiles1 = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+        if ($tiles1 -eq 1) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($tiles1 -ne 1)
+    {
+        Save-FullScreenshot "AB-FAIL-disable-tile-alive.png"
+        Copy-Item $abConns (Join-Path $evidence "connections-AB1-fail.json") -Force -ErrorAction SilentlyContinue
+        Copy-Item $abLog (Join-Path $evidence "beacon-AB1-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AB1）：停用后 20s 内 GLM tile 未消失（tile=$tiles1，期望 1）——PinsChanged→ReloadTiles 重建链回归"
+    }
+    Write-Host "场景 AB1 通过：停用 zhipu → enabled=false 落盘 + GLM tile 摘除"
+    # 静默窗口径：tile 摘除已过=重建链已跑；+5s 让 in-flight 落地，随后 50s（≥3 跳）零新 GLM 行而 ds ≥2
+    Start-Sleep -Seconds 5
+    $len1 = (Get-Content $abLog -Raw -Encoding UTF8).Length
+    Start-Sleep -Seconds 50
+    $log1 = Get-Content $abLog -Raw -Encoding UTF8
+    $slice1 = if ($log1.Length -ge $len1) { $log1.Substring($len1) } else { $log1 }
+    $glmNew1 = ([regex]::Matches($slice1, [regex]::Escape("Widget bigmodel.usage:GLM refreshed ok"))).Count
+    $dsNew1 = ([regex]::Matches($slice1, [regex]::Escape("Widget deepseek.balance:ds refreshed ok"))).Count
+    if ($glmNew1 -ne 0 -or $dsNew1 -lt 2)
+    {
+        Copy-Item $abLog (Join-Path $evidence "beacon-AB1-silence-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AB1 静默窗）：停用后 50s 窗内 GLM 新行=$glmNew1（期望 0——幽灵刷新）/ ds 新行=$dsNew1（期望 ≥2——不误伤）"
+    }
+    Write-Host "场景 AB1 静默窗通过：GLM 零新行（退订）/ ds 持续 ≥2 行（不误伤）"
+    # AB2 恢复：停用时 RebuildConnections 重建页面行——重找 toggle（旧元素已死），读态应 Off
+    $connToggle2 = Find-UiaById $settings "conn-toggle-zhipu" 10
+    if (!$connToggle2) { Save-FullScreenshot "AB-FAIL-no-conn-toggle2.png"; throw "断言失败（场景 AB2）：重建后 UIA 未找到 conn-toggle-zhipu" }
+    $state2 = "$(($connToggle2.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Current.ToggleState)"
+    if ($state2 -ne "Off") { throw "断言失败（场景 AB2）：重建后 conn-toggle ToggleState=$state2（期望 Off——停用读态不一致）" }
+    ($connToggle2.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    $reEnabled = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $z2 = @(Get-Content $abConns -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "zhipu" })
+        if ($z2.Count -ge 1 -and "$($z2[0].enabled)" -eq "True") { $reEnabled = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$reEnabled) { Save-FullScreenshot "AB-FAIL-enable-not-saved.png"; throw "断言失败（场景 AB2）：Toggle On 后 20s 内 connections.json zhipu enabled 未翻 true" }
+    $tiles2 = -1
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tiles2 = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+        if ($tiles2 -eq 2) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($tiles2 -ne 2)
+    {
+        Save-FullScreenshot "AB-FAIL-enable-tile-missing.png"
+        throw "断言失败（场景 AB2）：恢复后 20s 内 GLM tile 未回归（tile=$tiles2，期望 2）——复订重建链回归"
+    }
+    Write-Host "场景 AB2 通过：恢复 zhipu → enabled=true 落盘 + GLM tile 回归"
+    Start-Sleep -Seconds 5
+    $len2 = (Get-Content $abLog -Raw -Encoding UTF8).Length
+    Start-Sleep -Seconds 50
+    $log2 = Get-Content $abLog -Raw -Encoding UTF8
+    $slice2 = if ($log2.Length -ge $len2) { $log2.Substring($len2) } else { $log2 }
+    $glmNew2 = ([regex]::Matches($slice2, [regex]::Escape("Widget bigmodel.usage:GLM refreshed ok"))).Count
+    if ($glmNew2 -lt 2)
+    {
+        Copy-Item $abLog (Join-Path $evidence "beacon-AB2-resume-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AB2 静默窗）：恢复后 50s 窗内 GLM 新行=$glmNew2（期望 ≥2——复订未恢复刷新）"
+    }
+    Write-Host "场景 AB2 静默窗通过：GLM 恢复 ≥2 新行（复订）"
+    # AB3 删除：deepseek 模块页组件行删除钮（InvalidateWidgets+RemoveWidget+ReloadWidgets 防幽灵刷新链）
+    $dsRow = Find-UiaById $settings "module-deepseek" 10
+    if (!$dsRow) { Save-FullScreenshot "AB-FAIL-no-deepseek.png"; throw "断言失败（场景 AB3）：UIA 未找到 module-deepseek" }
+    Invoke-Uia $dsRow
+    Start-Sleep -Seconds 2
+    $delBtn = Find-UiaById $settings "widget-delete-deepseek.balance:ds" 10
+    if (!$delBtn) { Save-FullScreenshot "AB-FAIL-no-delete.png"; throw "断言失败（场景 AB3）：UIA 未找到 widget-delete-deepseek.balance:ds" }
+    Invoke-Uia $delBtn
+    $gone = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $w = @(Get-Content $abWidgets -Raw -Encoding UTF8 | ConvertFrom-Json | Where-Object { $_.id -eq "deepseek.balance:ds" })
+        if ($w.Count -eq 0) { $gone = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$gone)
+    {
+        Save-FullScreenshot "AB-FAIL-delete-not-saved.png"
+        Copy-Item $abWidgets (Join-Path $evidence "widgets-AB3-fail.json") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AB3）：删除后 20s 内 widgets.json 仍有 deepseek.balance:ds 行——RemoveWidget 未落盘"
+    }
+    $tiles3 = -1
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $tiles3 = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
+        if ($tiles3 -eq 1) { break }
+        Start-Sleep -Seconds 2
+    }
+    if ($tiles3 -ne 1)
+    {
+        Save-FullScreenshot "AB-FAIL-delete-tile-alive.png"
+        throw "断言失败（场景 AB3）：删除后 20s 内 ds tile 未消失（tile=$tiles3，期望 1）——PinsChanged→ReloadTiles 重建链回归"
+    }
+    Write-Host "场景 AB3 通过：删除 ds → widgets.json 行消失 + ds tile 摘除"
+    Start-Sleep -Seconds 5
+    $procs3 = @(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count
+    if ($procs3 -ne 1) { throw "断言失败（场景 AB3）：删除链后进程数=$procs3（期望 1——删除链炸进程）" }
+    $len3 = (Get-Content $abLog -Raw -Encoding UTF8).Length
+    Start-Sleep -Seconds 50
+    $log3 = Get-Content $abLog -Raw -Encoding UTF8
+    $slice3 = if ($log3.Length -ge $len3) { $log3.Substring($len3) } else { $log3 }
+    $dsNew3 = ([regex]::Matches($slice3, [regex]::Escape("Widget deepseek.balance:ds refreshed ok"))).Count
+    $glmNew3 = ([regex]::Matches($slice3, [regex]::Escape("Widget bigmodel.usage:GLM refreshed ok"))).Count
+    if ($dsNew3 -ne 0 -or $glmNew3 -lt 2)
+    {
+        Copy-Item $abLog (Join-Path $evidence "beacon-AB3-ghost-fail.log") -Force -ErrorAction SilentlyContinue
+        throw "断言失败（场景 AB3 静默窗）：删除后 50s 窗内 ds 新行=$dsNew3（期望 0——幽灵刷新）/ GLM 新行=$glmNew3（期望 ≥2——不误伤）"
+    }
+    Write-Host "场景 AB 通过：停用退订静默/恢复复订/删除无幽灵刷新——订阅重建链三段闭环（todo 行 193）"
+    Stop-Beacon
+}
+catch
+{
+    Stop-Beacon # Z 同口径：失败也收尸，防残留进程毒化 J 静默安装
+    Save-FullScreenshot "AB-FAIL-unexpected.png"
+    $failures.Add("场景 AB：$($_.Exception.Message)")
+    Write-Host "::error::场景 AB 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
