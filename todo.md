@@ -123,8 +123,8 @@
 
 ## 文档双语补全（2026-10-16 用户令；2 项全勾）
 
-- [x] docs/ 根目录实质文档全部成对，当前 16 篇（13 篇真实完整译本：index / mission / positioning / configuration / solution-structure / troubleshooting / privacy-policy / store-submission / 审计-文档一致性 / acceptance-checklist / acceptance-B705-L0-behavior / acceptance-B803-e2e-walkthrough / todo-triage-2026-10-16；3 篇过长只留切换器与「暂无译版」说明：master-plan 1134 行 / mvp-issues 1371 行 / mission-excerpt 1579 行；16/16 双份第 1 行语言切换器且在首屏；命令、路径、代码块、专有名词与台账 ID 原样保留不译；本目录链接 0 断链；mkdocs build --strict 绿）
-- [x] docs/design/ 6 篇与 docs/rfc/ 1 篇双语配对（口径同根目录；6 篇真实完整译本：collapsed-progress / redesign-2026-10-16-契约 / 映射与迁移 / 核验 / 组件库落地 / RFC-001-technical-design，6/6 行数与标题/表行/围栏/勾选计数全等（如 RFC-001 487 行 17+18 标题 83 表行 22 围栏）；1 篇过长只留切换器与「暂无译版」说明：redesign-plan-2026-10-16 1395 行；7/7 双份第 1 行语言切换器；代码跨度内源注释/模板串与 `已代决①-⑩` 等台账 ID 原样保留；链接 0 断链；mkdocs build --strict 绿；`51492ae`）
+- [x] docs/ 根目录实质文档全部成对，当前 16 篇（13 篇真实完整译本：index / mission / positioning / configuration / solution-structure / troubleshooting / privacy-policy / store-submission / 审计-文档一致性 / acceptance-checklist / acceptance-B705-L0-behavior / acceptance-B803-e2e-walkthrough / todo-triage-2026-10-16；3 篇过长只留「暂无译版」说明与中文版链接：master-plan 1135 行 / mvp-issues 1372 行 / mission-excerpt 1581 行；2026-10-17 用户令全仓移除自绘语言切换器链接（b3f32e0），16/16 双份不再带切换器；命令、路径、代码块、专有名词与台账 ID 原样保留不译；本目录链接 0 断链；mkdocs build --strict 绿）
+- [x] docs/design/ 7 篇与 docs/rfc/ 1 篇双语配对（口径同根目录；7 篇真实完整译本：collapsed-progress / redesign-2026-10-16-契约 / 映射与迁移 / 核验 / 组件库落地 / phase4-html-ruling-2026-10-17 / RFC-001-technical-design，7/7 行数与标题/表行/围栏/勾选计数全等（2026-10-17 复核 23 对真实配对全等，如 phase4-ruling 124 行 11 标题 13 表行）；1 篇过长只留「暂无译版」说明与中文版链接：redesign-plan-2026-10-16 899 行（22faa17 折叠三贴段后）；8/8 双份已随 b3f32e0 移除切换器；代码跨度内源注释/模板串与 `已代决①-⑩` 等台账 ID 原样保留；链接 0 断链；mkdocs build --strict 绿；`51492ae`+本提交复核）
 
 ## 组件化重构分期（2026-10-16 用户执行单采纳，依 `docs/design/redesign-plan-2026-10-16.md`；现状核验见 `docs/design/redesign-2026-10-16-核验.md`）
 
