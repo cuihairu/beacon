@@ -49,4 +49,8 @@ public sealed record ActionResult(
     /// <summary>动作来源 Widget（P5-02 动作后刷源）：Runner 按 SourceState 盖章；null=无来源，不触发刷新。
     /// 关联的是配置 ID 而非 run——远端任务关联仍看各执行器的消息与 Widget 状态流转。</summary>
     public string? SourceWidgetId { get; init; }
+
+    /// <summary>单次执行关联标识（P5-01）：区分 Action 配置 ID 与每一次执行（重试共用一次结算不另发 id）。
+    /// 构造即派生（旧构造/旧落盘零迁移）；序列化保留已存值，ActionId 与 ExecutionId 不混用。</summary>
+    public string ExecutionId { get; init; } = Guid.NewGuid().ToString("N");
 }

@@ -161,6 +161,13 @@ public class SerializationRoundTripTests
         var restoredTimedOut = BeaconJson.RoundTrip(timedOut);
         Assert.Equal(ActionOutcome.TimedOut, restoredTimedOut.Outcome);
         Assert.Equal(timedOut, restoredTimedOut);
+
+        // P5-01 执行关联标识：一次执行一个 id（两次构造不同），与配置 ID 分离，往返保留
+        Assert.False(string.IsNullOrWhiteSpace(result.ExecutionId));
+        Assert.NotEqual(result.ExecutionId,
+            new ActionResult("a-retry-client", true, "dispatched", null, DateTimeOffset.UtcNow).ExecutionId);
+        Assert.NotEqual(result.ExecutionId, result.ActionId);
+        Assert.Equal(result.ExecutionId, BeaconJson.RoundTrip(result).ExecutionId);
     }
 
     [Fact]
