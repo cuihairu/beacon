@@ -7,6 +7,8 @@ namespace Beacon.Core.Services;
 /// 纯函数、无 IO、fail-closed——无该面树或结构非法返回 null，调用面回传统渲染（同
 /// JsonConfigurationStore 加载侧的整树弃用口径）；附加数据源声明非法时整面弃用附加源
 /// （自身状态恒可用），实例不因此弃用。同一配置重复解析得独立实例。
+/// Phase 4 裁定（2026-10-17）：根节点为 htmltemplate 载体时在此展开为组件子树——
+/// HTML 只是另一种写组件树的语言，tile / row / detail 消费面零改动即获得 HTML 面。
 /// </summary>
 public static class WidgetInstanceResolver
 {
@@ -15,9 +17,15 @@ public static class WidgetInstanceResolver
     public static WidgetInstance? Resolve(WidgetConfig config, string surface)
     {
         if (config.Components is null
-            || !config.Components.TryGetValue(surface, out var root)
-            || root is null
-            || !ComponentTreeValidator.Validate(root).Ok)
+            || !config.Components.TryGetValue(surface, out var declared)
+            || declared is null)
+        {
+            return null;
+        }
+        // Phase 4 裁定：htmltemplate 载体面在解析期展开为组件子树（解析失败 fail-closed null
+        // → 传统渲染，与结构非法同一口径）；展开后的树照过防爆校验。
+        var expanded = HtmlTemplateParser.ExpandCarrier(declared);
+        if (expanded is null || !ComponentTreeValidator.Validate(expanded).Ok)
         {
             return null;
         }
@@ -27,7 +35,7 @@ public static class WidgetInstanceResolver
             Type = config.Type,
             Surface = surface,
             Config = config.Config,
-            Root = root,
+            Root = expanded,
             Sources = SurfaceSources(config, surface),
         };
     }

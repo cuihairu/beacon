@@ -395,6 +395,78 @@ public sealed class HtmlTemplateParserTests
         Assert.Same(root, instance.Root);
     }
 
+    // ---------- 解析器接线（行 174/177/179 的 resolver 半证据） ----------
+
+    private static WidgetConfig CarrierConfig(string html)
+        => new()
+        {
+            Id = "w-1",
+            Type = "github.actions.runs",
+            ConnectionId = "conn-1",
+            Components = new Dictionary<string, ComponentDescriptor>
+            {
+                ["detail"] = new ComponentDescriptor
+                {
+                    Id = "tpl",
+                    Type = HtmlTemplateParser.CarrierType,
+                    Props = { ["html"] = html },
+                },
+            },
+        };
+
+    [Fact]
+    public void Resolver_CarrierFace_ExpandsIntoInstance()
+    {
+        var instance = WidgetInstanceResolver.Resolve(CarrierConfig("<card><text>{{state.summary}}</text></card>"), "detail");
+        Assert.NotNull(instance);
+        Assert.Equal("column", instance!.Root.Type);
+        var text = Find(instance.Root, "text");
+        Assert.Equal("state", BindingOf(text, "text").Source.Kind);
+        // 载体面走与手写树同一实例生命周期：Sources 语义不变、Config 只读共享
+        Assert.Empty(instance.Sources);
+    }
+
+    [Fact]
+    public void Resolver_BrokenTemplate_FallsBackToNull_TraditionalRendering()
+    {
+        Assert.Null(WidgetInstanceResolver.Resolve(CarrierConfig("<script>alert(1)</script>"), "detail"));
+        Assert.Null(WidgetInstanceResolver.Resolve(CarrierConfig("   "), "detail"));
+    }
+
+    [Fact]
+    public void Resolver_TemplateTree_ObeysBlastRadiusCaps()
+    {
+        // 模板解析不超上限，但合成树若越 256 节点上限同样整面弃用（与手写树同口径）
+        var huge = "<column>" + string.Concat(Enumerable.Repeat("<divider/>", 200))
+                   + "<text>x</text></column>";
+        Assert.Null(WidgetInstanceResolver.Resolve(CarrierConfig(huge), "detail"));
+    }
+
+    [Fact]
+    public void Incremental_ResolverInstance_BindingsTrackStateSnapshots()
+    {
+        // 行 179 全链（resolver 出实例 → 引擎按快照求值）：同一实例两份快照值不同、树同一对象
+        var instance = WidgetInstanceResolver.Resolve(
+            CarrierConfig("<metric unit=\"pct\">{{payload.used}}</metric>"), "detail");
+        Assert.NotNull(instance);
+        WidgetState PayloadState(string used) => new()
+        {
+            WidgetId = "w-1",
+            WidgetType = "github.actions.runs",
+            ConnectionId = "conn-1",
+            Severity = Severity.Info,
+            Summary = "s",
+            Payload = new Dictionary<string, string> { ["used"] = used },
+            FetchedAt = new DateTimeOffset(2026, 10, 17, 0, 0, 0, TimeSpan.Zero),
+        };
+        var first = ComponentBindingEngine.Resolve(instance!, PayloadState("42"));
+        Assert.Contains("42", first.Values);
+        var second = ComponentBindingEngine.Resolve(instance!, PayloadState("77"));
+        Assert.Contains("77", second.Values);
+        Assert.DoesNotContain("42", second.Values);
+        Assert.Same(instance!.Root, instance.Root);
+    }
+
     [Fact]
     public void EngineExposures_MatchEngineTables()
     {

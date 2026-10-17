@@ -1,6 +1,7 @@
 using Beacon.Core.Abstractions;
 using Beacon.Core.Json;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Storage;
 
@@ -87,7 +88,8 @@ public sealed class JsonConfigurationStore : IConfigurationStore
 
     /// <summary>写入面防呆（Phase 5 行 3，组件实例编辑）：UpsertWidget 与加载同一 fail-closed
     /// 口径——编辑器/手改落盘的坏树不再等下次重启才被清。入参 widget 是调用方私有对象，
-    /// 尚未共享，净化无需持锁。</summary>
+    /// 尚未共享，净化无需持锁。Phase 4（2026-10-17 裁定）：htmltemplate 载体面在此展开后校验，
+    /// 坏模板加载/写入即报错并整面弃用，不等首次渲染才发现。</summary>
     private void SanitizeWidgetSurfaces(WidgetConfig widget)
     {
         if (widget.Components is not { Count: > 0 } components)
@@ -97,7 +99,7 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         var invalid = new List<string>();
         foreach (var pair in components)
         {
-            var result = ComponentTreeValidator.Validate(pair.Value);
+            var result = ValidateSurfaceTree(pair.Value);
             if (result.Ok)
             {
                 continue;
@@ -109,6 +111,27 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         {
             components.Remove(key);
         }
+    }
+
+    /// <summary>面树校验：普通树走 ComponentTreeValidator；htmltemplate 载体面先展开
+    /// （模板解析 + 载体合法性）再校验合成树——失败诊断带模板首错，可读可查。</summary>
+    private static ComponentTreeValidation ValidateSurfaceTree(ComponentDescriptor declared)
+    {
+        var expanded = HtmlTemplateParser.ExpandCarrier(declared);
+        if (expanded is not null)
+        {
+            return ComponentTreeValidator.Validate(expanded);
+        }
+        if (!HtmlTemplateParser.IsCarrier(declared))
+        {
+            // 不可达：非载体 ExpandCarrier 恒原样返回；防御性兜底与调用面同口径
+            return new ComponentTreeValidation(false, ["surface tree is invalid"]);
+        }
+        var parsed = HtmlTemplateParser.Parse(declared.Props.GetValueOrDefault("html"));
+        var reason = parsed.Errors.Count > 0
+            ? parsed.Errors[0]
+            : "carrier is invalid (children/bindings/props out of contract)";
+        return new ComponentTreeValidation(false, [$"html template rejected: {reason}"]);
     }
 
     private void SanitizeWidgetSources(WidgetConfig widget)
