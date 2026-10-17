@@ -217,16 +217,14 @@ public sealed class BeaconRuntime : IAsyncDisposable
     /// 组件增删/钉选后的全链初始化（白板三连根因收口）：以前 UpsertWidget 只落盘，
     /// 调度器全然不知（Host.Reload 无人调用）——新组件进不了组循环，tile 空等到重启；
     /// 托盘强刷（RefreshAll 直调 RefreshWidgetAsync）是唯一出数路径，即「强刷才出数据」。
-    /// 现在任何组件变更走这里：重建注册 + 立即拉取 + 事件驱动重渲，一次开钉即到位。
+    /// 现在任何组件变更走这里：重建注册 + 按需拉取 + 事件驱动重渲，一次开钉即到位。
+    /// P3-02 受影响注册：Host.Reload 内只拉 kickIds（null=全量各一次）——旧实现 Host.Reload
+    /// 全量 KickAll 叠加此处再显式刷新，改一个组件全体重拉、目标组件双请求，由此收口。
     /// </summary>
     public void ReloadWidgets(IEnumerable<string>? kickIds = null)
     {
-        Host.Reload();
+        Host.Reload(kickIds);
         var ids = (kickIds ?? Config.Widgets.Select(w => w.Id)).ToList();
-        foreach (var id in ids)
-        {
-            _ = Host.RefreshWidgetAsync(id);
-        }
         Logger?.LogInformation("组件注册已重建并立即拉取 {Count} 个：{Ids}", ids.Count, string.Join(", ", ids));
     }
 
