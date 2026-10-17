@@ -9,7 +9,10 @@ namespace Beacon.Core.Services;
 /// Action 执行框架（B-401，RFC §13）：按 ActionType 路由 IActionExecutor；
 /// RequireConfirmation 走注入的确认通道（无通道时保守拒绝）；统一超时；
 /// 可选重试（Parameters retry_max_attempts/retry_backoff_seconds，默认 1 次 = 不重试；
-/// 重试共享同一总超时预算，用户取消与超时不重试）；
+/// 重试共享同一总超时预算，用户取消与超时不重试）。
+/// P5-01 重试条件口径：副作用动作（触发构建/取消任务等）不因响应丢失/超时就默认重发——
+/// 重试只做显式 opt-in（retry_max_attempts &gt; 1），且同样受「用户取消与超时不重试」约束；
+/// 结果丢失由用户重跑决策（L3 重跑按钮），框架绝不代替用户重复副作用。
 /// 结果（成功/失败/取消）一律发 ActionExecuted 事件驱动 UI 反馈与通知。
 /// </summary>
 public sealed class ActionRunner
