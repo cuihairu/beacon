@@ -1818,6 +1818,8 @@ internal sealed class SettingsWindow : Window
             Margin = new Thickness(0, 0, 4, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
+        // UIA 取证/CI 入口（行 193 订阅重建链）：与 pin-toggle 同口径（ToggleSwitch 自带 peer）
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(enabledToggle, $"conn-toggle-{connection.Id}");
         enabledToggle.Toggled += (_, _) =>
         {
             // Enabled init-only（class 非 record）：重建替换落库
@@ -2749,6 +2751,8 @@ internal sealed class SettingsWindow : Window
         }
 
         var delete = new Button { Content = "删除" };
+        // UIA 取证/CI 入口（行 193 订阅重建链）：删除走注销链（Invalidate+Remove+Reload 防幽灵刷新）
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(delete, $"widget-delete-{widget.Id}");
         delete.Click += (_, _) =>
         {
             _runtime.InvalidateWidgets([widget.Id]); // 面板/聚合器丢弃残留状态
