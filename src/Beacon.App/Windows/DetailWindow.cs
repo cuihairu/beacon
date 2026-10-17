@@ -32,6 +32,8 @@ internal sealed class DetailWindow : Window
     private TextBlock _resultText = null!; // 非 readonly：状态重建换新实例（XAML 元素不可二次挂父）
     private IDisposable? _subscription; // 关闭即退订（P3-03：重复开关详情回调不倍增）
     private bool _dialogOpen; // 确认对话框打开期间跳过状态重建（XamlRoot 挂旧树，重建会把对话框踢出可视树）
+    private StackPanel _actionsPanel = null!; // 非 readonly：状态重建换新实例（P5-01 运行中禁用动作区）
+    private bool _actionRunning; // P5-01 防重复：一次执行未结算不接受新执行（重复点击不产生两次构建）
 
     public DetailWindow(WidgetState state, BeaconRuntime runtime, Action? closed = null)
     {
@@ -219,7 +221,7 @@ internal sealed class DetailWindow : Window
 
         // Action 区（按能力显隐，B-603）
         var widget = detailWidget; // 头部查找共用（声明式分支已取）
-        var actions = ComponentLayout.Row(DesignTokens.Spacing(8, density));
+        var actions = _actionsPanel = ComponentLayout.Row(DesignTokens.Spacing(8, density));
         actions.Margin = new Thickness(0, 4, 0, 0);
 
         if (!string.IsNullOrEmpty(_state.DetailUrl))
@@ -326,6 +328,15 @@ internal sealed class DetailWindow : Window
 
     private async Task RunActionAsync(ActionConfig action)
     {
+        // P5-01 防重复（验收「重复点击不意外产生两次构建」）：一次执行未结算不接受新执行；
+        // 视觉同步禁用动作区——按钮置灰即状态可见，不靠结果文本事后告知。
+        // 状态重建会换新 _actionsPanel（旧树上的禁用随之作废），重入门兜住这个缝隙。
+        if (_actionRunning)
+        {
+            return;
+        }
+        _actionRunning = true;
+        SetActionsEnabled(false);
         _resultText.Text = "执行中…";
         try
         {
@@ -345,6 +356,22 @@ internal sealed class DetailWindow : Window
         catch (Exception exception)
         {
             _resultText.Text = $"✗ {exception.Message}";
+        }
+        finally
+        {
+            _actionRunning = false;
+            SetActionsEnabled(true);
+        }
+    }
+
+    private void SetActionsEnabled(bool enabled)
+    {
+        foreach (var child in _actionsPanel.Children)
+        {
+            if (child is Control control)
+            {
+                control.IsEnabled = enabled;
+            }
         }
     }
 
