@@ -68,7 +68,7 @@ internal sealed class DetailWindow : Window
 
     /// <summary>传统详情主体（头部/meta/反馈/附加表/趋势）——声明式分支（P3-01）的对照与回退面，
     /// 内容与原 BuildContent 内联段逐项等价。</summary>
-    private void AddTraditionalDetailBody(StackPanel root, double density)
+    private void AddTraditionalDetailBody(StackPanel root, string density)
     {
         // 头部：severity 点 + 类型 + 摘要
         var header = ComponentLayout.Row(DesignTokens.Spacing(8, density));
