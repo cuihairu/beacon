@@ -102,14 +102,21 @@ public sealed class WidgetHost : IAsyncDisposable
         KickAll();
     }
 
-    /// <summary>配置变化（Settings 增删 Widget）后重建注册并重拉。不清缓存、不水合——
-    /// 新鲜态不得被缓存陈旧视图盖回（ReloadRegistrations 同口径，见回归闸测试）。</summary>
-    public void Reload()
+    /// <summary>配置变化（Settings 增删 Widget/改查询参数）后重建注册并按需重拉（P3-02 受影响注册）：
+    /// kickIds 内的组件各立即拉取一次，null = 全量（口径同旧 Reload）。不清缓存、不水合——
+    /// 新鲜态不得被缓存陈旧视图盖回（ReloadRegistrations 同口径，见回归闸测试）。
+    /// 走 TryRefreshOneAsync 直取而非 RefreshWidgetAsync：注册刚重建、节奏已归位，再 kick 会让
+    /// 组循环立刻再拉一次（每组件双请求的另一半）；也不走 KickAll——旧实现全量重拉叠加调用方
+    /// 对同一批组件的显式拉取，改一个组件 = 全体重拉，P3-02 由此收口。</summary>
+    public void Reload(IEnumerable<string>? kickIds = null)
     {
         _scheduler.Clear();
         RegisterWidgets();
         _scheduler.Start(OnGroupRefreshAsync);
-        KickAll();
+        foreach (var id in kickIds ?? _config.Widgets.Select(w => w.Id))
+        {
+            _ = TryRefreshOneAsync(id, CancellationToken.None);
+        }
     }
 
     /// <summary>展示面配置变化（布局/颜色/密度/树结构）后的注册重建（P3-02 分流）：

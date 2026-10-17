@@ -597,6 +597,69 @@ public sealed class WidgetHostTests
         gate.SetResult();
     }
 
+    [Fact]
+    public async Task Reload_WithKickIds_FetchesOnlyAffectedWidgets()
+    {
+        // P3-02 受影响注册：改谁拉谁——无关组件零请求（旧 KickAll 全量 + 调用方再显式拉的目标双请求根因）
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromHours(1), JitterFraction: 0),
+            randomSeed: 42);
+        await using var host = fixture.CreateHost(scheduler, new StateStore(fixture.Bus));
+        fixture.Config.ConnectionItems.Add(TestData.Connection("conn-2"));
+        fixture.Config.WidgetItems.Add(TestData.Widget(id: "w-2", connectionId: "conn-2"));
+        var fetched = new List<string>();
+        fixture.Provider.Handler = (widget, _, _, _) =>
+        {
+            lock (fetched)
+            {
+                fetched.Add(widget.Id);
+            }
+            return Task.FromResult<WidgetState?>(TestData.State(
+                widgetId: widget.Id, widgetType: widget.Type, connectionId: widget.ConnectionId));
+        };
+
+        host.Reload(["w-1"]); // 不 Start：隔离 Reload 自身行为（Start 另有启动首拉）
+        await Poll.UntilAsync(() =>
+        {
+            lock (fetched)
+            {
+                return fetched.Count >= 1;
+            }
+        });
+        await Task.Delay(200); // 静默窗口：确认无关组件（w-2）确实零请求
+
+        lock (fetched)
+        {
+            Assert.Equal(["w-1"], fetched);
+        }
+    }
+
+    [Fact]
+    public async Task Reload_WithoutKickIds_FetchesEachWidgetOnce()
+    {
+        // 全量口径（null）：每组件恰一次——旧实现 KickAll 全量叠加调用方显式全量拉 = 每组件两次
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromHours(1), JitterFraction: 0),
+            randomSeed: 42);
+        await using var host = fixture.CreateHost(scheduler, new StateStore(fixture.Bus));
+        fixture.Config.ConnectionItems.Add(TestData.Connection("conn-2"));
+        fixture.Config.WidgetItems.Add(TestData.Widget(id: "w-2", connectionId: "conn-2"));
+        var calls = 0;
+        fixture.Provider.Handler = (_, _, _, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult<WidgetState?>(TestData.State());
+        };
+
+        host.Reload();
+        await Poll.UntilAsync(() => Volatile.Read(ref calls) >= 2);
+        await Task.Delay(200); // 静默窗口：不出现第三笔（无双请求）
+
+        Assert.Equal(2, Volatile.Read(ref calls));
+    }
+
     // ---- 动作后刷源（P5-02：请求接受 ≠ 远端终态） ----
 
     [Fact]
