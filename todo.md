@@ -22,6 +22,7 @@
 > 2026-10-15 patrol-20261015-P1015：批3-补59 三处加固后 38654763928 仍红（第四轮），取证面升级即兑现价值——读归档 notifications-V4-fail.json 原样：内容是**扁平数组 2 条记录**（GLM severity="critical" 标量、DeepSeek severity="critical" 标量），GLM critical 记录确实在案，断言本该通过却报 0。签名升级为「GLM 记录 1 条：critical critical@id=builtin.connection-degraded-…-2 …-1」，三个观测值（Count=1、severity 枚举成 "critical critical"、id 枚举成两条、-eq 全不命中）只有 [[r1,r2]] 嵌套一层读法能同时满足——pwsh 7 本地对同款嵌套 JSON 直接摊到 count=2 不需处理，PS 5.1 保留外层 count=1，**同型 JSON 两版本解析结果不同**，即批3-补59「未解」疑点落定。app 侧不可能写嵌套（SaveAsync(IReadOnlyList<NotificationRecord>) 经 System.Text.Json 只产扁平数组，归档原样亦扁平）=PS 5.1 读侧行为、非产品缺陷。修法 316c121：ConvertFrom-Json 后检测「外层为数组且首元素亦为数组」即摊平一层，severity 判定由 "$($_.severity)" -eq "critical" 改 @($_.severity) -contains "critical"（标量与枚举两态皆命中）。取证顺带澄清 V4 现场真发生的是 connection-degraded 跨界（app 日志 00:05:06.139 启动→.194 双 widget 各发 1 条 connection-degraded critical→.250/.253 刷新全 refreshed ok），即注入 Critical 落在连接降级通知上=V4 要验的「恰 1 条 critical」，故四轮「0 条 critical」从来不是产品缺失而是断言读法错。门禁：parse/Add-Type 双门 CLEAN + BOM 在 + brace/paren 增量持平 + 全量 1078 绿（Core 368/Actions 27/Connections 652/Storage 31）；新逻辑对归档扁平 JSON 与人工构造嵌套 JSON 两种输入在 pwsh 7 下均得 vRecords=1/vCrit=1。nightly 38661655290（316c121）复证中，绿则行 68 转已代验。
 > 2026-10-15 patrol-20261015-P1015R2：38661655290 全链绿到 X 前——V1/V2/V3/V4 全部通过（V4 恰 1 条 critical 记录=行 70 Toast 引擎链半转已代验，V3 崩溃注入复证绿），X1 首红即锁出脚本面缺陷：**BEACON_DEBUG_* 环境变量成功路径泄漏**。V1/V2 模式 Start-Process 后立即 Remove-Item Env:\BEACON_DEBUG_SEVERITY/CRASH（3403-3407），V4 只在 catch 清（3601-3602），V4 首绿把注入漏给后续每个 app 实例：W/X/Y 全部刷新被改判 Critical/Failed 且每实例武装 +90s 崩溃注入（X1 前 15s 轮询期 GLM 已武装崩溃定时器，01:20:24 红时点距启动 ~20s 未到触发，但 NEEDS ATTENTION 的 GLM 38% 健康值与在案 critical connection-degraded 通知都是强制 Critical 生效的实证）。相关时序吻合：V4 首绿前 X1 三跑全绿（38590456994/38602176751/38608625892），V4 后首轮即红。修法：V4 Start-Process 后补同款两行 Remove-Item（注入只给本实例，子进程已继承）。随批 X 失败取证补点：X 块起头定义 $xLogPath/$xWidgetsPath，X1 两个失败点（widgets.json 未翻 / tile 未消失）把 widgets-X1-fail.json 与 beacon-X1-fail.log 原样拷进 evidence——X 场景此前零 app 日志归档（V4 三轮盲区同型的 X 侧补点），失败信息指引读两份归档定因。门禁：parse/Add-Type 双门 CLEAN + BOM 在 + brace delta 0 / paren +7 平衡 + 全量 1078 绿。X1 复证由后续 nightly 承担（新修复若在，X 面应全绿）。
 > 2026-10-15 patrol-20261015-P1015R3：X1 复证绿落账——nightly 38669041567（819b257）conclusion=success，V4 复证绿 + X1/X2/X3 全过（Unpin 落盘 + tile 移除/回归 + 重启持久化两入口读态一致）+ Y 面全绿，env 泄漏修后 X 面如期全绿，批3-补61 锁因闭环。行 60 右键 Pin 落库半维持已代验（本次为泄漏修复后的复证，非新开卡）。
+> 2026-10-17 patrol-P4P6：Phase 4 HTML 小屏幕六条按 2026-10-17 用户裁定「这个设计下吧」落地（b1893a1 架构裁定与契约留问收口 + f362d4c 受控 HTML/CSS 解析器与引擎白名单暴露面 62 例 + 4c39c3d 解析器扩展与 SanitizeWidgetSurfaces 防呆 + bcd950e App 渲染器/Action ID 桥/主题令牌 + 9f6dfd3 样例常青门与 open-quota-doc 动作，CI 双绿 39042835027/39043157904）；Phase 6 行 193 订阅重建链 CI 代验落地——daily-build 视觉取证新增场景 AB（停用/恢复/删除三段订阅重建）/AC（空白环带真实点击穿透）/AD（15min 驻留浸泡），job timeout-minutes 60→90 跟场景体量走（ee305ec，cancelled 恰在 60m06s 定谳必超时）；AB1 两轮恒红（39044697350/39050990738）根因非产品：PS 5.1 ConvertFrom-Json 把顶层数组当单元素留在管道，`@(... | Where { id })` 后 `$z[0]` 是记录数组本身、`"$($z[0].enabled)"` 成员枚举出全表 enabled 拼串恒不等于 "False"（V4 notifications 案同型，双归档 Copy-Item 实为 enabled:false + app 日志 GLM 刷新行在 Toggle 时点即停=产品链即 Toggle 即落盘），Get-ConfigRecords 收编全部 4 个顶层数组读点（bff77d7）；AC 未达按仓内先例降级 ::warning 转用户裁定行 65（HTTRANSPARENT 仅同线程让位、跨进程穿透不可达；备选 WS_EX_TRANSPARENT 整窗穿透/鼠标钩子中继/维持现状，5eae12f）。run 39057049259（bff77d7）71.5min 全绿：AB1/AB2/AB3 三段闭环 + AD 浸泡（进程恒 1、ok 新行 121、零 unexpected/零 Fatal、句柄 Δ-28 / WS Δ-118MB 留档）。
 
 ## 决策记录
 
@@ -94,7 +95,7 @@
 
 ## MVP 验收标准（master-plan §14，8 项 = 5 勾 / 3 未勾，需真实装机验证）
 - [ ] Windows 登录后按用户设置启动（Run 值可执行半已代验：M3 把注册表原样字符串交 ShellExecute——登录时 explorer 处理 Run 键同一 API——拉起 Beacon 进程（38761946476）；真实登录会话由 explorer 调度属 OS 行为，需装机半）
-- [ ] 托盘与状态胶囊稳定运行（驻留半已代验：场景 E2/E3 关窗驻留 + Exit 唯一退出；长时稳定与胶囊观感需装机半）
+- [ ] 托盘与状态胶囊稳定运行（驻留半已代验：场景 E2/E3 关窗驻留 + Exit 唯一退出；长时稳定 CI 半已由场景 AD 15min 驻留浸泡代验——进程恒 1 + 刷新续跑 ok 新行 121 + 零 unexpected/零 Fatal（句柄 Δ-28 / WS Δ-118MB 留档，run 39057049259）；胶囊观感与更长时间稳定需装机半）
 - [x] 全局快捷键正常打开悬浮面板（场景 K1 注册 + N 改键重启注册无失败 + WM_HOTKEY 直驱面板硬断言已代验）
 - [ ] 面板展示真实 GitHub 状态（需真实 PAT 与真实仓库）
 
@@ -130,7 +131,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 39 勾 / 4 未勾（2026-10-17 复算：Phase 0/1/2/3/4/5 全清——Phase 3 六行、Phase 4 六行（2026-10-17 用户裁定「这个设计下吧」，b1893a1 起五提交落地）与 Phase 5 五行均已落地；未勾 = Phase 6 四条，均余装机半）。
+> 进度：43 条 = 40 勾 / 3 未勾（2026-10-18 复算：Phase 0/1/2/3/4/5 全清——Phase 3 六行、Phase 4 六行（2026-10-17 用户裁定「这个设计下吧」，b1893a1 起五提交落地）与 Phase 5 五行均已落地，Phase 6 行 193 订阅重建链由场景 AB 三段闭环代验落地（run 39057049259）；未勾 = Phase 6 三条，均余装机半）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -190,7 +191,7 @@
 ### Phase 6 回归与真机验收（6 条）
 
 - [ ] 验证刷新、状态更新与命令执行闭环（刷新/状态半已代验：本机硬杀重启两轮（taskkill /F 12:43/13:12）后 356 次刷新全 ok 零失败零未处理异常，日志 beacon-20261017.log；命令执行闭环测试面 Actions 27 绿（BuildStartInfo 三壳/HMAC 签名/环境注入），真机端到端执行半待装机）
-- [ ] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）装机半待验）
+- [x] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）由场景 AB 三段闭环 CI 代验——AB1 停用 zhipu 落盘 enabled=false + GLM tile 摘除 + 静默窗（GLM 零新行退订 / ds 持续 ≥2 行不误伤）、AB2 恢复落盘 enabled=true + tile 回归 + 静默窗 ≥2 新行复订、AB3 删除 ds 后 widgets.json 行消失 + ds tile 摘除无幽灵刷新（run 39057049259 全绿；此前两轮恒红非产品：PS 5.1 顶层数组读法分叉使判据与文件内容无关，Get-ConfigRecords 收编 4 读点 bff77d7））
 - [ ] 验证显示器切换、DPI、窗口拖动与重启恢复（重启恢复半真机已验：硬杀两轮后 pins.json 布局（monitor/anchor/offset/collapsed=true）完整恢复、面板按锚点重现；显示器切换需第二块屏、DPI 切换/拖动需解锁桌面+GUI 自动化——本会话锁屏挡视觉取证，装机半待验）
 - [ ] 验证 HTML 安全边界与错误恢复（测试面已代验：封闭词汇表安全边界 script/iframe/img/a/on* 事件/实体/字面色/越防爆半径全解析错 + 错误回退解析 null 回传统渲染、加载侧坏模板进 LoadErrors（HtmlTemplateParserTests 62 例 + Storage HtmlTemplateSanitizeTests 4 例）+ 样例常青门导入闭环（run 39043157904 绿）；真机导入样例看诊断占位与回退观感装机半待验）
 - [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验：JsonCacheStoreTests 缓存往返 + OutageRecoveryIntegrationTests 断网停服恢复（PointConnectionAtServer 探针）+ DpapiSecretStoreTests 凭据 DPAPI 面 + Actions 失败路径（未知壳抛错/签名不匹配），四测试项目 1328 全绿，de528f9/75f4a85 批回归）
