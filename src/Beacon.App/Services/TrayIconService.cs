@@ -99,7 +99,15 @@ internal sealed class TrayIconService : IDisposable
         _nid.szInfoTitle = title;
         _nid.szInfo = message;
         _nid.dwInfoFlags = iconFlags;
-        NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_MODIFY, ref _nid);
+        // 装机复测取证锚（todo 行 37 气泡半）：气泡呈现面无头会话不可见，落日志供实机核对
+        if (NativeMethods.Shell_NotifyIconW(NativeMethods.NIM_MODIFY, ref _nid))
+        {
+            _logger.LogInformation("Balloon dispatched: {Title} - {Message}", title, message);
+        }
+        else
+        {
+            _logger.LogWarning("Balloon Shell_NotifyIcon NIM_MODIFY failed: {Error}", Marshal.GetLastWin32Error());
+        }
         _nid.uFlags = NativeMethods.NIF_MESSAGE | NativeMethods.NIF_ICON | NativeMethods.NIF_TIP;
     }
 
