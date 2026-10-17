@@ -9,9 +9,10 @@
 | 内容 | 说明 |
 |---|---|
 | `w-sample-ci` | GitHub Actions 运行卡：tile / row / detail 三面全部声明式，detail 聚合额度源 |
-| `w-sample-quota` | `http.quota` 额度卡：指向 GitHub 公共 `rate_limit` 端点，无需凭据即可出数 |
+| `w-sample-quota` | `http.quota` 额度卡：指向 GitHub 公共 `rate_limit` 端点，无需凭据即可出数；detail 面为 HTML 载体面（受控子集，2026-10-17 裁定） |
 | `conn-sample-github` | GitHub 连接：包内只有 credentialRef，导入后在连接里录入 PAT |
 | `conn-sample-quota` | HTTP 连接：可替换成任意返回 JSON 的额度接口 |
+| `open-quota-doc` | 包内动作（open.url）：HTML 面按钮 `data-action` 引用它，导入即可点 |
 
 ## 怎么用
 
@@ -28,5 +29,6 @@
 - [ ] 缺源显示：停用/删除 `w-sample-quota` 后，detail 的 QUOTA 区出现「⚠ 缺少数据源：quota」，不冒充空值、不显示健康旧值；恢复后自动回填。
 - [ ] 清空回退：删掉 `components` / `sources` 键保存，三面全部回传统渲染。
 - [ ] 断网 / 恢复：断网期间 tile 与详情显示陈旧时间，恢复后自愈。
+- [ ] HTML 面回退：删掉动作库里 `open-quota-doc` 重新导入，详情页按钮位变「⚠ 动作不可用」诊断占位，其余面照常。
 
-以上运行时条目需在 Windows 真机验收。CI 结构门由 `DeclarativeSampleTests` 常青保证：树/源校验通过、附加源闭环指向包内组件、全文无密钥语义词。
+以上运行时条目需在 Windows 真机验收。CI 结构门由 `DeclarativeSampleTests` 常青保证：树/源校验通过、附加源闭环指向包内组件、全文无密钥语义词；HTML 载体面解析过词表校验、`data-action` 闭环指向包内动作。

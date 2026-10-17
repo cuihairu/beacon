@@ -87,4 +87,56 @@ public sealed class DeclarativeSampleTests
         Assert.DoesNotContain("sk-", json, StringComparison.Ordinal);
         Assert.DoesNotContain("bearer", json, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Phase 4 纵样例门（2026-10-17 裁定，常青）：样例必须保留 htmltemplate 载体面——
+    /// 模板解析成功、合成树过防爆校验、data-action 引用的动作 id 都在包内动作库
+    /// （导入即闭环：按钮可点，删动作即诊断占位）。样例改坏即红。
+    /// </summary>
+    [Fact]
+    public void Sample_HtmlCarrierFaces_ParseAndBridgeBundledActions()
+    {
+        var (widgets, _) = Load();
+        var actionIds = d_Actions().Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+        var carriers = 0;
+        foreach (var widget in widgets)
+        {
+            foreach (var pair in widget.Components ?? [])
+            {
+                if (!HtmlTemplateParser.IsCarrier(pair.Value))
+                {
+                    continue;
+                }
+                carriers++;
+                var expanded = HtmlTemplateParser.ExpandCarrier(pair.Value);
+                Assert.True(expanded is not null, $"{widget.Id}/{pair.Key} html template invalid");
+                Assert.True(ComponentTreeValidator.Validate(expanded!).Ok,
+                    $"{widget.Id}/{pair.Key} expanded html tree invalid");
+                CollectActionRefs(expanded!, pair.Key, widget.Id, actionIds);
+            }
+        }
+        Assert.True(carriers >= 1, "sample must keep an htmltemplate face (phase 4 vertical demo)");
+    }
+
+    private static IReadOnlyList<ActionConfig> d_Actions()
+    {
+        var json = File.ReadAllText(SamplePath());
+        using var doc = JsonDocument.Parse(json);
+        return BeaconJson.Deserialize<List<ActionConfig>>(
+            doc.RootElement.GetProperty("actions").GetRawText()) ?? [];
+    }
+
+    private static void CollectActionRefs(
+        ComponentDescriptor node, string face, string widgetId, HashSet<string> actionIds)
+    {
+        if (node.Props.TryGetValue("data-action", out var id))
+        {
+            Assert.True(actionIds.Contains(id),
+                $"{widgetId}/{face} data-action '{id}' has no bundled action");
+        }
+        foreach (var child in node.Children)
+        {
+            CollectActionRefs(child, face, widgetId, actionIds);
+        }
+    }
 }

@@ -31,20 +31,42 @@
       "components": {
         "tile": {
           "type": "column",
-          "props": { "spacing": "2" },
+          "props": {
+            "spacing": "2"
+          },
           "children": [
             {
               "type": "row",
-              "props": { "spacing": "6" },
+              "props": {
+                "spacing": "6"
+              },
               "children": [
                 {
                   "type": "statusdot",
-                  "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+                  "bindings": [
+                    {
+                      "field": "severity",
+                      "source": {
+                        "kind": "state",
+                        "ref": "severity"
+                      }
+                    }
+                  ]
                 },
                 {
                   "type": "text",
-                  "props": { "size": "caption" },
-                  "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+                  "props": {
+                    "size": "caption"
+                  },
+                  "bindings": [
+                    {
+                      "field": "text",
+                      "source": {
+                        "kind": "state",
+                        "ref": "summary"
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -52,36 +74,156 @@
         },
         "row": {
           "type": "row",
-          "props": { "spacing": "7" },
+          "props": {
+            "spacing": "7"
+          },
           "children": [
             {
               "type": "statusdot",
-              "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+              "bindings": [
+                {
+                  "field": "severity",
+                  "source": {
+                    "kind": "state",
+                    "ref": "severity"
+                  }
+                }
+              ]
             },
             {
               "type": "text",
-              "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+              "bindings": [
+                {
+                  "field": "text",
+                  "source": {
+                    "kind": "state",
+                    "ref": "summary"
+                  }
+                }
+              ]
             }
           ]
         },
         "detail": {
           "type": "column",
-          "props": { "spacing": "8" },
+          "props": {
+            "spacing": "8"
+          },
           "children": [
-            { "type": "sectionlabel", "props": { "text": "RUN" } },
-            { "type": "keyvalue", "props": { "key": "workflow" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:workflow" } } ] },
-            { "type": "keyvalue", "props": { "key": "branch" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:branch" } } ] },
-            { "type": "keyvalue", "props": { "key": "run" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:run_id" } } ] },
-            { "type": "keyvalue", "props": { "key": "result" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "payload:conclusion" } } ] },
-            { "type": "divider" },
-            { "type": "sectionlabel", "props": { "text": "QUOTA" } },
-            { "type": "keyvalue", "props": { "key": "status" }, "bindings": [ { "field": "value", "source": { "kind": "state", "ref": "summary", "sourceName": "quota" } } ] },
-            { "type": "progress", "props": { "width": "160" }, "bindings": [ { "field": "progress", "source": { "kind": "state", "ref": "progress", "sourceName": "quota" } } ] }
+            {
+              "type": "sectionlabel",
+              "props": {
+                "text": "RUN"
+              }
+            },
+            {
+              "type": "keyvalue",
+              "props": {
+                "key": "workflow"
+              },
+              "bindings": [
+                {
+                  "field": "value",
+                  "source": {
+                    "kind": "state",
+                    "ref": "payload:workflow"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "keyvalue",
+              "props": {
+                "key": "branch"
+              },
+              "bindings": [
+                {
+                  "field": "value",
+                  "source": {
+                    "kind": "state",
+                    "ref": "payload:branch"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "keyvalue",
+              "props": {
+                "key": "run"
+              },
+              "bindings": [
+                {
+                  "field": "value",
+                  "source": {
+                    "kind": "state",
+                    "ref": "payload:run_id"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "keyvalue",
+              "props": {
+                "key": "result"
+              },
+              "bindings": [
+                {
+                  "field": "value",
+                  "source": {
+                    "kind": "state",
+                    "ref": "payload:conclusion"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "divider"
+            },
+            {
+              "type": "sectionlabel",
+              "props": {
+                "text": "QUOTA"
+              }
+            },
+            {
+              "type": "keyvalue",
+              "props": {
+                "key": "status"
+              },
+              "bindings": [
+                {
+                  "field": "value",
+                  "source": {
+                    "kind": "state",
+                    "ref": "summary",
+                    "sourceName": "quota"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "progress",
+              "props": {
+                "width": "160"
+              },
+              "bindings": [
+                {
+                  "field": "progress",
+                  "source": {
+                    "kind": "state",
+                    "ref": "progress",
+                    "sourceName": "quota"
+                  }
+                }
+              ]
+            }
           ]
         }
       },
       "sources": {
-        "detail": { "quota": "w-sample-quota" }
+        "detail": {
+          "quota": "w-sample-quota"
+        }
       }
     },
     {
@@ -98,20 +240,42 @@
       "components": {
         "tile": {
           "type": "column",
-          "props": { "spacing": "2" },
+          "props": {
+            "spacing": "2"
+          },
           "children": [
             {
               "type": "row",
-              "props": { "spacing": "6" },
+              "props": {
+                "spacing": "6"
+              },
               "children": [
                 {
                   "type": "statusdot",
-                  "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+                  "bindings": [
+                    {
+                      "field": "severity",
+                      "source": {
+                        "kind": "state",
+                        "ref": "severity"
+                      }
+                    }
+                  ]
                 },
                 {
                   "type": "text",
-                  "props": { "size": "caption" },
-                  "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+                  "props": {
+                    "size": "caption"
+                  },
+                  "bindings": [
+                    {
+                      "field": "text",
+                      "source": {
+                        "kind": "state",
+                        "ref": "summary"
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -119,21 +283,57 @@
         },
         "row": {
           "type": "row",
-          "props": { "spacing": "7" },
+          "props": {
+            "spacing": "7"
+          },
           "children": [
             {
               "type": "statusdot",
-              "bindings": [ { "field": "severity", "source": { "kind": "state", "ref": "severity" } } ]
+              "bindings": [
+                {
+                  "field": "severity",
+                  "source": {
+                    "kind": "state",
+                    "ref": "severity"
+                  }
+                }
+              ]
             },
             {
               "type": "text",
-              "bindings": [ { "field": "text", "source": { "kind": "state", "ref": "summary" } } ]
+              "bindings": [
+                {
+                  "field": "text",
+                  "source": {
+                    "kind": "state",
+                    "ref": "summary"
+                  }
+                }
+              ]
             }
           ]
+        },
+        "detail": {
+          "type": "htmltemplate",
+          "props": {
+            "html": "<style>.quota-box { pad: md; }.quota-hot { tone: warn; }.quota-mild { tone: info; }</style><card class=\"quota-box\"><column gap=\"md\"><section>QUOTA</section><row gap=\"sm\"><dot>{{state.severity}}</dot><text class=\"quota-mild\">{{selector.value-hint}}</text></row><progress>{{state.progress}}</progress><divider/><text size=\"caption\" class=\"quota-hot\" when=\"severity=warning\">{{state.summary}}</text><text size=\"caption\">{{state.summary}}</text><button data-action=\"open-quota-doc\">Open rate limit docs</button></column></card>"
+          }
         }
       }
     }
   ],
-  "pins": { "tiles": [] },
-  "actions": []
+  "pins": {
+    "tiles": []
+  },
+  "actions": [
+    {
+      "id": "open-quota-doc",
+      "type": "open.url",
+      "name": "Open rate limit docs",
+      "requireConfirmation": false,
+      "parameters": {
+        "url": "https://docs.github.com/en/rest/rate-limit"
+      }
+    }
+  ]
 }

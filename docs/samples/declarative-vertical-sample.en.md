@@ -9,9 +9,10 @@
 | Item | Notes |
 |---|---|
 | `w-sample-ci` | GitHub Actions run card: tile / row / detail faces all declarative; detail aggregates the quota source |
-| `w-sample-quota` | `http.quota` card: points at the public GitHub `rate_limit` endpoint, works without any credential |
+| `w-sample-quota` | `http.quota` card: points at the public GitHub `rate_limit` endpoint, works without any credential; its detail face is an HTML carrier face (controlled subset, 2026-10-17 ruling) |
 | `conn-sample-github` | GitHub connection: bundle carries a credentialRef only; enter your PAT after importing |
 | `conn-sample-quota` | HTTP connection: replace with any JSON quota endpoint you like |
+| `open-quota-doc` | Bundled action (open.url): referenced by the HTML face button's `data-action`; clickable right after import |
 
 ## How to use
 
@@ -28,5 +29,6 @@
 - [ ] Missing-source display: disable or delete `w-sample-quota` and the QUOTA section shows "⚠ 缺少数据源：quota" — no faked zeros, no stale healthy values; it refills automatically once restored.
 - [ ] Clear-to-fallback: remove the `components` / `sources` keys and save; all three faces return to traditional rendering.
 - [ ] Offline / recovery: while offline the tile and detail show stale timestamps and self-heal after reconnection.
+- [ ] HTML face fallback: delete `open-quota-doc` from the action library and re-import; the detail's button slot degrades to a "⚠ 动作不可用" diagnostic placeholder while the other faces keep working.
 
-The runtime items above require acceptance on real Windows. The CI structural gate is kept evergreen by `DeclarativeSampleTests`: trees and sources validate, additional sources close over bundled widgets, and the file carries no secret-like tokens.
+The runtime items above require acceptance on real Windows. The CI structural gate is kept evergreen by `DeclarativeSampleTests`: trees and sources validate, additional sources close over bundled widgets, and the file carries no secret-like tokens; the HTML carrier face parses through the closed vocabulary and its `data-action` closes over bundled actions.
