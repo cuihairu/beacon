@@ -169,6 +169,7 @@ internal sealed class FloatingTileHost
             if (_windows.TryGetValue(widget.Id, out var existing))
             {
                 existing.CascadeIndex = index;
+                existing.RefreshConfig(widget); // 配置替换语义（UpsertWidget）：树变更即下一帧重渲（P3-01）
                 existing.ApplyDesignSize(); // 重排尺寸+落位：show 改动会变推算宽，即时生效（Loaded 前内部自跳）
                 // 改色即刻生效（B-805 口径，场景 G4 三连红 38942131834 根因）：既有窗重放最近状态触发重渲染——
                 // 状态事件驱动的重绘兜底已被 StateStore 默认去重吞死（suppressUnchanged，值不变不重发），
@@ -252,7 +253,7 @@ internal sealed class FloatingTileHost
         private readonly int _tileWidthDips;
 
         private readonly FloatingTileHost _host;
-        private readonly WidgetConfig _widget;
+        private WidgetConfig _widget; // 非只读（P3-01 RefreshConfig：配置替换语义下换新对象）
         private readonly MonitorInfo _fallbackMonitor;
         private readonly PinTile _tile;
 
@@ -326,6 +327,14 @@ internal sealed class FloatingTileHost
         }
 
         public void Update(WidgetState state) => _tile.Update(state);
+
+        /// <summary>配置对象刷新（P3-01）：UpsertWidget 是替换语义，宿主 ReloadTiles 把替换后的
+        /// WidgetConfig 交给内部 tile——树变更下一帧重渲生效；拖动落位/持久化同用新对象。</summary>
+        public void RefreshConfig(WidgetConfig widget)
+        {
+            _widget = widget;
+            _tile.RefreshConfig(widget);
+        }
 
         /// <summary>落位：优先记忆位置（PinLayout.FloatingX/Y），未拖过按序级联；越界收回工作区（显示器拓扑变化兜底）。</summary>
         public void EnsurePlaced()

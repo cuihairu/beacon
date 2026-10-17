@@ -89,10 +89,15 @@ internal sealed class PinTile
         return geometry;
     }
 
-    private readonly WidgetConfig _widget;
+    private WidgetConfig _widget; // 非只读（P3-01 RefreshConfig：配置替换语义下换新对象）
     private readonly UiPalette _palette;
     private readonly MotionEngine _motion;
     private WidgetState? _lastState;
+    private readonly string? _connectionType; // 传统面品牌图标用（BuildTraditionalContent，非 ctor 局部）
+
+    /// <summary>该面声明式实例（P3-01）：widgets.json 带 tile 组件树且结构合法时非空——整面走渲染器
+    /// 而非传统六列；非法树 Resolve 已回 null（传统渲染，诊断在加载侧），清空配置即恢复旧面。</summary>
+    private WidgetInstance? _declarative;
     private Severity? _lastSeverity;
     private global::Windows.UI.Color? _lastFillColor; // 上次状态灯着色——变色过渡只在色变 tick 重放，同色 tick 直接填充不闪灯
     private bool _suspended; // 收起态暂停动画循环（B-707 验收：隐藏/收起无动画循环）
@@ -164,9 +169,10 @@ internal sealed class PinTile
     // ② pool（可选）=16 DIP 圆池，水位=进度（圆环内底部填充），满格变 severity 色
     // ③ _progressText「NN%」常驻静态可读量——动画+文字双通道，截图和一眼扫都能拿到状态（用户硬口径）。
     // 池边描边与百分比统一 ThemeColors.Label()（主题令牌对比度最高的前景色，暗亮双主题均 ≥4.5:1）。
-    private readonly Ellipse _poolRing;
-    private readonly global::Microsoft.UI.Xaml.Shapes.Path _poolFill;
-    private readonly Grid _waveHost;
+    // 三者无字段初始化器、构建主体在 BuildTraditionalContent 赋值——readonly 须去（方法内赋 readonly 是 CS0191）
+    private Ellipse _poolRing;
+    private global::Microsoft.UI.Xaml.Shapes.Path _poolFill;
+    private Grid _waveHost;
     private readonly TextBlock _progressText = new()
     {
         Foreground = new SolidColorBrush(ThemeColors.Label()),
@@ -174,7 +180,7 @@ internal sealed class PinTile
         VerticalAlignment = VerticalAlignment.Center,
         Visibility = Visibility.Collapsed,
     };
-    private readonly bool _barMode;
+    private bool _barMode; // 非只读：构建主体抽到 BuildTraditionalContent（方法内不得赋 readonly，CS0191）
 
     /// <summary>宿主面板挂载与输入挂接的根元素。</summary>
     public Border Root => _root;
@@ -193,6 +199,24 @@ internal sealed class PinTile
         _widget = widget;
         _palette = palette;
         _motion = motion;
+        _connectionType = connectionType;
+
+        // 声明式 tile（P3-01）：带合法 tile 树时整面走渲染器——传统六列不建（BuildTraditionalContent
+        // 可随时重建，配置清空树后 RefreshConfig 走它恢复旧面）；非法树 Resolve 已回 null（传统渲染）。
+        _declarative = WidgetInstanceResolver.Resolve(widget, "tile");
+        if (_declarative is not null)
+        {
+            _root.Child = ComponentSurfaceRenderer.Render(_declarative, null, _palette);
+            return;
+        }
+        BuildTraditionalContent();
+    }
+
+    /// <summary>传统六列 tile 构建（灯/品牌图标/标签/值/池或条/进度文本）——原构造主体，
+    /// 声明式切换（RefreshConfig）与恢复共用。</summary>
+    private void BuildTraditionalContent()
+    {
+        var widget = _widget;
         _label.Text = LabelOf(widget);
         _value.Text = "加载中…"; // 空白即 bug：首态也要有信息（首个状态事件到达即被覆盖）
 
@@ -201,7 +225,7 @@ internal sealed class PinTile
         // 前景主题感知（浅底深字/深底亮字，≥4.5:1）——近白 icon 在浅底上不可辨（用户实测「根本看不清」）
         // 2026-10-10 修「icon 太浅看不清」：14→16 DIP + 同色 1px 描边增重（细线几何覆盖率 7-22% 是根因，非填色）；
         // 兜底字形同步提到 Label() 前景 + 14px，与品牌图同档可读
-        var icon = BrandIconFactory.TryCreate(connectionType, 16, ThemeColors.Label(), iconOverride: widget.Config.GetValueOrDefault("icon"), strokeWidth: 1)
+        var icon = BrandIconFactory.TryCreate(_connectionType, 16, ThemeColors.Label(), iconOverride: widget.Config.GetValueOrDefault("icon"), strokeWidth: 1)
             ?? new FontIcon
             {
                 Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底
@@ -240,7 +264,7 @@ internal sealed class PinTile
         _progressText.Text = "加载中"; // 首态静态可读量：首个状态事件到达即被 NN% 覆盖
         _progressText.Visibility = Visibility.Visible;
 
-        var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, palette.Density), GridLength.Auto, GridLength.Auto,
+        var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, _palette.Density), GridLength.Auto, GridLength.Auto,
             new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto);
         Grid.SetColumn(_light, 0);
         Grid.SetColumn(icon, 1);
@@ -265,6 +289,27 @@ internal sealed class PinTile
         _root.Child = container;
     }
 
+    /// <summary>配置对象刷新（P3-01）：UpsertWidget 是替换语义，宿主 ReloadTiles 把新 WidgetConfig
+    /// 交给已存 tile——树变更下一帧即重渲生效；无树→有树、有树→无树（清空配置回传统面）都在此收口。</summary>
+    public void RefreshConfig(WidgetConfig widget)
+    {
+        _widget = widget;
+        var declarative = WidgetInstanceResolver.Resolve(widget, "tile");
+        if (declarative is null && _declarative is null)
+        {
+            return; // 双方都无声明树：传统面无动作（传统元素已建）
+        }
+        _declarative = declarative;
+        if (declarative is not null)
+        {
+            _root.Child = ComponentSurfaceRenderer.Render(declarative, _lastState, _palette);
+        }
+        else
+        {
+            BuildTraditionalContent(); // 清空配置恢复旧面：重建传统六列（含 SizeChanged 几何回调重挂）
+        }
+    }
+
     /// <summary>
     /// 状态变化只更新本 tile（B-701）；离线/错误降级（B-704，RFC §6.2.6）：
     /// ConnectionHealthy=false → 灰空心灯 + Last update HH:mm，绝不弹异常；恢复后健康事件自动复位。
@@ -272,10 +317,22 @@ internal sealed class PinTile
     /// 恒走 appearance.SeverityColors["offline"]，不吃 Widget 覆盖——灰要始终可辨）。
     /// 动效走 MotionEngine（B-707）：变色过渡/Critical 脉冲（reduced 默认）、
     /// full 档呼吸 + 变化闪烁；收起态 SuspendMotion 暂停循环。
+    /// 声明式面（P3-01）走整树重渲分支：动效与灯组语义由绑定档位色承担，tooltip 口径同传统。
     /// </summary>
     public void Update(WidgetState state)
     {
         _lastState = state;
+        if (_declarative is { } declarative)
+        {
+            // 声明式分支（P3-01）：整树重渲（≤256 节点、无跨帧局部状态）+ 沿用传统面的陈旧/离线
+            // tooltip 口径；动效（闪烁/脉冲/呼吸）暂不作用于声明式树，色彩语义由绑定档位色承担。
+            _root.Child = ComponentSurfaceRenderer.Render(declarative, state, _palette);
+            ToolTipService.SetToolTip(_root,
+                !state.ConnectionHealthy
+                    ? UiStrings.FeedbackOffline + " · " + WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true)
+                    : state.IsStale ? WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true) : null);
+            return;
+        }
         if (state.ConnectionHealthy)
         {
             var changed = _lastSeverity is { } previous && previous != state.Severity;
