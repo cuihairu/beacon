@@ -37,7 +37,7 @@ jobs:
   build-publish:
     name: Build & publish nightly (windows-x86_64)
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     # SignPath 代码签名凭据：api-token 与 organization-id 走仓库 Secrets
     # （SIGNPATH_API_TOKEN / SIGNPATH_ORGANIZATION_ID，均已配置），绝不硬编码。
     # secrets 未配置时版本通道打印提示并跳过签名、发布未签名资产（run 不红）；
