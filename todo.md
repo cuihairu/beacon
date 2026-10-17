@@ -189,11 +189,11 @@
 
 ### Phase 6 回归与真机验收（6 条）
 
-- [ ] 验证刷新、状态更新与命令执行闭环（待落地 hash）
-- [ ] 验证多窗口订阅与取消订阅（待落地 hash）
-- [ ] 验证显示器切换、DPI、窗口拖动与重启恢复（待落地 hash）
-- [ ] 验证 HTML 安全边界与错误恢复（待落地 hash）
-- [ ] 验证缓存、断网、凭据错误与操作失败（待落地 hash）
-- [ ] 验证现有 Provider、AI 额度显示与通知规则不回归（待落地 hash）
+- [ ] 验证刷新、状态更新与命令执行闭环（刷新/状态半已代验：本机硬杀重启两轮（taskkill /F 12:43/13:12）后 356 次刷新全 ok 零失败零未处理异常，日志 beacon-20261017.log；命令执行闭环测试面 Actions 27 绿（BuildStartInfo 三壳/HMAC 签名/环境注入），真机端到端执行半待装机）
+- [ ] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）装机半待验）
+- [ ] 验证显示器切换、DPI、窗口拖动与重启恢复（重启恢复半真机已验：硬杀两轮后 pins.json 布局（monitor/anchor/offset/collapsed=true）完整恢复、面板按锚点重现；显示器切换需第二块屏、DPI 切换/拖动需解锁桌面+GUI 自动化——本会话锁屏挡视觉取证，装机半待验）
+- [ ] 验证 HTML 安全边界与错误恢复（阻塞：Phase 4 HTML 组件未实现——契约.md §4 留问「Phase 4 开工前必须用户裁定」沙箱边界，未获裁定不动工）
+- [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验：JsonCacheStoreTests 缓存往返 + OutageRecoveryIntegrationTests 断网停服恢复（PointConnectionAtServer 探针）+ DpapiSecretStoreTests 凭据 DPAPI 面 + Actions 失败路径（未知壳抛错/签名不匹配），四测试项目 1328 全绿，de528f9/75f4a85 批回归）
+- [x] 验证现有 Provider、AI 额度显示与通知规则不回归（测试面+真机双证：Connections 662 全绿（全部 provider）+ NotificationEngineTests 阈值带/单次触发/冷却/禁用规则全绿；真机日志 GLM 26%/Kimi 多窗额度持续刷新 356 次零失败——尺寸档/树编辑器两批改动后无回归，de528f9/75f4a85）
 
 
