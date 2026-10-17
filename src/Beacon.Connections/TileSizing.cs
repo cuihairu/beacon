@@ -19,6 +19,21 @@ namespace Beacon.Connections;
 public static class TileSizing
 {
     public const int FloorDips = 168;
+
+    /// <summary>tile 基准高（DIP，常规档恒等）——G 系像素锚/双列阈值都按此值，尺寸档只绕此基准缩放。</summary>
+    public const int BaseTileHeightDips = 32;
+
+    /// <summary>组件级尺寸档键（widgets.json Config["sizeTier"]，沿 progressStyle 组件级覆盖先例）。</summary>
+    public const string SizeTierKey = "sizeTier";
+
+    /// <summary>组件 tile 高（DIP，Phase 5 尺寸档）：Config["sizeTier"] 三档词汇与缩放系数复用
+    /// Core UiDensity 单源（compact/regular/spacious——「同一个组件应尽可能通过尺寸和密度参数适配
+    /// 三种场景」redesign-plan §6.2，不另造词汇）。常规 = 32 恒等（缺省/未知 fail-open，同 UiDensity
+    /// 口径——尺寸档是观感增强，打错不构成降级理由；G 系像素锚默认不动）。只缩高不缩宽：宽度是
+    /// 字宽预算硬口径（「数值列不裁字」2026-10-12 用户令），缩宽必裁字。</summary>
+    public static int TileHeightDips(WidgetConfig widget)
+        => (int)Math.Round(BaseTileHeightDips * UiDensity.ScaleOf(UiDensity.Parse(widget.Config.GetValueOrDefault(SizeTierKey))), MidpointRounding.AwayFromZero);
+
     private const int PaddingDips = 20;  // PinTile Root padding 10+10
     private const int LightDips = 8;     // 状态灯
     private const int IconDips = 16;     // 品牌图标
@@ -26,8 +41,7 @@ public static class TileSizing
     private const int SpacingDips = 6;   // Grid ColumnSpacing
     private const int SafetyDips = 4;    // DIP→物理像素取整余量 + 标签 SemiBold 残差
     private const double LabelFontDips = 12;    // PinTile._label FontSize
-    private const double ValueFontDips = 11;    // PinTile._value FontSize
-    private const double ProgressFontDips = 12; // PinTile.ProgressFontDips = 32×0.375（与 PinTile 同步改）
+    private const double ValueFontDips = 11; // PinTile._value FontSize
 
     /// <summary>数值位兜底形态的最坏文本：Summary[..7]+"…" 的最宽可能是 7 个 CJK + 省略号。</summary>
     public static string FallbackWorstValue { get; } = new string('状', 7) + "…";
@@ -60,12 +74,15 @@ public static class TileSizing
         // 标签与 PinTile.LabelOf 同优先级（label → repo → owner → 类型短名）；标签列虽是 Star 可裁，
         // 预算仍按最坏给足——长显示名不裁字，代价是用户自己配出来的
         var label = LabelOf(widget);
+        // 读数列字号随尺寸档分级（PinTile.ProgressFontDips = tile 高×0.375 同式）：spacious 档字号变大，
+        // 预算不联动必裁「100%」——「数值列不裁字」硬口径同源
+        var progressFont = Math.Round(TileHeightDips(widget) * 0.375, 1);
         var columns = 4 + (progress ? 1 : 0) + (readout ? 1 : 0); // 灯/icon/标签/数值（+池）（+读数）
         var width = PaddingDips + LightDips + IconDips
             + TextWidthDips(label, LabelFontDips, semibold: true)
             + TextWidthDips(value, ValueFontDips)
             + (progress ? PoolDips : 0)
-            + (readout ? TextWidthDips("100%", ProgressFontDips) : 0)
+            + (readout ? TextWidthDips("100%", progressFont) : 0)
             + SpacingDips * (columns - 1)
             + SafetyDips;
         return Math.Max(FloorDips, width);

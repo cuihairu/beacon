@@ -26,7 +26,6 @@ namespace Beacon.App.Windows;
 /// </summary>
 internal sealed class PinTile
 {
-    private const int TileHeight = 32;
     private const int LightSizeDips = 8;
     private const int PoolSize = 16;  // 额度圆池直径（DIP）
     private const double PoolRadius = PoolSize / 2.0;
@@ -39,9 +38,12 @@ internal sealed class PinTile
     // 档位阈值（≥80% warning / ≥98% error）下沉 Core ProgressTiers 单源（Phase 2），此处不再持有
     private const double BarMinFillDips = 2; // 极小进度保底可辨
 
+    /// <summary>tile 高（DIP，尺寸档实例级——TileSizing.TileHeightDips 单源；常规 32 恒等）。</summary>
+    public int TileHeightDips { get; }
+
     /// <summary>进度百分比字号随 tile 高度分级（固定 12 会在任何 tile 尺寸变化后裁字——
     /// 5K/200% 裁字同族缺陷；DIP 恒定比例，高缩放下 XAML 按新 DPI 等比放大不裁）。</summary>
-    private static double ProgressFontDips => Math.Round(TileHeight * 0.375, 1);
+    private double ProgressFontDips => Math.Round(TileHeightDips * 0.375, 1);
 
     /// <summary>圆池水位几何（池水=圆形池底部圆弓形，水位=进度）：满格整圆、空池不画。
     /// 用折线近似圆弧（14 段 LineSegment，弧上点三角函数显式算出）而非 ArcSegment——
@@ -104,8 +106,7 @@ internal sealed class PinTile
 
     private readonly Border _root = new()
     {
-        Height = TileHeight,
-        Padding = new Thickness(10, 0, 10, 0),
+        Padding = new Thickness(10, 0, 10, 0), // Height 在构造器按尺寸档设（TileSizing.TileHeightDips 单源）
         // 实色主题底（对比度可判定）：此前 12% 透明深灰 scrim 叠在窗口/桌面上——
         // 浅主题 + 浅桌面底时近白 icon 必然发虚（2026-10-09 用户实测「根本看不清」根因）
         Background = new SolidColorBrush(ThemeColors.Surface()),
@@ -176,7 +177,7 @@ internal sealed class PinTile
     private readonly TextBlock _progressText = new()
     {
         Foreground = new SolidColorBrush(ThemeColors.Label()),
-        FontSize = ProgressFontDips, // 随 tile 高度分级（TileHeight×0.375），tile 尺寸变化后不裁字
+        // FontSize 在构造器按尺寸档设（ProgressFontDips = tile 高×0.375，字段初始化器不能引实例属性）
         VerticalAlignment = VerticalAlignment.Center,
         Visibility = Visibility.Collapsed,
     };
@@ -196,6 +197,9 @@ internal sealed class PinTile
     {
         WidgetId = widget.Id;
         TileWidthDips = TileSizing.TileWidthDips(widget);
+        TileHeightDips = TileSizing.TileHeightDips(widget); // 尺寸档（Config["sizeTier"]，常规 32 恒等）
+        _root.Height = TileHeightDips;
+        _progressText.FontSize = ProgressFontDips; // 随 tile 高度分级（高×0.375），尺寸档变化后不裁字
         _widget = widget;
         _palette = palette;
         _motion = motion;
@@ -569,7 +573,6 @@ internal sealed record DragSession(UIElement Element, (int X, int Y) StartCursor
 /// </summary>
 internal sealed class PinnedHostWindow
 {
-    private const int TileHeightDips = 32;
     private const int TwoColumnThreshold = 18; // UI/UX 审计：tile 超此数改双列——单列在超工作区高时底部裁切且无提示（18×32=576 DIP）
     private const int CollapseStripDips = 12; // 收起细条宽（DIP）
     private const int SnapDips = 16;          // 拖动吸边判定距离（DIP）
@@ -689,7 +692,7 @@ internal sealed class PinnedHostWindow
         }
         for (var i = 0; i < rows; i++)
         {
-            _tilePanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(TileHeightDips) });
+            _tilePanel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(RowHeightDips()) });
         }
         for (var i = 0; i < placed.Count; i++)
         {
@@ -733,11 +736,23 @@ internal sealed class PinnedHostWindow
 
     // —— B-703：位置记忆（monitor + anchor + offsetDips + collapsed，pins.json 权威承载） ——
 
-    private static string Identity(MonitorInfo monitor)
+    internal static string Identity(MonitorInfo monitor) // 设置页桌面布局区复用同一标识格式（单源）
     {
         var width = monitor.MonitorPx.Right - monitor.MonitorPx.Left;
         var height = monitor.MonitorPx.Bottom - monitor.MonitorPx.Top;
         return $"{monitor.DeviceName}-{width}x{height}";
+    }
+
+    /// <summary>设置页桌面布局区改共享布局后的重排：从存储重读布局并重排（拖动中跳过防互抢，
+    /// 与 WM_DPICHANGED 同口径——ApplyLayout 的 Resize+Move 会和拖拽 Move 互抢窗口位置）。</summary>
+    public void ReloadLayout()
+    {
+        if (_drag is not null)
+        {
+            return;
+        }
+        _layout = RestoreLayout();
+        ApplyLayout();
     }
 
     private MonitorInfo ResolveMonitor(string? identity)
@@ -804,13 +819,18 @@ internal sealed class PinnedHostWindow
     private int PanelWidthDips()
         => _tiles.Count == 0 ? TileSizing.FloorDips : _tiles.Values.Max(tile => tile.TileWidthDips);
 
+    /// <summary>面板行高（DIP）：钉选 tile 尺寸档高（TileSizing.TileHeightDips，常规 32）取最大——
+    /// 与列宽同口径（不同尺寸档混排时整行取高者不挤压），零钉选退基准 32。</summary>
+    private int RowHeightDips()
+        => _tiles.Count == 0 ? TileSizing.BaseTileHeightDips : _tiles.Values.Max(tile => tile.TileHeightDips);
+
     /// <summary>面板物理尺寸（ApplyLayout 与 WM_NCHITTEST 唯一口径）：列数随 tile 数切换，
     /// DIP 设计值只在 Win32 边界换算一次；总高一次四舍五入而非逐行（DPI 修复单 2026-10-10）。</summary>
     private (int Width, int Height) PanelPxSize(double dpi)
     {
         var columns = _tiles.Count > TwoColumnThreshold ? 2 : 1;
         var rows = Math.Max(1, (_tiles.Count + columns - 1) / columns);
-        return (DpiLayoutMath.ToPx(columns * PanelWidthDips(), dpi), DpiLayoutMath.PanelHeightPx(rows, TileHeightDips, dpi));
+        return (DpiLayoutMath.ToPx(columns * PanelWidthDips(), dpi), DpiLayoutMath.PanelHeightPx(rows, RowHeightDips(), dpi));
     }
 
     private void ApplyLayout()

@@ -363,7 +363,7 @@ public partial class App : Application
                 settingsWindow = new Windows.SettingsWindow(runtime);
                 settingsWindow.Closed += (_, _) => settingsWindow = null;
                 settingsWindow.SettingsApplied += ApplySettingsEffects;
-                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); });
+                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排
                 settingsWindow.Activate();
             }
             catch (Exception exception)

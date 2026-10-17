@@ -243,8 +243,7 @@ internal sealed class FloatingTileHost
     /// <summary>单个悬浮窗（组合 PinTile + 位置/拖动/持久化）。</summary>
     internal sealed class FloatingTileWindow
     {
-        private const int TileHeightDips = 32;
-        private const int CascadeStepDips = 36;
+        private const int CascadeStepDips = 36; // tile 高按尺寸档实例级（_tile.TileHeightDips，常规 32 恒等）
         private const int EdgeMarginPx = 8;
 
         // 窗宽按组件推算（TileSizing：全类型逐列字宽预算——数值列按各类型最坏 ValueHint 文本、
@@ -420,7 +419,7 @@ internal sealed class FloatingTileHost
             }
             var dpi = GetDpi();
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
-            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(_tileWidthDips, dpi) + chromeWidth, DpiLayoutMath.ToPx(TileHeightDips, dpi) + chromeHeight));
+            appWindow.Resize(new SizeInt32(DpiLayoutMath.ToPx(_tileWidthDips, dpi) + chromeWidth, DpiLayoutMath.ToPx(_tile.TileHeightDips, dpi) + chromeHeight));
             EnsurePlaced();
         }
 

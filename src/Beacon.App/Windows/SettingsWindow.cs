@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Reflection;
 using System.Threading;
+using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Connections;
 using Beacon.Core.Abstractions;
@@ -80,11 +81,18 @@ internal sealed class SettingsWindow : Window
     private TextBox _widgetColorBox = null!;
     private ToggleSwitch _widgetPinBox = null!;
     private TextBlock _widgetFeedback = null!;
-    // 组件树编辑（Phase 5 行 4 第一片）：既有组件的声明式树 JSON 编辑——载入/校验/保存，清空=回传统渲染
+    // 组件实例面（Phase 5 行 4）：组件树 JSON 编辑 + 尺寸档 + 桌面布局区——载入/校验/保存，清空=回传统渲染
     private WidgetConfig? _componentEditTarget;
     private TextBlock _componentEditHeader = null!;
     private TextBox _componentJsonBox = null!;
     private TextBlock _componentFeedback = null!;
+    private ComboBox _sizeTierBox = null!;       // 尺寸档（TileSizing.SizeTierKey，三档沿 UiDensity 词汇）
+    private ComboBox _layoutAnchorBox = null!;   // 桌面布局：锚点角
+    private TextBox _layoutOffsetXBox = null!;   // 桌面布局：偏移 X（DIP）
+    private TextBox _layoutOffsetYBox = null!;   // 桌面布局：偏移 Y（DIP）
+    private ToggleSwitch _layoutCollapsedToggle = null!; // 桌面布局：吸边收起
+    private ComboBox _layoutMonitorBox = null!;  // 桌面布局：显示器
+    private bool _instanceLoading;               // 实例面载入回填守卫（SelectionChanged 不触发保存链）
 
     private readonly Dictionary<string, TextBox> _colorBoxes = [];
     private TextBlock _appearanceFeedback = null!;
@@ -2157,10 +2165,42 @@ internal sealed class SettingsWindow : Window
     {
         _componentEditHeader = new TextBlock
         {
-            Text = "组件树编辑（点组件行「组件树」载入）",
+            Text = "组件实例面（点组件行「组件树」载入）",
             FontSize = DesignTokens.FontSubtitle,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         };
+
+        // —— 尺寸档（Phase 5 行 4）：组件级 tile 高度档，词汇沿 UiDensity 三档（TileSizing 单源）——
+        _sizeTierBox = new ComboBox { Header = "尺寸档（桌面 tile 高度）", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_sizeTierBox, "instance-size-tier-box"); // UIA 取证：尺寸档锚点
+        foreach (var (label, value) in new[] { ("紧凑", "compact"), ("标准", "regular"), ("宽松", "spacious") })
+        {
+            _sizeTierBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        _sizeTierBox.SelectionChanged += (_, _) => SaveSizeTier();
+
+        // —— 桌面布局区（Phase 5 行 4）：单宿主共享布局（锚点/偏移/收起/显示器），
+        //     写入口径同 PinnedHostWindow.PersistLayout：widgets.json 便利引用 + pins.json 权威 ——
+        _layoutMonitorBox = new ComboBox { Header = "显示器", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_layoutMonitorBox, "instance-layout-monitor-box");
+        _layoutAnchorBox = new ComboBox { Header = "锚点角", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_layoutAnchorBox, "instance-layout-anchor-box");
+        foreach (var (label, value) in new[] { ("左上", "TopLeft"), ("右上", "TopRight"), ("左下", "BottomLeft"), ("右下", "BottomRight") })
+        {
+            _layoutAnchorBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        var offsetRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        _layoutOffsetXBox = new TextBox { Header = "偏移 X（DIP）", Width = 110 };
+        _layoutOffsetYBox = new TextBox { Header = "偏移 Y（DIP）", Width = 110 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_layoutOffsetXBox, "instance-layout-offset-x");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_layoutOffsetYBox, "instance-layout-offset-y");
+        offsetRow.Children.Add(_layoutOffsetXBox);
+        offsetRow.Children.Add(_layoutOffsetYBox);
+        _layoutCollapsedToggle = new ToggleSwitch { Header = "吸边收起", OnContent = "收起", OffContent = "展开" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_layoutCollapsedToggle, "instance-layout-collapsed-toggle");
+        var saveLayout = new Button { Content = "保存桌面布局" };
+        saveLayout.Click += (_, _) => SaveDesktopLayout();
+
         _componentJsonBox = new TextBox
         {
             Header = "组件树 JSON（surface 键 → 树根；留空保存=清空树回传统渲染）",
@@ -2175,8 +2215,18 @@ internal sealed class SettingsWindow : Window
         var save = new Button { Content = "保存组件树" };
         save.Click += (_, _) => SaveComponentTree();
 
+        var layoutForm = new StackPanel { Spacing = 6 };
+        layoutForm.Children.Add(new TextBlock { Text = "桌面布局（全部钉选组件共享；写入 widgets.json + pins.json）", FontSize = DesignTokens.FontCaption, Opacity = 0.75 });
+        layoutForm.Children.Add(_layoutMonitorBox);
+        layoutForm.Children.Add(_layoutAnchorBox);
+        layoutForm.Children.Add(offsetRow);
+        layoutForm.Children.Add(_layoutCollapsedToggle);
+        layoutForm.Children.Add(saveLayout);
+
         var form = new StackPanel { Spacing = 8 };
         form.Children.Add(_componentEditHeader);
+        form.Children.Add(_sizeTierBox);
+        form.Children.Add(new Border { BorderBrush = new SolidColorBrush(SeverityPalette.Rgb(60, 62, 70, 74)), BorderThickness = new Thickness(0, 1, 0, 1), Padding = new Thickness(0, 8, 0, 8), Child = layoutForm });
         form.Children.Add(_componentJsonBox);
         form.Children.Add(save);
         form.Children.Add(_componentFeedback);
@@ -2196,11 +2246,125 @@ internal sealed class SettingsWindow : Window
             return; // 非组件页（常规/外观/高级）无编辑器，理论不可达（行钮只在组件页），空守卫防 NRE
         }
         _componentEditTarget = widget;
-        _componentEditHeader.Text = $"组件树编辑 · {widget.Id}";
+        _componentEditHeader.Text = $"组件实例面 · {widget.Id}";
         _componentJsonBox.Text = widget.Components is { Count: > 0 } components
             ? BeaconJson.Serialize(components, indented: true)
             : "";
         _componentFeedback.Text = "";
+        _instanceLoading = true; // 载入回填不触发保存链（SelectionChanged/文本回填幂等但会空转重建）
+        try
+        {
+            _sizeTierBox.SelectedIndex = Math.Max(0, IndexOfTag(_sizeTierBox, widget.Config.GetValueOrDefault(TileSizing.SizeTierKey) ?? "regular"));
+            var layout = CurrentSharedLayout();
+            _layoutMonitorBox.Items.Clear();
+            foreach (var monitor in MonitorService.GetAll())
+            {
+                _layoutMonitorBox.Items.Add(new ComboBoxItem { Content = monitor.DeviceName, Tag = PinnedHostWindow.Identity(monitor) });
+            }
+            if (_layoutMonitorBox.Items.OfType<ComboBoxItem>().All(i => i.Tag?.ToString() != layout.Monitor))
+            {
+                _layoutMonitorBox.Items.Add(new ComboBoxItem { Content = $"{layout.Monitor}（已断开）", Tag = layout.Monitor }); // 显示器拔了不丢已存标识
+            }
+            _layoutMonitorBox.SelectedIndex = Math.Max(0, IndexOfTag(_layoutMonitorBox, layout.Monitor));
+            _layoutAnchorBox.SelectedIndex = Math.Max(0, IndexOfTag(_layoutAnchorBox, layout.Anchor.ToString()));
+            _layoutOffsetXBox.Text = layout.OffsetDips.X.ToString(CultureInfo.InvariantCulture);
+            _layoutOffsetYBox.Text = layout.OffsetDips.Y.ToString(CultureInfo.InvariantCulture);
+            _layoutCollapsedToggle.IsOn = layout.Collapsed;
+        }
+        finally
+        {
+            _instanceLoading = false;
+        }
+    }
+
+    /// <summary>当前共享布局（读口径同 PinnedHostWindow.RestoreLayout：首个钉选组件便利引用 → pins.json 权威 → 默认）。</summary>
+    private PinLayout CurrentSharedLayout()
+    {
+        var stored = _runtime.Config.Widgets.Where(w => w.Pinned).Select(w => w.PinLayout).FirstOrDefault(l => l is not null)
+            ?? _runtime.Config.Pins.Tiles.Select(t => t.Layout).FirstOrDefault(l => l is not null);
+        return stored is null
+            ? new PinLayout
+            {
+                Monitor = MonitorService.Primary() is { } primary ? PinnedHostWindow.Identity(primary) : "",
+                Anchor = PinAnchor.TopRight,
+                OffsetDips = PinLayoutMath.DefaultOffset,
+                Collapsed = false,
+            }
+            : new PinLayout { Monitor = stored.Monitor, Anchor = stored.Anchor, OffsetDips = stored.OffsetDips, Collapsed = stored.Collapsed };
+    }
+
+    /// <summary>尺寸档保存（组件级 Config["sizeTier"]，词汇沿 UiDensity 三档；同值不落盘防空转重建）。</summary>
+    private void SaveSizeTier()
+    {
+        if (_instanceLoading)
+        {
+            return; // 载入回填
+        }
+        var widget = _componentEditTarget;
+        if (widget is null)
+        {
+            return; // 未载入目标：下拉是死件
+        }
+        var tier = TagOf(_sizeTierBox) ?? "regular";
+        if (string.Equals(widget.Config.GetValueOrDefault(TileSizing.SizeTierKey), tier, StringComparison.Ordinal))
+        {
+            return; // 同值幂等
+        }
+        if (tier == "regular")
+        {
+            widget.Config.Remove(TileSizing.SizeTierKey); // 常规=基准，不落键保持配置干净（fail-open 缺省同义）
+        }
+        else
+        {
+            widget.Config[TileSizing.SizeTierKey] = tier;
+        }
+        _runtime.Config.UpsertWidget(widget);
+        _runtime.ReloadWidgets([widget.Id]);
+        RebuildWidgets();
+        PinsChanged?.Invoke(); // L0 重建取新尺寸档高
+        Feedback(_componentFeedback, $"✓ 尺寸档已保存（{tier}），桌面 tile 即时重排。", error: false);
+    }
+
+    /// <summary>桌面布局保存（单宿主共享语义，写入口径同 PersistLayout：全部钉选组件便利引用 + pins.json 权威）。
+    /// 偏移必须是有限数（NaN/∞ 拒绝不落盘——坏值会把宿主推出工作区且无 UI 可见反馈）。</summary>
+    private void SaveDesktopLayout()
+    {
+        if (_componentEditTarget is null)
+        {
+            Feedback(_componentFeedback, "✗ 先点组件行的「组件树」载入要编辑的组件。", error: true);
+            return;
+        }
+        if (!double.TryParse(_layoutOffsetXBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+            || !double.TryParse(_layoutOffsetYBox.Text, NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
+            || double.IsNaN(x) || double.IsInfinity(x) || double.IsNaN(y) || double.IsInfinity(y))
+        {
+            Feedback(_componentFeedback, "✗ 偏移必须是有限数字（未保存）。", error: true);
+            return;
+        }
+        var layout = new PinLayout
+        {
+            Monitor = TagOf(_layoutMonitorBox) ?? CurrentSharedLayout().Monitor,
+            Anchor = Enum.TryParse<PinAnchor>(TagOf(_layoutAnchorBox), out var anchor) ? anchor : PinAnchor.TopRight,
+            OffsetDips = new PinOffset(x, y),
+            Collapsed = _layoutCollapsedToggle.IsOn,
+        };
+        var pinned = _runtime.Config.Widgets.Where(w => w.Pinned).ToList();
+        foreach (var widget in pinned)
+        {
+            widget.PinLayout = new PinLayout { Monitor = layout.Monitor, Anchor = layout.Anchor, OffsetDips = layout.OffsetDips, Collapsed = layout.Collapsed };
+            _runtime.Config.UpsertWidget(widget);
+        }
+        var pins = _runtime.Config.Pins;
+        pins.Tiles = [.. pinned.Select(w => new Beacon.Core.Models.PinTile
+        {
+            WidgetId = w.Id,
+            Layout = new PinLayout { Monitor = layout.Monitor, Anchor = layout.Anchor, OffsetDips = layout.OffsetDips, Collapsed = layout.Collapsed },
+        })];
+        _runtime.Config.SavePins();
+        PinsChanged?.Invoke(); // App 侧 ReloadTiles + ReloadLayout 即时重排
+        Feedback(_componentFeedback, pinned.Count == 0
+            ? "✓ 桌面布局已写入 pins.json（当前无钉选组件，钉选后生效）。"
+            : $"✓ 桌面布局已保存（{pinned.Count} 个钉选组件 + pins.json），宿主即时重排。", error: false);
     }
 
     private void SaveComponentTree()
@@ -2323,7 +2487,7 @@ internal sealed class SettingsWindow : Window
             if (_componentEditTarget?.Id == widget.Id)
             {
                 _componentEditTarget = null; // 防已删组件经编辑器 upsert 复活
-                _componentEditHeader.Text = "组件树编辑（点组件行「组件树」载入）";
+                _componentEditHeader.Text = "组件实例面（点组件行「组件树」载入）";
             }
             RebuildWidgets();
             PinsChanged?.Invoke();

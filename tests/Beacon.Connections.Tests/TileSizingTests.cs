@@ -211,4 +211,43 @@ public sealed class TileSizingTests
         Assert.Equal(193, TileSizing.TileWidthDips(Widget(
             MachineWidgetDescriptors.NetType, ("show", "ip"))));
     }
+
+    // —— 尺寸档（Phase 5 行 4）：Config["sizeTier"] → tile 高，词汇/系数沿 UiDensity 单源 ——
+
+    [Theory]
+    [InlineData(null, 32)]        // 缺省 = 常规（fail-open，G 系像素锚不动）
+    [InlineData("", 32)]          // 空白 = 常规
+    [InlineData("regular", 32)]   // 显式常规 = 恒等
+    [InlineData("compact", 24)]   // 32×0.75
+    [InlineData("spacious", 40)]  // 32×1.25
+    [InlineData("huge", 32)]      // 未知词 = 常规（打错不构成降级理由）
+    [InlineData("COMPACT", 24)]   // 大小写不敏感
+    public void TileHeight_SizeTier_FailOpenToRegular(string? tier, int expected)
+    {
+        var widget = Widget(MachineWidgetDescriptors.NetType);
+        if (tier is not null)
+        {
+            widget.Config[TileSizing.SizeTierKey] = tier;
+        }
+        Assert.Equal(expected, TileSizing.TileHeightDips(widget));
+    }
+
+    [Fact]
+    public void TileWidth_SpaciousTier_ReadoutColumnBudgetGrows()
+    {
+        // 宽度只随读数列字号联动（进度高×0.375 → 12→15）：「100%」预算 34→42（+8），
+        // 其余列字号不随高度缩放——「数值列不裁字」硬口径在 spacious 档不破
+        var regular = Widget(HttpWidgetDescriptors.QuotaType);
+        var spacious = Widget(HttpWidgetDescriptors.QuotaType, (TileSizing.SizeTierKey, "spacious"));
+        Assert.Equal(TileSizing.TileWidthDips(regular) + 8, TileSizing.TileWidthDips(spacious));
+    }
+
+    [Fact]
+    public void TileWidth_NonProgressType_WidthIndependentOfTier()
+    {
+        // 无进度语义类型没有读数列：尺寸档只缩高，宽不动（缩宽必裁字）
+        var regular = Widget(MachineWidgetDescriptors.NetType, ("show", "ip"));
+        var compact = Widget(MachineWidgetDescriptors.NetType, ("show", "ip"), (TileSizing.SizeTierKey, "compact"));
+        Assert.Equal(TileSizing.TileWidthDips(regular), TileSizing.TileWidthDips(compact));
+    }
 }
