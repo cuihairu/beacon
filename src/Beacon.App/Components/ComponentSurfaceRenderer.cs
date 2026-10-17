@@ -142,6 +142,10 @@ internal static class ComponentSurfaceRenderer
     }
 
     /// <summary>进度条：绑定槽 progress（0..1，越界钳位）优先，回退静态 Props.progress；width 默认 96 DIP。</summary>
+    /// <summary>注册类型键（设置页可视化树编辑器的类型词汇单源——渲染侧已知什么才允许声明什么）。
+    /// 必须在 Registry 字段初始化之后取值（静态初始化按文本序）。</summary>
+    public static IReadOnlyList<string> KnownTypes { get; } = Registry.Keys.Order().ToArray();
+
     private static FrameworkElement Progress(NodeContext context)
     {
         var fraction = double.TryParse(context.Binding("progress"), CultureInfo.InvariantCulture, out var bound)
