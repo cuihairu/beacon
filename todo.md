@@ -130,7 +130,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 33 勾 / 10 未勾（2026-10-17 复算：Phase 0/1/2/3/5 全清——Phase 3 六行与 Phase 5 五行含 186 可视化树编辑器（de528f9 起）均已落地；未勾 = Phase 4 六条 + Phase 6 四条；Phase 4 开工前须先裁定 HTML 边界留问）。
+> 进度：43 条 = 39 勾 / 4 未勾（2026-10-17 复算：Phase 0/1/2/3/4/5 全清——Phase 3 六行、Phase 4 六行（2026-10-17 用户裁定「这个设计下吧」，b1893a1 起五提交落地）与 Phase 5 五行均已落地；未勾 = Phase 6 四条，均余装机半）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -139,7 +139,7 @@
 - [x] 识别现有状态模型中哪些字段是业务状态、哪些只是显示字段（WidgetState 12 字段逐一定性 + 配置字段三分类：映射与迁移 §2，e1229fc）
 - [x] 确定新组件模型与旧配置的兼容方案（已代决④：映射与迁移 §5 四条照此冻结，docs/design/redesign-2026-10-16-契约.md §3，409d4e7）
 - [x] 保留现有已完成功能与真机验收要求（装机 71 条清单与 CI 视觉取证场景列为 Phase 6 验收底座：映射与迁移 §4/§5.4，e1229fc）
-- [x] 冻结状态流契约与组件契约（四类概念映射 + IStateStore 签名 + 变更检测口径 + 兼容四条冻结，已代决①②③④ 落决策记录：docs/design/redesign-2026-10-16-契约.md，409d4e7；仅 HTML 边界留问，Phase 4 开工前裁定）
+- [x] 冻结状态流契约与组件契约（四类概念映射 + IStateStore 签名 + 变更检测口径 + 兼容四条冻结，已代决①②③④ 落决策记录：docs/design/redesign-2026-10-16-契约.md，409d4e7；HTML 边界留问已裁定关闭：docs/design/phase4-html-ruling-2026-10-17.md）
 
 ### Phase 1 响应式状态与数据流（5 条 = 5 勾，期次完成）
 
@@ -170,14 +170,14 @@
 - [x] 支持不同组件消费同一份状态（ComponentSourceIndex：ConsumedWidgetIds = 实例所需 widgetId 全集（自身 Id 在前、附加源按声明顺序、同 widgetId 去重）；SourcesOf 反查 widgetId→消费实例集合；解析纯函数只读状态、按引用共享不复制（内容相等 + Assert.Same 锚定），索引按需重建不落缓存无 IO；代决记契约.md §3.9/§4 已代决⑨，Core 8 例锚定，65efa84）；运行时关联：宿主依赖路由按 ConsumedWidgetIds 分流 Update/RefreshSources（5d7efdf），真机待装机
 - [x] 保证修改布局不触发无意义的数据请求（组件层纯函数边界：五个类型全静态类无缓存面，公共方法不接收任何运行时服务（Provider/执行器/Store/事件总线/Clock 等）；状态查取次数 = 自身 1 + Sources 数、与布局形状无关（1 节点 vs 200 层同 2 次），引擎拿到映射后零查取；反射签名守 + 查取计数守双锚定；代决记契约.md §3.10/§4 已代决⑩，Core 3 例锚定，fd9f2d1）；运行时关联：展示面保存走 ReloadWidgetRegistrations 零取数分流；受影响注册收口（d8ff4b6/332716f）
 
-### Phase 4 HTML 小屏幕（6 条，开工前须先出架构决策，仓内有反向记录）
+### Phase 4 HTML 小屏幕（6 条 = 6 勾，期次完成；2026-10-17 用户裁定「这个设计下吧」）
 
-- [ ] 实现 HTML/CSS 模板加载（待落地 hash）
-- [ ] 实现受控数据桥接（待落地 hash）
-- [ ] 实现 Action ID 桥接（待落地 hash）
-- [ ] 实现模板错误回退、实例生命周期与安全限制（待落地 hash）
-- [ ] 实现主题令牌与基本样式适配（待落地 hash）
-- [ ] 验证数据变化时可以增量更新（待落地 hash）
+- [x] 实现 HTML/CSS 模板加载（2026-10-17 用户裁定「这个设计下吧」关闭留问：docs/design/phase4-html-ruling-2026-10-17.md 裁受控 HTML/CSS 子集+原生渲染、无 JS 无 WebView2，与 master-plan.md:769 反向记录和解；HtmlTemplateParser 静态纯函数（守已代决⑩）封闭词汇 12 元素映射既有渲染注册表类型键、style 块须先于元素、解析失败 null fail-closed；ComponentLayerInvariantTests 入列守界；测试面绿，b1893a1/f362d4c）
+- [x] 实现受控数据桥接（{{state.f}}/{{payload.k}}/{{selector.n}} 插值脱糖为既有 ComponentBinding、绑定引擎零改动，白名单取引擎自身封闭集（ComponentBindingEngine 新增 StateFieldNames/SelectorNames 静态暴露）；文本内容混合插值拆 literal/绑定子节点序列、属性值仅整体单插值可绑、混合即解析错宁报错不猜；展开点在 WidgetInstanceResolver.Resolve 纯函数内（ExpandCarrier 后过既有防爆校验），tile/row/detail 消费面零改动；测试面绿，f362d4c/4c39c3d）
+- [x] 实现 Action ID 桥接（data-action 只受静态字面（插值/空白解析错，远端数据不许挑动作）；App 侧 ComponentActionContext(Actions, Run) 窄桥按 actions.json+连接 DSL 全集查 ID 并过 ActionVisibility，缺席或不可见出诊断占位不渲染可点按钮，存在且可见走既有执行链 RequireConfirmation 照常；tile/row 面不承载动作（null 上下文同诊断）；DetailWindow 声明式详情面已接线；App 改动经 CI 编译门 run 39042835027 绿实证，bcd950e）
+- [x] 实现模板错误回退、实例生命周期与安全限制（安全=封闭词汇表即白名单：script/iframe/img/a/on* 事件属性、实体与裸 & 符、字面色在语法上不可表达（不是过滤输入），未知元素/属性/专有属性误挂与越防爆半径（8 层/32 子/256 节点约束合成树）均解析错；回退=解析失败 null 回传统渲染，加载侧 SanitizeWidgetSurfaces 展开校验坏模板加载即报错进 LoadErrors 不等首渲；生命周期=既有 WidgetInstance 生命周期零新形态无定时器；HtmlTemplateParserTests 62 例 + Storage HtmlTemplateSanitizeTests 4 例全绿，f362d4c/4c39c3d）
+- [x] 实现主题令牌与基本样式适配（style 块只收一类一规则 .class 形，prop 白名单 tone（info/ok/warn/bad）/pad/gap 各 sm/md/lg，字面色 #hex/rgb()/具名 CSS 颜色一律解析错即模板在语法上不可能硬编码颜色，浅深高对比自动适配；App 渲染侧换算：Tones 表映射 Severity 档位色（经 UiPalette 主题自适应）、sm/md/lg 映射 DesignTokens.Space4/8/12、attr 覆盖类令牌、卡片 pad 兜底 Space10；App 改动经 CI 编译门 run 39042835027 绿实证，f362d4c/bcd950e）
+- [x] 验证数据变化时可以增量更新（模板解析一次每配置修订，数据到达=既有绑定对同一棵合成树按新快照重求值，HTML 文本不参与数据更新路径；Core 锚定事实：同实例两份状态快照绑定值不同而 Root 对象不变；样例常青门 DeclarativeSampleTests 保 htmltemplate 面可导入且 data-action 全在包内动作库；CI run 39043157904 绿实证，f362d4c/9f6dfd3）
 
 ### Phase 5 完善组件目录与用户体验（5 条）
 
@@ -192,7 +192,7 @@
 - [ ] 验证刷新、状态更新与命令执行闭环（刷新/状态半已代验：本机硬杀重启两轮（taskkill /F 12:43/13:12）后 356 次刷新全 ok 零失败零未处理异常，日志 beacon-20261017.log；命令执行闭环测试面 Actions 27 绿（BuildStartInfo 三壳/HMAC 签名/环境注入），真机端到端执行半待装机）
 - [ ] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）装机半待验）
 - [ ] 验证显示器切换、DPI、窗口拖动与重启恢复（重启恢复半真机已验：硬杀两轮后 pins.json 布局（monitor/anchor/offset/collapsed=true）完整恢复、面板按锚点重现；显示器切换需第二块屏、DPI 切换/拖动需解锁桌面+GUI 自动化——本会话锁屏挡视觉取证，装机半待验）
-- [ ] 验证 HTML 安全边界与错误恢复（阻塞：Phase 4 HTML 组件未实现——契约.md §4 留问「Phase 4 开工前必须用户裁定」沙箱边界，未获裁定不动工）
+- [ ] 验证 HTML 安全边界与错误恢复（测试面已代验：封闭词汇表安全边界 script/iframe/img/a/on* 事件/实体/字面色/越防爆半径全解析错 + 错误回退解析 null 回传统渲染、加载侧坏模板进 LoadErrors（HtmlTemplateParserTests 62 例 + Storage HtmlTemplateSanitizeTests 4 例）+ 样例常青门导入闭环（run 39043157904 绿）；真机导入样例看诊断占位与回退观感装机半待验）
 - [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验：JsonCacheStoreTests 缓存往返 + OutageRecoveryIntegrationTests 断网停服恢复（PointConnectionAtServer 探针）+ DpapiSecretStoreTests 凭据 DPAPI 面 + Actions 失败路径（未知壳抛错/签名不匹配），四测试项目 1328 全绿，de528f9/75f4a85 批回归）
 - [x] 验证现有 Provider、AI 额度显示与通知规则不回归（测试面+真机双证：Connections 662 全绿（全部 provider）+ NotificationEngineTests 阈值带/单次触发/冷却/禁用规则全绿；真机日志 GLM 26%/Kimi 多窗额度持续刷新 356 次零失败——尺寸档/树编辑器两批改动后无回归，de528f9/75f4a85）
 
