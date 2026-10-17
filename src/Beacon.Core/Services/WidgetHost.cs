@@ -57,6 +57,10 @@ public sealed class WidgetHost : IAsyncDisposable
         _store.Invalidate(evt.WidgetIds);
     }
 
+    /// <summary>只读状态查询（P3-03 快照-再-订阅口径的第一半）：新窗口/详情打开时先读 Store 最新值，
+    /// 再靠事件订阅衔接后续变化，首次显示与订阅之间不漏更新；只读不暴露写入面——写入仍走刷新管线与失效联动。</summary>
+    public WidgetState? GetState(string widgetId) => _store.Get(widgetId);
+
     /// <summary>动作后刷源（P5-02 请求接受与远端终态分离）：请求被接受不等于任务终态——
     /// 动作结算后立即拉一次来源 Widget，让「已接受→运行中→终态」由 Provider 权威状态驱动呈现，
     /// 不改权威状态制造成功假象；组件已删/连接停用由刷新链晚到保护拦截。</summary>

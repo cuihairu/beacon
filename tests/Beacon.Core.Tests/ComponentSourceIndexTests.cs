@@ -147,6 +147,55 @@ public sealed class ComponentSourceIndexTests
     }
 
     [Fact]
+    public void MissingSources_DeclaredButAbsent_ListedInDeclarationOrder()
+    {
+        var instance = Instance("detail", new Dictionary<string, string>
+        {
+            ["runs"] = "w-2",
+            ["quota"] = "w-3",
+        });
+        var resolved = new Dictionary<string, WidgetState> { ["quota"] = State("q", "w-3") };
+
+        var missing = ComponentSourceIndex.MissingSources(instance, resolved);
+
+        // 声明序返回：runs 缺席、quota 在场——缺源可见可查，不与空值混淆（P3-03）
+        Assert.Equal(["runs"], missing);
+    }
+
+    [Fact]
+    public void MissingSources_AllPresent_Empty()
+    {
+        var instance = Instance("detail", Surface("w-2"));
+        var resolved = WidgetInstanceResolver.ResolveSources(instance, Lookup(new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("own", "w-1"),
+            ["w-2"] = State("runs", "w-2"),
+        }));
+
+        Assert.Empty(ComponentSourceIndex.MissingSources(instance, resolved));
+    }
+
+    [Fact]
+    public void MissingSources_NoAdditionalSources_Empty()
+        => Assert.Empty(ComponentSourceIndex.MissingSources(Instance("tile"), new Dictionary<string, WidgetState>()));
+
+    [Fact]
+    public void MissingSources_AllAbsentWhenOnlyOwnResolved()
+    {
+        var instance = Instance("detail", new Dictionary<string, string>
+        {
+            ["runs"] = "w-2",
+            ["quota"] = "w-3",
+        });
+        var resolved = WidgetInstanceResolver.ResolveSources(instance, Lookup(new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("own", "w-1"),
+        })); // 自身状态在保留键 ""，附加源全部缺席
+
+        Assert.Equal(["runs", "quota"], ComponentSourceIndex.MissingSources(instance, resolved));
+    }
+
+    [Fact]
     public void ResolveSources_SharedWidgetStateIsNotCopied()
     {
         var tile = Instance("tile", Surface("w-2"), id: "w-1");

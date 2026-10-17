@@ -26,6 +26,23 @@ public static class ComponentSourceIndex
         return ids;
     }
 
+    /// <summary>声明却缺席状态的附加源名（按声明序）：面层据此显示缺失态——缺源不是空值，
+    /// 不能拿健康旧值或空串冒充，也不由组件自行请求 Provider，恢复取数后自然回填（P3-03）。</summary>
+    public static IReadOnlyList<string> MissingSources(
+        WidgetInstance instance,
+        IReadOnlyDictionary<string, WidgetState> resolved)
+    {
+        var missing = new List<string>();
+        foreach (var name in instance.Sources.Keys)
+        {
+            if (!resolved.ContainsKey(name))
+            {
+                missing.Add(name);
+            }
+        }
+        return missing;
+    }
+
     /// <summary>widgetId → 消费它的实例集合（同一实例消费多份状态时在每个键下各出现一次）。</summary>
     public static IReadOnlyDictionary<string, IReadOnlyList<WidgetInstance>> SourcesOf(
         IEnumerable<WidgetInstance> instances)

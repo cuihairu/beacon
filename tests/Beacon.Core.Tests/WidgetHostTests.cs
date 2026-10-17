@@ -103,6 +103,28 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task GetState_ReadsLatestSnapshot_AndClearsOnInvalidation()
+    {
+        // P3-03 快照-再-订阅口径的第一半：新面打开先读 Host 只读快照，订阅衔接后续；
+        // 失效联动后快照即清——删除/停用的组件不再有可被新消费者读出的幽灵状态。
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler();
+        await using var host = fixture.CreateHost(scheduler);
+        Assert.Null(host.GetState("w-1")); // 未刷新前无快照
+        Assert.Null(host.GetState("ghost"));
+        var expected = TestData.State(severity: Severity.Info, summary: "6 PRs");
+        fixture.Provider.Handler = (_, _, _, _) => Task.FromResult<WidgetState?>(expected);
+
+        Assert.True(await host.RefreshWidgetAsync("w-1"));
+
+        Assert.Same(expected, host.GetState("w-1"));
+
+        fixture.Bus.Publish(new WidgetsInvalidated(["w-1"]));
+
+        Assert.Null(host.GetState("w-1"));
+    }
+
+    [Fact]
     public async Task RefreshTwice_IdenticalContent_SuppressStore_PublishesOnce()
     {
         // 去重开关在真实管线中的行为面（映射与迁移 §6.2 拍板项的前置取证）
