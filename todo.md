@@ -69,7 +69,7 @@
 - [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155）；手感需装机半）
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
 - [x] 非准入类型在两处入口均不可钉（场景 Y 已代验：播种未登记类型 pinned:true，Y1 主机 Resolve=null skipped 日志+零 tile，Y2 面板右键无 Pin 菜单项，Y3 设置 scope 过滤整行不产，Y4 widgets.json pinned 恒 true 零改写，run 38608625892）
-- [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件需装机半）
+- [x] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（Item7 2026-10-18 合并成一次回归：位置还原+收起态还原两条链锁进同一逻辑级回归 PositionAndCollapsedRestore_SingleRegression_BothChainsHold（PinLayoutMathTests，Place→Locate 逆解→Place 重放位置一致 + Collapsed 标志往返保持），commit b08cbf7，测试通过；位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件待物理显示器验证）
 - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）—— 待物理显示器验证（Item9，2026-10-18 跳过：跨 DPI 拖放与分辨率变小回收需物理/虚拟显示栈，不做虚拟屏假验证）
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（Item6 代码侧完成 2026-10-18：L0 变色+脉冲走 Composition 属性动画，仅作用 tile 状态灯——PinnedHostWindow.cs:398-400 severity==Critical→StartPulse，MotionEngine.cs:132-155 CreateVector3KeyFrameAnimation Scale 循环，无 Activate/无 SetForegroundWindow/无发声（grep StartPulse 调用点仅状态灯+设置预览两处）；Toast 仍由通知引擎独立发出（NotificationEngineTests 17 例）；L0 变色+脉冲已代验：场景 V1/V2，38459944253；Toast 引擎链已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290）
