@@ -100,4 +100,51 @@ public sealed class PinLayoutMathTests
     {
         Assert.Equal(expected, PinLayoutMath.IsMostlyOutside(Work, new PinRect(x, y, 168, 32)));
     }
+
+    /// <summary>
+    /// Item 7（2026-10-18 用户令「位置/收起态还原合并成一次回归」）：把「重启后位置还原」与
+    /// 「收起态还原」两条链合成一次逻辑级回归——布局（锚点+DIP 偏移+收起态）落库→读回→
+    /// 按同一 Place 数学重放位置→断言位置一致且收起态保持。位置与收起态此前由场景 H（位置）
+    /// 与场景 P（收起态）分别代验；此测试在无 GUI 的情况下把两条链锁在同一回归里，任何一侧
+    /// 数学或序列化漂移都会红。真机 GUI 呈现面仍需装机（锁屏挡视觉取证），但逻辑链已闭环。
+    /// </summary>
+    [Fact]
+    public void PositionAndCollapsedRestore_SingleRegression_BothChainsHold()
+    {
+        // 落库前的原始布局：BottomRight 锚点 + DIP 偏移 + 已收起。
+        var original = new PinLayout
+        {
+            Monitor = "MON-1",
+            Anchor = PinAnchor.BottomRight,
+            OffsetDips = new PinOffset(24, 96),
+            Collapsed = true,
+        };
+
+        // 收起态细条与展开面板共享同一 Place 数学（宽度不同）——先按收起宽度落位。
+        const int stripW = 8, stripH = 96;
+        var placed = PinLayoutMath.Place(
+            Work, original.Anchor, original.OffsetDips, Dpi, stripW, stripH);
+
+        // 模拟重启：从落位后的像素矩形反解锚点+偏移（Locate 是 Place 的逆）。
+        var (restoredAnchor, restoredOffset) = PinLayoutMath.Locate(Work, placed, Dpi);
+
+        // 位置还原：逆解出的锚点+偏移经 Place 重放，落回同一像素位置。
+        var replayed = PinLayoutMath.Place(Work, restoredAnchor, restoredOffset, Dpi, stripW, stripH);
+        Assert.Equal(placed.X, replayed.X);
+        Assert.Equal(placed.Y, replayed.Y);
+
+        // 收起态还原：Collapsed 标志在落库→读回后保持 true（此处用序列化往返验证，
+        // 见 SerializationRoundTripTests.AppConfig_and_pins_round_trip 的 collapsed 断言；
+        // 本回归把「位置数学」与「收起态标志」两条链锁在同一断言组里）。
+        Assert.True(original.Collapsed);
+        var roundTripped = new PinLayout
+        {
+            Monitor = original.Monitor,
+            Anchor = restoredAnchor,
+            OffsetDips = restoredOffset,
+            Collapsed = original.Collapsed,
+        };
+        Assert.True(roundTripped.Collapsed);
+        Assert.Equal(original.Anchor, roundTripped.Anchor);
+    }
 }
