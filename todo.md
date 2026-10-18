@@ -38,7 +38,7 @@
 ## MVP 待验/未修项（50 项 = 31 勾 / 19 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；**2026-10-17 真机实证双半**：本机双击（os.startfile 同路径）二次启动进程数恒 1，主实例日志 `Balloon dispatched: Beacon - Beacon 已在运行。`（Shell_NotifyIconW 返回 true=Windows 已接受气泡）+ `Secondary instance exit.` 双锚；随批给 ShowBalloon 补日志锚——原实现丢弃 Shell_NotifyIconW 返回值，装机复测无取证点，现成功落 Information/失败落 Warning（TrayIconService.cs:99-110））
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
-- [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；拖动手势半已代验：R3 SendInput 拖 +50/+40 窗随动 + shell-state.json offsetDips 落盘 90,81 + 重启还原闭环（38750239155）；跨 DPI 拓扑需装机半）
+- [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；拖动手势半已代验：R3 SendInput 拖 +50/+40 窗随动 + shell-state.json offsetDips 落盘 90,81 + 重启还原闭环（38750239155）；跨 DPI 拓扑需装机半）—— 待物理显示器验证（Item8，2026-10-18 跳过：跨 DPI 拖动无错乱需双 DPI 物理屏，CI 单屏不可驱动，不做虚拟屏假验证）
 - [x] 任意前台应用下热键生效；可在设置改键并持久化（场景 K1 注册成功 + N 改键落盘重启新键注册 + WM_HOTKEY 直驱面板出现已代验）
 - [x] 开关即时生效（重启验证）；卸载清理（场景 J 静默安装卸载 + M HKCU Run 双向断言已代验）
 - [x] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口（场景 T2 外部故障注入 + V3 崩溃注入已代验，38494525200；V3 曾红出真实发现并建 DispatcherQueueGuard，见决策记录）
@@ -59,7 +59,7 @@
 - [ ] 发送/点击/激活路由全链路手动通过；快捷方式缺失可自愈（自愈半已代验：场景 F5t 预删 AUMID 注册键后 Initialize 重建，38494525200；点击/激活路由属 OS Toast 面，需装机半）
 - [x] 规则引擎表驱动单测（含冷却）（NotificationEngineTests 17 例）
 - [x] 注入 Failed 状态收到且仅收到一条 Toast（NotificationEngineTests 17 例覆盖引擎去重 + 场景 F5 断网降级恰 1 条硬断言）
-- [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘（托盘图标像素不可脚本取证，见决策记录；tile 层已代验：场景 G7a 38% 到 95% 75s 内反映）
+- [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘（托盘图标像素不可脚本取证，见决策记录；tile 层已代验：场景 G7a 38% 到 95% 75s 内反映）—— 待物理显示器验证（Item10，2026-10-18 跳过：托盘图标像素取证需物理屏截取，不做虚拟屏假验证）
 - [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致（场景 F2 tile + O 面板 + Q 胶囊三面已代验）
 - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（CI 已代验缓存无白屏 + Esc 键盘关闭面板：场景 K3 Esc 改硬断言全链实证，根因 INPUT.type 误写 0（INPUT_MOUSE）静默丢键已修 84f9aad，run 38743014862；旧「键盘注入 CI 不可达」判断系 type 缺陷自证；100ms 精确计时需装机半）
 - [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
@@ -70,7 +70,7 @@
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
 - [x] 非准入类型在两处入口均不可钉（场景 Y 已代验：播种未登记类型 pinned:true，Y1 主机 Resolve=null skipped 日志+零 tile，Y2 面板右键无 Pin 菜单项，Y3 设置 scope 过滤整行不产，Y4 widgets.json pinned 恒 true 零改写，run 38608625892）
 - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件需装机半）
-- [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）
+- [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）—— 待物理显示器验证（Item9，2026-10-18 跳过：跨 DPI 拖放与分辨率变小回收需物理/虚拟显示栈，不做虚拟屏假验证）
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（Item6 代码侧完成 2026-10-18：L0 变色+脉冲走 Composition 属性动画，仅作用 tile 状态灯——PinnedHostWindow.cs:398-400 severity==Critical→StartPulse，MotionEngine.cs:132-155 CreateVector3KeyFrameAnimation Scale 循环，无 Activate/无 SetForegroundWindow/无发声（grep StartPulse 调用点仅状态灯+设置预览两处）；Toast 仍由通知引擎独立发出（NotificationEngineTests 17 例）；L0 变色+脉冲已代验：场景 V1/V2，38459944253；Toast 引擎链已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290）
 - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录（四条含真实网络环境与真人操作流，需装机）
