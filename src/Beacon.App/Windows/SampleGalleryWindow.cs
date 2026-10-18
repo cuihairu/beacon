@@ -119,7 +119,7 @@ internal sealed class SampleGalleryWindow : Window
     private string _selectedType = "text";
     private Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
     private string _templateId = "bar"; // 定向模式当前模板（ctor 按能力筛选后的首项覆写）
-    private string _surface = "tile";   // 定向模式应用面（tile/row/detail，评审 P1）
+    private string _applySurface = "tile"; // 定向模式应用面（tile/row/detail，评审 P1；_surface 已是画刷名）
 
     private ListView _catalogList = null!;
     private StackPanel _previewHost = null!;
@@ -503,10 +503,10 @@ internal sealed class SampleGalleryWindow : Window
         {
             combo.Items.Add(new ComboBoxItem { Content = label, Tag = value });
         }
-        combo.SelectedIndex = IndexOfTag(combo, _surface);
+        combo.SelectedIndex = IndexOfTag(combo, _applySurface);
         combo.SelectionChanged += (_, _) =>
         {
-            _surface = TagOf(combo);
+            _applySurface = TagOf(combo);
             RefreshPreviewAndJson();
         };
         return combo;
@@ -515,7 +515,7 @@ internal sealed class SampleGalleryWindow : Window
     private void RefreshPreviewAndJson()
     {
         var targeted = _targetState is not null;
-        var surface = targeted ? _surface : "tile";
+        var surface = targeted ? _applySurface : "tile";
         // 定向模式：模板生成器整树出（动态值经绑定注入）；通用模式：表单静态树
         var rootDescriptor = targeted ? TemplateOf(_templateId).Build() : BuildDescriptor();
         var instance = new WidgetInstance
@@ -620,7 +620,7 @@ internal sealed class SampleGalleryWindow : Window
                 Feedback("✗ 本窗未接入设置页（请从组件行「展示样式」进入）。", error: true);
                 return;
             }
-            var targetedMessage = _applyTargeted(TemplateOf(_templateId).Build(), _surface);
+            var targetedMessage = _applyTargeted(TemplateOf(_templateId).Build(), _applySurface);
             Feedback(targetedMessage, error: targetedMessage.StartsWith('✗'));
             return;
         }
