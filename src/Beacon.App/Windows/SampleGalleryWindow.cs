@@ -332,7 +332,8 @@ internal sealed class SampleGalleryWindow : Window
         }
     }
 
-    private UIElement BuildControl(PropSpec spec)
+    // 返回口径用 FrameworkElement：WinUI 的 Grid.SetColumn 只收 FrameworkElement（比 WPF 窄一档）。
+    private FrameworkElement BuildControl(PropSpec spec)
     {
         return spec.Kind switch
         {
@@ -352,7 +353,7 @@ internal sealed class SampleGalleryWindow : Window
         return box;
     }
 
-    private UIElement BuildCombo(PropSpec spec, (string Display, string Value)[] options)
+    private FrameworkElement BuildCombo(PropSpec spec, (string Display, string Value)[] options)
     {
         var combo = new ComboBox { MinWidth = 120 };
         foreach (var option in options)
@@ -364,7 +365,7 @@ internal sealed class SampleGalleryWindow : Window
         return combo;
     }
 
-    private UIElement BuildSlider(PropSpec spec)
+    private FrameworkElement BuildSlider(PropSpec spec)
     {
         var start = double.TryParse(spec.Default, CultureInfo.InvariantCulture, out var parsed)
             ? Math.Clamp(parsed, spec.Min, spec.Max)
@@ -394,6 +395,9 @@ internal sealed class SampleGalleryWindow : Window
         host.Children.Add(readout);
         return host;
     }
+
+    private static string FormatNumber(double value)
+        => value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static int IndexOfTag(ComboBox combo, string tag)
     {
