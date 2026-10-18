@@ -273,7 +273,7 @@ internal static class ComponentSurfaceRenderer
         var (track, fill) = ComponentProgress.Bar(fraction, context.PropDouble("width", 96));
         // 2026-10-18 修复：fill 色原漏上（Shape.Fill 默认 null=透明，声明式树进度条只剩浅轨）——
         // 补档位色（ProgressTiers 判档），与传统 tile 链（PinnedHostWindow）同口径。
-        fill.Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), context.Palette.SeverityColor));
+        fill.Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), severity => context.Palette.SeverityColor(severity)));
         var host = new Grid();
         host.Children.Add(track);
         host.Children.Add(fill);
@@ -316,7 +316,7 @@ internal static class ComponentSurfaceRenderer
         {
             Width = size,
             Height = size,
-            Stroke = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), context.Palette.SeverityColor)),
+            Stroke = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), severity => context.Palette.SeverityColor(severity))),
             StrokeThickness = thickness,
             StrokeDashArray = new DoubleCollection { Math.Max(fraction * circumference, 0), circumference },
             StrokeDashOffset = circumference / 4,
@@ -349,7 +349,7 @@ internal static class ComponentSurfaceRenderer
             VerticalAlignment = VerticalAlignment.Bottom,
             RadiusX = radius - 1,
             RadiusY = radius - 1,
-            Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), context.Palette.SeverityColor)),
+            Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), severity => context.Palette.SeverityColor(severity))),
         });
         return host;
     }
