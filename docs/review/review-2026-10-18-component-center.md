@@ -260,16 +260,19 @@ If you want, I can:\
 
 ---
 
-## 核验结论（待核对，勿直接实施）
+## 核验结论（2026-10-18 全部核对完毕）
 
 | 审核条目 | 核验结果 | 证据 file:line |
 |---|---|---|
-| 进度条 0.52 是静态值、组件中心描述符无绑定声明 | 待核 | |
-| SettingsWindow.cs 已有 bar/pool 全局设置 | 待核 | |
-| Phase 5 的 Chart/Timeline/Table 工厂只接详情窗口 | 待核 | |
-| 现有流程需跨三处页面操作 | 待核 | |
+| 进度条 0.52 是静态值、组件中心描述符无绑定声明 | **属实**（61abb9b 版） | `SampleGalleryWindow.cs` BuildDescriptor 仅产 Props+Children，全文 grep "Binding" 零命中 |
+| SettingsWindow.cs 已有 bar/pool 全局设置 | **属实** | `SettingsWindow.cs:1246`（`App.Appearance.ProgressStyle` 读回）+ `:1343-1345`（SaveProgressStyle，默认 "bar"） |
+| Phase 5 的 Chart/Timeline/Table 工厂只接详情窗口 | **属实** | 注册表无此三键（`ComponentSurfaceRenderer.cs` Registry 仅 12 键）；使用点 `DetailWindow.cs:157/172/174/221` |
+| 现有流程需跨三处页面操作 | **属实** | `SettingsWindow.cs` ApplyGalleryComponent 前置文案「先在组件页点某组件行的『组件树』载入」+ 组件中心「载入组件树编辑器」+ 回组件页「保存组件树」，三跳 |
 
 ## 落地跟踪
 
-- [ ] 核对上表四条，填证据
+- [x] 核对上表四条，填证据（2026-10-18，四条全属实）
 - [ ] 按核对结果分阶段实施（每阶段过测试后勾掉，填 commit hash）
+  - [x] P0 三件：真实 Bindings（text→summary / progress→progress / statusdot→severity，定向模式）+ 组件行「展示样式」直开（Host.GetState 真实状态预览 + 应用一步落盘）+ PinsChanged 即时重渲（SaveComponentTree 三条成功路径 + 定向应用；ReloadTiles 带 _latest 状态重放，不取数）——4847f99，CI 绿 39098789912
+  - [ ] P1：展示模板注册表（同一份百分比数据可选横条/圆环/数字卡/水位）+ 数据能力筛选 + 按组件实例/展示面分别保存样式
+  - [ ] P2：保留高级组合与树编辑器（现状已满足——「组件树」编辑器未动，定向应用不占树编辑工作副本）
