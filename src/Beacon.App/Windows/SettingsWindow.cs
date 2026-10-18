@@ -34,7 +34,7 @@ internal sealed class SettingsWindow : Window
 
     private readonly BeaconRuntime _runtime;
     private readonly MotionEngine _motion;
-    private SampleGalleryWindow? _gallery; // 组件示例页单实例（关于区入口）
+    private SampleGalleryWindow? _gallery; // 组件中心单实例（关于区入口）
 
     private TextBox _hotkeyBox = null!;
     private ToggleSwitch _startupToggle = null!;
@@ -699,12 +699,12 @@ internal sealed class SettingsWindow : Window
         links.Children.Add(checkButton);
         links.Children.Add(downloadButton);
         links.Children.Add(AboutLinkButton("项目主页", "https://github.com/cuihairu/beacon"));
-        var galleryButton = new Button { Content = "组件示例页", HorizontalAlignment = HorizontalAlignment.Left };
+        var galleryButton = new Button { Content = "组件中心", HorizontalAlignment = HorizontalAlignment.Left };
         galleryButton.Click += (_, _) =>
         {
             if (_gallery is null)
             {
-                _gallery = new SampleGalleryWindow(_runtime, () => _gallery = null);
+                _gallery = new SampleGalleryWindow(_runtime, () => _gallery = null, ApplyGalleryComponent);
                 _gallery.Activate();
             }
         };
@@ -2716,6 +2716,21 @@ internal sealed class SettingsWindow : Window
         _runtime.ReloadWidgetRegistrations(); // 树保存属展示面（P3-02 分流）：只重排注册不取数，与增删/钉选区分
         _componentEditTarget = updated;
         RebuildWidgets();
+    }
+
+    /// <summary>组件中心「载入组件树编辑器」回调（组件中心不新增写入路径）：把生成的组件树作为
+    /// tile 面推进树编辑工作副本并同步 JSON 框，仍由用户在组件页点「保存组件树」走单一校验落盘链
+    /// （SaveComponentTree 前置校验 + UpsertWidget 二次防呆）。✗ 前缀=失败（组件中心按此显示红色反馈）。</summary>
+    private string ApplyGalleryComponent(ComponentDescriptor root)
+    {
+        if (_componentEditTarget is null || _componentJsonBox is null)
+        {
+            return "✗ 先在组件页点某组件行的「组件树」载入要编辑的组件。";
+        }
+        _editSurfaces["tile"] = root;
+        _componentJsonBox.Text = BeaconJson.Serialize(_editSurfaces, indented: true);
+        RebuildComponentTree();
+        return $"✓ 已载入 tile 面到 {_componentEditTarget.Id} 的组件树编辑器；回组件页点「保存组件树」落盘。";
     }
 
     private UIElement MakeWidgetRow(WidgetConfig widget)

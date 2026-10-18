@@ -1,39 +1,132 @@
+using System.Globalization;
 using Beacon.App.Components;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
+using Beacon.Core.Json;
 using Beacon.Core.Models;
 using Beacon.Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Shapes;
 
 namespace Beacon.App.Windows;
 
 /// <summary>
-/// 组件视觉示例页（Phase 2 末行）：Components 全部工厂的实样目录——词汇件（Surface/Badge/Divider/
-/// Metric/StatusCard/Link/Column/Feedback 四态）的证明面。从设置「关于」区进入；
-/// 纯静态展示，不接数据、不回写配置。配色口径同 DetailWindow（暗色静态）。
+/// 组件中心（原静态组件示例页改造）：12 个声明式组件类型的「选 → 调 → 用」单一闭环——
+/// 左列类型目录（点击切换），中列实时预览 + 生成 JSON（渲染走 ComponentSurfaceRenderer
+/// 与真实面同一条链，所见即所得；预览盒定高，换参数不挤挪周边内容），右列参数表单
+/// （按类型声明可编辑属性、通用控件渲染；改参数只重渲预览不重建表单，输入不丢焦点）。
+/// 产出口径与设置页「组件树 JSON」框同构（surface 键 → 树根）——「载入组件树编辑器」
+/// 把当前组件推进设置页编辑器，仍走既有单一保存链（SaveComponentTree 前置校验 +
+/// UpsertWidget 二次防呆），本窗不新增写入路径。配色口径同 DetailWindow（暗色静态）。
 /// </summary>
 internal sealed class SampleGalleryWindow : Window
 {
     // 与 DetailWindow 同口径：设计值 DIP，Loaded 后按内容实测 + DPI/非客户区补差（DpiLayoutMath）。
-    private const double GalleryWidthDips = 520;
-    private const double GalleryMinHeightDips = 320;
-    private const double GalleryMaxHeightDips = 720;
+    private const double CenterWidthDips = 860;
+    private const double CenterMinHeightDips = 460;
+    private const double CenterMaxHeightDips = 780;
 
-    private readonly BeaconRuntime _runtime;
+    private const double CatalogColumnDips = 168;
+    private const double PreviewColumnDips = 300;
+
+    /// <summary>参数控件形态：文本 / 字号档 / 色调令牌 / 严重度枚举 / 间距令牌 / 数值滑杆。</summary>
+    private enum PropKind { Text, Size, Tone, Severity, Spacing, Slider }
+
+    /// <summary>可编辑属性声明：类型词汇的「可调什么」单源（Default 同时是初值与空值语义缺省）。</summary>
+    private sealed record PropSpec(string Key, string Label, PropKind Kind, string Default, double Min = 0, double Max = 1);
+
+    private sealed record CatalogEntry(string Type, string Name, string Desc);
+
+    /// <summary>类型目录（键即 ComponentSurfaceRenderer.Registry 词汇，顺序即展示序）。</summary>
+    private static readonly CatalogEntry[] Catalog =
+    [
+        new("text", "文本", "主体或说明文一行；可调字号与色调"),
+        new("sectionlabel", "区块标签", "小节标题（弱化基色）"),
+        new("metric", "指标", "大数字 + 单位，字号可调"),
+        new("keyvalue", "键值对", "左标签右值（配 row 排布）"),
+        new("progress", "进度条", "0..1 归一化，档位色随值"),
+        new("statusdot", "状态灯", "按严重度取色的圆点"),
+        new("badge", "徽标", "计数圆标（未读数口径）"),
+        new("divider", "分隔线", "水平分隔线"),
+        new("actionbutton", "动作按钮", "执行动作；预览恒出诊断占位（动作全集只在真实面接入）"),
+        new("row", "横排", "横向排列子件，间距可调（示例含演示子件）"),
+        new("column", "竖排", "纵向排列子件，间距可调（示例含演示子件）"),
+        new("card", "卡片", "单内容卡面，内边距可调（示例含演示子件）"),
+    ];
+
+    /// <summary>类型 → 可编辑属性（when 条件对所有类型通用，表单构建时统一追加）。</summary>
+    private static readonly Dictionary<string, PropSpec[]> PropSchema = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["text"] =
+        [
+            new("text", "文本", PropKind.Text, "GLM · ¥110.00"),
+            new("size", "字号", PropKind.Size, "body"),
+            new("tone", "色调", PropKind.Tone, ""),
+        ],
+        ["sectionlabel"] = [new("text", "标签", PropKind.Text, "用量")],
+        ["metric"] =
+        [
+            new("value", "数值", PropKind.Text, "72"),
+            new("unit", "单位", PropKind.Text, "GB"),
+            new("fontSize", "字号", PropKind.Slider, "20", 12, 40),
+        ],
+        ["keyvalue"] =
+        [
+            new("key", "标签", PropKind.Text, "repo"),
+            new("value", "值", PropKind.Text, "cuihairu/beacon"),
+        ],
+        ["progress"] =
+        [
+            new("progress", "进度值", PropKind.Slider, "0.52", 0, 1),
+            new("width", "宽度", PropKind.Slider, "220", 40, 320),
+        ],
+        ["statusdot"] =
+        [
+            new("severity", "严重度", PropKind.Severity, "success"),
+            new("size", "尺寸", PropKind.Slider, "8", 4, 24),
+        ],
+        ["badge"] =
+        [
+            new("text", "文本", PropKind.Text, "3"),
+            new("tone", "色调", PropKind.Tone, "bad"),
+        ],
+        ["divider"] = [],
+        ["actionbutton"] =
+        [
+            new("text", "按钮文字", PropKind.Text, "打开文档"),
+            new("data-action", "动作 ID", PropKind.Text, "open-quota-doc"),
+        ],
+        ["row"] = [new("gap", "间距", PropKind.Spacing, "md")],
+        ["column"] = [new("gap", "间距", PropKind.Spacing, "md")],
+        ["card"] = [new("pad", "内边距", PropKind.Spacing, "md")],
+    };
+
     private readonly UiPalette _palette;
     private readonly Brush _heading = new SolidColorBrush(Microsoft.UI.Colors.White);
     private readonly Brush _body = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240));
     private readonly Brush _muted = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184));
+    private readonly Brush _surface = new SolidColorBrush(SeverityPalette.Rgb(30, 30, 30, 34));
+    private readonly Brush _hairline = new SolidColorBrush(SeverityPalette.Rgb(255, 48, 54, 61));
+    private readonly Func<ComponentDescriptor, string>? _applyToSettings;
 
-    public SampleGalleryWindow(BeaconRuntime runtime, Action? closed = null)
+    private string _selectedType = "text";
+    private Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
+
+    private ListView _catalogList = null!;
+    private StackPanel _previewHost = null!;
+    private StackPanel _formHost = null!;
+    private TextBox _jsonBox = null!;
+    private TextBlock _formHeader = null!;
+    private TextBlock _feedback = null!;
+
+    /// <param name="applyToSettings">「载入组件树编辑器」回调：推进设置页编辑器，返回反馈文案（✗ 前缀=失败）。</param>
+    public SampleGalleryWindow(BeaconRuntime runtime, Action? closed = null, Func<ComponentDescriptor, string>? applyToSettings = null)
     {
-        _runtime = runtime;
+        _applyToSettings = applyToSettings;
         _palette = new UiPalette(runtime.Config); // 档位/状态色同正式窗解析链
 
-        Title = "Beacon · 组件示例页";
+        Title = "Beacon · 组件中心";
         Content = BuildContent();
         ((FrameworkElement)Content).Loaded += OnContentLoaded;
         Closed += (_, _) => closed?.Invoke();
@@ -45,228 +138,394 @@ internal sealed class SampleGalleryWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var dpi = NativeMethods.GetDpiForWindow(hwnd) / 96.0;
         var content = (FrameworkElement)Content;
-        content.Measure(new global::Windows.Foundation.Size(GalleryWidthDips, double.PositiveInfinity));
+        content.Measure(new global::Windows.Foundation.Size(CenterWidthDips, double.PositiveInfinity));
         var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(hwnd);
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32
         {
-            Width = DpiLayoutMath.ToPx(GalleryWidthDips, dpi) + chromeWidth,
-            Height = DpiLayoutMath.ClampedHeightPx(content.DesiredSize.Height, GalleryMinHeightDips, GalleryMaxHeightDips, dpi) + chromeHeight,
+            Width = DpiLayoutMath.ToPx(CenterWidthDips, dpi) + chromeWidth,
+            Height = DpiLayoutMath.ClampedHeightPx(content.DesiredSize.Height, CenterMinHeightDips, CenterMaxHeightDips, dpi) + chromeHeight,
         });
     }
 
     private UIElement BuildContent()
     {
-        var root = new StackPanel { Spacing = 10, Padding = new Thickness(18, 16, 18, 16) };
-        root.Children.Add(new TextBlock
+        var root = new Grid { Padding = new Thickness(16, 14, 16, 14) };
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(CatalogColumnDips) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(PreviewColumnDips) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        // —— 左列：类型目录（两行项：中文名 + 类型键，Tag=类型键供点击分发）——
+        var catalog = new StackPanel { Spacing = 8 };
+        catalog.Children.Add(new TextBlock
         {
-            Text = "组件库实样",
-            FontSize = DesignTokens.FontDisplay,
+            Text = "组件",
+            FontSize = DesignTokens.FontHeader,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = _heading,
         });
-        root.Children.Add(ComponentText.Body("全部工厂的静态样例；色板走 UiPalette 解析链，排版/几何走 DesignTokens。", _muted));
+        catalog.Children.Add(ComponentText.Caption("12 个声明式组件类型（渲染注册表词汇）。", _muted));
 
-        AddTextIconSection(root);
-        AddSurfaceSection(root);
-        AddStatusMetricSection(root);
-        AddKeyValueListSection(root);
-        AddActionSection(root);
-        AddLayoutSection(root);
-        AddTimelineSection(root);
-        AddTableSection(root);
-        AddChartSection(root);
-        AddFeedbackSection(root);
-
-        return new ScrollViewer { Content = root, VerticalScrollBarVisibility = ScrollBarVisibility.Visible };
-    }
-
-    private void AddTextIconSection(StackPanel root)
-    {
-        root.Children.Add(Section("TEXT · ICON"));
-        var row = ComponentLayout.Row(8);
-        row.Children.Add(ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(Severity.Success)), 8));
-        row.Children.Add(ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(Severity.Warning)), 8));
-        row.Children.Add(ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(Severity.Error)), 8));
-        row.Children.Add(ComponentStatus.Indicator(new SolidColorBrush(_palette.SeverityColor(Severity.Critical))));
-        row.Children.Add(ComponentStatus.OfflineHollow(_muted));
-        root.Children.Add(row);
-        root.Children.Add(ComponentText.Caption("caption 次要说明（FontCaption）", _muted));
-        root.Children.Add(ComponentText.Body("body 正文一行，超出 maxWidth 走省略号截断口径", _body, maxWidth: 260));
-    }
-
-    private void AddSurfaceSection(StackPanel root)
-    {
-        root.Children.Add(Section("SURFACE · BADGE · DIVIDER"));
-        root.Children.Add(ComponentSurface.Card(
-            ComponentText.Body("Card 卡面：RadiusCard + Space10 均匀内边距。", _body),
-            new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40))));
-        var badge = ComponentBadge.Count(new TextBlock
+        _catalogList = new ListView { IsItemClickEnabled = true, Height = 452 };
+        foreach (var entry in Catalog)
         {
-            Text = "3",
-            FontSize = DesignTokens.FontCaption,
+            var line = new StackPanel { Spacing = 1 };
+            line.Children.Add(new TextBlock { Text = entry.Name, FontSize = DesignTokens.FontBody, Foreground = _body });
+            line.Children.Add(new TextBlock { Text = entry.Type, FontSize = DesignTokens.FontCaption, Foreground = _muted });
+            _catalogList.Items.Add(new ListViewItem { Content = line, Tag = entry.Type, Padding = new Thickness(8, 5, 8, 5) });
+        }
+        _catalogList.ItemClick += OnCatalogItemClicked;
+        catalog.Children.Add(_catalogList);
+        Grid.SetColumn(catalog, 0);
+        root.Children.Add(catalog);
+
+        // —— 中列：实时预览（定高盒，换参数不挤挪）+ 生成 JSON ——
+        var preview = new StackPanel { Spacing = 8 };
+        preview.Children.Add(new TextBlock
+        {
+            Text = "预览",
+            FontSize = DesignTokens.FontHeader,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = _heading,
-        }, new SolidColorBrush(_palette.SeverityColor(Severity.Error)));
-        var badgeRow = ComponentLayout.Row(8);
-        badgeRow.Children.Add(badge);
-        badgeRow.Children.Add(ComponentText.Caption("Count 计数徽标（通知未读数口径）", _muted));
-        root.Children.Add(badgeRow);
-        root.Children.Add(ComponentDivider.Horizontal(_muted));
-    }
-
-    private void AddStatusMetricSection(StackPanel root)
-    {
-        root.Children.Add(Section("STATUS · METRIC · PROGRESS"));
-        root.Children.Add(ComponentMetric.Value("7.2", "GB", _heading));
-        root.Children.Add(ComponentMetric.Value("12", null, _heading, DesignTokens.FontTitle));
-        foreach (var fraction in new[] { 0.25, 0.85, 0.99 })
-        {
-            var (track, fill) = ComponentProgress.Bar(fraction, 300);
-            fill.Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction,
-                _palette.SeverityColor(Severity.Success), tier => _palette.SeverityColor(tier)));
-            var barHost = new Grid();
-            barHost.Children.Add(track);
-            barHost.Children.Add(fill);
-            root.Children.Add(barHost);
-        }
-        root.Children.Add(ComponentText.Caption("进度档位：≥80% warning、≥98% error（Core ProgressTiers 单源）", _muted));
-    }
-
-    private void AddKeyValueListSection(StackPanel root)
-    {
-        root.Children.Add(Section("KEY-VALUE · LIST · CARD"));
-        var table = ComponentList.Vertical();
-        table.Children.Add(ComponentKeyValue.Row("repo", "cuihairu/beacon", _body));
-        table.Children.Add(ComponentKeyValue.Row("branch", "main", _body));
-        table.Children.Add(ComponentKeyValue.Row("duration", "4m12s", _body));
-        root.Children.Add(table);
-
-        var cardHeader = ComponentLayout.Row(8);
-        cardHeader.Children.Add(ComponentStatus.Indicator(new SolidColorBrush(_palette.SeverityColor(Severity.Warning))));
-        cardHeader.Children.Add(ComponentText.Body("StatusCard：单对象状态摘要", _heading));
-        root.Children.Add(ComponentCard.Status(cardHeader,
-            ComponentText.Body("头行（指示灯 + 标题）+ 摘要行，卡面同设置卡片口径。", _muted),
-            new SolidColorBrush(SeverityPalette.Rgb(30, 31, 38, 40))));
-    }
-
-    private void AddActionSection(StackPanel root)
-    {
-        root.Children.Add(Section("ACTION"));
-        var row = ComponentLayout.Row(8);
-        row.Children.Add(ComponentAction.Button("Action Button", async () => await Task.CompletedTask));
-        row.Children.Add(ComponentAction.Link("Link（项目主页）", new Uri("https://github.com/cuihairu/beacon")));
-        var menuHost = ComponentText.Body("Action Menu：右键本行", _body);
-        menuHost.ContextFlyout = ComponentAction.Menu(
-            ComponentAction.Item("菜单项一", () => { }),
-            ComponentAction.Item("菜单项二", () => { }));
-        root.Children.Add(row);
-        root.Children.Add(menuHost);
-    }
-
-    private void AddLayoutSection(StackPanel root)
-    {
-        root.Children.Add(Section("LAYOUT"));
-        var columns = ComponentLayout.Columns(6, GridLength.Auto, new GridLength(1, GridUnitType.Star));
-        columns.Children.Add(ComponentText.Caption("标签列", _muted));
-        columns.Children.Add(ComponentText.Body("Columns 列网格：Auto + Star（PinnedHost 主行口径）", _body));
-        root.Children.Add(columns);
-
-        // Column 竖排 + When 条件显示（Phase 5 行 2 收编：条件从写死 if 走 Core
-        // ComponentVisibility 状态字段求值；两条同条件行各喂一份状态样例，可见性由右值决定）
-        var column = ComponentLayout.Column(6);
-        column.Children.Add(ComponentText.Body("Column 竖排容器：通用竖列（DetailWindow 主列口径）", _body));
-        var errorState = new WidgetState
-        {
-            WidgetId = "sample",
-            WidgetType = "sample",
-            ConnectionId = "sample",
-            Severity = Severity.Error,
-            Summary = "sample",
-        };
-        var visibleRow = ComponentText.Caption("severity>=error → 本行可见（Error 样例）", _muted);
-        visibleRow.Visibility = ComponentLayout.When(ComponentVisibility.Evaluate("severity>=error", errorState));
-        var hiddenRow = ComponentText.Caption("severity>=error → 本行隐藏（Success 样例）", _muted);
-        hiddenRow.Visibility = ComponentLayout.When(
-            ComponentVisibility.Evaluate("severity>=error", errorState with { Severity = Severity.Success }));
-        column.Children.Add(visibleRow);
-        column.Children.Add(hiddenRow);
-        column.Children.Add(ComponentText.Caption(
-            "同条件两条目各喂一份状态样例：条件显示按状态字段驱动而非写死", _muted));
-        root.Children.Add(column);
-    }
-
-    private void AddTimelineSection(StackPanel root)
-    {
-        root.Children.Add(Section("TIMELINE"));
-        // 时间线走事件历史（Phase 5 行 1）：Core TimelineEntries 把引擎记录翻成展示序（新在前）
-        var timeline = ComponentLayout.Column(6);
-        foreach (var entry in TimelineEntries.Of(TimelineSample()))
-        {
-            timeline.Children.Add(ComponentTimeline.Row(entry.Time, entry.Title,
-                new SolidColorBrush(_palette.SeverityColor(entry.Severity)), _muted, _body));
-        }
-        root.Children.Add(timeline);
-    }
-
-    private void AddTableSection(StackPanel root)
-    {
-        root.Children.Add(Section("TABLE"));
-        // 表格走 payload 多行（Phase 5 行 1）：表头 Caption + 逐行两列网格
-        var table = ComponentLayout.Column(4);
-        table.Children.Add(ComponentTable.Header("KEY", "VALUE", _muted));
-        table.Children.Add(ComponentTable.Body(TableSample(), _muted, _body));
-        root.Children.Add(table);
-    }
-
-    private void AddChartSection(StackPanel root)
-    {
-        root.Children.Add(Section("CHART"));
-        // 图表走趋势序列（Phase 5 行 1）：payload 键 → Core TrendSeries（归一化单源），本件只画线
-        var points = TrendSeries.Parse(new Dictionary<string, string>
-        {
-            [TrendSeries.PayloadKey] = "12,9,14,20,16",
         });
-        var summary = TrendSeries.Summarize(points)!; // 示例常量恒 ≥2 点
-        var chartRow = ComponentLayout.Row(8);
-        chartRow.Children.Add(ComponentChart.Sparkline(points, 180, 32,
-            new SolidColorBrush(_palette.SeverityColor(Severity.Success))));
-        chartRow.Children.Add(ComponentText.Caption(ComponentChart.Caption(summary), _muted));
-        root.Children.Add(chartRow);
+        _previewHost = new StackPanel { Spacing = 6 };
+        var previewBox = new Border
+        {
+            Background = _surface,
+            BorderBrush = _hairline,
+            BorderThickness = new Thickness(1),
+            CornerRadius = DesignTokens.RadiusCard,
+            Padding = new Thickness(12),
+            MinHeight = 176,
+            Child = new ScrollViewer
+            {
+                Content = _previewHost,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            },
+        };
+        preview.Children.Add(previewBox);
+        preview.Children.Add(ComponentText.Caption(
+            "预览样例状态：severity=warning、progress=0.52、summary=GLM · ¥110.00（when 条件按此求值）。", _muted));
+        preview.Children.Add(new TextBlock
+        {
+            Text = "JSON（tile 面）",
+            FontSize = DesignTokens.FontSubtitle,
+            Foreground = _heading,
+        });
+        _jsonBox = new TextBox
+        {
+            IsReadOnly = true,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Height = 168,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = DesignTokens.FontCaption,
+        };
+        preview.Children.Add(_jsonBox);
+        Grid.SetColumn(preview, 2);
+        root.Children.Add(preview);
+
+        // —— 右列：参数表单（选类型时整建；改参数只重渲，不丢输入焦点）+ 载入动作 ——
+        var editor = new StackPanel { Spacing = 8 };
+        _formHeader = new TextBlock
+        {
+            FontSize = DesignTokens.FontHeader,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = _heading,
+        };
+        editor.Children.Add(_formHeader);
+
+        _formHost = new StackPanel { Spacing = 2 };
+        editor.Children.Add(new ScrollViewer
+        {
+            Content = _formHost,
+            Height = 330,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
+
+        _feedback = new TextBlock
+        {
+            FontSize = DesignTokens.FontCaption,
+            Foreground = _muted,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 32, // 预留两行，反馈出现/消失不推挤下方按钮
+        };
+        editor.Children.Add(_feedback);
+
+        var apply = new Button { Content = "载入组件树编辑器", HorizontalAlignment = HorizontalAlignment.Left };
+        apply.Click += OnApplyToSettings;
+        editor.Children.Add(apply);
+        editor.Children.Add(ComponentText.Caption(
+            "载入后回设置页「组件」标签点「保存组件树」落盘（单一保存链）；JSON 框可选中复制。", _muted));
+        Grid.SetColumn(editor, 4);
+        root.Children.Add(editor);
+
+        // 初始态一次建齐（字段就位后）
+        SelectCatalogItem(_selectedType);
+        BuildForm();
+        RefreshPreviewAndJson();
+        return root;
     }
 
-    private static IReadOnlyList<NotificationRecord> TimelineSample()
+    private void OnCatalogItemClicked(object sender, ItemClickEventArgs e)
     {
-        NotificationRecord[] records =
+        if (e.ClickedItem is not ListViewItem { Tag: string type })
+        {
+            return;
+        }
+        _selectedType = type;
+        SelectCatalogItem(type);
+        BuildForm();
+        RefreshPreviewAndJson();
+    }
+
+    private void SelectCatalogItem(string type)
+    {
+        foreach (var item in _catalogList.Items)
+        {
+            if (item is ListViewItem { Tag: string tag } && string.Equals(tag, type, StringComparison.Ordinal))
+            {
+                _catalogList.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
+    /// <summary>参数表单整建（仅类型切换时；改参数走 OnParamChanged 只重渲预览）。when 条件对所有类型通用。</summary>
+    private void BuildForm()
+    {
+        var entry = Catalog.FirstOrDefault(item => string.Equals(item.Type, _selectedType, StringComparison.Ordinal))
+            ?? Catalog[0];
+        _formHeader.Text = $"参数 · {entry.Name}（{entry.Type}）";
+
+        _formHost.Children.Clear();
+        _values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var specs = new List<PropSpec>();
+        if (PropSchema.TryGetValue(_selectedType, out var declared))
+        {
+            specs.AddRange(declared);
+        }
+        specs.Add(new PropSpec("when", "条件", PropKind.Text, ""));
+
+        foreach (var spec in specs)
+        {
+            _values[spec.Key] = spec.Default;
+            var row = new Grid { Margin = new Thickness(0, 0, 0, DesignTokens.Space8) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var label = new TextBlock
+            {
+                Text = spec.Label,
+                FontSize = DesignTokens.FontCaption,
+                Foreground = _muted,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            Grid.SetColumn(label, 0);
+            row.Children.Add(label);
+            var control = BuildControl(spec);
+            Grid.SetColumn(control, 1);
+            row.Children.Add(control);
+            _formHost.Children.Add(row);
+        }
+    }
+
+    private UIElement BuildControl(PropSpec spec)
+    {
+        return spec.Kind switch
+        {
+            PropKind.Size => BuildCombo(spec, [("正文", "body"), ("说明文", "caption")]),
+            PropKind.Tone => BuildCombo(spec, [("默认", ""), ("信息", "info"), ("正常", "ok"), ("警告", "warn"), ("错误", "bad")]),
+            PropKind.Severity => BuildCombo(spec, [("信息", "info"), ("成功", "success"), ("警告", "warning"), ("错误", "error"), ("严重", "critical")]),
+            PropKind.Spacing => BuildCombo(spec, [("默认", ""), ("紧凑", "sm"), ("标准", "md"), ("宽松", "lg")]),
+            PropKind.Slider => BuildSlider(spec),
+            _ => BuildTextBox(spec),
+        };
+    }
+
+    private TextBox BuildTextBox(PropSpec spec)
+    {
+        var box = new TextBox { Text = spec.Default };
+        box.TextChanged += (_, _) => OnParamChanged(spec, box.Text);
+        return box;
+    }
+
+    private UIElement BuildCombo(PropSpec spec, (string Display, string Value)[] options)
+    {
+        var combo = new ComboBox { MinWidth = 120 };
+        foreach (var option in options)
+        {
+            combo.Items.Add(new ComboBoxItem { Content = option.Display, Tag = option.Value });
+        }
+        combo.SelectedIndex = IndexOfTag(combo, spec.Default);
+        combo.SelectionChanged += (_, _) => OnParamChanged(spec, TagOf(combo));
+        return combo;
+    }
+
+    private UIElement BuildSlider(PropSpec spec)
+    {
+        var start = double.TryParse(spec.Default, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Clamp(parsed, spec.Min, spec.Max)
+            : spec.Min;
+        var host = new StackPanel { Orientation = Orientation.Horizontal, Spacing = DesignTokens.Space6 };
+        var slider = new Slider
+        {
+            Minimum = spec.Min,
+            Maximum = spec.Max,
+            StepFrequency = spec.Max - spec.Min <= 2 ? 0.01 : 1,
+            Value = start,
+            Width = 148,
+        };
+        var readout = new TextBlock
+        {
+            Text = FormatNumber(start),
+            FontSize = DesignTokens.FontCaption,
+            Foreground = _muted,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        slider.ValueChanged += (_, _) =>
+        {
+            readout.Text = FormatNumber(slider.Value);
+            OnParamChanged(spec, slider.Value.ToString(CultureInfo.InvariantCulture));
+        };
+        host.Children.Add(slider);
+        host.Children.Add(readout);
+        return host;
+    }
+
+    private static int IndexOfTag(ComboBox combo, string tag)
+    {
+        for (var i = 0; i < combo.Items.Count; i++)
+        {
+            if (combo.Items[i] is ComboBoxItem item && string.Equals(item.Tag?.ToString(), tag, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+        return 0;
+    }
+
+    private static string TagOf(ComboBox combo)
+        => combo.SelectedItem is ComboBoxItem item ? item.Tag?.ToString() ?? "" : "";
+
+    /// <summary>参数变化：值落槽（空串=不写进 Props），预览与 JSON 同步重渲。</summary>
+    private void OnParamChanged(PropSpec spec, string value)
+    {
+        _values[spec.Key] = value;
+        RefreshPreviewAndJson();
+    }
+
+    private void RefreshPreviewAndJson()
+    {
+        var rootDescriptor = BuildDescriptor();
+        var instance = new WidgetInstance
+        {
+            Id = "component-center",
+            Type = "component-center",
+            Surface = "tile",
+            Config = new Dictionary<string, string>(),
+            Root = rootDescriptor,
+        };
+        // 渲染走真实链（同一注册表/同一绑定引擎口径）：所见即落盘后所得
+        _previewHost.Children.Clear();
+        _previewHost.Children.Add(ComponentSurfaceRenderer.Render(instance, PreviewState(), _palette));
+
+        _jsonBox.Text = BeaconJson.Serialize(
+            new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase) { ["tile"] = rootDescriptor },
+            indented: true);
+    }
+
+    /// <summary>当前表单 → 组件树根（空串属性不落 Props；容器类型带演示子件）。</summary>
+    private ComponentDescriptor BuildDescriptor()
+    {
+        var props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in _values)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                props[key] = value;
+            }
+        }
+        return new ComponentDescriptor
+        {
+            Type = _selectedType,
+            Props = props,
+            Children = DemoChildren(_selectedType),
+        };
+    }
+
+    /// <summary>容器演示子件（row/column 两个、card 单内容）：预览与 JSON 同带，所改间距/内边距即刻可见。</summary>
+    private static List<ComponentDescriptor> DemoChildren(string type)
+    {
+        if (type.Equals("card", StringComparison.OrdinalIgnoreCase))
+        {
+            return
+            [
+                new ComponentDescriptor
+                {
+                    Type = "text",
+                    Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["text"] = "卡面演示子件（落盘后可在树编辑器删改）",
+                    },
+                },
+            ];
+        }
+        var isContainer = type.Equals("row", StringComparison.OrdinalIgnoreCase)
+            || type.Equals("column", StringComparison.OrdinalIgnoreCase);
+        if (!isContainer)
+        {
+            return [];
+        }
+        return
         [
-            new() { Id = "n1", SourceWidgetId = "sample", Severity = Severity.Warning,
-                Title = "部署完成 · 2 warn", Timestamp = new DateTimeOffset(2026, 10, 16, 14, 5, 0, TimeSpan.Zero) },
-            new() { Id = "n2", SourceWidgetId = "sample", Severity = Severity.Error,
-                Title = "重跑失败 job · gh run 918", Timestamp = new DateTimeOffset(2026, 10, 16, 14, 2, 0, TimeSpan.Zero) },
-            new() { Id = "n3", SourceWidgetId = "sample", Severity = Severity.Critical, Read = true,
-                Title = "额度低于 5%", Timestamp = new DateTimeOffset(2026, 10, 16, 13, 48, 0, TimeSpan.Zero) },
+            new ComponentDescriptor
+            {
+                Type = "text",
+                Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["text"] = "子件一",
+                    ["tone"] = "ok",
+                },
+            },
+            new ComponentDescriptor
+            {
+                Type = "statusdot",
+                Props = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["severity"] = "success",
+                },
+            },
         ];
-        return records;
     }
 
-    private static IReadOnlyList<(string Key, string Value)> TableSample()
+    /// <summary>预览样例状态：中性健康值 + 一条 Summary/Progress，when 条件按此求值。</summary>
+    private static WidgetState PreviewState() => new()
     {
-        (string Key, string Value)[] rows =
-        [
-            ("repo", "cuihairu/beacon"),
-            ("branch", "main"),
-            ("duration", "2m 14s"),
-        ];
-        return rows;
-    }
+        WidgetId = "preview",
+        WidgetType = "preview",
+        ConnectionId = "preview",
+        Severity = Severity.Warning,
+        Summary = "GLM · ¥110.00",
+        Progress = 0.52,
+    };
 
-    private void AddFeedbackSection(StackPanel root)
+    private void OnApplyToSettings(object sender, RoutedEventArgs e)
     {
-        root.Children.Add(Section("FEEDBACK"));
-        root.Children.Add(ComponentFeedback.Empty("Empty：无数据/无事件/尚未配置", _muted));
-        root.Children.Add(ComponentFeedback.Loading("Loading：加载中…", _muted));
-        root.Children.Add(ComponentFeedback.Error("Error：失败原因与错误摘要（换行正文）", _muted));
-        root.Children.Add(ComponentFeedback.Offline("Offline：Last update 14:32", _muted, _muted));
+        if (_applyToSettings is null)
+        {
+            Feedback("✗ 本窗未接入设置页（请从设置「关于」区的「组件中心」进入）。", error: true);
+            return;
+        }
+        var message = _applyToSettings(BuildDescriptor());
+        Feedback(message, error: message.StartsWith('✗'));
     }
 
-    private TextBlock Section(string text)
-        => ComponentLayout.SectionLabel(text, new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)));
+    private void Feedback(string message, bool error = false)
+    {
+        _feedback.Text = message;
+        _feedback.Foreground = error ? new SolidColorBrush(_palette.SeverityColor(Severity.Error)) : _muted;
+    }
 }
