@@ -6,6 +6,7 @@ using Beacon.Core.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 
 namespace Beacon.App.Components;
 
@@ -127,6 +128,8 @@ internal static class ComponentSurfaceRenderer
             context.Foreground,
             context.PropDouble("fontSize", DesignTokens.FontHeader)),
         ["progress"] = Progress,
+        ["ring"] = Ring,
+        ["pool"] = Pool,
         ["statusdot"] = context => ComponentIcon.StatusDot(
             context.SeverityBrush(DisplayText(context.Binding("severity"), context.Prop("severity"))),
             context.PropDouble("size", 8)),
@@ -266,13 +269,88 @@ internal static class ComponentSurfaceRenderer
 
     private static FrameworkElement Progress(NodeContext context)
     {
-        var fraction = double.TryParse(context.Binding("progress"), CultureInfo.InvariantCulture, out var bound)
-            ? Math.Clamp(bound, 0, 1)
-            : Math.Clamp(context.PropDouble("progress", 0), 0, 1);
+        var fraction = BoundFraction(context);
         var (track, fill) = ComponentProgress.Bar(fraction, context.PropDouble("width", 96));
+        // 2026-10-18 修复：fill 色原漏上（Shape.Fill 默认 null=透明，声明式树进度条只剩浅轨）——
+        // 补档位色（ProgressTiers 判档），与传统 tile 链（PinnedHostWindow）同口径。
+        fill.Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), context.Palette.SeverityColor));
         var host = new Grid();
         host.Children.Add(track);
         host.Children.Add(fill);
+        return host;
+    }
+
+    /// <summary>进度槽取值（Progress/Ring/Pool 同口径）：绑定槽 progress 优先（0..1 钳位），
+    /// 回退静态 Props.progress；绑定为空串（无状态/字段缺）即回退静态值。</summary>
+    private static double BoundFraction(NodeContext context)
+        => double.TryParse(context.Binding("progress"), CultureInfo.InvariantCulture, out var bound)
+            ? Math.Clamp(bound, 0, 1)
+            : Math.Clamp(context.PropDouble("progress", 0), 0, 1);
+
+    /// <summary>静态数值 Props 的有界钳位（Ring/Pool 专用）：解析值越界取边界，非有限值
+    /// （NaN/Infinity 可被 TryParse 解析出来）回缺省——NaN 进 Width/Height 恒 E_INVALIDARG。</summary>
+    private static double ClampedProp(NodeContext context, string key, double fallback, double min, double max)
+    {
+        var value = context.PropDouble(key, fallback);
+        return double.IsFinite(value) ? Math.Clamp(value, min, max) : fallback;
+    }
+
+    /// <summary>圆环进度（2026-10-18 评审 P1「圆环」模板）：双 Ellipse 同心——track=值色 35% 透明、
+    /// fill=档位色 StrokeDashArray 弧段（中线周长 π×(size−thickness)，DashOffset 四分之一周长
+    /// 从 12 点方向起笔）；size/thickness 静态 Props 可调（有界钳位）。</summary>
+    private static FrameworkElement Ring(NodeContext context)
+    {
+        var fraction = BoundFraction(context);
+        var size = ClampedProp(context, "size", 30, 16, 96);
+        var thickness = ClampedProp(context, "thickness", 3, 1, size / 4);
+        var circumference = Math.PI * (size - thickness);
+        var host = new Grid { Width = size, Height = size };
+        host.Children.Add(new Ellipse
+        {
+            Width = size,
+            Height = size,
+            Stroke = new SolidColorBrush(ThemeColors.Value()) { Opacity = 0.35 },
+            StrokeThickness = thickness,
+        });
+        host.Children.Add(new Ellipse
+        {
+            Width = size,
+            Height = size,
+            Stroke = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), context.Palette.SeverityColor)),
+            StrokeThickness = thickness,
+            StrokeDashArray = new DoubleCollection { Math.Max(fraction * circumference, 0), circumference },
+            StrokeDashOffset = circumference / 4,
+        });
+        return host;
+    }
+
+    /// <summary>水位池（2026-10-18 评审 P1「水位」模板）：圆角矩形容器 + 底部注水矩形（档位色、
+    /// Radius 随容器；不用 Clip——UIElement.Clip 在 WinUI 只收 RectangleGeometry，8b94469 实证）。</summary>
+    private static FrameworkElement Pool(NodeContext context)
+    {
+        var fraction = BoundFraction(context);
+        var width = ClampedProp(context, "width", 30, 16, 96);
+        var height = ClampedProp(context, "height", 30, 16, 96);
+        const double radius = 6;
+        var host = new Grid { Width = width, Height = height };
+        host.Children.Add(new Border
+        {
+            Width = width,
+            Height = height,
+            BorderBrush = new SolidColorBrush(ThemeColors.Value()) { Opacity = 0.35 },
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(radius),
+        });
+        host.Children.Add(new Rectangle
+        {
+            Width = width - 2,
+            Height = Math.Max(0, (height - 2) * fraction),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            RadiusX = radius - 1,
+            RadiusY = radius - 1,
+            Fill = new SolidColorBrush(ComponentProgress.FillColor(fraction, ThemeColors.Value(), context.Palette.SeverityColor)),
+        });
         return host;
     }
 

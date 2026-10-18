@@ -19,9 +19,10 @@ namespace Beacon.App.Windows;
 /// 产出口径与设置页「组件树 JSON」框同构（surface 键 → 树根）——「载入组件树编辑器」
 /// 把当前组件推进设置页编辑器，仍走既有单一保存链（SaveComponentTree 前置校验 +
 /// UpsertWidget 二次防呆），本窗不新增写入路径。配色口径同 DetailWindow（暗色静态）。
-/// 2026-10-18 评审 P0 双模式：组件行「展示样式」带入该组件真实状态定向打开——预览即真实数据、
-/// text/progress/statusdot 自动绑状态字段（状态有值优先、表单值兜底）、应用一步落盘即时重渲；
-/// 关于区入口保持静态工具箱语义（表单所见即调所得，高级组合走树编辑器）。
+/// 2026-10-18 评审 P0/P1 双模式：组件行「展示样式」带入该组件真实状态定向打开——预览即真实
+/// 数据、左列为按数据能力筛选的展示模板（DisplayTemplates，bar/ring/number/pool/statusline）、
+/// 应用面可选 tile/row/detail、应用一步落盘即时重渲；关于区入口保持静态工具箱语义（12 类
+/// 目录 + 参数表单所见即调所得，高级组合走树编辑器）。
 /// </summary>
 internal sealed class SampleGalleryWindow : Window
 {
@@ -112,34 +113,38 @@ internal sealed class SampleGalleryWindow : Window
     private readonly Brush _surface = new SolidColorBrush(SeverityPalette.Rgb(30, 30, 30, 34));
     private readonly Brush _hairline = new SolidColorBrush(SeverityPalette.Rgb(255, 48, 54, 61));
     private readonly Func<ComponentDescriptor, string>? _applyToSettings;
-    private readonly WidgetState? _targetState; // 定向模式：预览用真实状态 + 产物带真实绑定
-
-    /// <summary>定向模式的绑定槽映射（评审 P0-1）：组件类型 →（属性槽, 状态字段）。
-    /// 绑定状态字段有值时优先于静态 Props（fail-closed 兜底口径保留）。</summary>
-    private static readonly Dictionary<string, (string Field, string Ref)> BoundFields = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["text"] = ("text", "summary"),
-        ["progress"] = ("progress", "progress"),
-        ["statusdot"] = ("severity", "severity"),
-    };
+    private readonly Func<ComponentDescriptor, string, string>? _applyTargeted; // 定向模式（树根, 面）→ 反馈
+    private readonly WidgetState? _targetState; // 定向模式：预览用真实状态、样式走 DisplayTemplates
 
     private string _selectedType = "text";
     private Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
+    private string _templateId = "bar"; // 定向模式当前模板（ctor 按能力筛选后的首项覆写）
+    private string _surface = "tile";   // 定向模式应用面（tile/row/detail，评审 P1）
 
     private ListView _catalogList = null!;
     private StackPanel _previewHost = null!;
     private StackPanel _formHost = null!;
     private TextBox _jsonBox = null!;
+    private TextBlock _jsonHeader = null!;
     private TextBlock _formHeader = null!;
     private TextBlock _feedback = null!;
 
     /// <param name="applyToSettings">「载入组件树编辑器」回调：推进设置页编辑器，返回反馈文案（✗ 前缀=失败）。</param>
     /// <param name="targetState">定向模式状态（组件行「展示样式」带入该组件最新真实状态）：
-    /// 预览即真实数据、产物自动带真实绑定、应用按钮变「应用展示样式」一步落盘。</param>
-    public SampleGalleryWindow(BeaconRuntime runtime, Action? closed = null, Func<ComponentDescriptor, string>? applyToSettings = null, WidgetState? targetState = null)
+    /// 预览即真实数据、样式列表按数据能力筛选（DisplayTemplates.Compatible）、应用一步落盘。</param>
+    /// <param name="applyTargeted">定向模式应用回调（树根, 面）→ 反馈文案；与 targetState 成对传入。</param>
+    public SampleGalleryWindow(
+        BeaconRuntime runtime,
+        Action? closed = null,
+        Func<ComponentDescriptor, string>? applyToSettings = null,
+        WidgetState? targetState = null,
+        Func<ComponentDescriptor, string, string>? applyTargeted = null)
     {
         _applyToSettings = applyToSettings;
+        _applyTargeted = applyTargeted;
         _targetState = targetState;
+        _templateId = DisplayTemplates.Compatible(targetState).FirstOrDefault()?.Id
+            ?? DisplayTemplates.All.First(template => !template.RequiresProgress).Id; // 无进度数据也必有可选项
         _palette = new UiPalette(runtime.Config); // 档位/状态色同正式窗解析链
 
         Title = "Beacon · 组件中心";
@@ -172,24 +177,43 @@ internal sealed class SampleGalleryWindow : Window
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        // —— 左列：类型目录（两行项：中文名 + 类型键，Tag=类型键供点击分发）——
+        // —— 左列：定向模式 = 展示样式（模板按数据能力筛选，评审 P1）；通用模式 = 组件类型目录 ——
         var catalog = new StackPanel { Spacing = 8 };
         catalog.Children.Add(new TextBlock
         {
-            Text = "组件",
+            Text = _targetState is null ? "组件" : "展示样式",
             FontSize = DesignTokens.FontHeader,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = _heading,
         });
-        catalog.Children.Add(ComponentText.Caption("12 个声明式组件类型（渲染注册表词汇）。", _muted));
+        catalog.Children.Add(ComponentText.Caption(
+            _targetState is null
+                ? "12 个声明式组件类型（渲染注册表词汇）。"
+                : _targetState.Progress.HasValue
+                    ? "该组件有百分比数据——横条/圆环/数字卡/水位均可选。"
+                    : "该组件无百分比数据——只列状态/摘要样式（不显虚假的确定进度）。",
+            _muted));
 
         _catalogList = new ListView { IsItemClickEnabled = true, Height = 452 };
-        foreach (var entry in Catalog)
+        if (_targetState is null)
         {
-            var line = new StackPanel { Spacing = 1 };
-            line.Children.Add(new TextBlock { Text = entry.Name, FontSize = DesignTokens.FontBody, Foreground = _body });
-            line.Children.Add(new TextBlock { Text = entry.Type, FontSize = DesignTokens.FontCaption, Foreground = _muted });
-            _catalogList.Items.Add(new ListViewItem { Content = line, Tag = entry.Type, Padding = new Thickness(8, 5, 8, 5) });
+            foreach (var entry in Catalog)
+            {
+                var line = new StackPanel { Spacing = 1 };
+                line.Children.Add(new TextBlock { Text = entry.Name, FontSize = DesignTokens.FontBody, Foreground = _body });
+                line.Children.Add(new TextBlock { Text = entry.Type, FontSize = DesignTokens.FontCaption, Foreground = _muted });
+                _catalogList.Items.Add(new ListViewItem { Content = line, Tag = entry.Type, Padding = new Thickness(8, 5, 8, 5) });
+            }
+        }
+        else
+        {
+            foreach (var template in DisplayTemplates.Compatible(_targetState))
+            {
+                var line = new StackPanel { Spacing = 1 };
+                line.Children.Add(new TextBlock { Text = template.Name, FontSize = DesignTokens.FontBody, Foreground = _body });
+                line.Children.Add(new TextBlock { Text = template.Desc, FontSize = DesignTokens.FontCaption, Foreground = _muted, TextWrapping = TextWrapping.Wrap });
+                _catalogList.Items.Add(new ListViewItem { Content = line, Tag = template.Id, Padding = new Thickness(8, 5, 8, 5) });
+            }
         }
         _catalogList.ItemClick += OnCatalogItemClicked;
         catalog.Children.Add(_catalogList);
@@ -225,14 +249,14 @@ internal sealed class SampleGalleryWindow : Window
         preview.Children.Add(ComponentText.Caption(
             _targetState is null
                 ? "预览样例状态：severity=warning、progress=0.52、summary=GLM · ¥110.00（when 条件按此求值）。"
-                : "预览即该组件最新真实状态；text/progress/statusdot 已绑真实数据，表单值为兜底。",
+                : "预览即该组件最新真实状态（模板树的动态值经绑定注入）。",
             _muted));
-        preview.Children.Add(new TextBlock
+        _jsonHeader = new TextBlock
         {
-            Text = "JSON（tile 面）",
             FontSize = DesignTokens.FontSubtitle,
             Foreground = _heading,
-        });
+        };
+        preview.Children.Add(_jsonHeader);
         _jsonBox = new TextBox
         {
             IsReadOnly = true,
@@ -289,7 +313,7 @@ internal sealed class SampleGalleryWindow : Window
         root.Children.Add(editor);
 
         // 初始态一次建齐（字段就位后）
-        SelectCatalogItem(_selectedType);
+        SelectCatalogItem(_targetState is null ? _selectedType : _templateId);
         BuildForm();
         RefreshPreviewAndJson();
         return root;
@@ -297,12 +321,19 @@ internal sealed class SampleGalleryWindow : Window
 
     private void OnCatalogItemClicked(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not ListViewItem { Tag: string type })
+        if (e.ClickedItem is not ListViewItem { Tag: string key })
         {
             return;
         }
-        _selectedType = type;
-        SelectCatalogItem(type);
+        if (_targetState is null)
+        {
+            _selectedType = key; // 通用模式：组件类型
+        }
+        else
+        {
+            _templateId = key; // 定向模式：展示模板
+        }
+        SelectCatalogItem(key);
         BuildForm();
         RefreshPreviewAndJson();
     }
@@ -319,20 +350,26 @@ internal sealed class SampleGalleryWindow : Window
         }
     }
 
-    /// <summary>参数表单整建（仅类型切换时；改参数走 OnParamChanged 只重渲预览）。when 条件对所有类型通用。</summary>
+    /// <summary>参数表单整建（仅选择切换时；改参数走 OnParamChanged 只重渲预览）。
+    /// 定向模式（评审 P1）= 模板说明 + 应用面选择（样式本体不再调参——自由组合回树编辑器，P2 口径）；
+    /// 通用模式 = 该类型的 Props 表单 + 通用 when 条件。</summary>
     private void BuildForm()
     {
-        var entry = Catalog.FirstOrDefault(item => string.Equals(item.Type, _selectedType, StringComparison.Ordinal))
-            ?? Catalog[0];
-        _formHeader.Text = $"参数 · {entry.Name}（{entry.Type}）";
-
         _formHost.Children.Clear();
         if (_targetState is not null)
         {
-            // 定向模式：绑定字段在状态有值时优先，表单值是兜底——提前说明防「调了没反应」困惑
+            var template = TemplateOf(_templateId);
+            _formHeader.Text = $"样式 · {template.Name}";
+            _formHost.Children.Add(ComponentText.Caption(template.Desc, _muted));
+            _formHost.Children.Add(SurfacePicker());
             _formHost.Children.Add(ComponentText.Caption(
-                "text/progress/statusdot 已绑真实状态；状态有值时优先于下方表单值。", _muted));
+                "预览即该组件真实数据；应用只改所选面，其余面保留；自由组合回设置页「组件树」编辑器。", _muted));
+            return;
         }
+
+        var entry = Catalog.FirstOrDefault(item => string.Equals(item.Type, _selectedType, StringComparison.Ordinal))
+            ?? Catalog[0];
+        _formHeader.Text = $"参数 · {entry.Name}（{entry.Type}）";
         _values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var specs = new List<PropSpec>();
@@ -453,14 +490,39 @@ internal sealed class SampleGalleryWindow : Window
         RefreshPreviewAndJson();
     }
 
+    /// <summary>定向模式当前模板定义（未知 Id 回状态行——能力门槛最低的兜底）。</summary>
+    private DisplayTemplates.DisplayTemplate TemplateOf(string id)
+        => DisplayTemplates.Match(id).FirstOrDefault()
+            ?? DisplayTemplates.All.First(template => !template.RequiresProgress);
+
+    /// <summary>应用面选择（评审 P1：同一数据在 tile/row/detail 各面可各选样式）。</summary>
+    private FrameworkElement SurfacePicker()
+    {
+        var combo = new ComboBox { MinWidth = 120 };
+        foreach (var (label, value) in new[] { ("悬浮 tile 面", "tile"), ("面板行 row 面", "row"), ("详情 detail 面", "detail") })
+        {
+            combo.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+        }
+        combo.SelectedIndex = IndexOfTag(combo, _surface);
+        combo.SelectionChanged += (_, _) =>
+        {
+            _surface = TagOf(combo);
+            RefreshPreviewAndJson();
+        };
+        return combo;
+    }
+
     private void RefreshPreviewAndJson()
     {
-        var rootDescriptor = BuildDescriptor();
+        var targeted = _targetState is not null;
+        var surface = targeted ? _surface : "tile";
+        // 定向模式：模板生成器整树出（动态值经绑定注入）；通用模式：表单静态树
+        var rootDescriptor = targeted ? TemplateOf(_templateId).Build() : BuildDescriptor();
         var instance = new WidgetInstance
         {
             Id = "component-center",
             Type = "component-center",
-            Surface = "tile",
+            Surface = surface,
             Config = new Dictionary<string, string>(),
             Root = rootDescriptor,
         };
@@ -468,8 +530,9 @@ internal sealed class SampleGalleryWindow : Window
         _previewHost.Children.Clear();
         _previewHost.Children.Add(ComponentSurfaceRenderer.Render(instance, PreviewState(), _palette));
 
+        _jsonHeader.Text = $"JSON（{surface} 面）";
         _jsonBox.Text = BeaconJson.Serialize(
-            new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase) { ["tile"] = rootDescriptor },
+            new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase) { [surface] = rootDescriptor },
             indented: true);
     }
 
@@ -489,30 +552,7 @@ internal sealed class SampleGalleryWindow : Window
             Type = _selectedType,
             Props = props,
             Children = DemoChildren(_selectedType),
-            Bindings = DemoBindings(),
         };
-    }
-
-    /// <summary>定向模式绑定声明（评审 P0-1）：text→summary、progress→progress、statusdot→severity，
-    /// 状态有值时优先、空值回退静态 Props（fail-closed）；通用工具箱模式出纯静态树。</summary>
-    private List<ComponentBinding> DemoBindings()
-    {
-        if (_targetState is null || !BoundFields.TryGetValue(_selectedType, out var pair))
-        {
-            return [];
-        }
-        return
-        [
-            new ComponentBinding
-            {
-                Field = pair.Field,
-                Source = new ComponentBindingSource
-                {
-                    Kind = ComponentBindingSource.KindState,
-                    Ref = pair.Ref,
-                },
-            },
-        ];
     }
 
     /// <summary>容器演示子件（row/column 两个、card 单内容）：预览与 JSON 同带，所改间距/内边距即刻可见。</summary>
@@ -573,6 +613,17 @@ internal sealed class SampleGalleryWindow : Window
 
     private void OnApplyToSettings(object sender, RoutedEventArgs e)
     {
+        if (_targetState is not null)
+        {
+            if (_applyTargeted is null)
+            {
+                Feedback("✗ 本窗未接入设置页（请从组件行「展示样式」进入）。", error: true);
+                return;
+            }
+            var targetedMessage = _applyTargeted(TemplateOf(_templateId).Build(), _surface);
+            Feedback(targetedMessage, error: targetedMessage.StartsWith('✗'));
+            return;
+        }
         if (_applyToSettings is null)
         {
             Feedback("✗ 本窗未接入设置页（请从设置「关于」区的「组件中心」进入）。", error: true);

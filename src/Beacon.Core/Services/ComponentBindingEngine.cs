@@ -30,6 +30,11 @@ public static class ComponentBindingEngine
         {
             ["value-hint"] = (state, _) => WidgetValueHint.Of(state),
             ["quota-windows"] = (state, _) => WidgetValueHint.MultiWindow(state.Payload),
+            // 展示模板（2026-10-18 评审 P1）"数字卡"取数：进度 0..1 → 整百百分位（R 串不猜小数），
+            // 无进度 = null（绑定 fail-closed 回空串，不编造确定数字）。
+            ["percent"] = (state, _) => state.Progress is { } raw
+                ? Math.Round(raw * 100).ToString(CultureInfo.InvariantCulture) + "%"
+                : null,
         };
 
     /// <summary>受支持的状态字段名（Phase 4 模板解析期白名单校验同一张表，不另写第二份）。</summary>

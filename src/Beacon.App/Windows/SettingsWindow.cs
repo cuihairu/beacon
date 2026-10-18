@@ -2748,26 +2748,31 @@ internal sealed class SettingsWindow : Window
         _gallery = new SampleGalleryWindow(
             _runtime,
             () => _gallery = null,
-            root => ApplyComponentDirect(widget, root),
-            state);
+            applyToSettings: null,
+            targetState: state,
+            applyTargeted: (root, surface) => ApplyComponentDirect(widget, root, surface));
         _gallery.Activate();
     }
 
-    /// <summary>组件中心定向模式「应用展示样式」回调（评审 P0-2/P0-3）：校验通过即 tile 面落盘
-    /// + PinsChanged 即时重渲（ReloadTiles 带 _latest 状态重放，不取数不加请求），与
-    /// SaveComponentTree 同一条校验/UpsertWidget 单一落盘链，不新增写入路径。</summary>
-    private string ApplyComponentDirect(WidgetConfig target, ComponentDescriptor root)
+    /// <summary>组件中心定向模式「应用展示样式」回调（评审 P1）：校验通过即所选面落盘
+    /// （其余既有面保留）+ PinsChanged 即时重渲（ReloadTiles 带 _latest 状态重放，不取数不加
+    /// 请求），与 SaveComponentTree 同一条校验/UpsertWidget 单一落盘链，不新增写入路径。</summary>
+    private string ApplyComponentDirect(WidgetConfig target, ComponentDescriptor root, string surface)
     {
         var validation = ComponentTreeValidator.Validate(root);
         if (!validation.Ok)
         {
             return $"✗ 组件树非法（未保存）：{string.Join("；", validation.Errors)}";
         }
-        ReplaceWidgetComponents(
-            target,
-            new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase) { ["tile"] = root });
+        var surfaces = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, existing) in target.Components ?? new Dictionary<string, ComponentDescriptor>())
+        {
+            surfaces[key] = existing; // 保留该组件其他面（tile/row/detail 各面独立，评审 P1）
+        }
+        surfaces[surface] = root;
+        ReplaceWidgetComponents(target, surfaces);
         PinsChanged?.Invoke();
-        return $"✓ 已应用展示样式到 {target.Id} 的 tile 面（绑定真实数据，即时重渲）；高级组合仍可走「组件树」编辑器。";
+        return $"✓ 已应用展示样式到 {target.Id} 的 {surface} 面（其余面保留，即时重渲）；高级组合仍可走「组件树」编辑器。";
     }
 
     private UIElement MakeWidgetRow(WidgetConfig widget)
