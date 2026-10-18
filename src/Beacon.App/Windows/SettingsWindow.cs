@@ -2648,9 +2648,10 @@ internal sealed class SettingsWindow : Window
         if (string.IsNullOrWhiteSpace(_componentJsonBox.Text))
         {
             ReplaceWidgetComponents(widget, null);
+            PinsChanged?.Invoke(); // 展示面即时回传统渲染（不落到「等下一次状态到达」）
             _editSurfaces = [];
             RebuildComponentTree(); // 树投影与落盘态一致（清空后树也清）
-            Feedback(_componentFeedback, "✓ 组件树已清空——该组件回传统渲染。", error: false);
+            Feedback(_componentFeedback, "✓ 组件树已清空——该组件回传统渲染（展示面已即时重渲）。", error: false);
             return;
         }
 
@@ -2668,7 +2669,8 @@ internal sealed class SettingsWindow : Window
         if (surfaces is not { Count: > 0 })
         {
             ReplaceWidgetComponents(widget, null);
-            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染（随下一次状态到达生效）。", error: false);
+            PinsChanged?.Invoke();
+            Feedback(_componentFeedback, "✓ 无 surface 声明——该组件回传统渲染（展示面已即时重渲）。", error: false);
             return;
         }
 
@@ -2689,9 +2691,10 @@ internal sealed class SettingsWindow : Window
         }
 
         ReplaceWidgetComponents(widget, surfaces);
-        // P0-01 文案对齐真实能力：保存链只落盘+重排注册（P3-02 分流，不取数、不发布重渲事件）——
-        // 面随下一次状态到达按新树渲染；状态内容无变化被去重压住时，重开对应面可见。
-        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface）；不取数，面随下一次状态到达按新树渲染。", error: false);
+        // 2026-10-18 外部评审 P0-3：落盘即通知 App 侧 ReloadTiles（既有窗带 _latest 状态重放，
+        // 不取数、不增网络请求），保存成功即见新树——不再把生效时机推给下一次状态到达。
+        PinsChanged?.Invoke();
+        Feedback(_componentFeedback, $"✓ 组件树已保存（{surfaces.Count} 个 surface）；展示面已按最新状态即时重渲。", error: false);
     }
 
     /// <summary>克隆整体替换（Components init-only；UpsertWidget 按 Id 替换并落盘+二次防呆），
@@ -2731,6 +2734,40 @@ internal sealed class SettingsWindow : Window
         _componentJsonBox.Text = BeaconJson.Serialize(_editSurfaces, indented: true);
         RebuildComponentTree();
         return $"✓ 已载入 tile 面到 {_componentEditTarget.Id} 的组件树编辑器；回组件页点「保存组件树」落盘。";
+    }
+
+    /// <summary>组件行「展示样式」：定向打开组件中心——自动带入该组件最新真实状态
+    /// （Host.GetState 单源快照，预览即真实数据），应用回调不再要求先载入树编辑器。</summary>
+    private void OpenComponentStyleCenter(WidgetConfig widget)
+    {
+        if (_gallery is not null)
+        {
+            _gallery.Close(); // 单实例换目标：闭包内旧 widget 失效，重建而非复用
+        }
+        var state = _runtime.Host.GetState(widget.Id);
+        _gallery = new SampleGalleryWindow(
+            _runtime,
+            () => _gallery = null,
+            root => ApplyComponentDirect(widget, root),
+            state);
+        _gallery.Activate();
+    }
+
+    /// <summary>组件中心定向模式「应用展示样式」回调（评审 P0-2/P0-3）：校验通过即 tile 面落盘
+    /// + PinsChanged 即时重渲（ReloadTiles 带 _latest 状态重放，不取数不加请求），与
+    /// SaveComponentTree 同一条校验/UpsertWidget 单一落盘链，不新增写入路径。</summary>
+    private string ApplyComponentDirect(WidgetConfig target, ComponentDescriptor root)
+    {
+        var validation = ComponentTreeValidator.Validate(root);
+        if (!validation.Ok)
+        {
+            return $"✗ 组件树非法（未保存）：{string.Join("；", validation.Errors)}";
+        }
+        ReplaceWidgetComponents(
+            target,
+            new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase) { ["tile"] = root });
+        PinsChanged?.Invoke();
+        return $"✓ 已应用展示样式到 {target.Id} 的 tile 面（绑定真实数据，即时重渲）；高级组合仍可走「组件树」编辑器。";
     }
 
     private UIElement MakeWidgetRow(WidgetConfig widget)
@@ -2784,7 +2821,11 @@ internal sealed class SettingsWindow : Window
         // 组件树编辑入口（Phase 5 行 4）：载入该组件的声明式树到下方 JSON 编辑器
         var treeButton = new Button { Content = "组件树" };
         treeButton.Click += (_, _) => OpenComponentTreeEditor(widget);
+        // 展示样式入口（2026-10-18 外部评审 P0）：定向打开组件中心，自动带入该组件真实状态
+        var styleButton = new Button { Content = "展示样式" };
+        styleButton.Click += (_, _) => OpenComponentStyleCenter(widget);
         row.Children.Add(label);
+        row.Children.Add(styleButton);
         row.Children.Add(treeButton);
         row.Children.Add(delete);
         return row;

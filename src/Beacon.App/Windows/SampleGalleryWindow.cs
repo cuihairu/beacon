@@ -19,6 +19,9 @@ namespace Beacon.App.Windows;
 /// 产出口径与设置页「组件树 JSON」框同构（surface 键 → 树根）——「载入组件树编辑器」
 /// 把当前组件推进设置页编辑器，仍走既有单一保存链（SaveComponentTree 前置校验 +
 /// UpsertWidget 二次防呆），本窗不新增写入路径。配色口径同 DetailWindow（暗色静态）。
+/// 2026-10-18 评审 P0 双模式：组件行「展示样式」带入该组件真实状态定向打开——预览即真实数据、
+/// text/progress/statusdot 自动绑状态字段（状态有值优先、表单值兜底）、应用一步落盘即时重渲；
+/// 关于区入口保持静态工具箱语义（表单所见即调所得，高级组合走树编辑器）。
 /// </summary>
 internal sealed class SampleGalleryWindow : Window
 {
@@ -109,6 +112,16 @@ internal sealed class SampleGalleryWindow : Window
     private readonly Brush _surface = new SolidColorBrush(SeverityPalette.Rgb(30, 30, 30, 34));
     private readonly Brush _hairline = new SolidColorBrush(SeverityPalette.Rgb(255, 48, 54, 61));
     private readonly Func<ComponentDescriptor, string>? _applyToSettings;
+    private readonly WidgetState? _targetState; // 定向模式：预览用真实状态 + 产物带真实绑定
+
+    /// <summary>定向模式的绑定槽映射（评审 P0-1）：组件类型 →（属性槽, 状态字段）。
+    /// 绑定状态字段有值时优先于静态 Props（fail-closed 兜底口径保留）。</summary>
+    private static readonly Dictionary<string, (string Field, string Ref)> BoundFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["text"] = ("text", "summary"),
+        ["progress"] = ("progress", "progress"),
+        ["statusdot"] = ("severity", "severity"),
+    };
 
     private string _selectedType = "text";
     private Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
@@ -121,9 +134,12 @@ internal sealed class SampleGalleryWindow : Window
     private TextBlock _feedback = null!;
 
     /// <param name="applyToSettings">「载入组件树编辑器」回调：推进设置页编辑器，返回反馈文案（✗ 前缀=失败）。</param>
-    public SampleGalleryWindow(BeaconRuntime runtime, Action? closed = null, Func<ComponentDescriptor, string>? applyToSettings = null)
+    /// <param name="targetState">定向模式状态（组件行「展示样式」带入该组件最新真实状态）：
+    /// 预览即真实数据、产物自动带真实绑定、应用按钮变「应用展示样式」一步落盘。</param>
+    public SampleGalleryWindow(BeaconRuntime runtime, Action? closed = null, Func<ComponentDescriptor, string>? applyToSettings = null, WidgetState? targetState = null)
     {
         _applyToSettings = applyToSettings;
+        _targetState = targetState;
         _palette = new UiPalette(runtime.Config); // 档位/状态色同正式窗解析链
 
         Title = "Beacon · 组件中心";
@@ -207,7 +223,10 @@ internal sealed class SampleGalleryWindow : Window
         };
         preview.Children.Add(previewBox);
         preview.Children.Add(ComponentText.Caption(
-            "预览样例状态：severity=warning、progress=0.52、summary=GLM · ¥110.00（when 条件按此求值）。", _muted));
+            _targetState is null
+                ? "预览样例状态：severity=warning、progress=0.52、summary=GLM · ¥110.00（when 条件按此求值）。"
+                : "预览即该组件最新真实状态；text/progress/statusdot 已绑真实数据，表单值为兜底。",
+            _muted));
         preview.Children.Add(new TextBlock
         {
             Text = "JSON（tile 面）",
@@ -254,11 +273,18 @@ internal sealed class SampleGalleryWindow : Window
         };
         editor.Children.Add(_feedback);
 
-        var apply = new Button { Content = "载入组件树编辑器", HorizontalAlignment = HorizontalAlignment.Left };
+        var apply = new Button
+        {
+            Content = _targetState is null ? "载入组件树编辑器" : "应用展示样式",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
         apply.Click += OnApplyToSettings;
         editor.Children.Add(apply);
         editor.Children.Add(ComponentText.Caption(
-            "载入后回设置页「组件」标签点「保存组件树」落盘（单一保存链）；JSON 框可选中复制。", _muted));
+            _targetState is null
+                ? "载入后回设置页「组件」标签点「保存组件树」落盘（单一保存链）；JSON 框可选中复制。"
+                : "应用即校验落盘并按该组件最新状态即时重渲（不取数）；高级组合仍可回设置页「组件树」编辑器。",
+            _muted));
         Grid.SetColumn(editor, 4);
         root.Children.Add(editor);
 
@@ -301,6 +327,12 @@ internal sealed class SampleGalleryWindow : Window
         _formHeader.Text = $"参数 · {entry.Name}（{entry.Type}）";
 
         _formHost.Children.Clear();
+        if (_targetState is not null)
+        {
+            // 定向模式：绑定字段在状态有值时优先，表单值是兜底——提前说明防「调了没反应」困惑
+            _formHost.Children.Add(ComponentText.Caption(
+                "text/progress/statusdot 已绑真实状态；状态有值时优先于下方表单值。", _muted));
+        }
         _values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         var specs = new List<PropSpec>();
@@ -457,7 +489,30 @@ internal sealed class SampleGalleryWindow : Window
             Type = _selectedType,
             Props = props,
             Children = DemoChildren(_selectedType),
+            Bindings = DemoBindings(),
         };
+    }
+
+    /// <summary>定向模式绑定声明（评审 P0-1）：text→summary、progress→progress、statusdot→severity，
+    /// 状态有值时优先、空值回退静态 Props（fail-closed）；通用工具箱模式出纯静态树。</summary>
+    private List<ComponentBinding> DemoBindings()
+    {
+        if (_targetState is null || !BoundFields.TryGetValue(_selectedType, out var pair))
+        {
+            return [];
+        }
+        return
+        [
+            new ComponentBinding
+            {
+                Field = pair.Field,
+                Source = new ComponentBindingSource
+                {
+                    Kind = ComponentBindingSource.KindState,
+                    Ref = pair.Ref,
+                },
+            },
+        ];
     }
 
     /// <summary>容器演示子件（row/column 两个、card 单内容）：预览与 JSON 同带，所改间距/内边距即刻可见。</summary>
@@ -505,8 +560,8 @@ internal sealed class SampleGalleryWindow : Window
         ];
     }
 
-    /// <summary>预览样例状态：中性健康值 + 一条 Summary/Progress，when 条件按此求值。</summary>
-    private static WidgetState PreviewState() => new()
+    /// <summary>预览状态：定向模式 = 该组件最新真实状态；通用模式 = 中性样例值。</summary>
+    private WidgetState PreviewState() => _targetState ?? new WidgetState
     {
         WidgetId = "preview",
         WidgetType = "preview",
