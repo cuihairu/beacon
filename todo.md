@@ -66,7 +66,7 @@
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 UIA Invoke 开详情 + U1-U5 Retry 全链已代验）
 - [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面（刷新不打断已代验：场景 H1 前台句柄不变；空白穿透宿主裁决已代验：H5b WM_NCHITTEST 环带=HTTRANSPARENT（38750239155）；真实点击跨进程穿透实测不达：场景 AC 证 HTTRANSPARENT 仅同线程让位、点击被宿主吃掉（run 39044697350；::warning 转用户裁定随 5eae12f——备选 WS_EX_TRANSPARENT 整窗穿透 / 鼠标钩子中继 / 维持现状，观感装机半待验）；Item5 复核 2026-10-18：本任务令「采用 WS_EX_TRANSPARENT，若需区域选择性穿透则停下来出设计、禁自作主张上钩子」——场景 AC 已证需区域选择性穿透（tile 可点 + 空白穿透）而 WM_NCHITTEST 跨进程不达、整窗 WS_EX_TRANSPARENT 会误伤 tile、鼠标钩子被禁，故按令停在此处出设计待裁定，不勾）
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a 两 tile 独立 + H WS_EX_TOOLWINDOW 置位已代验）
-- [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155）；手感需装机半）
+- [x] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（Item11 形态选型决策 2026-10-18：**悬浮形态为主**——每组件一窗（FloatingTileWindow）可拖放 + 重启后位置还原（widgets.json floatingX/Y 落盘），本轮即此形态；**宿主面板（PinnedHostWindow）作为后续可选形态，本轮不做**；还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155））
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
 - [x] 非准入类型在两处入口均不可钉（场景 Y 已代验：播种未登记类型 pinned:true，Y1 主机 Resolve=null skipped 日志+零 tile，Y2 面板右键无 Pin 菜单项，Y3 设置 scope 过滤整行不产，Y4 widgets.json pinned 恒 true 零改写，run 38608625892）
 - [x] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（Item7 2026-10-18 合并成一次回归：位置还原+收起态还原两条链锁进同一逻辑级回归 PositionAndCollapsedRestore_SingleRegression_BothChainsHold（PinLayoutMathTests，Place→Locate 逆解→Place 重放位置一致 + Collapsed 标志往返保持），commit b08cbf7，测试通过；位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件待物理显示器验证）
