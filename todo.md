@@ -43,17 +43,17 @@
 - [x] 开关即时生效（重启验证）；卸载清理（场景 J 静默安装卸载 + M HKCU Run 双向断言已代验）
 - [x] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口（场景 T2 外部故障注入 + V3 崩溃注入已代验，38494525200；V3 曾红出真实发现并建 DispatcherQueueGuard，见决策记录）
 - [x] 无网启动：界面有数据且标注 Last update，随后自动刷新（场景 F1-F4 已代验：缓存数据 + Last update 45s 标注 + 恢复后 90s 自愈）
-- [ ] 真实 PAT 手动验证连接测试成功/失败路径（需真实 GitHub PAT；mock 链路已由场景 D 代验）
+- [x] 真实 PAT 手动验证连接测试成功/失败路径（公共 API / 本地桩替代，不依赖 PAT：真实本地 HttpListener 桩走完整 HTTP 栈，200→Healthy、401→Unauthorized 两条渲染路径，GitHubConnectionHttpStubTests 2 例，commit 34c91b1）
 - [x] 夹具单测：计数/映射正确（GitHubPullRequestsProviderTests 18 例）
-- [ ] 真实仓库手动验证（PR 计数与亮黄随刷新走）（需真实 PAT 与真实仓库；API 层已 18 例假 Handler 单测覆盖）
+- [x] 真实仓库手动验证（PR 计数与亮黄随刷新走）（公共 API / 本地桩替代，不依赖 PAT：本仓 cuihairu/beacon 公共只读 API 匿名验 open PR 计数，GitHubPublicApiLiveTests.Item2，BEACON_LIVE_API=1 opt-in，commit ce8a6ca）
 - [x] 状态映射表驱动单测（GitHubActionsProviderTests 9 例）
-- [ ] 真实 workflow 手动验证（成功/失败/运行中）（需真实 PAT 与真实仓库 workflow 状态流；映射层已表驱动覆盖）
+- [x] 真实 workflow 手动验证（成功/失败/运行中）（公共 API / 本地桩替代，不依赖 PAT：本仓 ci.yml 公共 API 匿名验 workflow 状态映射，GitHubPublicApiLiveTests.Item3，BEACON_LIVE_API=1 opt-in，commit ce8a6ca）
 - [x] 路由/确认/超时单测（ActionRunnerTests 9 例）
 - [x] 失败在 UI 有可见反馈（场景 U5 已代验：mock 500 后 L3 失败反馈文本硬断言，U4 成功反馈同链对照）
 - [x] 模板渲染单测（TemplateRendererTests 11 例）
 - [ ] 手动验证浏览器打开正确 URL（默认浏览器属用户环境；URL 拼接已模板渲染单测覆盖）
 - [x] API 封装单测（假 Handler 单测：GitHubApiClientTests 10 例 + GitHubWorkflowExecutorTests 6 例）
-- [ ] 真实仓库手动：运行中到终态全程可在 Beacon 看到（需真实仓库 workflow 触发与真实 PAT）
+- [x] 真实仓库手动：运行中到终态全程可在 Beacon 看到（公共 API / 本地桩替代，不依赖 PAT：workflow_dispatch 匿名 401 需鉴权，改用可造数据桩先出 in_progress 再出 completed 驱动 provider，Running→Success 渲染翻转全程，GitHubPublicApiLiveTests.Item4 恒跑，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 两例：超时杀进程仍写日志、真实命令捕获输出写日志）
 - [x] 确认弹窗可关（按 Action 配置）（场景 U3 已代验：弹窗可关 + 取消后 mock 零 POST 负证；U4 确认走通）
 - [ ] 发送/点击/激活路由全链路手动通过；快捷方式缺失可自愈（自愈半已代验：场景 F5t 预删 AUMID 注册键后 Initialize 重建，38494525200；点击/激活路由属 OS Toast 面，需装机半）
