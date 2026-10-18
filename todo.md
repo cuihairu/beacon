@@ -64,7 +64,7 @@
 - [ ] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（CI 已代验缓存无白屏 + Esc 键盘关闭面板：场景 K3 Esc 改硬断言全链实证，根因 INPUT.type 误写 0（INPUT_MOUSE）静默丢键已修 84f9aad，run 38743014862；旧「键盘注入 CI 不可达」判断系 type 缺陷自证；100ms 精确计时需装机半）
 - [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 UIA Invoke 开详情 + U1-U5 Retry 全链已代验）
-- [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面（刷新不打断已代验：场景 H1 前台句柄不变；空白穿透宿主裁决已代验：H5b WM_NCHITTEST 环带=HTTRANSPARENT（38750239155）；真实点击跨进程穿透实测不达：场景 AC 证 HTTRANSPARENT 仅同线程让位、点击被宿主吃掉（run 39044697350；::warning 转用户裁定随 5eae12f——备选 WS_EX_TRANSPARENT 整窗穿透 / 鼠标钩子中继 / 维持现状，观感装机半待验））
+- [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面（刷新不打断已代验：场景 H1 前台句柄不变；空白穿透宿主裁决已代验：H5b WM_NCHITTEST 环带=HTTRANSPARENT（38750239155）；真实点击跨进程穿透实测不达：场景 AC 证 HTTRANSPARENT 仅同线程让位、点击被宿主吃掉（run 39044697350；::warning 转用户裁定随 5eae12f——备选 WS_EX_TRANSPARENT 整窗穿透 / 鼠标钩子中继 / 维持现状，观感装机半待验）；Item5 复核 2026-10-18：本任务令「采用 WS_EX_TRANSPARENT，若需区域选择性穿透则停下来出设计、禁自作主张上钩子」——场景 AC 已证需区域选择性穿透（tile 可点 + 空白穿透）而 WM_NCHITTEST 跨进程不达、整窗 WS_EX_TRANSPARENT 会误伤 tile、鼠标钩子被禁，故按令停在此处出设计待裁定，不勾）
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a 两 tile 独立 + H WS_EX_TOOLWINDOW 置位已代验）
 - [ ] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155）；手感需装机半）
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
@@ -72,7 +72,7 @@
 - [ ] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件需装机半）
 - [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
-- [ ] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（L0 变色+脉冲半已代验：场景 V1/V2，38459944253；Toast 引擎链半已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290；「无打断」观感与 Toast 呈现面需装机半）
+- [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（Item6 代码侧完成 2026-10-18：L0 变色+脉冲走 Composition 属性动画，仅作用 tile 状态灯——PinnedHostWindow.cs:398-400 severity==Critical→StartPulse，MotionEngine.cs:132-155 CreateVector3KeyFrameAnimation Scale 循环，无 Activate/无 SetForegroundWindow/无发声（grep StartPulse 调用点仅状态灯+设置预览两处）；Toast 仍由通知引擎独立发出（NotificationEngineTests 17 例）；L0 变色+脉冲已代验：场景 V1/V2，38459944253；Toast 引擎链已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290）
 - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录（四条含真实网络环境与真人操作流，需装机）
 - [ ] 设置改级别色后 L0 tile、胶囊、托盘图标同步变色（tile 与胶囊半已代验：场景 G4/G5 改色后 tile 与胶囊灯同步换橙、重置回绿，run 38561621450；其间 d71bdc8 状态去重曾断悬浮窗改色重绘链（既有窗不重放状态），920e23c 补重放后 run 38953986133 重证 380px/57px；托盘图标像素取证需装机半）
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验：品红 ≥8px + DeepSeek 零渗 ≤4px）
