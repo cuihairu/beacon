@@ -272,7 +272,7 @@ If you want, I can:\
 ## 落地跟踪
 
 - [x] 核对上表四条，填证据（2026-10-18，四条全属实）
-- [ ] 按核对结果分阶段实施（每阶段过测试后勾掉，填 commit hash）
+- [x] 按核对结果分阶段实施（每阶段过测试后勾掉，填 commit hash）
   - [x] P0 三件：真实 Bindings（text→summary / progress→progress / statusdot→severity，定向模式）+ 组件行「展示样式」直开（Host.GetState 真实状态预览 + 应用一步落盘）+ PinsChanged 即时重渲（SaveComponentTree 三条成功路径 + 定向应用；ReloadTiles 带 _latest 状态重放，不取数）——4847f99，CI 绿 39098789912
-  - [ ] P1：展示模板注册表（同一份百分比数据可选横条/圆环/数字卡/水位）+ 数据能力筛选 + 按组件实例/展示面分别保存样式
-  - [ ] P2：保留高级组合与树编辑器（现状已满足——「组件树」编辑器未动，定向应用不占树编辑工作副本）
+  - [x] P1：展示模板注册表 `Core DisplayTemplates`（bar/ring/number/pool/statusline 五模板，纯函数生成器 + RequiresProgress 能力门槛 + Compatible 筛选，Core 测试 8 条全绿）+ `percent` 选择器（无进度回空串）+ App `ring`/`pool` 渲染工厂（含声明式 progress fill 补档位色——原漏色只剩浅轨）+ 组件中心定向模式改模板选择（应用面 tile/row/detail 可选、其余面保留）——94aa2aa+32dbe97+fb10bd1，CI 绿 39106004718；端到端验收（额度 52%→78% 展示自动变化）待装机
+  - [x] P2：保留高级组合与树编辑器（「组件树」编辑器口径未动；定向应用按面合并不占树编辑工作副本）
