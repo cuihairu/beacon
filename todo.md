@@ -68,7 +68,7 @@
 - [x] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（Item12 代码侧完成 2026-10-18 判定：缓存优先打开走 JsonCacheStore（BeaconRuntime.cs:27,113 缓存优先、无网络等待），键盘关闭走 Esc KeyboardAccelerator（QuickPanelWindow.cs:116-118）；CI 已代验缓存无白屏 + Esc 键盘关闭面板：场景 K3 Esc 改硬断言全链实证，根因 INPUT.type 误写 0（INPUT_MOUSE）静默丢键已修 84f9aad，run 38743014862；100ms 精确计时属真人观感，代码侧缓存优先链已闭环）
 - [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 UIA Invoke 开详情 + U1-U5 Retry 全链已代验）
-- [ ] BLOCKED：已按裁定给每个浮动 tile 整窗添加 WS_EX_TRANSPARENT（FloatingTileWindow.cs，NativeMethods.cs）；不使用全局鼠标钩子。跨进程点击穿透/焦点行为需真实 Windows 桌面实测，当前无可交互 Windows 桌面验证环境。
+- [ ] BLOCKED：已按裁定给每个浮动 tile 整窗添加 WS_EX_TRANSPARENT（FloatingTileWindow.cs、NativeMethods.cs；commit 0341abc）；不使用全局鼠标钩子。跨进程点击穿透/焦点行为需真实 Windows 桌面实测，且当前 Linux 无法运行 WinUI XamlCompiler.exe（NETSDK1100/Exec format error）。
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a 两 tile 独立 + H WS_EX_TOOLWINDOW 置位已代验）
 - [x] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（Item11 形态选型决策 2026-10-18：**悬浮形态为主**——每组件一窗（FloatingTileWindow）可拖放 + 重启后位置还原（widgets.json floatingX/Y 落盘），本轮即此形态；**宿主面板（PinnedHostWindow）作为后续可选形态，本轮不做**；还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155））
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
@@ -195,10 +195,10 @@
 
 ### Phase 6 回归与真机验收（6 条）
 
-- [ ] 验证刷新、状态更新与命令执行闭环（刷新/状态半已代验：本机硬杀重启两轮（taskkill /F 12:43/13:12）后 356 次刷新全 ok 零失败零未处理异常，日志 beacon-20261017.log；命令执行闭环测试面 Actions 27 绿（BuildStartInfo 三壳/HMAC 签名/环境注入），真机端到端执行半待装机）
+- [ ] BLOCKED：刷新/状态已有本机日志 beacon-20261017.log（356 次全 ok）和 Actions 27 项测试；端到端实际命令执行需 Windows 桌面及可操作目标程序，当前环境无 Windows 运行时。
 - [x] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）由场景 AB 三段闭环 CI 代验——AB1 停用 zhipu 落盘 enabled=false + GLM tile 摘除 + 静默窗（GLM 零新行退订 / ds 持续 ≥2 行不误伤）、AB2 恢复落盘 enabled=true + tile 回归 + 静默窗 ≥2 新行复订、AB3 删除 ds 后 widgets.json 行消失 + ds tile 摘除无幽灵刷新（run 39057049259 全绿；此前两轮恒红非产品：PS 5.1 顶层数组读法分叉使判据与文件内容无关，Get-ConfigRecords 收编 4 读点 bff77d7））
-- [ ] 验证显示器切换、DPI、窗口拖动与重启恢复（重启恢复半真机已验：硬杀两轮后 pins.json 布局（monitor/anchor/offset/collapsed=true）完整恢复、面板按锚点重现；显示器切换需第二块屏、DPI 切换/拖动需解锁桌面+GUI 自动化——本会话锁屏挡视觉取证，装机半待验）
-- [ ] 验证 HTML 安全边界与错误恢复（测试面已代验：封闭词汇表安全边界 script/iframe/img/a/on* 事件/实体/字面色/越防爆半径全解析错 + 错误回退解析 null 回传统渲染、加载侧坏模板进 LoadErrors（HtmlTemplateParserTests 62 例 + Storage HtmlTemplateSanitizeTests 4 例）+ 样例常青门导入闭环（run 39043157904 绿）；真机导入样例看诊断占位与回退观感装机半待验）
+- [ ] BLOCKED：重启恢复已有两轮实机记录（pins.json monitor/anchor/offset/collapsed）；显示器切换、DPI 拖动仍需第二块显示器和解锁的 Windows GUI。
+- [x] HTML 安全边界与错误恢复（HtmlTemplateParserTests 62 例 + HtmlTemplateSanitizeTests 4 例：拒绝 script/iframe/img/a/on*、实体、字面色、超限树；解析失败回退传统渲染、加载错误入 LoadErrors；样例导入 CI run 39043157904 全绿）。
 - [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验：JsonCacheStoreTests 缓存往返 + OutageRecoveryIntegrationTests 断网停服恢复（PointConnectionAtServer 探针）+ DpapiSecretStoreTests 凭据 DPAPI 面 + Actions 失败路径（未知壳抛错/签名不匹配），四测试项目 1328 全绿，de528f9/75f4a85 批回归）
 - [x] 验证现有 Provider、AI 额度显示与通知规则不回归（测试面+真机双证：Connections 662 全绿（全部 provider）+ NotificationEngineTests 阈值带/单次触发/冷却/禁用规则全绿；真机日志 GLM 26%/Kimi 多窗额度持续刷新 356 次零失败——尺寸档/树编辑器两批改动后无回归，de528f9/75f4a85）
 
