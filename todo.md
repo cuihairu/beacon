@@ -42,7 +42,7 @@
 ## MVP 待验/未修项（50 项 = 31 勾 / 19 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；**2026-10-17 真机实证双半**：本机双击（os.startfile 同路径）二次启动进程数恒 1，主实例日志 `Balloon dispatched: Beacon - Beacon 已在运行。`（Shell_NotifyIconW 返回 true=Windows 已接受气泡）+ `Secondary instance exit.` 双锚；随批给 ShowBalloon 补日志锚——原实现丢弃 Shell_NotifyIconW 返回值，装机复测无取证点，现成功落 Information/失败落 Warning（TrayIconService.cs:99-110））
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
-- [ ] 重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（位置还原半已代验：场景 R 预设坐标落位 ±4 且重启一致；拖动手势半已代验：R3 SendInput 拖 +50/+40 窗随动 + shell-state.json offsetDips 落盘 90,81 + 重启还原闭环（38750239155）；跨 DPI 拓扑需装机半）—— 待物理显示器验证（Item8，2026-10-18 跳过：跨 DPI 拖动无错乱需双 DPI 物理屏，CI 单屏不可驱动，不做虚拟屏假验证）
+- [ ] BLOCKED：重启位置与普通拖动已有场景 R/R3 证据（38750239155）；跨 DPI 拖动无错乱需真实双 DPI 显示器，当前环境缺第二块不同 DPI 的 Windows 显示器。
 - [x] 任意前台应用下热键生效；可在设置改键并持久化（场景 K1 注册成功 + N 改键落盘重启新键注册 + WM_HOTKEY 直驱面板出现已代验）
 - [x] 开关即时生效（重启验证）；卸载清理（场景 J 静默安装卸载 + M HKCU Run 双向断言已代验）
 - [x] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口（场景 T2 外部故障注入 + V3 崩溃注入已代验，38494525200；V3 曾红出真实发现并建 DispatcherQueueGuard，见决策记录）
@@ -55,7 +55,7 @@
 - [x] 路由/确认/超时单测（ActionRunnerTests 9 例）
 - [x] 失败在 UI 有可见反馈（场景 U5 已代验：mock 500 后 L3 失败反馈文本硬断言，U4 成功反馈同链对照）
 - [x] 模板渲染单测（TemplateRendererTests 11 例）
-- [ ] 手动验证浏览器打开正确 URL（默认浏览器属用户环境；URL 拼接已模板渲染单测覆盖）
+- [ ] BLOCKED：URL 拼接已有 TemplateRendererTests 覆盖；端到端打开验证需要 Windows 桌面和用户默认浏览器，当前环境无法观察真实浏览器导航。
 - [x] API 封装单测（假 Handler 单测：GitHubApiClientTests 10 例 + GitHubWorkflowExecutorTests 6 例）
 - [x] 真实仓库手动：运行中到终态全程可在 Beacon 看到（公共 API / 本地桩替代，不依赖 PAT：workflow_dispatch 匿名 401 需鉴权，改用可造数据桩先出 in_progress 再出 completed 驱动 provider，Running→Success 渲染翻转全程，GitHubPublicApiLiveTests.Item4 恒跑，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 两例：超时杀进程仍写日志、真实命令捕获输出写日志）
@@ -68,7 +68,7 @@
 - [x] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（Item12 代码侧完成 2026-10-18 判定：缓存优先打开走 JsonCacheStore（BeaconRuntime.cs:27,113 缓存优先、无网络等待），键盘关闭走 Esc KeyboardAccelerator（QuickPanelWindow.cs:116-118）；CI 已代验缓存无白屏 + Esc 键盘关闭面板：场景 K3 Esc 改硬断言全链实证，根因 INPUT.type 误写 0（INPUT_MOUSE）静默丢键已修 84f9aad，run 38743014862；100ms 精确计时属真人观感，代码侧缓存优先链已闭环）
 - [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 UIA Invoke 开详情 + U1-U5 Retry 全链已代验）
-- [ ] 点击 tile 不打断当前应用焦点；空白区域点击落到桌面（刷新不打断已代验：场景 H1 前台句柄不变；空白穿透宿主裁决已代验：H5b WM_NCHITTEST 环带=HTTRANSPARENT（38750239155）；真实点击跨进程穿透实测不达：场景 AC 证 HTTRANSPARENT 仅同线程让位、点击被宿主吃掉（run 39044697350；::warning 转用户裁定随 5eae12f——备选 WS_EX_TRANSPARENT 整窗穿透 / 鼠标钩子中继 / 维持现状，观感装机半待验）；Item5 复核 2026-10-18：本任务令「采用 WS_EX_TRANSPARENT，若需区域选择性穿透则停下来出设计、禁自作主张上钩子」——场景 AC 已证需区域选择性穿透（tile 可点 + 空白穿透）而 WM_NCHITTEST 跨进程不达、整窗 WS_EX_TRANSPARENT 会误伤 tile、鼠标钩子被禁，故按令停在此处出设计待裁定，不勾）
+- [ ] BLOCKED：已按裁定给每个浮动 tile 整窗添加 WS_EX_TRANSPARENT（FloatingTileWindow.cs，NativeMethods.cs）；不使用全局鼠标钩子。跨进程点击穿透/焦点行为需真实 Windows 桌面实测，当前无可交互 Windows 桌面验证环境。
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a 两 tile 独立 + H WS_EX_TOOLWINDOW 置位已代验）
 - [x] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（Item11 形态选型决策 2026-10-18：**悬浮形态为主**——每组件一窗（FloatingTileWindow）可拖放 + 重启后位置还原（widgets.json floatingX/Y 落盘），本轮即此形态；**宿主面板（PinnedHostWindow）作为后续可选形态，本轮不做**；还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155））
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）

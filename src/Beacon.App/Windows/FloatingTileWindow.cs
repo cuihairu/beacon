@@ -398,7 +398,9 @@ internal sealed class FloatingTileHost
                 presenter.SetBorderAndTitleBar(false, false);
             }
             _appWindow.IsShownInSwitchers = false;
-            NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE);
+            // B-701: floating tiles pass all mouse input through to the window beneath them.
+            // Selective hit testing is intentionally deferred; this is a whole-window style.
+            NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW | NativeMethods.WS_EX_NOACTIVATE | NativeMethods.WS_EX_TRANSPARENT);
 
             SubclassForDpiChange();
             // DPI 修复单 2026-10-10：DIP 设计值只在 Win32 边界换算一次（四舍五入，截断高缩放欠高）
