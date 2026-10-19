@@ -60,10 +60,10 @@
 - [x] 真实仓库手动：运行中到终态全程可在 Beacon 看到（公共 API / 本地桩替代，不依赖 PAT：workflow_dispatch 匿名 401 需鉴权，改用可造数据桩先出 in_progress 再出 completed 驱动 provider，Running→Success 渲染翻转全程，GitHubPublicApiLiveTests.Item4 恒跑，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 两例：超时杀进程仍写日志、真实命令捕获输出写日志）
 - [x] 确认弹窗可关（按 Action 配置）（场景 U3 已代验：弹窗可关 + 取消后 mock 零 POST 负证；U4 确认走通）
-- [ ] 发送/点击/激活路由全链路手动通过；快捷方式缺失可自愈（自愈半已代验：场景 F5t 预删 AUMID 注册键后 Initialize 重建，38494525200；点击/激活路由属 OS Toast 面，需装机半）
+- [ ] BLOCKED：AUMID 自愈已有场景 F5t 证据（38494525200）；Toast 发送、点击、激活路由需要 Windows 通知中心与真人点击，当前 Linux 环境不可执行。
 - [x] 规则引擎表驱动单测（含冷却）（NotificationEngineTests 17 例）
 - [x] 注入 Failed 状态收到且仅收到一条 Toast（NotificationEngineTests 17 例覆盖引擎去重 + 场景 F5 断网降级恰 1 条硬断言）
-- [ ] 聚合状态变化 ≤1 个刷新周期内反映到托盘（托盘图标像素不可脚本取证，见决策记录；tile 层已代验：场景 G7a 38% 到 95% 75s 内反映）—— 待物理显示器验证（Item10，2026-10-18 跳过：托盘图标像素取证需物理屏截取，不做虚拟屏假验证）
+- [ ] BLOCKED：tile 更新已有场景 G7a 证据（38%→95%，75s）；托盘图标颜色/状态像素和刷新周期需 Windows 通知区实机截图，当前环境没有 Windows 托盘。
 - [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致（场景 F2 tile + O 面板 + Q 胶囊三面已代验）
 - [x] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（Item12 代码侧完成 2026-10-18 判定：缓存优先打开走 JsonCacheStore（BeaconRuntime.cs:27,113 缓存优先、无网络等待），键盘关闭走 Esc KeyboardAccelerator（QuickPanelWindow.cs:116-118）；CI 已代验缓存无白屏 + Esc 键盘关闭面板：场景 K3 Esc 改硬断言全链实证，根因 INPUT.type 误写 0（INPUT_MOUSE）静默丢键已修 84f9aad，run 38743014862；100ms 精确计时属真人观感，代码侧缓存优先链已闭环）
 - [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
@@ -74,7 +74,7 @@
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
 - [x] 非准入类型在两处入口均不可钉（场景 Y 已代验：播种未登记类型 pinned:true，Y1 主机 Resolve=null skipped 日志+零 tile，Y2 面板右键无 Pin 菜单项，Y3 设置 scope 过滤整行不产，Y4 widgets.json pinned 恒 true 零改写，run 38608625892）
 - [x] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（Item7 2026-10-18 合并成一次回归：位置还原+收起态还原两条链锁进同一逻辑级回归 PositionAndCollapsedRestore_SingleRegression_BothChainsHold（PinLayoutMathTests，Place→Locate 逆解→Place 重放位置一致 + Collapsed 标志往返保持），commit b08cbf7，测试通过；位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件待物理显示器验证）
-- [ ] 跨 DPI 显示器拖放尺寸正确；分辨率变小 tile 被回收到可见区（需物理或虚拟显示栈，CI 单屏不可驱动）—— 待物理显示器验证（Item9，2026-10-18 跳过：跨 DPI 拖放与分辨率变小回收需物理/虚拟显示栈，不做虚拟屏假验证）
+- [ ] BLOCKED：需 Windows 多显示器/虚拟显示驱动，验证跨 DPI 拖放和降低分辨率后的越界回收；当前环境没有该显示栈。
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（Item6 代码侧完成 2026-10-18：L0 变色+脉冲走 Composition 属性动画，仅作用 tile 状态灯——PinnedHostWindow.cs:398-400 severity==Critical→StartPulse，MotionEngine.cs:132-155 CreateVector3KeyFrameAnimation Scale 循环，无 Activate/无 SetForegroundWindow/无发声（grep StartPulse 调用点仅状态灯+设置预览两处）；Toast 仍由通知引擎独立发出（NotificationEngineTests 17 例）；L0 变色+脉冲已代验：场景 V1/V2，38459944253；Toast 引擎链已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290）
 - [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录（四条含真实网络环境与真人操作流，需装机）
