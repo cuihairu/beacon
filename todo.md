@@ -85,8 +85,8 @@
 - [ ] BLOCKED：默认/档位/强度与动画帧差分已有 G6/G7b/G7c/V2 证据；视觉观感与强度裁量需解锁的 Windows 桌面真人验收。
 - [x] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）（焦点半：场景 H1 前台不变；发声半：常青门 AudioApiAbsenceTests 全源 206 文件 ×10 发声 API 词断言红绿自证，新增发声面即红，通知链显式 Sound:false、OS toast 声属用户规则面非动效面；循环半代码审计：Forever 循环仅 MotionEngine.StartBreathing/StartPulse 两入口，消费面仅 PinTile.ApplyLoops 与设置页预览（显式 stop），收起帘控 PinnedHostWindow.ApplyLayout strip→SuspendMotion 全 tile、悬停/拖拽/Reconcile 全路径经 ApplyLayout，悬浮窗只挂一次性 Flash/SlideIn 且 stale 窗 Close 销毁非隐藏常驻；真机听声目检仍可装机复核）
 - [x] 导出文件全文无 token；导入+重录密钥后行为与原机一致（场景 Z picker 双驱代验：导出→导入往返反馈计数逐字段对齐+重录密钥提示在案+导出全文无密钥真值；204b884，run 38725138151）
-- [ ] 全流程录屏/截图归档至 docs/；发现问题全部修复或开 Issue（截图已归档至 visual-evidence 工件；真人全流程录屏需装机半）
-- [ ] 干净 Windows 11 虚拟机：下载后运行并完成 B-803 脚本（用户验收终局；CI 是构建证明不是验收替代）
+- [ ] BLOCKED：CI 截图已有 visual-evidence 工件；真人全流程录屏归档需要解锁的 Windows 桌面和完整操作流程，当前环境无法录制。
+- [ ] BLOCKED：B-803 必须在干净 Windows 11 虚拟机下载并运行；当前环境为 Linux，无 Windows 11 VM/桌面。
 - [x] 调色/动效改动即时预览并持久化，重启生效（场景 G4 改色即时 + G6 档位落盘 + G6b 重启 UIA 选中态恢复已代验）
 - [x] 重置默认一键还原；off 档预览即全静止（场景 G5 重置回默认 + G7b off 三帧差分 ≤12px 已代验）
 - [x] tile 底部进度条显示不全（2026-10-14 缺陷单「还是一样的问题」）（02a5de1 修复，38500538817 复证全绿：client 32px/frame 38px chrome 6px + 条带 620/676 真像素，见决策记录同名条）
@@ -94,7 +94,7 @@
 ## 后续可选（master-plan.md，5 项 = 4 勾 / 1 未勾）
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化（38434164526 实证 U1-U5 全绿；解锁行 32/38/46；98f7a2d 后 U 连红根因=ComponentText.Body MaxWidth=NaN 恒 E_INVALIDARG 致 L3 详情窗必炸：896758c 修复 + 0df60a8 取证（38976398309 拿到栈）+ e9f393c 场景加固，38999120347 复证全绿）
 - [x] Critical 与崩溃注入机制（debug 门控）（DebugInjection 8 例单测 + DispatcherQueueGuard 兜底；38494525200 实证 V1/V2/V3 全绿，V3 红出真实发现见决策记录）
-- [ ] 厂商私有打包工具 Provider（需真实厂商 API 与认证字段；开源标准 API 的 Jenkins Provider 已落位 2026-10-11）
+- [ ] BLOCKED：缺目标厂商名称、私有 API 文档/端点、真实认证字段与可用凭据；Jenkins 标准 API Provider 已落位（2026-10-11）。
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1 修复：记忆尺寸存客户区 DIP 直喂外框，每次开窗矮一标题栏）
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
