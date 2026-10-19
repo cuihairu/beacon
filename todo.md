@@ -77,12 +77,12 @@
 - [ ] BLOCKED：需 Windows 多显示器/虚拟显示驱动，验证跨 DPI 拖放和降低分辨率后的越界回收；当前环境没有该显示栈。
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（Item6 代码侧完成 2026-10-18：L0 变色+脉冲走 Composition 属性动画，仅作用 tile 状态灯——PinnedHostWindow.cs:398-400 severity==Critical→StartPulse，MotionEngine.cs:132-155 CreateVector3KeyFrameAnimation Scale 循环，无 Activate/无 SetForegroundWindow/无发声（grep StartPulse 调用点仅状态灯+设置预览两处）；Toast 仍由通知引擎独立发出（NotificationEngineTests 17 例）；L0 变色+脉冲已代验：场景 V1/V2，38459944253；Toast 引擎链已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290）
-- [ ] 手动清单（RFC §6.2.7 四条）逐条通过并记录（四条含真实网络环境与真人操作流，需装机）
-- [ ] 设置改级别色后 L0 tile、胶囊、托盘图标同步变色（tile 与胶囊半已代验：场景 G4/G5 改色后 tile 与胶囊灯同步换橙、重置回绿，run 38561621450；其间 d71bdc8 状态去重曾断悬浮窗改色重绘链（既有窗不重放状态），920e23c 补重放后 run 38953986133 重证 380px/57px；托盘图标像素取证需装机半）
+- [ ] BLOCKED：RFC §6.2.7 四项要求真人操作与真实网络环境；缺可交互 Windows 装机验收会话及真实网络环境记录。
+- [ ] BLOCKED：tile 与胶囊改色/重置已有 G4/G5、38953986133 证据；托盘图标同步需要 Windows 通知区像素实测，当前环境无 Windows 托盘。
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验：品红 ≥8px + DeepSeek 零渗 ≤4px）
 - [x] 非法颜色值回退默认色不崩溃；重启后保持（场景 G2 两轮启动已代验：进程存活 + 非法值零渗 + 默认绿 ≥8px）
 - [x] Success 到 Error 状态变化有平滑变色过渡（reduced 档）（场景 L1/L2 已代验：38284623093 三轮渐入中间态帧 + 同色 tick 不闪灯）
-- [ ] Critical 脉冲默认开；off 档全静止；full 档呼吸灯可见且强度可调（四半已代验：G7b off 静止 + G7c full 呼吸 + G6 强度落盘 + V2 脉冲帧差分；观感与强度裁量需装机半）
+- [ ] BLOCKED：默认/档位/强度与动画帧差分已有 G6/G7b/G7c/V2 证据；视觉观感与强度裁量需解锁的 Windows 桌面真人验收。
 - [x] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）（焦点半：场景 H1 前台不变；发声半：常青门 AudioApiAbsenceTests 全源 206 文件 ×10 发声 API 词断言红绿自证，新增发声面即红，通知链显式 Sound:false、OS toast 声属用户规则面非动效面；循环半代码审计：Forever 循环仅 MotionEngine.StartBreathing/StartPulse 两入口，消费面仅 PinTile.ApplyLoops 与设置页预览（显式 stop），收起帘控 PinnedHostWindow.ApplyLayout strip→SuspendMotion 全 tile、悬停/拖拽/Reconcile 全路径经 ApplyLayout，悬浮窗只挂一次性 Flash/SlideIn 且 stale 窗 Close 销毁非隐藏常驻；真机听声目检仍可装机复核）
 - [x] 导出文件全文无 token；导入+重录密钥后行为与原机一致（场景 Z picker 双驱代验：导出→导入往返反馈计数逐字段对齐+重录密钥提示在案+导出全文无密钥真值；204b884，run 38725138151）
 - [ ] 全流程录屏/截图归档至 docs/；发现问题全部修复或开 Issue（截图已归档至 visual-evidence 工件；真人全流程录屏需装机半）
