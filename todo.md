@@ -99,10 +99,10 @@
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
 ## MVP 验收标准（master-plan §14，8 项 = 5 勾 / 3 未勾，需真实装机验证）
-- [ ] Windows 登录后按用户设置启动（Run 值可执行半已代验：M3 把注册表原样字符串交 ShellExecute——登录时 explorer 处理 Run 键同一 API——拉起 Beacon 进程（38761946476）；真实登录会话由 explorer 调度属 OS 行为，需装机半）
-- [ ] 托盘与状态胶囊稳定运行（驻留半已代验：场景 E2/E3 关窗驻留 + Exit 唯一退出；长时稳定 CI 半已由场景 AD 15min 驻留浸泡代验——进程恒 1 + 刷新续跑 ok 新行 121 + 零 unexpected/零 Fatal（句柄 Δ-28 / WS Δ-118MB 留档，run 39057049259）；胶囊观感与更长时间稳定需装机半）
+- [ ] BLOCKED：Run 注册表值交 ShellExecute 已有 M3 证据（38761946476）；真实 explorer 登录会话调度需 Windows 注销/登录实机，当前没有 Windows 会话。
+- [ ] BLOCKED：托盘驻留和 15 分钟浸泡已有 E2/E3、AD 证据（39057049259）；更长时稳定及胶囊视觉观感需 Windows 实机持续运行观察。
 - [x] 全局快捷键正常打开悬浮面板（场景 K1 注册 + N 改键重启注册无失败 + WM_HOTKEY 直驱面板硬断言已代验）
-- [ ] 面板展示真实 GitHub 状态（需真实 PAT 与真实仓库）
+- [ ] BLOCKED：需要用户提供可用的 GitHub PAT 与目标仓库（或明确授权的真实仓库）；当前无凭据，现有 mock/匿名 API 证据不能替代此项。
 
 验收：CI windows-latest 出截图或给安装包名 + SHA256 让用户自验；「改了未验」不算完成。
 
