@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 10">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows11&logoColor=white" alt="Windows 10/11">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3DA639" alt="License: Apache-2.0"></a>
-  <a href="https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml/badge.svg" alt="Daily Build"></a>
+  <a href="https://github.com/cuihairu/beacon/actions/workflows/nightly.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/nightly.yml/badge.svg" alt="Daily Build"></a>
 </p>
 
 > **Windows Developer Status & Action Center** — See what needs your attention.
@@ -36,7 +36,7 @@ A developer status and action center that lives on the Windows desktop. More pre
 
 **[Nightly build](https://github.com/cuihairu/beacon/releases/tag/nightly)** — rolling builds from the main branch. The `nightly` tag is fixed and refreshed in place (old assets removed, new ones uploaded), so this page always reflects the current main branch. Self-contained Windows x86_64 packages (bundling the .NET 10 + Windows App SDK runtimes), with a `SHA256SUMS` checksum file. Direct links: [Installer setup.exe](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64-setup.exe) · [Portable zip](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64.zip).
 
-Published automatically every early morning (Beijing time) by the [daily-build workflow](.github/workflows/daily-build.yml), and can also be [triggered manually](https://github.com/cuihairu/beacon/actions/workflows/daily-build.yml).
+Published automatically every early morning (Beijing time) by the [daily-build workflow](.github/workflows/nightly.yml), and can also be [triggered manually](https://github.com/cuihairu/beacon/actions/workflows/nightly.yml).
 
 ### Installation (Windows 10 1809+ / Windows 11)
 
