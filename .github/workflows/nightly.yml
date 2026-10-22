@@ -47,9 +47,9 @@ jobs:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
       SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6.0.0
         with:
           dotnet-version: 10.0.x
 
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload visual evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: visual-evidence
           path: evidence/
@@ -190,7 +190,7 @@ jobs:
       - name: Upload unsigned assets for signing
         if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
         id: sign-upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: unsigned-assets
           path: |
@@ -199,7 +199,7 @@ jobs:
 
       - name: Submit to SignPath
         if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
