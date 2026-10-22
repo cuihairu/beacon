@@ -58,7 +58,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 | [docs/rfc/RFC-001-technical-design.md](docs/rfc/RFC-001-technical-design.md) | 技术方案：架构 / 领域模型 / **显示层架构（L0 悬浮组件 + 四层交互）** / 刷新 / 通知 / 存储 / 风险 |
 | [docs/master-plan.md](docs/master-plan.md) | 产品与技术实施总方案：产品范围与设计基线（2026-10-11）——边界 / 交互 / 架构 / 验收 / agent 约束 |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / 项目结构 / 依赖规则 / 脚手架命令（Windows 机器可执行） |
-| [docs/configuration.md](docs/configuration.md) | 配置手册：全部设置项逐项列明——文件、全局设置、外观、通知规则、16 类连接（含各厂商端点与额度语义）、组件字段、钉选布局、动作、导入导出 |
+| [docs/configuration.md](docs/configuration.md) | 配置手册：全部设置项逐项列明——文件、全局设置、外观、通知规则、17 类连接（含各厂商端点与额度语义）、组件字段、钉选布局、动作、导入导出 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 故障排查手册：SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志 |
 | [docs/store-submission.md](docs/store-submission.md) | 商店提交前置清单：MSIX 打包 / 隐私政策页必填字段 / 商店素材（截图尺寸·描述·分类·年龄分级问卷） |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 个 MVP Issue（P0–P8，含验收标准与依赖关系） |

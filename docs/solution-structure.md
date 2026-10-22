@@ -13,9 +13,9 @@ Beacon/
 ├── Directory.Packages.props         # Central Package Management（统一版本）
 ├── global.json                      # 钉 SDK 10.0.100（rollForward latestFeature）
 ├── .editorconfig
-├── .github/workflows/               # ci.yml（构建+测试+Codecov）/ daily-build.yml（nightly）/ docs.yml（Pages）
+├── .github/workflows/               # ci.yml（构建+测试+Codecov）/ nightly.yml（nightly）/ docs.yml（Pages）
 ├── docs/                            # 任务书 / RFC / Issue 列表 / 定位 / 审计 / 验收记录
-├── packaging/                       # beacon.iss：Inno Setup 安装包定义（daily-build 产出 setup.exe）
+├── packaging/                       # beacon.iss：Inno Setup 安装包定义（nightly 产出 setup.exe）
 ├── src/
 │   ├── Beacon.App/                  # WinUI 3 壳（唯一 exe，代码建 UI 为主）
 │   ├── Beacon.Core/                 # 领域模型 + 抽象 + 服务（无 UI 依赖）

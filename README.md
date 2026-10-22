@@ -63,7 +63,7 @@ Current releases (v0.1.x) are **not signed** — Windows SmartScreen may warn on
 | [docs/master-plan.md](docs/master-plan.md) | Master plan: product scope & design baseline (2026-10-11) — boundaries / interaction / architecture / acceptance / agent constraints |
 | [docs/solution-structure.md](docs/solution-structure.md) | Solution / project structure / dependency rules / scaffold commands (runnable on Windows machines) |
 | [docs/mvp-issues.md](docs/mvp-issues.md) | 43 MVP issues (P0–P8, with acceptance criteria and dependencies) |
-| [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 16 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
+| [docs/configuration.md](docs/configuration.md) | Configuration reference: every setting itemized — files, global settings, appearance, notification rules, 17 connection types with per-vendor endpoints and quota semantics, widget fields, pin layout, actions, import/export |
 | [docs/store-submission.md](docs/store-submission.md) | Store submission prerequisites: MSIX packaging / privacy policy page required fields / store assets (screenshots · description · category · age rating questionnaire) |
 
 ## Roadmap

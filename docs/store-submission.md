@@ -49,7 +49,7 @@ Landing requirements:
 
 ## 3. MSIX packaging: blockers and alternatives
 
-The packaging chain (`.github/workflows/daily-build.yml`, `v*` tag channel only):
+The packaging chain (`.github/workflows/nightly.yml`, `v*` tag channel only):
 
 ```
 publish/ (self-contained output) + packaging/msix/appxmanifest.xml (version replaced per tag)
