@@ -1,58 +1,58 @@
 
-# B-803 MVP 端到端走查（任务书 §成功标准）
+# B-803 MVP end-to-end walkthrough (mission brief §Success criteria)
 
-> 依赖：B-801..802、B-805 全部代码级完成（CI 绿）后，在**一台 Windows 机器**上执行。
-> 成功标准（任务书 §MVP）：开机自启 → 桌面角落一直看到状态 → 一键 Run/Retry 成功，全程**不开浏览器不登 GitHub**。
-> 铁律细项见 [acceptance-B705-L0-behavior.md](acceptance-B705-L0-behavior.md)（真机手动清单 5 项在 B-803 内逐条勾选）。
-> 产出：录屏/截图归档 + 发现问题修复或开 Issue；B-804 需在此之上补一台**干净 Win11 VM**。
+> Dependency: run this on **one Windows machine** only after B-801..802 and B-805 are code-complete (CI green).
+> Success criteria (mission brief §MVP): auto-start on boot → see the state in a corner of the desktop at all times → a one-click Run/Retry succeeds, all without **opening a browser or signing in to GitHub**.
+> The invariant items in detail are in [acceptance-B705-L0-behavior.en.md](acceptance-B705-L0-behavior.md) (its 5 real-machine checklist items are ticked off inside B-803).
+> Output: recorded screenshots/archive plus either a fix or an issue for anything found; B-804 additionally needs a **clean Win11 VM** on top of this.
 
-## 0. 准备（5 分钟）
+## 0. Preparation (5 minutes)
 
-- [ ] 下载 `beacon-nightly-windows-x86_64-setup.exe`（或便携 zip），校验 SHA256SUMS
-- [ ] 开始录屏（全程不间断；问题点单独截图）
-- [ ] 一台有 GitHub 仓库权限的机器 + 一个 PAT（用于连接录入与 Retry）
-- [ ] 备好一个可控的 workflow（可手动失败→重跑，如仓库内测试 workflow）
+- [ ] Download `beacon-nightly-windows-x86_64-setup.exe` (or the portable zip) and verify SHA256SUMS
+- [ ] Start screen recording (continuous for the whole run; take separate screenshots of problem points)
+- [ ] A machine with GitHub repository access plus one PAT (used for connection entry and Retry)
+- [ ] A controllable workflow ready (can be failed on demand and re-run, for example a test workflow in the repository)
 
-## 1. 脚本主链（任务书成功标准逐环）
+## 1. Script main chain (each link of the mission brief success criteria)
 
-| # | 步骤 | 操作 | 通过标准 | 结果 |
+| # | Step | Action | Pass criteria | Result |
 |---|---|---|---|---|
-| 1 | 安装/解压 | 跑 setup.exe（或解压 zip） | 无报错；开始菜单出现 Beacon（zip 方式直接见到 `Beacon.App.exe` 图标） | ☐ |
-| 2 | 首启反馈 | 启动 Beacon | 启动通知气泡 + 托盘图标 + 右下角状态胶囊；**无主窗口、不进任务栏/Alt-Tab** | ☐ |
-| 3 | 开机自启 | 检查 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | 有 Beacon 项指向安装路径（设置里可关） | ☐ |
-| 4 | 录入连接 | 托盘菜单 → 设置 → 连接 → 类型 github → 填 Id + Token | 「✓ 已保存」；测试连接返回 Healthy | ☐ |
-| 5 | **token 红线** | 打开 `%AppData%\Beacon\connections.json` 全文搜索 PAT 本体 | **搜不到明文 token**，只有 `credentialRef` | ☐ |
-| 6 | 添加组件 | 设置 → 组件：`github.actions.runs` + `github.pull_requests`（选连接、必填字段） | 列表出现两条；L2 面板出现对应行与计数 | ☐ |
-| 7 | 钉桌面 | 组件行「钉」开关打开 | L0 出现 tile（状态灯 + 标签） | ☐ |
-| 8 | 制造失败 | 让可控 workflow 失败一次 | 胶囊变红/计数变化 + 托盘着色 + **Toast 弹出**（按规则带声音） | ☐ |
-| 9 | 下钻详情 | 点 Toast（或 L2 行）进 L3 | 详情窗显示状态/仓库/阶段/错误摘要；不打断 L0 | ☐ |
-| 10 | **一键 Retry** | L3 点 [Retry]（全程不开浏览器） | workflow 重跑成功 → Success Toast + 灯变绿 | ☐ |
-| 11 | 设置即时性 | 改级别色 / 动效档 / 透明度 / 胶囊开关 | 即刻生效（主题重启生效属预期）；重启后仍生效 | ☐ |
-| 12 | 导入导出 | 设置 → 导出配置；改乱后导入 | 行为复原；导出文件无 token；提示重录密钥 | ☐ |
-| 13 | 断网降级 | 断网 | tile 灰空心灯 + Last update；无异常弹窗；恢复自动复位 | ☐ |
+| 1 | Install / extract | Run setup.exe (or extract the zip) | No errors; Beacon appears in the Start menu (the zip route shows a `Beacon.App.exe` icon directly) | ☐ |
+| 2 | First-launch feedback | Start Beacon | Startup notification bubble + tray icon + status capsule in the bottom-right corner; **no main window, and it does not enter the taskbar/Alt-Tab** | ☐ |
+| 3 | Auto-start on boot | Check `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | A Beacon entry pointing at the install path (can be turned off in settings) | ☐ |
+| 4 | Enter a connection | Tray menu → Settings → Connections → type github → fill in Id + Token | "✓ 已保存"; the connection test returns Healthy | ☐ |
+| 5 | **Token red line** | Open `%AppData%\Beacon\connections.json` and search the whole file for the PAT itself | **The plaintext token is not found**, only `credentialRef` | ☐ |
+| 6 | Add widgets | Settings → Widgets: `github.actions.runs` + `github.pull_requests` (pick a connection, fill the required fields) | Two entries appear in the list; the L2 panel shows the corresponding rows and counts | ☐ |
+| 7 | Pin to the desktop | Turn on the "钉" switch on the widget row | A tile appears on L0 (status light + label) | ☐ |
+| 8 | Cause a failure | Fail the controllable workflow once | The capsule turns red / the count changes + the tray icon is recolored + **a Toast pops up** (with sound per the rule) | ☐ |
+| 9 | Drill into the detail | Click the Toast (or the L2 row) to enter L3 | The detail window shows status/repository/phase/error summary; L0 is not interrupted | ☐ |
+| 10 | **One-click Retry** | Click [Retry] in L3 (no browser opened at any point) | The workflow re-runs successfully → Success Toast + the light turns green | ☐ |
+| 11 | Settings immediacy | Change a severity color / motion tier / opacity / capsule toggle | Takes effect immediately (a theme change taking effect on restart is expected); still in force after a restart | ☐ |
+| 12 | Import / export | Settings → export the configuration; then import it after breaking things | Behaviour is restored; the exported file contains no token; it prompts to re-enter the secret | ☐ |
+| 13 | Offline degradation | Disconnect the network | The tile shows a gray hollow light + Last update; no exception dialog; resets automatically on recovery | ☐ |
 
-## 2. 四层交互清单（RFC §6）
+## 2. Four interaction levels checklist (RFC §6)
 
-- [ ] L0 tile 单击 → L2 打开并聚焦；ESC 关；失焦自动关
-- [ ] L2 行单击 → L3 详情；L3 关闭回到 L0 常驻
-- [ ] L0 悬停/拖动/收起-展开不激活窗口、不打断当前输入焦点
-- [ ] 托盘菜单全部入口可用（面板/设置/通知/刷新/退出）；热键 `Ctrl+Alt+B` 呼出面板
-- [ ] B-705 铁律真机手动清单 5 项全部勾选（见该文档）
+- [ ] An L0 tile single click → L2 opens and takes focus; ESC closes it; it closes automatically on focus loss
+- [ ] An L2 row single click → L3 detail; closing L3 returns to the always-resident L0
+- [ ] Hovering, dragging, and collapsing/expanding L0 never activates the window and never interrupts the current input focus
+- [ ] Every tray menu entry works (panel / settings / notifications / refresh / exit); the hotkey `Ctrl+Alt+B` summons the panel
+- [ ] All 5 items of the B-705 invariant real-machine checklist are ticked (see that document)
 
-## 3. GLM 额度端到端（验收反馈阻断级：连源→加组件→板上出真实数字）
+## 3. GLM quota end to end (blocking acceptance feedback: connect the source → add a widget → real numbers on the board)
 
-| # | 步骤 | 操作 | 通过标准 | 结果 |
+| # | Step | Action | Pass criteria | Result |
 |---|---|---|---|---|
-| G1 | 录入 GLM 连接 | 设置 → 连接 → 类型 `bigmodel` → Id + PAT（或裸 Key） | 测试连接返回 Healthy；提示「在下方组件向导选该连接，或用『一键添加』即可上板」 | ☐ |
-| G2 | 一键示例 | 设置 → bigmodel 模块 →「一键添加 GLM 额度组件（示例）」 | 组件列表出现 `bigmodel.usage:GLM`；Pinned=true 自动钉选；右下角 L0 胶囊出现 **数值卡 + 进度条** | ☐ |
-| G3 | 首数出屏 | 等待 ≤10s（CI/Ci 档） | 胶囊显示「GLM 额度 · 已用 XX% · 剩 YY tokens · MM-DD HH:MM 重置」；进度条按已用%填充；右键 L2 行可见 `Source: GLM` 标注 | ☐ |
-| G4 | 字段映射自验 | 设置 → 组件 `bigmodel.usage:GLM` → 编辑 → 确认 `total_path/used_path/reset_path` 映射正确 | 字段路径与 GLM `quota/limit` 响应结构一致（`$.data.total` / `$.data.used` / `$.data.reset_at`） | ☐ |
-| G5 | 手动强刷 | 托盘菜单 → Refresh All | 数值/进度条实时刷新；日志 `%APPDATA%\Beacon\logs\beacon-*.log` 有逐跳行（一键添加→拉取→字段映射→渲染） | ☐ |
+| G1 | Enter the GLM connection | Settings → Connections → type `bigmodel` → Id + PAT (or a raw key) | The connection test returns Healthy; it suggests "在下方组件向导选该连接，或用『一键添加』即可上板" | ☐ |
+| G2 | One-click example | Settings → bigmodel module → "一键添加 GLM 额度组件（示例）" | `bigmodel.usage:GLM` appears in the widget list; Pinned=true pins it automatically; the L0 capsule in the bottom-right corner shows a **value card + progress bar** | ☐ |
+| G3 | First number on screen | Wait ≤10 s (the CI/Ci tier) | The capsule shows "GLM 额度 · 已用 XX% · 剩 YY tokens · MM-DD HH:MM 重置"; the progress bar fills according to the used percentage; right-clicking the L2 row shows a `Source: GLM` annotation | ☐ |
+| G4 | Field mapping self-check | Settings → widget `bigmodel.usage:GLM` → edit → confirm the `total_path/used_path/reset_path` mapping is correct | The field paths match the GLM `quota/limit` response shape (`$.data.total` / `$.data.used` / `$.data.reset_at`) | ☐ |
+| G5 | Forced manual refresh | Tray menu → Refresh All | The value and progress bar refresh live; the log `%APPDATA%\Beacon\logs\beacon-*.log` has one line per hop (one-click add → fetch → field mapping → render) | ☐ |
 
-> ⚠️ **截图必须在 Windows 真机产出**（Linux 仅能跑单测/构建，WinUI 3 无法在此环境运行）。请在完成上述 G1–G5 后，对 L0 胶囊与 L2 面板各截一张，存入 `docs/img/` 并在 PR/回复中附上。
+> ⚠️ **Screenshots must be produced on a real Windows machine** (Linux can only run unit tests / builds; WinUI 3 does not run in that environment). After finishing G1–G5, capture one screenshot of the L0 capsule and one of the L2 panel, save them to `docs/img/`, and attach them to the PR or reply.
 
-## 4. 归档
+## 4. Archive
 
-- [ ] 录屏/截图存 `docs/img/`（大录屏可放 Release 附件，README 链接）
-- [ ] 每个不通过项：当场修复（走门禁推送）或开 Issue
-- [ ] B-804：同一脚本在**干净 Win11 VM** 复跑一遍（下载→运行→本清单），记录 VC++/SmartScreen 等首装环境表现
+- [ ] Save recordings and screenshots to `docs/img/` (large recordings may go into a Release asset with a link from the README)
+- [ ] For every failed item: fix it on the spot (through the gate, pushed) or file an issue
+- [ ] B-804: run the same script once on a **clean Win11 VM** (download → run → this checklist), recording first-install environment behaviour such as VC++ and SmartScreen

@@ -1,444 +1,444 @@
 
-# 装机验收执行清单（71 条 · 2026-10-12）
+# Installation acceptance checklist (71 items · 2026-10-12)
 
-> 源头：`docs/mvp-issues.md`「装机对照清单」三类台账（✅ 已验 1 + 🔧 已修待验 17 + ⬜ 未修 53 = **71 条**，2026-10-12 十一次整理修正原 51/68 加和漂移；批3-补47 增 2.17 后逐行重算）。
-> 本版把每条展开为**前置条件 / 验证步骤 / 预期结果**三段式；每步都能照着做，每条都能单独回执。
-> 带本地自动化证据的项在「附：本地自动化覆盖注记」标注了对应单测，真机只补 UI/交互半。
+> Source: the three ledgers in `docs/mvp-issues.md`「装机对照清单」(✅ verified 1 + 🔧 fixed-pending-verify 17 + ⬜ not fixed 53 = **71 items**; 2026-10-12 eleventh re-sort corrected the original 51/68 sum drift; 批3-补47 added 2.17 and then line-by-line recount).
+> This version expands each item into a three-part form: **preconditions / verification steps / expected results**. Every step can be followed as written and every item can be receipted individually.
+> Items with local automation evidence annotate the corresponding unit tests under "Appendix: local automation coverage notes"; the real machine only supplies the UI/interaction half.
 
-## 0. 通用准备（各条引用编号，不重复写）
+## 0. General preparation (referenced by number by each item, not repeated)
 
-| 编号 | 准备内容 |
+| Number | Preparation |
 |---|---|
-| **E0 装包** | daily-build 最新绿跑下载 nightly 资产（zip + SHA256SUMS 核对一致），解压干净目录运行。**版本门**：2026-10-12 后的包（批3-补42 DSL、批3-补45 悬浮加宽、批3-补47 检查更新在此之后）才含新项；此前包测不到新项 |
-| **E1 日志** | `%APPDATA%\Beacon\logs\beacon-YYYYMMDD.log`；失败项附日志行取证 |
-| **E2 回执** | 每条记「通过 / 失败+现象+截图或日志行」；通过即在 `docs/mvp-issues.md` 对应行注日期；失败只记现象不自修 |
-| **C-GH** | GitHub 连接（真实 PAT）+ `github.pull_requests`、`github.actions.runs` 组件各一（指向有 PR 与 Actions 活动的真实仓库） |
-| **C-HTTP** | http 连接（任一可达 JSON 端点；局域网打包机或公共 echo 服务均可） |
-| **C-MACHINE** | machine 连接（零凭据） |
-| **C-HERALD** | 自建 herald 实例连接（cuihairu/herald） |
-| **C-MIMO** | 小米 MiMo 连接 + 浏览器登录 platform.xiaomimimo.com 备用（F12 取 Cookie） |
-| **C-JENKINS** | Jenkins 连接（公共匿名实例 `https://weekly.ci.jenkins.io` 即可，或自建） |
-| **C-MOONSHOT** | Moonshot 开放平台 Key（platform.moonshot.cn，与 Kimi For Coding 不通用） |
-| **C-DISCONNECT** | 断网手段：关 Wi-Fi/拔网线；恢复手段同 |
-| **C-DPI** | 200%/250% 缩放显示器（或 Windows 设置改缩放）；多屏则至少两块缩放不同的屏 |
+| **E0 install** | Download the latest green-run nightly assets from daily-build (zip + SHA256SUMS verified consistent), extract to a clean directory and run. **Version gate**: packages after 2026-10-12 (批3-补42 DSL, 批3-补45 floating widening, 批3-补47 update check landed after that) contain the new items; earlier packages cannot exercise them |
+| **E1 logs** | `%APPDATA%\Beacon\logs\beacon-YYYYMMDD.log`; failing items attach log-line evidence |
+| **E2 receipt** | Record each item as "passed / failed + phenomenon + screenshot or log line"; on pass, annotate the date on the corresponding line in `docs/mvp-issues.md`; on failure, record only the phenomenon, do not self-repair |
+| **C-GH** | A GitHub connection (real PAT) + one `github.pull_requests` and one `github.actions.runs` widget (pointing at a real repository with PR and Actions activity) |
+| **C-HTTP** | An http connection (any reachable JSON endpoint; a LAN packager or a public echo service both work) |
+| **C-MACHINE** | A machine connection (zero credentials) |
+| **C-HERALD** | A self-hosted herald instance connection (cuihairu/herald) |
+| **C-MIMO** | A Xiaomi MiMo connection + browser login to platform.xiaomimimo.com as backup (get the Cookie via F12) |
+| **C-JENKINS** | A Jenkins connection (the public anonymous instance `https://weekly.ci.jenkins.io` suffices, or self-hosted) |
+| **C-MOONSHOT** | A Moonshot open platform Key (platform.moonshot.cn; not interchangeable with Kimi For Coding) |
+| **C-DISCONNECT** | A way to cut the network: turn off Wi-Fi / unplug the cable; recovery the same |
+| **C-DPI** | A 200%/250% scaled display (or change scaling in Windows Settings); with multiple monitors, at least two monitors at different scales |
 
-回执总口径：全部通过后 MVP 验收（B-803）即闭；录屏/截图归档 `docs/`。
+Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; archive recordings/screenshots under `docs/`.
 
 ---
 
-## 1. ✅ 已验（1 条，留档不再执行）
+## 1. ✅ Verified (1 item, archived, not executed again)
 
-| 项 | 结论 |
+| Item | Conclusion |
 |---|---|
-| 悬浮透明度下限 0.4→0.2（批3-补10/补13⑤） | 用户 2026-10-10 装机确认修好，保持别动 |
+| Floating transparency floor 0.4→0.2 (批3-补10/补13⑤) | User confirmed fixed on installation 2026-10-10; keep it as is |
 
 ---
 
-## 2. 🔧 已修待验（17 条，装最新 nightly 重点看）
+## 2. 🔧 Fixed, pending verification (17 items — focus on these with the latest nightly)
 
-### 2.1 B-301｜真实 PAT 连接测试 成功/失败路径
-- **前置**：E0、E2；一个可 revoke 的真实 GitHub PAT。
-- **步骤**：① 设置 → 连接 → 新建 GitHub，PAT 填错一位 → 「测试连接」；② PAT 留空 → 「测试连接」；③ 填正确 PAT → 「测试连接」；④ 换一个已 revoke 的 PAT → 「测试连接」。
-- **预期**：①④ 明确报认证失败（不是「连接正常」）；② 走匿名请求、按匿名结果如实显示（不误报已认证）；③ 连接健康、rate-limit 头被感知。
+### 2.1 B-301 | Real PAT connection test success/failure paths
+- **Preconditions**: E0, E2; one revocable real GitHub PAT.
+- **Steps**: ① Settings → Connections → new GitHub, mistype the PAT by one character → "Test connection"; ② leave the PAT empty → "Test connection"; ③ enter the correct PAT → "Test connection"; ④ swap in a revoked PAT → "Test connection".
+- **Expected**: ①④ clearly report authentication failure (not "connection normal"); ② goes through an anonymous request and honestly shows the anonymous result (does not falsely report authenticated); ③ the connection is healthy and the rate-limit headers are observed.
 
-### 2.2 B-302｜真实仓库 PR 手动验证（计数与亮黄）
-- **前置**：E0、C-GH。
-- **步骤**：① 添加 `github.pull_requests` 组件指向活跃仓库；② 对照 GitHub 网页上该仓库 Open PR 数；③ 刷新（托盘 Refresh All）；④ 制造一个新 PR 或关闭一个 PR 再刷新。
-- **预期**：计数与网页一致；有 open PR 时亮黄、归零转绿；新增/关闭在 ≤1 刷新周期反映。
+### 2.2 B-302 | Real repository PR manual verification (count and yellow highlight)
+- **Preconditions**: E0, C-GH.
+- **Steps**: ① add a `github.pull_requests` widget pointing at an active repository; ② compare the Open PR count with the GitHub web page; ③ refresh (tray Refresh All); ④ create a new PR or close a PR and refresh again.
+- **Expected**: The count matches the web page; yellow while there are open PRs, green when it hits zero; additions/closures are reflected within ≤1 refresh cycle.
 
-### 2.3 B-302｜真实仓库红 CI 判据
-- **前置**：同 2.2，且仓库需有红 CI 的 open PR（或在某 PR 上把 check 跑红）。
-- **步骤**：① 观察 PR 卡摘要；② （可选）设置 `warn_on_red_ci` 开关再刷新对比。
-- **预期**：红 CI PR 摘要出现「N red ci」段；304 续探后终态复用不再重复请求；开关关闭时不受红 CI 影响。
+### 2.3 B-302 | Real repository red CI criterion
+- **Preconditions**: Same as 2.2, and the repository needs an open PR with red CI (or run a check red on some PR).
+- **Steps**: ① observe the PR card summary; ② (optional) toggle the `warn_on_red_ci` switch and refresh to compare.
+- **Expected**: The red-CI PR summary shows an "N red ci" section; after a 304 re-probe the terminal state is reused without another request; when the switch is off, red CI does not affect it.
 
-### 2.4 B-303｜真实 workflow 手动验证（成功/失败/运行中）
-- **前置**：E0、C-GH（`github.actions.runs` 组件）。
-- **步骤**：① 触发一次成功 run，等结束刷新；② 触发一次失败 run；③ 触发长 run（>2 分钟）并在运行中刷新。
-- **预期**：成功→绿、失败→红、运行中→黄且时长递增；16 分钟级卡住 run 时长格式正确（无负数/乱码）；坏 JSON 响应按 Degraded 明示不崩溃。
+### 2.4 B-303 | Real workflow manual verification (success/failure/running)
+- **Preconditions**: E0, C-GH (a `github.actions.runs` widget).
+- **Steps**: ① trigger one successful run, wait for it to finish and refresh; ② trigger one failing run; ③ trigger a long run (>2 minutes) and refresh while it is running.
+- **Expected**: Success→green, failure→red, running→yellow with increasing duration; a run stuck at the 16-minute level formats the duration correctly (no negatives / garbled text); a malformed JSON response is shown explicitly as Degraded without crashing.
 
-### 2.5 B-303｜真实 workflow 映射复核
-- **前置**：同 2.4。
-- **步骤**：对照 GitHub 网页 run 状态逐个核对 Beacon 卡面（queued/running/success/failure/cancelled）。
-- **预期**：状态映射与网页一一对应；cancelled 不误判为 failure。
+### 2.5 B-303 | Real workflow mapping review
+- **Preconditions**: Same as 2.4.
+- **Steps**: Cross-check each Beacon card against the GitHub web run status one by one (queued/running/success/failure/cancelled).
+- **Expected**: The state mapping corresponds one-to-one with the web page; cancelled is not misjudged as failure.
 
-### 2.6 批3-补8｜小米控制台口径 + GLM 5h 主位
-- **前置**：E0、C-MIMO；GLM 真 Key 连接。
-- **步骤**：① MiMo 连接录控制台 Cookie（F12 → 应用 → Cookies → `api-platform_ph` 整行粘贴）；② 刷新 MiMo 卡；③ GLM 卡观察主数值。
-- **预期**：MiMo 显示套餐已用/总量/百分比（数据来自控制台 API 非「无额度口」占位）；GLM 主位为 5h 滚动窗百分比。
+### 2.6 批3-补8 | Xiaomi console conventions + GLM 5h primary slot
+- **Preconditions**: E0, C-MIMO; a GLM real-Key connection.
+- **Steps**: ① record the MiMo console Cookie (F12 → Application → Cookies → paste the whole `api-platform_ph` line); ② refresh the MiMo card; ③ observe the GLM card's main value.
+- **Expected**: MiMo shows plan used / total / percentage (data from the console API, not a "no quota slot" placeholder); GLM's main slot is the 5h rolling-window percentage.
 
-### 2.7 批3-补9/17/18/23｜悬浮框进度条 + 快捷面板底部
-- **前置**：E0；数值类组件（如 GLM/bigmodel 额度）且设置「数量悬浮窗」开。
-- **步骤**：① 看悬浮 tile 进度条形态；② 用量调到 ≥80%（或改阈值）；③ 打开 Quick Panel 看 RECENT EVENTS 区。
-- **预期**：进度条为 4 DIP 圆角条 + 「NN%」读数（默认形态）；≥80% 变黄、满格红；「池水」特效只在设置里自选才出现；RECENT EVENTS 在 Grid 内滚动、不把面板撑破。
+### 2.7 批3-补9/17/18/23 | Floating progress bar + quick panel bottom
+- **Preconditions**: E0; a numeric widget (e.g. GLM/bigmodel quota) with "numeric floating window" on.
+- **Steps**: ① look at the floating tile progress-bar form; ② push usage to ≥80% (or adjust the threshold); ③ open the Quick Panel and look at the RECENT EVENTS section.
+- **Expected**: The progress bar is a 4 DIP rounded bar + an "NN% " readout (default form); yellow at ≥80%, red when full; the "pool water" effect only appears when selected in settings; RECENT EVENTS scrolls inside the Grid and does not break the panel.
 
-### 2.8 批3-补11｜方舟额度用尽显示
-- **前置**：E0；方舟连接（Coding Plan）。自然用尽难触发，可临时把组件阈值调到极低模拟判级。
-- **步骤**：① 等某窗（5h/周/月）用尽或用阈值模拟；② 收到 429 AccountQuotaExceeded 类响应时观察。
-- **预期**：卡面显示「额度用尽（窗名，重置时间）」；429 耗尽特判按该窗已尽处理并带重置时间；普通限流 429 不翻转状态。
+### 2.8 批3-补11 | Ark quota-exhausted display
+- **Preconditions**: E0; an ark connection (Coding Plan). Natural exhaustion is hard to trigger, so you can temporarily drag the widget threshold very low to simulate the judgment.
+- **Steps**: ① wait for some window (5h/weekly/monthly) to exhaust, or simulate it with the threshold; ② observe when a 429 AccountQuotaExceeded-class response arrives.
+- **Expected**: The card shows "额度用尽（窗名，重置时间）" (quota exhausted (window name, reset time)); the 429 exhaustion special case is treated as that window spent with the reset time; an ordinary rate-limit 429 does not flip the state.
 
-### 2.9 批3-补12｜通知规则接线
-- **前置**：E0；在设置 → 通知添加一条自定义规则（如某组件 Warning+ 时 Toast）。
-- **步骤**：① 保存规则；② 制造满足条件的状态（如断对应连接或注入失败）；③ 再改规则重测。
-- **预期**：自定义规则真实触发 Toast（此前接线前是空头支票）；规则修改后下次评估即生效，无需重启。
+### 2.9 批3-补12 | Notification rule wiring
+- **Preconditions**: E0; add one custom rule under Settings → Notifications (e.g. Toast when some widget is Warning+).
+- **Steps**: ① save the rule; ② manufacture a state that satisfies the condition (e.g. cut that connection or inject a failure); ③ change the rule and retest.
+- **Expected**: The custom rule actually fires a Toast (before the wiring it was an empty promise); after modifying the rule the next evaluation takes effect, no restart needed.
 
-### 2.10 批3-补13｜UI/UX 审计 6 组可发现性修复（⑤透明度已验）
-- **前置**：E0。
-- **步骤**：逐组走查：① 动作独立页可发现；② 详情窗滚动区常驻（不靠滚动条自觉）；③ 设置表单压缩排布；④ 刷新档位中文标签；⑤ L2 tile 双列布局；⑥ 设置页整体截图留档。
-- **预期**：各组均符合批3-补13 记录的设计；无按钮/区域「看不见」类问题。
+### 2.10 批3-补13 | UI/UX audit 6 groups of discoverability fixes (⑤ transparency verified)
+- **Preconditions**: E0.
+- **Steps**: Walk each group: ① the action standalone page is discoverable; ② the detail window scroll region is resident (does not rely on noticing a scrollbar); ③ the settings form is laid out compactly; ④ the refresh tiers have Chinese labels; ⑤ the L2 tile two-column layout; ⑥ screenshot the settings page for the archive.
+- **Expected**: All groups match the designs recorded in 批3-补13; no buttons/regions with "invisible" problems.
 
-### 2.11 批3-补19｜吸边细条无法恢复
-- **前置**：E0。
-- **步骤**：① 拖胶囊/悬浮面板到屏幕边缘使其收成细条；② 鼠标悬停细条；③ 移开再悬停。
-- **预期**：悬停细条展开为完整面板（不再死循环/无法恢复）；细条与展开面板同一 Place 数学，几何不跳变。
+### 2.11 批3-补19 | Edge-collapsed strip cannot be recovered
+- **Preconditions**: E0.
+- **Steps**: ① drag the capsule / floating panel to a screen edge so it collapses to a strip; ② hover the strip with the mouse; ③ move away and hover again.
+- **Expected**: Hovering the strip expands it back to the full panel (no more death loop / unrecoverable); the strip and the expanded panel share the same Place math, geometry does not jump.
 
-### 2.12 批3-补20｜5K/高缩放裁字（DPI）
-- **前置**：E0、C-DPI（200%/250%）。
-- **步骤**：① 在 200% 缩放下打开详情窗；② 看胶囊与悬浮 tile 文字；③ 换 250% 重复。
-- **预期**：详情窗按内容定尺寸、文字完整不裁；胶囊/悬浮框 DIP 布局正确（此前 5K 裁字根因是不 Resize 落固定物理像素）。
+### 2.12 批3-补20 | 5K / high scaling clipped text (DPI)
+- **Preconditions**: E0, C-DPI (200%/250%).
+- **Steps**: ① open the detail window at 200% scaling; ② look at the capsule and floating tile text; ③ repeat at 250%.
+- **Expected**: The detail window sizes to content and text is complete, not clipped; the capsule / floating panel DIP layout is correct (the earlier 5K clipping root cause was not resizing and falling back to fixed physical pixels).
 
-### 2.13 批3-补20｜拖动跟手 + 跨屏闪烁
-- **前置**：E0、多屏（含高回报率鼠标更佳）。
-- **步骤**：① 慢速拖动胶囊；② 快速甩动拖动；③ 拖跨两块不同 DPI 的屏。
-- **预期**：全程跟手不爬行（起点绝对定位修复逐事件累加舍入）；跨 DPI 拖动中无重排闪烁（拖动中跳过 WM_DPICHANGED 重排）。
+### 2.13 批3-补20 | Drag follow-the-cursor + cross-screen flicker
+- **Preconditions**: E0, multiple monitors (a high-refresh-rate mouse is better).
+- **Steps**: ① drag the capsule slowly; ② fling it quickly; ③ drag across two monitors with different DPIs.
+- **Expected**: Follows the cursor the whole way without crawling (the start-point absolute positioning fix removes per-event accumulation rounding); no re-layout flicker while dragging across DPIs (re-layout skips WM_DPICHANGED during a drag).
 
-### 2.14 批3-补21｜Moonshot 余额卡片
-- **前置**：E0、C-MOONSHOT。
-- **步骤**：① 建 Moonshot 连接（platform.moonshot.cn Key）→ 测试连接；② 添加 `moonshot.balance` 组件；③ 对比网页余额；④ 把 `warn_below` 调到高于当前余额。
-- **预期**：连接健康、余额金额与网页一致；余额 ≤ warn_below（默认 20）亮黄、≤ error_below（默认 5）红。
+### 2.14 批3-补21 | Moonshot balance card
+- **Preconditions**: E0, C-MOONSHOT.
+- **Steps**: ① create a Moonshot connection (platform.moonshot.cn Key) → test connection; ② add a `moonshot.balance` widget; ③ compare the balance with the web page; ④ raise `warn_below` above the current balance.
+- **Expected**: The connection is healthy and the balance matches the web page; balance ≤ warn_below (default 20) turns yellow, ≤ error_below (default 5) turns red.
 
-### 2.15 批3-补22｜拖动跨三屏跟手
-- **前置**：E0、三块缩放不同的屏（没有三屏则两屏近似验证）。
-- **步骤**：慢速拖胶囊依次跨过三块屏，每块屏停顿观察尺寸。
-- **预期**：锚点始终跟随光标（物理像素口径），跨缩放屏无比例错乱、无尺寸突变。
+### 2.15 批3-补22 | Drag across three screens follow-the-cursor
+- **Preconditions**: E0, three monitors at different scales (if no three-screen setup, approximate with two).
+- **Steps**: Slowly drag the capsule across the three screens in turn, pausing on each to observe the size.
+- **Expected**: The anchor always follows the cursor (physical-pixel convention); no scaling mismatch and no size jumps across different-scale screens.
 
-### 2.16 批3-补22｜详情窗 200% 仍裁字
-- **前置**：E0、C-DPI（200%）。
-- **步骤**：200% 缩放下开任意组件详情窗，检查标题、正文、底部按钮区。
-- **预期**：完整显示无裁切（Resize 补回非客户区差值：GetWindowRect−GetClientRect）。
+### 2.16 批3-补22 | Detail window still clips text at 200%
+- **Preconditions**: E0, C-DPI (200%).
+- **Steps**: Open any widget detail window at 200% scaling; check the title, body, and bottom button area.
+- **Expected**: Complete display without clipping (Resize adds back the non-client difference: GetWindowRect−GetClientRect).
 
-### 2.17 批3-补47｜检查更新三行 + 失败降级
-- **前置**：E0（2026-10-12 后的包）、C-DISCONNECT（断网/恢复手段）。
-- **步骤**：① 打开设置 → 关于，点「检查更新」，等出结论；② 断网后再点一次「检查更新」；③ 恢复网络再点一次。有新版本时看「打开下载页」按钮是否出现并指向 releases/latest。
-- **预期**：① 三行齐——当前版本 / 远程最新版本（tag_name）/ 检查结果（已是最新，或「有新版本 vN」+「打开下载页」），最后检查时间更新到分钟；② 断网显示「无法检查更新（HH:mm）」，不弹异常框；③ 恢复后恢复正常结论。
+### 2.17 批3-补47 | Update check three lines + failure degradation
+- **Preconditions**: E0 (a package after 2026-10-12), C-DISCONNECT (means to cut and restore the network).
+- **Steps**: ① open Settings → About, click "Check for updates" and wait for a conclusion; ② cut the network and click "Check for updates" again; ③ restore the network and click again. When there is a new version, check that the "Open download page" button appears and points at releases/latest.
+- **Expected**: ① the three lines are complete — current version / remote latest version (tag_name) / check result (already latest, or "new version vN" + "Open download page"), with the last check time updated to the minute; ② with the network cut it shows "无法检查更新（HH:mm）" without an exception box; ③ after restoring, it returns to the normal conclusion.
 
 ---
 
-## 3. ⬜ 未修（53 条：代码就位，首验；其中 B-103/B-104/B-502 应用侧已于 2026-10-13 patrol-B 全量 CI/单测代验并在 todo/mvp-issues 勾账——本章保留对应条目仅作装机顺手复核步骤）
+## 3. ⬜ Not fixed (53 items: code in place, first verification; of these, the app side of B-103/B-104/B-502 was fully CI/unit-test proxied on 2026-10-13 patrol-B and checked off in the todo/mvp-issues ledgers — this chapter keeps the corresponding entries only as installation walkthrough recheck steps)
 
-### A 安装与进程
+### A Installation and process
 
-#### A1｜B-101｜二次启动不重复进程
-- **前置**：E0。
-- **步骤**：双击 exe 第二次启动。
-- **预期**：不出现第二个进程；既有实例收到唤起并弹气泡提示。
+#### A1 | B-101 | Second launch does not duplicate the process
+- **Preconditions**: E0.
+- **Steps**: Double-click the exe for a second launch.
+- **Expected**: No second process appears; the existing instance is woken and shows a tip bubble.
 
-#### A2｜B-101｜托盘驻留
-- **前置**：E0。
-- **步骤**：关闭所有 Beacon 窗口 → 看任务管理器；再从托盘菜单 Exit。
-- **预期**：关窗后进程驻留托盘；Exit 才真正退出、进程消失。
+#### A2 | B-101 | Tray residency
+- **Preconditions**: E0.
+- **Steps**: Close all Beacon windows → look in Task Manager; then Exit from the tray menu.
+- **Expected**: After closing windows the process stays in the tray; only Exit truly quits and the process disappears.
 
-#### A3｜批3-补27①｜托盘 Explorer 重启恢复
-- **前置**：E0，Beacon 运行中。
-- **步骤**：任务管理器结束并重启 `explorer.exe`。
-- **预期**：Explorer 恢复后托盘图标自回，级别色不丢。
+#### A3 | 批3-补27① | Tray Explorer restart recovery
+- **Preconditions**: E0, Beacon running.
+- **Steps**: End and restart `explorer.exe` in Task Manager.
+- **Expected**: After Explorer recovers, the tray icon comes back by itself and the severity color is not lost.
 
-#### A4｜批3-补27②｜睡眠唤醒补刷
-- **前置**：E0，至少一个组件。
-- **步骤**：睡眠（或锁屏断网模拟）→ 唤醒 → 观察数据更新时间。
-- **预期**：唤醒后 ≤1 个刷新周期出新数据（不依赖手动强刷）。
+#### A4 | 批3-补27② | Sleep/wake refresh-backfill
+- **Preconditions**: E0, at least one widget.
+- **Steps**: Sleep (or simulate with lock screen / network cut) → wake → observe the data update time.
+- **Expected**: Within ≤1 refresh cycle after waking there is new data (does not depend on a manual force-refresh).
 
-#### A5｜批3-补28｜胶囊右键直达设置
-- **前置**：E0。
-- **步骤**：右键胶囊；再左键拖动、左键单击。
-- **预期**：右键弹设置窗；拖动/单击开面板行为不受干扰。
+#### A5 | 批3-补28 | Capsule right-click goes straight to settings
+- **Preconditions**: E0.
+- **Steps**: Right-click the capsule; then left-click-drag and left-click.
+- **Expected**: Right-click pops the settings window; drag / click-to-open-panel behavior is not disturbed.
 
-#### A6｜B-104｜开机自启
-- **前置**：E0。
-- **步骤**：设置里开自启 → 重启系统；再关自启 → 重启；最后卸载验证残留。
-- **预期**：开→登录后自动启动；关→不再自启；卸载后无自启残留项。
+#### A6 | B-104 | Launch on startup
+- **Preconditions**: E0.
+- **Steps**: Turn on auto-start in settings → reboot; turn it off → reboot again; finally uninstall and check for leftovers.
+- **Expected**: On → starts automatically after login; off → no longer auto-starts; no auto-start leftovers after uninstall.
 
-#### A7｜B-105｜崩溃兜底
-- **前置**：E0、E1。
-- **步骤**：人为制造异常（配置指向会抛错的端点等）→ 观察进程与日志。
-- **预期**：进程存活、日志含堆栈、无僵尸窗口。
+#### A7 | B-105 | Crash fallback
+- **Preconditions**: E0, E1.
+- **Steps**: Manufacture an exception (e.g. point a config at an endpoint that throws) → observe the process and logs.
+- **Expected**: The process survives, the logs contain a stack trace, no zombie windows.
 
-#### A8｜B-804｜干净 VM 安装
-- **前置**：干净 Windows 11 虚拟机。
-- **步骤**：下载 nightly → 运行 → 完成 B-803 脚本（见 `docs/acceptance-B803-e2e-walkthrough.md`）。
-- **预期**：装得上、跑得起来、脚本走查通过。
+#### A8 | B-804 | Clean VM install
+- **Preconditions**: A clean Windows 11 virtual machine.
+- **Steps**: Download the nightly → run → complete the B-803 walkthrough (see `docs/acceptance-B803-e2e-walkthrough.md`).
+- **Expected**: Installs, starts, the walkthrough passes.
 
-#### A9｜B-102｜胶囊位置记忆 / 跨 DPI 无错乱
-- **前置**：E0、C-DPI。
-- **步骤**：① 拖胶囊到非默认位置 → 重启；② 跨不同缩放屏拖动。
-- **预期**：重启后胶囊回到上次位置；跨 DPI 拖动无尺寸错乱（与 2.13/2.15 互证）。
+#### A9 | B-102 | Capsule position memory / no mess across DPIs
+- **Preconditions**: E0, C-DPI.
+- **Steps**: ① drag the capsule to a non-default position → restart; ② drag across screens at different scales.
+- **Expected**: After restart the capsule returns to its last position; dragging across DPIs has no size mess (mutual corroboration with 2.13/2.15).
 
-#### A10｜B-103｜全局热键
-- **前置**：E0。
-- **步骤**：① 在任意前台应用（记事本/浏览器/游戏全屏除外）按热键；② 设置改键 → 重启 → 用新键。
-- **预期**：任意前台下热键生效打开面板；改键持久化且旧键失效、新键生效。
+#### A10 | B-103 | Global hotkey
+- **Preconditions**: E0.
+- **Steps**: ① press the hotkey while any foreground app is active (Notepad / browser / fullscreen games excepted); ② change the key in settings → restart → use the new key.
+- **Expected**: The hotkey works in any foreground app and opens the panel; the changed key persists, the old key stops working and the new key works.
 
-### B 连接与组件数据源
+### B Connections and widget data sources
 
-#### B1｜批3-补31｜Jenkins 构建卡
-- **前置**：E0、C-JENKINS。
-- **步骤**：建 Jenkins 连接（匿名或 user:apiToken）→ 测试 → 添加 `jenkins.build` 组件填 job_path。
-- **预期**：构建灯/构建号随刷新走；构建中亮黄；成功绿/失败红（color 判级）。
+#### B1 | 批3-补31 | Jenkins build card
+- **Preconditions**: E0, C-JENKINS.
+- **Steps**: Create a Jenkins connection (anonymous or user:apiToken) → test → add a `jenkins.build` widget and fill in job_path.
+- **Expected**: The build light / build number follows refreshes; building turns yellow; success green / failure red (color-based judgment).
 
-#### B2｜批3-补32｜本机网络卡
-- **前置**：E0、C-MACHINE。
-- **步骤**：建 machine 连接（零凭据）→ 添加 `machine.net` 组件 → 刷两次以上。
-- **预期**：IP 与累计流量在 L3 可见；首刷无速率、第二刷起 ↓↑ 速率随刷新变化。
+#### B2 | 批3-补32 | Local machine network card
+- **Preconditions**: E0, C-MACHINE.
+- **Steps**: Create a machine connection (zero credentials) → add a `machine.net` widget → refresh twice or more.
+- **Expected**: IP and cumulative traffic are visible in L3; no rate on the first refresh, from the second refresh the ↓↑ rate changes with each refresh.
 
-#### B3｜批3-补33｜本机 Git 卡
-- **前置**：E0、C-MACHINE、本机任一 Git 仓库路径。
-- **步骤**：添加 `machine.git` 组件，repo_path 填本机仓库 → 刷新；再让本地落后远端（如 revert 一个远端已有 commit）。
-- **预期**：↑↓/改动/stash 数随刷新走；落后远端亮黄。
+#### B3 | 批3-补33 | Local machine Git card
+- **Preconditions**: E0, C-MACHINE, the path of any local Git repository.
+- **Steps**: Add a `machine.git` widget with repo_path set to the local repository → refresh; then make the local branch fall behind the remote (e.g. revert a commit that exists on the remote).
+- **Expected**: The ↑↓ / changed / stash counts follow refreshes; falling behind the remote turns yellow.
 
-#### B4｜批3-补36｜本机资源卡
-- **前置**：E0、C-MACHINE。
-- **步骤**：添加 `machine.local` 组件 → 连续刷新；把 CPU 阈值调低（如 20）。
-- **预期**：CPU 首刷不出数、第二刷起百分比随刷新走；内存/磁盘即时百分比；低于阈值时亮黄判级生效。
+#### B4 | 批3-补36 | Local machine resource card
+- **Preconditions**: E0, C-MACHINE.
+- **Steps**: Add a `machine.local` widget → refresh continuously; lower the CPU threshold (e.g. to 20).
+- **Expected**: CPU shows no value on the first refresh and the percentage follows refreshes from the second; memory / disk show instantaneous percentages; below the threshold, yellow judgment takes effect.
 
-#### B5｜批3-补34｜MiMo 整行 Cookie
-- **前置**：E0、C-MIMO。
-- **步骤**：控制台凭据栏粘贴整行 Cookie（非单个 api-platform_ph 值）→ 刷新。
-- **预期**：自动提取 api-platform_ph 并出数（此前整行粘贴卡 Offline）。
+#### B5 | 批3-补34 | MiMo whole-line Cookie
+- **Preconditions**: E0, C-MIMO.
+- **Steps**: Paste the whole Cookie line into the console credential box (not just the single api-platform_ph value) → refresh.
+- **Expected**: Automatically extracts api-platform_ph and produces data (previously whole-line pasting left the card Offline).
 
-#### B6｜批3-补38①｜MiMo 401 明示 + 重录指引
-- **前置**：E0、C-MIMO。
-- **步骤**：故意填过期/乱写的控制台 Cookie → 刷新 → 看卡片失败原因行。
-- **预期**：Degraded 卡面明示「Cookie 已失效或未录制」并给出重录指引原文（含 F12 → api-platform_ph 路径）。
+#### B6 | 批3-补38① | MiMo 401 explicit + re-record guidance
+- **Preconditions**: E0, C-MIMO.
+- **Steps**: Deliberately enter an expired / scrambled console Cookie → refresh → look at the card's failure-reason line.
+- **Expected**: The Degraded card explicitly states "Cookie 已失效或未录制" and gives the re-record guidance verbatim (including the F12 → api-platform_ph path).
 
-#### B7｜批3-补38②｜MiMo LiteLLM 网关记账档
-- **前置**：E0；本机 LiteLLM 网关**已接 DB**（现状 `no_db_connection` 是网关侧缺口——此项与网关侧整改绑定，未接 DB 前只验 Degraded 明示半）。
-- **步骤**：Settings 录 `litellm_spend_url`（如 `http://127.0.0.1:4000/spend/logs`）→ 刷新。
-- **预期**：网关有 DB 时卡显「本月已用 $X.XX（网关记账）」；未接 DB 时明示「LiteLLM 未接数据库」Degraded，不静默降档。
+#### B7 | 批3-补38② | MiMo LiteLLM gateway accounting tier
+- **Preconditions**: E0; the local LiteLLM gateway **has a DB attached** (the current `no_db_connection` is a gateway-side gap — this item is bound to the gateway-side fix; before a DB is attached only the explicit Degraded half is verified).
+- **Steps**: Record `litellm_spend_url` in Settings (e.g. `http://127.0.0.1:4000/spend/logs`) → refresh.
+- **Expected**: With a gateway DB the card shows "本月已用 $X.XX（网关记账）" (spent $X.XX this month (gateway accounting)); without a DB it explicitly shows the "LiteLLM 未接数据库" Degraded state, no silent downgrade.
 
-#### B8｜批3-补42｜YAML Provider DSL 端到端
-- **前置**：E0、C-HTTP；写一个 DSL 文件（见 `docs/configuration.md`「Provider DSL」节示例）。
-- **步骤**：① http 连接 Settings 配 `dsl_path` 指向声明文件 → 刷新 `http.status` 组件（widget.Config 不填数据键）；② 在 widget.Config 填同名键再刷新；③ 打开该组件详情页看动作区，点带 retry 的动作（让目标端点先失败一次）；④ 把 YAML 改坏（Tab 缩进）再刷新；⑤ 移走文件再刷新；⑥ 删掉 `dsl_path` 刷新。
-- **预期**：① 按 DSL mapping 出数；② 实例值覆盖 DSL；③ DSL 动作仅出现在该连接的组件上，失败自动重试、最终失败消息带「已重试 N 次」；④ 卡面 Degraded 明示行号、启动不受影响、其他连接正常；⑤ 同样 Degraded 明示「文件不存在」；⑥ 行为与未用 DSL 的连接完全一致（零变化）。
+#### B8 | 批3-补42 | YAML Provider DSL end-to-end
+- **Preconditions**: E0, C-HTTP; write a DSL file (see the "Provider DSL" section example in `docs/configuration.md`).
+- **Steps**: ① set `dsl_path` in the http connection Settings to point at the declaration file → refresh an `http.status` widget (without filling data keys in widget.Config); ② fill the same-named keys in widget.Config and refresh again; ③ open that widget's detail page, look at the action area, and click an action with retry (make the target endpoint fail once first); ④ break the YAML (Tab indentation) and refresh again; ⑤ remove the file and refresh; ⑥ delete `dsl_path` and refresh.
+- **Expected**: ① data comes out per the DSL mapping; ② instance values override the DSL; ③ DSL actions appear only on that connection's widgets, failures auto-retry, and a still-failing message carries "已重试 N 次" (retried N times); ④ the card goes Degraded with the line number explicit, startup is unaffected, other connections are normal; ⑤ likewise Degraded with "文件不存在" (file does not exist); ⑥ behavior is exactly the same as a connection that never used the DSL (zero change).
 
-#### B9｜B-206｜断网启动有数据
-- **前置**：E0、至少一个出过数的组件、C-DISCONNECT。
-- **步骤**：正常出数一次 → 退出 → 断网 → 启动。
-- **预期**：界面有缓存数据并标注 Last update；随后恢复网络自动刷新出新数据（缓存水合全周期单测已过，本条验 UI 半）。
+#### B9 | B-206 | Offline startup has data
+- **Preconditions**: E0, at least one widget that has produced data, C-DISCONNECT.
+- **Steps**: Produce data normally once → exit → cut the network → start.
+- **Expected**: The UI has cached data labeled Last update; after restoring the network it automatically refreshes new data (the cache hydration full-cycle unit test has passed; this item verifies the UI half).
 
-#### B10｜批3-补35①｜Herald 事件台账卡
-- **前置**：E0、C-HERALD。
-- **步骤**：建 herald 连接 → 添加 `herald.incidents` 组件 → 在 herald 侧制造/解决一条 open 事件。
-- **预期**：未决计数随台账走；open 亮黄、critical 亮红；解决后归绿。
+#### B10 | 批3-补35① | Herald incident ledger card
+- **Preconditions**: E0, C-HERALD.
+- **Steps**: Create a herald connection → add a `herald.incidents` widget → manufacture / resolve one open incident on the herald side.
+- **Expected**: The open count follows the ledger; open turns yellow, critical turns red; resolved turns green.
 
-#### B11｜批3-补35②｜Herald 订阅卡
-- **前置**：E0、C-HERALD。
-- **步骤**：添加 `herald.feed` 组件（公开类目或私密 token）→ 等新条目投递。
-- **预期**：新条目未读数随刷新递增；token 走 DPAPI 不落明文。
+#### B11 | 批3-补35② | Herald subscription card
+- **Preconditions**: E0, C-HERALD.
+- **Steps**: Add a `herald.feed` widget (public category or private token) → wait for new entries to be delivered.
+- **Expected**: The unread count of new entries increases with refreshes; the token goes to DPAPI and no plaintext lands anywhere.
 
-#### B12｜批3-补37｜Herald 投递失败卡
-- **前置**：E0、C-HERALD。
-- **步骤**：添加 `herald.deliveries` 组件 → 制造一次失败投递（停掉目标 provider 再 notify）。
-- **预期**：无失败时显「无失败」；失败后亮黄并显示失败计数。
+#### B12 | 批3-补37 | Herald delivery-failure card
+- **Preconditions**: E0, C-HERALD.
+- **Steps**: Add a `herald.deliveries` widget → manufacture one failed delivery (stop the target provider and then notify).
+- **Expected**: Shows "无失败" (no failures) when there are none; turns yellow after a failure and shows the failure count.
 
-#### B13｜B-301 补充｜匿名连接降级（配套项，与 2.1 并验可跳，不计入 53）
-- **前置**：同 2.1。
-- **步骤**：无 PAT 建 GitHub 连接看降级行为。
-- **预期**：按匿名限额如实显示，不冒充已认证。（与 2.1 步骤②重合，可并验）
+#### B13 | B-301 supplement | Anonymous connection degradation (companion item, verified together with 2.1, not counted in the 53)
+- **Preconditions**: Same as 2.1.
+- **Steps**: Create a GitHub connection without a PAT and observe the degradation behavior.
+- **Expected**: Shows honestly per the anonymous limit, does not impersonate authenticated. (Overlaps with step ② of 2.1; can be verified together)
 
 ### C Actions
 
-#### C1｜B-401｜Action 失败 UI 反馈
-- **前置**：E0；一个会失败的 Action（如 url 指向不通端口）。
-- **步骤**：详情页点击该动作。
-- **预期**：UI 有可见失败反馈（结果文本/颜色），不静默。
+#### C1 | B-401 | Action failure UI feedback
+- **Preconditions**: E0; an action that will fail (e.g. a URL pointing at a dead port).
+- **Steps**: Click that action on the detail page.
+- **Expected**: The UI gives visible failure feedback (result text / color), does not go silent.
 
-#### C2｜B-402｜浏览器打开 URL
-- **前置**：E0；带 DetailUrl 的组件。
-- **步骤**：详情页点 Open。
-- **预期**：默认浏览器打开正确 URL（模板渲染单测已过，本条验浏览器半）。
+#### C2 | B-402 | Open URL in browser
+- **Preconditions**: E0; a widget with a DetailUrl.
+- **Steps**: Click Open on the detail page.
+- **Expected**: The default browser opens the correct URL (the template-rendering unit test has passed; this item verifies the browser half).
 
-#### C3｜B-403｜Workflow Dispatch 全程
-- **前置**：E0、C-GH、有 dispatch 权限的仓库。
-- **步骤**：dispatch 一个 workflow → 观察 Run→运行中→终态全程。
-- **预期**：全程状态可在 Beacon 看到（无需开 GitHub 网页）。
+#### C3 | B-403 | Workflow Dispatch full journey
+- **Preconditions**: E0, C-GH, a repository with dispatch permission.
+- **Steps**: Dispatch a workflow → observe the whole Run→running→terminal-state journey.
+- **Expected**: The whole state journey is visible in Beacon (no need to open the GitHub web page).
 
-#### C4｜B-404｜本机命令确认弹窗 + 超时落盘
-- **前置**：E0；配置一个 local.command 动作。
-- **步骤**：① 触发动作看确认弹窗；② 配置一个长命令验证超时终止与日志落盘。
-- **预期**：默认弹确认（可关按 Action 配置）；超时终止进程、输出仍落盘（执行器单测已过，本条验弹窗 UI 半）。
+#### C4 | B-404 | Local command confirm dialog + timeout persistence
+- **Preconditions**: E0; configure a local.command action.
+- **Steps**: ① trigger the action and look at the confirm dialog; ② configure a long command to verify timeout termination and log persistence.
+- **Expected**: Confirm dialog by default (can be turned off per action config); the timeout kills the process and the output is still persisted to disk (the executor unit test has passed; this item verifies the dialog UI half).
 
-### D 通知
+### D Notifications
 
-#### D1｜B-501｜Toast 全链路
-- **前置**：E0；通知规则命中。
-- **步骤**：① 触发 Toast；② 点击 Toast；③ 删除 HKCU\Software\Classes\AppUserModelId 下的 AUMID 注册键（带 CustomActivator）后重启应用重试。
-- **预期**：发送/点击/激活路由全通；AUMID 注册缺失自愈（下次启动由 toolkit Initialize 重建注册键）。
+#### D1 | B-501 | Toast full chain
+- **Preconditions**: E0; a notification rule hits.
+- **Steps**: ① trigger a Toast; ② click the Toast; ③ delete the AUMID registration key under HKCU\Software\Classes\AppUserModelId (with CustomActivator) and restart the app to retry.
+- **Expected**: Send / click / activation routing all work; missing AUMID registration self-heals (the toolkit Initialize rebuilds the registration key on next startup).
 
-#### D2｜B-502｜Toast 冷却
-- **前置**：E0；同上。
-- **步骤**：注入 Failed 状态（如把某连接指向坏端点触发 Error）。
-- **预期**：收到且仅收到一条 Toast（冷却期内不重复轰炸）。
+#### D2 | B-502 | Toast cooldown
+- **Preconditions**: E0; same as above.
+- **Steps**: Inject a Failed state (e.g. point some connection at a bad endpoint to trigger Error).
+- **Expected**: Exactly one Toast is received (no repeated bombardment inside the cooldown window).
 
-#### D3｜B-503｜托盘着色
-- **前置**：E0；组件状态可控。
-- **步骤**：制造 Warning/Error → 看托盘图标。
-- **预期**：聚合状态变化 ≤1 个刷新周期内反映到托盘图标颜色。
+#### D3 | B-503 | Tray coloring
+- **Preconditions**: E0; controllable widget states.
+- **Steps**: Manufacture Warning/Error → look at the tray icon.
+- **Expected**: Aggregated state changes are reflected in the tray icon color within ≤1 refresh cycle.
 
-#### D4｜B-504｜胶囊真实聚合
-- **前置**：E0；组件状态可控。
-- **步骤**：断网（C-DISCONNECT）看胶囊；恢复后核对计数。
-- **预期**：断网显 Offline 横幅+时间；计数与实际 Widget 状态一致。
+#### D4 | B-504 | Capsule real aggregation
+- **Preconditions**: E0; controllable widget states.
+- **Steps**: Cut the network (C-DISCONNECT) and look at the capsule; after restoring, verify the counts.
+- **Expected**: Offline shows an Offline banner + time when the network is cut; the counts match the actual Widget states.
 
 ### E L2 / L3
 
-#### E1｜B-601｜Quick Panel 开关
-- **前置**：E0。
-- **步骤**：热键开面板 → ESC 关 → 点面板外失焦关；纯键盘 Tab/方向键遍历后关闭；连开多次。
-- **预期**：打开 <100ms 无白屏（缓存优先）；键盘可完整操作关闭；重复开关稳定。
+#### E1 | B-601 | Quick Panel open/close
+- **Preconditions**: E0.
+- **Steps**: Open the panel with the hotkey → close with Esc → click outside to close on focus loss; traverse fully with keyboard Tab/arrow keys and close; open and close repeatedly.
+- **Expected**: Opens in <100ms with no white screen (cache first); fully operable and closable by keyboard; repeated toggling is stable.
 
-#### E2｜B-602｜Overview/Pin 落库
-- **前置**：E0。
-- **步骤**：对比 Overview 计数与实际状态；右键 Pin 一个组件 → 重启。
-- **预期**：计数/事件一致；Pin 落库（本阶段无 L0 UI 效果也要落 widgets.json/pins.json）。
+#### E2 | B-602 | Overview/Pin persistence
+- **Preconditions**: E0.
+- **Steps**: Compare the Overview counts with the actual states; right-click Pin one widget → restart.
+- **Expected**: Counts / events are consistent; Pin persists (even without L0 UI effects in this phase it must land in widgets.json/pins.json).
 
-#### E3｜B-603｜Detail + Retry 链路
-- **前置**：E0；有失败 job 的 run。
-- **步骤**：L2 事件一键打开详情 → 点 [Retry]。
-- **预期**：详情直达对应对象；Retry 全链路可用（含确认与结果反馈）。
+#### E3 | B-603 | Detail + Retry chain
+- **Preconditions**: E0; a run with a failing job.
+- **Steps**: Open the detail page in one click from an L2 event → click [Retry].
+- **Expected**: The detail page goes straight to the corresponding object; the Retry full chain works (including confirmation and result feedback).
 
-### F L0 tile 行为
+### F L0 tile behavior
 
-#### F1｜B-701①｜点击不断焦点
-- **前置**：E0；L0 悬浮 tile（设置开关或 Pin）。
-- **步骤**：聚焦某前台应用（如记事本）→ 点击 tile。
-- **预期**：当前应用焦点不被打断（可继续打字）。
+#### F1 | B-701① | Click does not steal focus
+- **Preconditions**: E0; an L0 floating tile (settings toggle or Pin).
+- **Steps**: Focus a foreground app (e.g. Notepad) → click the tile.
+- **Expected**: The foreground app's focus is not stolen (you can keep typing).
 
-#### F2｜B-701①b｜空白点击落桌面（与 F1 同属台账条 1）
-- **前置**：同 F1。
-- **步骤**：点击 tile 窗口空白区域。
-- **预期**：点击穿透落到桌面（不吃点击）。
+#### F2 | B-701①b | Blank click falls through to the desktop (same ledger line as F1)
+- **Preconditions**: Same as F1.
+- **Steps**: Click the blank area of the tile window.
+- **Expected**: The click passes through to the desktop (the tile does not eat clicks).
 
-#### F3｜B-701②｜两 tile 独立更新
-- **前置**：两个不同源组件的 tile。
-- **步骤**：只让一个源状态变化。
-- **预期**：两 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab。
+#### F3 | B-701② | Two tiles update independently
+- **Preconditions**: Tiles of two different-source widgets.
+- **Steps**: Change only one source's state.
+- **Expected**: The two tiles update independently of each other; the windows do not enter the taskbar / Alt-Tab.
 
-#### F4｜B-701③｜悬浮形态拖放还原
-- **前置**：悬浮形态开启。
-- **步骤**：拖放 tile → 重启。
-- **预期**：每组件一窗可拖放；重启后位置还原；与宿主面板二选一（互斥）。
+#### F4 | B-701②b | Floating-form drag placement restore
+- **Preconditions**: Floating form enabled.
+- **Steps**: Drag a tile → restart.
+- **Expected**: One window per widget is draggable; positions are restored after restart; mutually exclusive with the host panel (either/or).
 
-#### F5｜B-702①｜Pin 双入口一致
-- **前置**：E0。
-- **步骤**：分别经设置开关与右键菜单 Pin/取消同一组件。
-- **预期**：两入口行为一致并持久化。
+#### F5 | B-702① | Pin dual-entry consistency
+- **Preconditions**: E0.
+- **Steps**: Pin / unpin the same widget via the settings toggle and the context menu respectively.
+- **Expected**: Both entries behave identically and persist.
 
-#### F6｜B-702②｜非准入不可钉
-- **前置**：E0。
-- **步骤**：对非 PinSupported 类型（如 claude.usage 类本机卡）在两处入口尝试钉。
-- **预期**：两处入口均不可钉（策略单测已过，本条验 UI 门控）。
+#### F6 | B-702② | Non-admitted types cannot be pinned
+- **Preconditions**: E0.
+- **Steps**: Try pinning a non-PinSupported type (e.g. a claude.usage-class local card) in both entries.
+- **Expected**: Both entries refuse to pin (the policy unit test has passed; this item verifies the UI gating).
 
-#### F7｜B-703①｜位置/收起态还原 + 拔插显示器
-- **前置**：L0 tile 两块以上。
-- **步骤**：拖位、收起 → 重启；再拔掉 tile 所在显示器 → 接回。
-- **预期**：重启后位置/收起态还原；拔插后 tile 不丢（回收或回归可见区）。
+#### F7 | B-703① | Position / collapsed-state restore + monitor unplug
+- **Preconditions**: Two or more L0 tiles.
+- **Steps**: Drag positions, collapse → restart; then unplug the monitor where a tile lives → plug it back.
+- **Expected**: After restart, positions / collapsed states are restored; after unplug/plug the tile is not lost (recycled or returned to a visible area).
 
-#### F8｜B-703②｜跨 DPI 拖放与回收
-- **前置**：C-DPI 多屏。
-- **步骤**：跨 DPI 显示器拖 tile；把副屏分辨率调小。
-- **预期**：拖放尺寸正确（DpiLayoutMath 唯一口径）；分辨率变小后 tile 被回收到可见区。
+#### F8 | B-703② | Cross-DPI dragging and recycling
+- **Preconditions**: C-DPI multiple monitors.
+- **Steps**: Drag a tile across DPI-different monitors; shrink the secondary monitor's resolution.
+- **Expected**: Dragging sizes are correct (DpiLayoutMath as the single source of truth); after shrinking the resolution the tile is recycled into a visible area.
 
-#### F9｜B-704｜断网自愈
-- **前置**：L0 tile；C-DISCONNECT。
-- **步骤**：断网观察全流程 → 恢复。
-- **预期**：全程无任何弹窗（只 Offline 态）；恢复后 tile 自愈出新数据（socket 级集成测试已过，本条验 UI 半）。
+#### F9 | B-704 | Offline self-healing
+- **Preconditions**: L0 tile; C-DISCONNECT.
+- **Steps**: Cut the network and observe the whole flow → restore.
+- **Expected**: No popup windows at any point (Offline state only); after restoring the tile self-heals with new data (the socket-level integration test has passed; this item verifies the UI half).
 
-#### F10｜B-705①｜Critical 仅脉冲
-- **前置**：E0；注入 Critical（阈值调极端或造 Error+ 状态）。
-- **步骤**：注入后观察 L0。
-- **预期**：L0 仅变色+脉冲，无打断（不弹窗不抢焦点）；Toast 照常由通知引擎发出。
+#### F10 | B-705① | Critical only pulses
+- **Preconditions**: E0; inject Critical (drag the threshold to an extreme or manufacture an Error+ state).
+- **Steps**: Observe L0 after injecting.
+- **Expected**: L0 only changes color and pulses, no interruption (no popup, no focus stealing); the Toast is still emitted by the notification engine as usual.
 
-#### F11｜B-705②｜RFC §6.2.7 四条清单
-- **前置**：同 F10。
-- **步骤**：逐条执行 `docs/acceptance-B705-L0-behavior.md` 的四条清单并记录。
-- **预期**：四条全过并留记录。
+#### F11 | B-705② | RFC §6.2.7 four-item checklist
+- **Preconditions**: Same as F10.
+- **Steps**: Execute the four-item checklist in `docs/acceptance-B705-L0-behavior.md` item by item and record.
+- **Expected**: All four items pass with records kept.
 
-### G 外观与动效
+### G Appearance and motion
 
-#### G1｜B-706①｜级别色三面同步
-- **前置**：E0；L0 tile + 胶囊 + 托盘同时可见。
-- **步骤**：设置改某级别色（如 Warning 改橙）。
-- **预期**：L0 tile、胶囊、托盘图标三面同步变色。
+#### G1 | B-706① | Severity colors sync across three surfaces
+- **Preconditions**: E0; L0 tile + capsule + tray all visible at once.
+- **Steps**: Change a severity color in settings (e.g. Warning to orange).
+- **Expected**: The L0 tile, capsule, and tray icon all change color in sync.
 
-#### G2｜B-706②｜colorOverride 单 tile
-- **前置**：两个以上 tile。
-- **步骤**：仅给某 Widget 设 colorOverride。
-- **预期**：仅该 tile 变色；优先级 Widget > 级别 > 默认正确。
+#### G2 | B-706② | colorOverride single tile
+- **Preconditions**: Two or more tiles.
+- **Steps**: Set colorOverride on one Widget only.
+- **Expected**: Only that tile changes color; priority Widget > severity > default is correct.
 
-#### G3｜B-706③｜非法颜色回退
-- **前置**：同 G2。
-- **步骤**：填非法色值（如 `#GGG`）→ 重启。
-- **预期**：回退默认色不崩溃；重启后保持回退态。
+#### G3 | B-706③ | Illegal color fallback
+- **Preconditions**: Same as G2.
+- **Steps**: Enter an illegal color value (e.g. `#GGG`) → restart.
+- **Expected**: Falls back to the default color without crashing; keeps the fallback state after restart.
 
-#### G4｜B-707①｜变色过渡
-- **前置**：动效档 reduced。
-- **步骤**：制造 Success→Error 变化。
-- **预期**：平滑变色过渡（非瞬跳）。
+#### G4 | B-707① | Color-change transition
+- **Preconditions**: Motion tier reduced.
+- **Steps**: Manufacture a Success→Error change.
+- **Expected**: Smooth color-change transition (not an instant jump).
 
-#### G5｜B-707②｜Critical 脉冲三档
-- **前置**：动效设置页。
-- **步骤**：默认档看脉冲；off 档看全静止；full 档看呼吸灯并调强度。
-- **预期**：脉冲默认开；off 全静止；full 呼吸灯可见且强度可调。
+#### G5 | B-707② | Critical pulse three tiers
+- **Preconditions**: Motion settings page.
+- **Steps**: Look at the pulse on the default tier; look at full stillness on the off tier; look at the breathing light on the full tier and adjust intensity.
+- **Expected**: Pulse on by default; off is fully still; full shows a visible breathing light and the intensity is adjustable.
 
-#### G6｜B-707③｜动效边界
-- **前置**：动效开启。
-- **步骤**：动效期间听声/试抢焦点；隐藏/收起 tile 后查功耗（任务管理器 CPU/GPU）。
-- **预期**：不抢焦点、不发声；隐藏/收起时无动画循环（功耗回落）。
+#### G6 | B-707③ | Motion boundaries
+- **Preconditions**: Motion enabled.
+- **Steps**: Listen for sound / try to steal focus during motion; after hiding / collapsing the tile, check power draw (Task Manager CPU/GPU).
+- **Expected**: No focus stealing, no sound; no animation loop while hidden / collapsed (power draw falls back).
 
-### H 导入导出与设置
+### H Import/export and settings
 
-#### H1｜B-802｜导入导出端到端
-- **前置**：E0；配好凭据的实例。
-- **步骤**：导出 → 全文搜 token；在另一目录（或 VM）导入 → 重录密钥 → 对比行为。
-- **预期**：导出文件全文无 token（JSON 只存 credentialRef，secrets 不打包）；导入+重录后与原机行为一致（存储层 5 例已过，本条验端到端）。
+#### H1 | B-802 | Import/export end-to-end
+- **Preconditions**: E0; an instance with credentials configured.
+- **Steps**: Export → search the whole file for tokens; import in another directory (or VM) → re-enter secrets → compare behavior.
+- **Expected**: The exported file contains no token anywhere (JSON stores only credentialRef, secrets are not packaged); after import + re-entry the behavior matches the original machine (the storage layer's 5 tests have passed; this item verifies the end-to-end half).
 
-#### H2｜B-805①｜调色/动效即时预览持久化
-- **前置**：E0。
-- **步骤**：改色/改档 → 看即时预览 → 重启。
-- **预期**：改动即时生效并持久化，重启后仍在。
+#### H2 | B-805① | Palette / motion live preview persistence
+- **Preconditions**: E0.
+- **Steps**: Change color / change tier → look at the live preview → restart.
+- **Expected**: Changes take effect immediately and persist, still there after restart.
 
-#### H3｜B-805②｜重置默认 + off 档
-- **前置**：同 H2。
-- **步骤**：点重置默认；选 off 档看预览。
-- **预期**：一键还原默认；off 档预览即全静止。
+#### H3 | B-805② | Reset defaults + off tier
+- **Preconditions**: Same as H2.
+- **Steps**: Click reset defaults; select the off tier and look at the preview.
+- **Expected**: One-click restore of defaults; the off tier preview is fully still.
 
-### I 总验收
+### I Final acceptance
 
-#### I1｜B-803｜MVP 全流程走查
-- **前置**：前述全部（或抽样关键项）通过。
-- **步骤**：按任务书 §成功标准录屏/截图，归档 `docs/`（脚本见 `docs/acceptance-B803-e2e-walkthrough.md`）。
-- **预期**：全程录屏归档；发现问题全部修复或开 Issue。
+#### I1 | B-803 | MVP full-journey walkthrough
+- **Preconditions**: Everything above (or key samples) passed.
+- **Steps**: Record screenshots / a recording per the task-book §success criteria, archive under `docs/` (the walkthrough script is in `docs/acceptance-B803-e2e-walkthrough.md`).
+- **Expected**: Full recording archived; all found problems fixed or filed as Issues.
 
-#### I2｜SHA256 与时间戳核对（配套项，不计入 53）
-- **前置**：E0。
-- **步骤**：下载页哈希与本地 zip 比对。
-- **预期**：一致（发布断言已核，本条为装机侧复核）。
+#### I2 | SHA256 and timestamp cross-check (companion item, not counted in the 53)
+- **Preconditions**: E0.
+- **Steps**: Compare the download-page hash with the local zip.
+- **Expected**: Consistent (the release assertion has been verified; this item is the installation-side recheck).
 
 ---
 
-## 附：本地自动化覆盖注记（2026-10-10 分诊 commit 4b04205 + 批3-补39/42/45/47/48/49 增补，当前 991/991 绿）
+## Appendix: local automation coverage notes (2026-10-10 triage commit 4b04205 + 批3-补39/42/45/47/48/49 additions, currently 991/991 green)
 
-Windows 运行时表现以本清单装机走查为准；以下记录本机已证面，回执时避免重复排查：
+Windows runtime behavior is governed by the installation walkthrough in this checklist; the following records what has already been proven locally, to avoid repeated troubleshooting when receipting:
 
-- **已勾两项（本地自动化全证）**：
-  - B-801：SerializationRoundTripTests（AppConfig 全字段往返+默认值不变式）+ JsonConfigurationStoreTests.AppConfig_AllFields_SurviveSaveAndReload（启动路径逐字段比对）+ token 不落 JSON 单测（DpapiSecretStore/ImportExport）。
-  - B-207：OutageRecoveryIntegrationTests——真 HttpClient 连接拒绝→Offline+陈旧态（旧缓存保留）；恢复自动复位；RefreshWidgetAsync 返回 false 不抛；首错无缓存→「拉取失败」直显。
-- **未勾项的本地半（UI/交互半需真机，维持挂账不代验）**：
-  - B-706×3：PaletteResolverTests（优先级 Widget>级别>默认/非法值回退/offline 键）——变色联动与持久化 UI 半待真机。
-  - B-702 第二条：WidgetDisplayPolicyTests.PanelCarries_NonPinSupported_NeverCarried——两处入口交互待真机。
-  - B-703 几何：PinLayoutMathTests（锚点/DPI/越界回收/拓扑判定）——拖放与拔插显示器待真机。
-  - B-207 分支补充：WidgetHostTests 假 Handler（Degraded/退避/健康去重）。
-  - B-301/B-302/B-303：GitHubApiClient/GitHubPullRequests/GitHubActions 假 Handler 全分支（批3-补14/15）——真实凭据与真实仓库半待真机。
-  - B-401/B-404：ActionRunnerTests 15 例（路由/确认/超时/取消/重试六态）+ LocalCommandExecutorTests（超时杀进程+落盘）——弹窗与反馈 UI 半待真机。
-  - 批3-补42 DSL：ProviderDslTests 46 例（解析/校验/缓存/MappingValue/端到端）+ ActionRunner 重试 6 例——dsl_path 真机配置与动作点击半待真机。
-  - 批3-补47 检查更新：UpdateCheckTests 48 例（版本解析形态与拒绝表、SemVer 12 组比较含预发布规则、Evaluate 含 nightly 日期口径、限流降级体）——GitHub 真端点半（三行展示、按钮语义、断网降级）待真机。
-  - 批3-补48 tile 字宽预算 + 多窗口额度：TileSizingTests 32 例（字宽模型逐类/每类型最坏值行→合计宽/标签优先级对齐 PinTile/machine show 联动）+ WidgetValueHintTests 多窗口 8 例（三窗/双窗/乱序/剩余口径/单窗不进/读数收起判定）——真机悬浮框数值列不再裁字的目视半待装机走查。
+- **Two items already checked (fully proven by local automation)**:
+  - B-801: SerializationRoundTripTests (AppConfig full-field round-trip + defaults invariant) + JsonConfigurationStoreTests.AppConfig_AllFields_SurviveSaveAndReload (startup path field-by-field comparison) + the token-does-not-land-in-JSON unit tests (DpapiSecretStore/ImportExport).
+  - B-207: OutageRecoveryIntegrationTests — real HttpClient connection refused→Offline+stale state (old cache kept); recovery auto-resets; RefreshWidgetAsync returns false without throwing; first failure with no cache shows "拉取失败" directly.
+- **Local halves of unchecked items (UI/interaction halves need a real machine, keep them on the ledger without proxy verification)**:
+  - B-706×3: PaletteResolverTests (priority Widget>severity>default / illegal value fallback / offline key) — color linkage and persistence UI half pending a real machine.
+  - B-702 second item: WidgetDisplayPolicyTests.PanelCarries_NonPinSupported_NeverCarried — both entries' interaction pending a real machine.
+  - B-703 geometry: PinLayoutMathTests (anchor / DPI / out-of-bounds recycling / topology judgment) — dragging and monitor unplug/plug pending a real machine.
+  - B-207 branch supplement: WidgetHostTests fake Handler (Degraded / backoff / healthy de-duplication).
+  - B-301/B-302/B-303: GitHubApiClient/GitHubPullRequests/GitHubActions fake Handler full branches (批3-补14/15) — real credentials and real repository halves pending a real machine.
+  - B-401/B-404: ActionRunnerTests 15 tests (routing/confirm/timeout/cancel/retry six states) + LocalCommandExecutorTests (timeout kills process + persistence) — dialog and feedback UI halves pending a real machine.
+  - 批3-补42 DSL: ProviderDslTests 46 tests (parse/validate/cache/MappingValue/end-to-end) + ActionRunner retry 6 tests — real-machine dsl_path configuration and action-click halves pending.
+  - 批3-补47 update check: UpdateCheckTests 48 tests (version parsing shapes and rejection table, SemVer 12 comparison groups including pre-release rules, Evaluate including nightly date conventions, rate-limit degradation) — the GitHub real-endpoint half (three-line display, button semantics, offline degradation) pending a real machine.
+  - 批3-补48 tile text-width budget + multi-window quota: TileSizingTests 32 tests (text-width model per type / per-type worst-row → total width / label priority aligned to PinTile / machine show linkage) + WidgetValueHintTests multi-window 8 tests (three-window / two-window / out-of-order / remaining convention / single-window not entering / readout collapse judgment) — the visual half that the floating panel's numeric column no longer clips text pending the installation walkthrough.

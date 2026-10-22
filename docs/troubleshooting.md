@@ -1,76 +1,76 @@
 
-# 故障排查（FAQ）
+# Troubleshooting (FAQ)
 
-> 安装与启动问题的排查手册。配合 [README 下载节](https://github.com/cuihairu/beacon#download) 与 [B-803 端到端走查](acceptance-B803-e2e-walkthrough.md) 使用。
+> The troubleshooting manual for installation and launch problems. Use it together with the [README download section](https://github.com/cuihairu/beacon#download) and the [B-803 end-to-end walkthrough](acceptance-B803-e2e-walkthrough.md).
 
-## 双击没反应？
+## Nothing happens on double-click?
 
-Beacon 是**托盘常驻应用，没有主窗口**——启动成功的可见形态是：屏幕右下角状态胶囊 + 启动通知气泡 + 托盘图标（红圈 b）。三者皆无才按下面顺序排查：
+Beacon is a **tray-resident application with no main window** — the visible proof of a successful start is: a status capsule in the bottom-right corner + a startup notification bubble + the tray icon (a red circle b). Only if none of the three appear should you work through this order:
 
-1. **SmartScreen 拦截**：未签名 exe 首次运行会被拦——点「更多信息」→「仍要运行」。
-2. **确认进程在不在**：任务管理器搜 `Beacon.App`。在而看不见胶囊 → 记下日志后提 Issue。
-3. **查日志**：`%AppData%\Beacon\logs\beacon-*.log`（运行日志，按天滚动）。
-4. **启动失败弹窗 / crash 日志**：启动阶段出错会**弹错误框**（含堆栈与日志路径），同时落盘 `%AppData%\Beacon\logs\crash-*.log`——把弹窗截图或日志内容提 Issue 即可定位。
+1. **SmartScreen blocked it**: an unsigned exe is blocked on first run — click "More info" → "Run anyway".
+2. **Confirm the process exists**: search Task Manager for `Beacon.App`. If it is there but the capsule is invisible, save the log and file an issue.
+3. **Check the logs**: `%AppData%\Beacon\logs\beacon-*.log` (runtime logs, rolled daily).
+4. **Startup failure dialog / crash log**: an error during startup **pops an error dialog** (with the stack and the log path) and also writes `%AppData%\Beacon\logs\crash-*.log` — file an issue with the dialog screenshot or the log content and it can be located.
 
-## 升级后行为没变？
+## Behaviour did not change after an upgrade?
 
-Beacon 是**单实例常驻**：安装器覆盖了文件，但托盘里驻留的还是旧进程，二次启动只会通知旧实例——「更新了还是老样子」多半是这个。
+Beacon is **single-instance resident**: the installer overwrote the files, but the tray still holds the old process, and a second launch only notifies the old instance — "it says updated but behaves the same" is usually this.
 
-1. 托盘图标右键 → **Exit**（唯一退出路径），再重新启动；
-2. 设置 → 常规底部看 **版本行**：nightly 形如 `2026.10.9+<完整 commit sha>`（`yyyy.M.d` 四段日期，取自构建当天 + publish 时的 `GITHUB_SHA`；早先的 `0.0.yyyyMMdd` 形态会触发 CS7034，已改），对一下构建日期；
-3. 版本行还是旧的 = 没装上新包（重新下载 nightly 资产，见下方校验）。
+1. Right-click the tray icon → **Exit** (the only exit path), then start again.
+2. Settings → bottom of the General section, read the **version line**: a nightly looks like `2026.10.9+<full commit sha>` (a four-segment `yyyy.M.d` date taken from the build day plus `GITHUB_SHA` at publish time; the earlier `0.0.yyyyMMdd` shape triggered CS7034 and was changed) — compare it with the build date.
+3. The version line still shows the old value = the new package was not installed (re-download the nightly artifact; see the verification below).
 
-## 便携 zip 校验
+## Portable zip verification
 
-`Get-FileHash beacon-nightly-windows-x86_64.zip -Algorithm SHA256` 与 Release 内 `SHA256SUMS` 逐行比对；装了 Git Bash 也可 `sha256sum -c SHA256SUMS`。
+`Get-FileHash beacon-nightly-windows-x86_64.zip -Algorithm SHA256` compared line by line against the `SHA256SUMS` in the release; with Git Bash installed, `sha256sum -c SHA256SUMS` also works.
 
-解压后直接运行 `Beacon.App.exe`——自包含包，无需安装 .NET 运行时，也无需 VC++ 运行库（发布产物实测仅依赖系统自带组件）。
+After extracting, run `Beacon.App.exe` directly — it is a self-contained package, no .NET runtime install and no VC++ runtime needed (the published artifact was measured to depend only on components that ship with Windows).
 
-## 安装包
+## Installer
 
-装到 `%LOCALAPPDATA%\Beacon`（无需管理员），开始菜单启动，卸载走系统「添加或删除程序」。安装向导全程简体中文。
+Installs to `%LOCALAPPDATA%\Beacon` (no administrator needed), launches from the Start menu, and uninstall goes through the system "Add or Remove Programs". The installer wizard is entirely in Simplified Chinese.
 
-安装器复选框/文字显示异常（溢出、看不清）多半是旧版构建—— nightly 滚动更新，重新下载最新 `setup.exe` 即可。
+Installer checkboxes or labels that render wrong (overflow, unreadable) are usually an older build — the nightly rolls forward, so re-download the latest `setup.exe`.
 
-## 组件不出数（白板排查）
+## Widgets show no data (blank-panel diagnosis)
 
-「一键添加」「组件向导」添加的组件**应当几秒内上板出数**（添加即钉选、即拉取，无需强刷/重启）。若板面空白，按跳排查（每跳在运行日志里都有一行）：
+A widget added by "one-click add" or the "widget wizard" **should land on the board with numbers within seconds** (adding pins it and pulls immediately — no forced refresh or restart). If the board is blank, walk the jumps (each jump leaves a line in the runtime log):
 
-| 跳 | 日志关键词 | 空白时的含义 |
+| Jump | Log keyword | What "blank" means |
 |---|---|---|
-| ① 组件创建 | `一键示例：组件 … 已创建并钉选` | 没有这行 = 添加动作没发生（连接缺失会红字提示） |
-| ② 注册+首拉 | `组件注册已重建并立即拉取 N 个` | 没有这行 = 调度器没接到新组件（旧版本 bug，升级 nightly） |
-| ③ 拉取结果 | `Widget … refreshed ok: …`（成功）/ `refresh failed: …`（失败带原因） | 失败原因直显在 tile 值位（「拉取失败：…」）——网络/TLS/401/字段映射一目了然 |
-| ④ 渲染 | tile 灰灯+「加载中…」→ 有数后变级色 | 恒为「加载中…」= ③一直在失败；看失败原因行 |
+| ① widget created | `一键示例：组件 … 已创建并钉选` | This line missing = the add action never happened (a missing connection shows a red hint) |
+| ② register + first pull | `组件注册已重建并立即拉取 N 个` | Missing = the scheduler never received the new widget (an older-version bug; upgrade the nightly) |
+| ③ pull result | `Widget … refreshed ok: …` (success) / `refresh failed: …` (failure, with a reason) | The failure reason is displayed directly in the tile value slot ("拉取失败：…") — network / TLS / 401 / field-mapping problems are all readable at a glance |
+| ④ render | the tile shows a gray light + "加载中…" → switches to the severity color once data arrives | Stuck on "加载中…" = ③ is still failing; read the failure reason line |
 
-另查两处：组件列表（设置 → 对应模块）里该组件是否带「已钉」标记；`组件不出数且日志全无` → 确认模块开关（左侧目录）是开的——停用模块的组件不占板面。
+Two more places to check: whether the widget carries a "已钉" marker in its module's widget list (Settings → the corresponding module); and if a widget shows no data and the log is completely empty, confirm the module switch (the tree on the left) is on — widgets of a disabled module do not occupy board space.
 
-## 小米 MiMo 卡显示 Offline / 不出数？
+## Xiaomi MiMo card shows Offline / no data?
 
-先分清两件事：**胶囊上的「Offline」横幅是聚合告警**——任何连接不健康（含 Degraded）都会点亮它；真正的失败原因在 **tile 值位**（「拉取失败：…」）和运行日志的 `refresh failed` 行。MiMo 常见三种：
+First separate two things: **the "Offline" banner on the capsule is an aggregate alarm** — any unhealthy connection (including Degraded) lights it; the real failure reason is in the **tile value slot** ("拉取失败：…") and in the `refresh failed` lines of the runtime log. Three common MiMo cases:
 
-1. **「控制台 Cookie 已失效或未录制」**：额度卡的登录态过期（会话 cookie 过期是常态）。重录：浏览器登录 `platform.xiaomimimo.com` → F12 → 应用 → Cookies → 复制 `api-platform_ph` 的值 → 设置 → 小米模块连接里粘贴（整行 Cookie 粘进来也行，会自动取该键）。
-2. **只填了 API Key**：Key 只授权模型调用（`/v1/models` 连接测试绿≠Cookie 有效，两条凭据链），**额度必须另录控制台 Cookie**——Bearer/裸头带 Key 实测全 401。
-3. **LiteLLM 网关记账档**：连接 Settings `litellm_spend_url` **默认空=不外发（正常，不是故障）**；填了但卡面显「未接数据库」= 你本机 LiteLLM 网关 config 没接 database——spend 面全回 `no_db_connection`，需网关侧接 DB（SQLite 即可）后自动出「本月已用 $X」。
+1. **"控制台 Cookie 已失效或未录制"**: the usage card's login session expired (session cookie expiry is the normal state). Re-record: log in to `platform.xiaomimimo.com` in a browser → F12 → Application → Cookies → copy the value of `api-platform_ph` → Settings → the Xiaomi module connection, paste it (pasting the whole Cookie line works too; that key is picked out automatically).
+2. **Only the API Key was entered**: the Key only authorizes model calls (a green `/v1/models` connection test ≠ a valid Cookie — they are two separate credential chains), so **the quota must be recorded separately as the console Cookie** — requests carrying only the Key as Bearer or a raw header return 401 in practice.
+3. **LiteLLM gateway accounting tier**: the connection setting `litellm_spend_url` **defaults to empty = nothing is sent out (normal, not a fault)**; if it is set but the card shows "未接数据库", your local LiteLLM gateway config has no database attached — the spend side returns `no_db_connection` throughout, and a DB on the gateway side (SQLite is enough) is needed before "本月已用 $X" appears.
 
-## 悬浮框白板残留 / 品牌 icon 不显示
+## Blank leftover floating window / brand icon not showing
 
-- **全局关「数量悬浮窗」后桌面还剩一个白板空窗**：旧版悬浮窗关闭只调 WinUI `Window.Close`，在无边框 NOACTIVATE 窗上不保证销毁窗口句柄——内容已拆、壳残留即白板。已修（Close 后句柄仍存活则硬销毁）；升级 nightly 后须托盘 Exit 重启（单实例常驻）。再出现即新问题，附运行日志反馈。
-- **悬浮框/设置目录里的品牌 icon 不显示（只剩灯+文字）**：旧版 `Viewbox(PathIcon)` 组合在 WinUI 3 下量测为空、渲染成空白且挡掉兜底字形。已修（改 Path 形状直渲 + 空几何退兜底）。
-- **两态截图证据**：daily-build 每个 run 的 artifact「visual-evidence」——数量悬浮窗开 = 悬浮框全屏+icon 六倍近景；关 = 桌面零残留窗（附硬断言，回归即红构建）。
+- **After globally turning off the "count floating windows", a blank empty window remains on the desktop**: the older floating-window close only called WinUI `Window.Close`, which is not guaranteed to destroy the window handle on a borderless NOACTIVATE window — the content was torn down but the shell remained, which is the blank window. Fixed (if the handle is still alive after Close it is destroyed hard). After upgrading the nightly you must Exit from the tray and restart (single-instance resident). If it happens again it is a new problem — report it with the runtime log.
+- **A brand icon in a floating window or in the settings tree is missing (only the light and text remain)**: the old `Viewbox(PathIcon)` combination measured to zero size under WinUI 3, rendered blank, and blocked the fallback glyph. Fixed (renders a `Path` shape directly, with a fallback for empty geometry).
+- **Two-state screenshot evidence**: the "visual-evidence" artifact of every daily-build run — count floating windows on = the floating panel full-screen plus a six-times close-up of the icon; off = zero leftover windows on the desktop (with a hard assertion, so a regression turns the build red).
 
-## DSL 声明文件（dsl_path）报错？
+## DSL declaration file (`dsl_path`) error?
 
-http 连接 Settings 配了 `dsl_path` 后，声明文件的问题**不会静默**：相关卡面直接 Degraded 并带原因（启动与其他连接不受影响；声明动作加载失败只记运行日志）。常见三种：
+Once an `http` connection setting has a `dsl_path`, problems in the declaration file **are never silent**: the affected cards go straight to Degraded with a reason (startup and the other connections are unaffected; a failure to load declared actions is only written to the runtime log). Three common cases:
 
-1. **「DSL 文件不存在」**：Settings 里的路径写错或文件被移走。核对绝对路径（含盘符/用户名），改完等下次刷新即恢复。
-2. **「DSL 文件解析失败（第 N 行：…）」**：解析器只支持 YAML 子集，常见踩点——缩进用了 **Tab**（只许空格）；JSON 字面量没加引号（`body: {"a":1}` 要写成 `body: '{"a":1}'`，裸 `{}`/`[]` 按不支持语法拒绝）；引号未闭合；mapping 用了白名单外的键（拼错即报，不静默忽略）；列表项必须是 `- key: value`（不支持纯标量列表/多文档 `---`）。按行号改即可，语法参考 `configuration.md`「Provider DSL」节。
-3. **改了文件没生效**：文件按 mtime+大小缓存，保存后（编辑器真的写盘）下次刷新自动重解析；若编辑器「保存」没改 mtime，随手再刷新一次或托盘 Refresh All。
+1. **"DSL 文件不存在"**: the path in Settings is wrong or the file was moved. Check the absolute path (including drive letter and username); after fixing it, the next refresh recovers.
+2. **"DSL 文件解析失败（第 N 行：…）"**: the parser supports only a subset of YAML. Common traps — indentation with **Tab** (spaces only); an unquoted JSON literal (`body: {"a":1}` must be written as `body: '{"a":1}'`, and bare `{}` / `[]` are rejected as unsupported syntax); unclosed quotes; a mapping that uses a key outside the whitelist (a typo is reported, never silently ignored); list items must be `- key: value` (no bare scalar lists, no multi-document `---`). Fix the line it names; the syntax reference is the "Provider DSL" section of `configuration.md`.
+3. **I changed the file but nothing happened**: the file is cached by mtime + size, so after saving (once the editor really writes to disk) the next refresh re-parses automatically. If your editor's "Save" did not change the mtime, trigger a refresh manually or use Refresh All from the tray.
 
-## 日志一览
+## Log overview
 
-| 日志 | 位置 | 内容 |
+| Log | Location | Contents |
 |---|---|---|
-| 运行日志 | `%AppData%\Beacon\logs\beacon-YYYYMMDD.log` | 刷新/通知/动作执行 + 组件管线逐跳诊断，按天滚动 |
-| 崩溃日志 | `%AppData%\Beacon\logs\crash-*.log` | 启动与运行期未处理异常堆栈 |
-| 配置 | `%AppData%\Beacon\config.json` 等 | 连接/组件/钉选/外观（token 只存 credentialRef，绝不落明文） |
+| Runtime log | `%AppData%\Beacon\logs\beacon-YYYYMMDD.log` | refresh / notification / action execution plus per-hop widget pipeline diagnostics, rolled daily |
+| Crash log | `%AppData%\Beacon\logs\crash-*.log` | unhandled exception stacks at startup and during the run |
+| Configuration | `%AppData%\Beacon\config.json` and the rest | connections / widgets / pins / appearance (tokens are stored only as credentialRef, never in plaintext) |

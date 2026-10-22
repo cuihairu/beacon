@@ -1,47 +1,47 @@
 
-# Beacon 任务书（提炼自原始方案，原文见 mission-excerpt.md）
+# Beacon mission brief (distilled from the original plan; the original text is in mission-excerpt.md)
 
-## 定位
+## Positioning
 
-**Beacon = 常驻 Windows 桌面的开发者状态与操作中心（Developer Status & Action Center）**，不是 Web Dashboard。
-口号：See what needs your attention. / Your development signal on Windows。
-核心：**Signal + Action**——它替你盯着，而不是要你去看（It watches for you）。
+**Beacon = a developer status and action center resident on the Windows desktop (Developer Status & Action Center)**, not a Web Dashboard.
+Tagline: See what needs your attention. / Your development signal on Windows.
+Core: **Signal + Action** — it watches for you instead of making you go look (It watches for you).
 
-## 核心产品模型（7 概念）
+## Core product model (7 concepts)
 
-- **Widget**：信息与交互的基本单位（GitHub PR Widget、CI Status Widget…）
-- **Provider**：数据来源（GitHub 首发；Jenkins/GitLab/Agent 等二期）——**Provider First，不写死进 Core**，凭据统一配置避免逐 Widget 重复填 Token
-- **Action**：可立即执行的操作（Run/Cancel/Retry/Open/Notify），MVP 只做简单 Action（如 workflow_dispatch）
-- **Workflow**：高级能力，MVP 不做复杂引擎
-- **Notification**：主动提醒（来自 CI/机器/Workflow/Widget 阈值），走 Windows Notification
-- 其余概念按原文补全（Machine/Run 等）
+- **Widget**: the basic unit of information and interaction (GitHub PR Widget, CI Status Widget…)
+- **Provider**: the data source (GitHub first; Jenkins/GitLab/Agent etc. in phase 2) — **Provider First, never hard-wired into Core**; credentials are configured once centrally instead of re-entering a token per widget
+- **Action**: an operation that can be executed immediately (Run/Cancel/Retry/Open/Notify); the MVP does only simple actions (for example `workflow_dispatch`)
+- **Workflow**: an advanced capability; the MVP does not build a complex engine
+- **Notification**: proactive alerts (from CI / machine / workflow / widget thresholds), delivered through Windows Notifications
+- The remaining concepts are completed per the original text (Machine/Run etc.)
 
-## 三层交互（Progressive Disclosure，不一上来大面板）
+## Three interaction levels (progressive disclosure — no big panel up front)
 
-1. **Status Capsule**：桌面常驻小胶囊，只显示「有没有事」
-2. 快捷层：一键操作按钮 [Build] [Test] [Deploy]
-3. **Detail Window**：需要时展开细节（Build #1024 Status Failed Repo/Branch…）
+1. **Status Capsule**: a small always-resident capsule on the desktop, showing only "is there anything"
+2. Quick layer: one-click action buttons [Build] [Test] [Deploy]
+3. **Detail Window**: expands the details when needed (Build #1024 Status Failed Repo/Branch…)
 
-入口：**Tray / Hotkey / Dock**。
+Entry points: **Tray / Hotkey / Dock**.
 
-## 重要设计件
+## Key design pieces
 
-- **Notification Engine**：规则化（IF CI status == Failed → Notify），不是裸 Toast；Severity 统一五级（Info/Success/Warning/Error/Critical），不许 Provider 各自定义状态
-- **Refresh Strategy 分级**：PR 30~120s、CI 10~30s…不许全量每秒刷；失败显示「Unable to refresh, Last update 2min ago [Retry]」不甩异常
-- **Offline Mode**：离线可运行
-- **Local First**：配置本机（%AppData%\Beacon：config/connections/widgets/pins.json——原方案的 workflows.json 随「MVP 不做 Workflow」未实现），**Secrets 进 Windows Secret Storage，严禁进普通 JSON**
-- **架构原则**：Local First + Provider First；Agent Server 只作 Connector 不写死
+- **Notification Engine**: rule-driven (if CI status == Failed → notify), not a bare Toast; Severity is one unified five-level scale (Info/Success/Warning/Error/Critical) and providers are not allowed to define their own states
+- **Tiered refresh strategy**: PR 30–120 s, CI 10–30 s… never polling everything once a second; on failure show "Unable to refresh, Last update 2min ago [Retry]" rather than throwing the exception at the user
+- **Offline Mode**: runnable while offline
+- **Local First**: configuration lives on the machine (`%AppData%\Beacon`: config/connections/widgets/pins.json — the original plan's `workflows.json` was never implemented, following the "MVP does not do Workflow" decision), **secrets go to the Windows Secret Storage and are strictly forbidden in plain JSON**
+- **Architecture principle**: Local First + Provider First; the Agent Server serves only as a connector and is not hard-wired
 
-## 分期
+## Phasing
 
-- **第一阶段（MVP）**：GitHub Provider（PR/CI）、Status Capsule、简单 Action、Notification、Tray/Hotkey、Local 配置；**明确不做**：复杂 Workflow Engine、多 Provider、Agent 联动
-- **第二阶段**：Jenkins/GitLab/Docker/Machines/Agents/Generic REST Widget、Schedule、Webhook、Workflow、[Run Task] 发往 Agent——走向 Developer Control Plane
-  - **冻结记录（2026-10-11，master-plan §2.3 拍板②配套）**：GitLab/Docker/Machines/Agents/Workflow/[Run Task]/Control Plane 一律**冻结不做**（长期产品边界，非暂缓）；Generic REST（http.status/http.quota）与 Webhook Action 已落地不受影响；Jenkins 已落地（jenkins.build，开源标准 JSON API，2026-10-11 批3-补31）。
+- **Phase 1 (MVP)**: GitHub Provider (PR/CI), Status Capsule, simple Actions, Notification, Tray/Hotkey, local configuration. **Explicitly not done**: a complex Workflow Engine, multiple Providers, agent coordination.
+- **Phase 2**: Jenkins/GitLab/Docker/Machines/Agents/Generic REST Widget, Schedule, Webhook, Workflow, [Run Task] sent to an Agent — heading toward a Developer Control Plane.
+  - **Frozen record (2026-10-11, master-plan §2.3 decision ②)**: GitLab/Docker/Machines/Agents/Workflow/[Run Task]/Control Plane are all **frozen as not done** (a long-term product boundary, not a postponement). Generic REST (`http.status`/`http.quota`) and the Webhook Action are already landed and unaffected. Jenkins is already landed (`jenkins.build`, an open-source standard JSON API, 2026-10-11 批3-补31).
 
-## MVP 成功标准（第一版验收）
+## MVP success criteria (first-version acceptance)
 
-开发者能做到：开机自启 → 桌面角落一直看到状态 → 一键 Run/Retry 成功，全程**不开浏览器不登 GitHub**。
+A developer can: auto-start on boot → see the state in a corner of the desktop at all times → a one-click Run/Retry succeeds, all without **opening a browser or signing in to GitHub**.
 
-## 实施次序（原方案明确要求）
+## Implementation order (explicitly required by the original plan)
 
-**第一步不是直接写代码**：先产出 ①技术 RFC ②Solution/项目目录 ③MVP Issue 列表，然后 Phase 1 → Phase 2 逐步实现——防止一开始就做成过度复杂的 Dashboard。**文档优先。**
+**The first step is not to write code**: produce ① a technical RFC ② a Solution / project layout ③ an MVP Issue list, then implement Phase 1 → Phase 2 incrementally — to stop it becoming an over-engineered Dashboard from the start. **Documentation first.**

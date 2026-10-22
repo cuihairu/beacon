@@ -1,12 +1,12 @@
-site_name: Beacon 文档
-site_description: Windows 开发者状态与操作中心 — Signal + Action，不是 Dashboard
+site_name: Beacon Docs
+site_description: Windows developer status & action center - Signal + Action, not a dashboard
 site_url: https://cuihairu.github.io/beacon/
 repo_url: https://github.com/cuihairu/beacon
 repo_name: cuihairu/beacon
 
 theme:
   name: material
-  language: zh
+  language: en
   logo: img/logo.svg
   favicon: img/logo.svg
   icon:
@@ -21,31 +21,48 @@ theme:
       primary: indigo
       toggle:
         icon: material/weather-night
-        name: 切换到深色
+        name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: indigo
       toggle:
         icon: material/weather-sunny
-        name: 切换到浅色
+        name: Switch to light mode
 
 nav:
-  - 首页: index.md
-  - 任务书: mission.md
-  - 定位与首批场景: positioning.md
-  - RFC-001 技术方案: rfc/RFC-001-technical-design.md
-  - 产品与技术实施总方案: master-plan.md
-  - Solution 与项目目录: solution-structure.md
-  - MVP Issue 列表: mvp-issues.md
-  - 故障排查: troubleshooting.md
-  - 配置项参考: configuration.md
-  - 商店提交前置清单: store-submission.md
-  - 隐私政策: privacy-policy.md
-  - 文档一致性审计: 审计-文档一致性.md
-  - 验收·装机走查清单: acceptance-checklist.md
-  - 验收·B-705 L0 行为: acceptance-B705-L0-behavior.md
-  - 验收·B-803 端到端走查: acceptance-B803-e2e-walkthrough.md
-  - 附录·任务书原始摘录: mission-excerpt.md
+  - Home: index.md
+  - Mission: mission.md
+  - Positioning: positioning.md
+  - RFC-001 Technical Design: rfc/RFC-001-technical-design.md
+  - Master Plan: master-plan.md
+  - Solution Structure: solution-structure.md
+  - MVP Issues: mvp-issues.md
+  - Troubleshooting: troubleshooting.md
+  - Configuration Reference: configuration.md
+  - Store Submission: store-submission.md
+  - Privacy Policy: privacy-policy.md
+  - Doc-Consistency Audit: 审计-文档一致性.md
+  - Acceptance Checklist: acceptance-checklist.md
+  - Acceptance B-705 L0: acceptance-B705-L0-behavior.md
+  - Acceptance B-803 E2E: acceptance-B803-e2e-walkthrough.md
+  - Mission Excerpt: mission-excerpt.md
+  - 中文:
+    - 首页: zh/index.md
+    - 任务书: zh/mission.md
+    - 定位与首批场景: zh/positioning.md
+    - RFC-001 技术方案: zh/rfc/RFC-001-technical-design.md
+    - 产品与技术实施总方案: zh/master-plan.md
+    - Solution 与项目目录: zh/solution-structure.md
+    - MVP Issue 列表: zh/mvp-issues.md
+    - 故障排查: zh/troubleshooting.md
+    - 配置项参考: zh/configuration.md
+    - 商店提交前置清单: zh/store-submission.md
+    - 隐私政策: zh/privacy-policy.md
+    - 文档一致性审计: zh/审计-文档一致性.md
+    - 验收·装机走查清单: zh/acceptance-checklist.md
+    - 验收·B-705 L0 行为: zh/acceptance-B705-L0-behavior.md
+    - 验收·B-803 端到端走查: zh/acceptance-B803-e2e-walkthrough.md
+    - 附录·任务书原始摘录: zh/mission-excerpt.md
 
 markdown_extensions:
   - admonition

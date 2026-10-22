@@ -1,21 +1,21 @@
 
-# 定位与首批场景（P0 方向）
+# Positioning and First Scenarios (P0 Direction)
 
-> 2026-10-07 定向记录：把 **公司打包工具 + AI 套餐额度** 确立为 Beacon 的两个第一类场景，
-> Provider 体系划分为 Status / Usage / Machine 三类，并以 Generic HTTP Provider 作为通用接入能力。
-> 本文固化方向与优先级，**不改动已排期的 M5 验收**（B-803/B-804 收口后再并入 [mvp-issues](mvp-issues.md)）。
+> Direction-setting record, 2026-10-07: establishes **company packaging tool + AI plan quota** as Beacon's two first-class scenarios,
+> divides the Provider system into three categories — Status / Usage / Machine — with the Generic HTTP Provider as the general-purpose integration capability.
+> This document fixes the direction and priorities, **without touching the already-scheduled M5 acceptance** (merge into [mvp-issues](mvp-issues.md) after B-803/B-804 close out).
 
-## 1. 定位
+## 1. Positioning
 
-**Beacon = 个人开发者的本地「状态与额度」雷达——Status & Action Center，不是 DevOps Dashboard。**
+**Beacon = the individual developer's local "status & quota" radar — a Status & Action Center, not a DevOps Dashboard.**
 
-它不替代 GitHub、Jenkins、公司打包系统、Claude、Codex，只负责把这些系统里
-**「我现在需要知道什么 / 我现在需要做什么」** 统一带到 Windows 桌面上：
+It does not replace GitHub, Jenkins, the company packaging system, Claude, or Codex; it only takes
+**"what I need to know right now / what I need to do right now"** from these systems and brings it uniformly onto the Windows desktop:
 
-- **Signal**：状态、额度、生命周期的统一抽象（现有 `WidgetState` / `Severity` / `LifecycleState` 已承载）
-- **Action**：失败后的下一步（查看日志 / 重跑 / 取消）直达桌面
+- **Signal**: the unified abstraction of status, quota, and lifecycle (already carried by the existing `WidgetState` / `Severity` / `LifecycleState`)
+- **Action**: the next step after a failure (view logs / rerun / cancel) delivered straight to the desktop
 
-## 2. 首批三类真实场景
+## 2. First Batch of Three Real Scenarios
 
 ```text
 Beacon
@@ -25,12 +25,12 @@ Beacon
 └── 🖥 Developer Environment 服务器、Docker、Agent、开发机（第二阶段）
 ```
 
-- **公司打包工具排在 GitHub 之前**：每天真实提交、排队、打包、上传的流程，
-  Beacon 只把它抽象成 `BuildProvider`（Build #18231 · 🟡 Building · Game-A · develop · a82f91c · 18m），
-  不需要理解整套内部系统。
-- 失败即 Action 场景：`🔴 Build Failed → [查看日志] [重新打包]`。
+- **The company packaging tool ranks ahead of GitHub**: the daily flow of real commits, queueing, packaging, and uploading.
+  Beacon merely abstracts it into a `BuildProvider` (Build #18231 · 🟡 Building · Game-A · develop · a82f91c · 18m),
+  with no need to understand the whole internal system.
+- Failure is an Action scenario: `🔴 Build Failed → [查看日志] [重新打包]`.
 
-## 3. Provider 分类（三类 + 通用接入）
+## 3. Provider Taxonomy (Three Categories + General-Purpose Integration)
 
 ```text
 Provider
@@ -39,13 +39,13 @@ Provider
 └── Machine Provider   服务器、PC、Agent
 ```
 
-原则：
+Principles:
 
-1. **不为公司内部系统写死接口**——公司打包工具实现 Status Provider 适配自己的 API，
-   转换成统一模型后进 Core，系统换了 Core 不动。
-2. **Generic HTTP Provider（杀手级能力）**：不为每个内部系统写 C# 插件，配置化接入任意 HTTP API。
-   **已落地形态**：组件类型 `http.status`（状态灯：状态词表→级别映射）与 `http.quota`（额度数值卡：
-   total/used/remaining/reset 字段映射，见 §8）——widgets.json 内 JSON 配置（连接 endpoint + 凭据 + 点路径）：
+1. **No hard-coded interfaces for internal company systems** — the company packaging tool implements the Status Provider to adapt to its own API,
+   converts into the unified model and enters Core; if the system is replaced, Core does not move.
+2. **Generic HTTP Provider (the killer capability)**: instead of writing a C# plugin for every internal system, integrate any HTTP API via configuration.
+   **Landed form**: component types `http.status` (status light: status word list → level mapping) and `http.quota` (quota number card:
+   total/used/remaining/reset field mapping, see §8) — JSON config in widgets.json (connection endpoint + credentials + point paths):
 
    ```jsonc
    {
@@ -53,7 +53,7 @@ Provider
      "connectionId": "ci-local",
      "config": {
        "label": "company-build",
-       "status_path": "$.status",       // $.a.b[0] 点路径提取
+       "status_path": "$.status",       // $.a.b[0] point-path extraction
        "summary_path": "$.message",
        "url_path": "$.html_url",
        "success_values": "success,ok,passed,healthy",
@@ -63,7 +63,7 @@ Provider
    }
    ```
 
-   **已落地（批3-补42，2026-10-12）**：YAML provider DSL 已实现——连接 Settings 配 `dsl_path` 指向声明文件即启用，**不配置即零变化**（既有 widget.Config 路径逐字节等价）。口径：声明层只供**数据提取缺省值**（status/summary/url 路径、状态词表、额度路径与单位），`widget.Config` 实例值仍优先（声明层不夺实例覆盖权）；`label/icon/阈值` 属组件实例，不进 DSL；`actions` 走既有 Action 执行器链路（`open.url`/`http`/`webhook`），`retry`（max_attempts 1–10、backoff_seconds 0–300）落到 Runner 重试参数（默认 1 次=不重试，重试共享同一总超时预算，用户取消/超时不重试）。零第三方依赖：内置极小 YAML 子集解析器（缩进映射 / `- ` 列表 / 引号 / 行内注释），支持外的语法（flow、块标量、Tab、多文档）fail-loud 带行号，坏文件落 Degraded 卡面、动作加载失败记警告跳过。示例：
+   **Landed (batch 3, supplement 42, 2026-10-12)**: the YAML provider DSL is implemented — a connection configured in Settings with a `dsl_path` pointing at a declaration file enables it, **no config means zero change** (the existing widget.Config path is byte-for-byte equivalent). Semantics: the declaration layer only supplies **default values for data extraction** (status/summary/url paths, status word lists, quota paths and units); instance values in `widget.Config` still win (the declaration layer does not seize instance override authority); `label`/`icon`/`thresholds` belong to the component instance and do not go into the DSL; `actions` go through the existing Action executor chain (`open.url`/`http`/`webhook`), and `retry` (max_attempts 1–10, backoff_seconds 0–300) lands in the Runner retry parameters (default 1 attempt = no retry; retries share the same total timeout budget; user cancel/timeout does not retry). Zero third-party dependencies: a built-in minimal YAML subset parser (indentation mappings / `- ` lists / quotes / inline comments); syntax outside the supported subset (flow, block scalars, Tab, multiple documents) fails loud with a line number, a bad file lands on a Degraded card face, and action loading failures are logged as warnings and skipped. Example:
 
    ```yaml
    # 连接 Settings: dsl_path: C:\Beacon\packer.yaml
@@ -86,25 +86,25 @@ Provider
        url: https://packer.local/dashboard
    ```
 
-   > 不管内部是自研、老旧还是「垃圾」系统，只要有 HTTP API 就能接入 Beacon。
-   > 凭据一律 `credentialRef` + DPAPI（**严禁明文 token**，与连接密钥同一条安全约束）。
+   > Whether the internals are homegrown, legacy, or "garbage" systems — anything with an HTTP API can be integrated into Beacon.
+   > Credentials are always `credentialRef` + DPAPI (**plaintext tokens strictly forbidden**; the same security constraint as connection secrets).
 
-3. **GitHub Provider 是参考实现**：GitHub Actions REST API（workflow runs 的状态/重跑/取消/日志）
-   直接落成 `GitHubProvider`；公司打包系统落成 `HttpProvider`——两者共同验证抽象是否通用。
+3. **The GitHub Provider is the reference implementation**: the GitHub Actions REST API (workflow runs status/rerun/cancel/logs)
+   lands directly as `GitHubProvider`; the company packaging system lands as `HttpProvider` — together they validate whether the abstraction is truly general.
 
-## 4. AI Usage 一级概念：UsageMetric
+## 4. AI Usage as a First-Class Concept: UsageMetric
 
-> 状态：**概念设计，未落地独立类型**——当前用量组件直接以 `WidgetState`（payload + 阈值严重度）承载，不引入 `UsageMetric` 结构；下列模型为后续抽象的方向记录。
+> Status: **conceptual design, not landed as a standalone type** — the current usage components are carried directly by `WidgetState` (payload + threshold severity), with no `UsageMetric` structure introduced; the model below is a direction record for a later abstraction.
 
-CI 与 AI 额度的本质区别：
+The essential difference between CI and AI quota:
 
 ```text
 CI：   失败 → 处理
 AI：   额度 → 持续消耗 → 接近上限 → 预测耗尽 → 提醒 → 切换模型 / 等待恢复
 ```
 
-因此 AI Usage 单列 **Usage Provider**，且**不做统一百分比字段**——不同服务限制口径完全不同
-（Claude API 有 RPM、输入/输出 tokens/分钟等组织级限制；订阅制的消费窗口又是另一套）：
+That is why AI Usage stands alone as a **Usage Provider**, and **no unified percentage field is defined** — different services have completely different limit semantics
+(the Claude API has organization-level limits like RPM and input/output tokens per minute; subscription-based consumption windows are yet another scheme):
 
 ```text
 UsageMetric
@@ -115,199 +115,199 @@ UsageMetric
 └── status
 ```
 
-同模型可表达：
+The same model can express:
 
-| 来源 | 表达 |
+| Source | Expression |
 | --- | --- |
-| Claude | Input tokens 82M / 100M，window = 1h |
-| Codex | Usage 72%，window = weekly |
-| OpenAI API | Cost $18.42 / $50，window = monthly |
+| Claude | Input tokens 82M / 100M, window = 1h |
+| Codex | Usage 72%, window = weekly |
+| OpenAI API | Cost $18.42 / $50, window = monthly |
 
-进阶方向（预测型 Signal，Beacon 真正有意思的点）：
+Advanced direction (predictive Signal, where Beacon gets genuinely interesting):
 
 ```text
 Claude   82% used   预计 47 min 后达到限制
 Codex    71% used   weekly 8h 后重置
 ```
 
-主动提醒：`⚠ Claude 5h quota 82% used` / `⚠ Codex weekly 91%` / `✓ quota recovered`。
+Active alerts: `⚠ Claude 5h quota 82% used` / `⚠ Codex weekly 91%` / `✓ quota recovered`.
 
-## 5. P0（方向确认的首批清单）
+## 5. P0 (First-Batch List After Direction Confirmation)
 
-1. Company Build Provider（Status Provider 适配公司打包 API）
+1. Company Build Provider (Status Provider adapting the company packaging API)
 2. GitHub Actions Provider
-3. Generic HTTP Provider（YAML mapping + actions）
-4. Usage Provider 抽象（`UsageMetric`）
+3. Generic HTTP Provider (YAML mapping + actions)
+4. Usage Provider abstraction (`UsageMetric`)
 5. Claude Usage
 6. OpenAI/Codex Usage
-7. Notification（复用现有通知链路）
-8. L0 / L1 / L2（复用现有链路）
+7. Notification (reuse the existing notification chain)
+8. L0 / L1 / L2 (reuse the existing chains)
 
-完成即：Beacon 成为**自己每天真正会用的工具**。
+When done: Beacon becomes **a tool you genuinely use yourself every day**.
 
-## 6. 与现有架构的对应
+## 6. Mapping to the Existing Architecture
 
-| 方向 | 现状（RFC-001 / 代码） |
+| Direction | Current state (RFC-001 / code) |
 | --- | --- |
-| Status Provider | `IConnectionProvider` + `IWidgetProvider` 已在（GitHub 连接 = 参考实现） |
-| 统一 Signal | `WidgetState`（id / title / severity / lifecycle / updatedAt / …）+ `StatusAggregator` |
-| 机密 | `credentialRef` + `ISecretStore`（DPAPI，严禁明文 token） |
-| 刷新 | `RefreshScheduler` 分层调度（状态与额度的窗口粒度可复用） |
-| 通知 | `NotificationEngine` + Toast（B-5xx 已接） |
-| Actions | `IActionExecutor` + `ActionRunner`（重跑/取消类动作落点已有） |
-| Usage Provider、Generic HTTP | **已落地**：http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance / sensenova.tokenplan（§8，详细进度） |
-| Jenkins / 公司打包槽位 | **已落地**（2026-10-11）：jenkins.build——开源标准 JSON API（批3-补31，批3-补27 挂起项关闭） |
-| Machine Provider | **部分落地**（2026-10-11 批3-补32/33/36）：machine.net 本机网络（IP/↑↓速率/累计流量）+ machine.git 本机 Git 仓库（↑↓·改·stash，每仓库一张卡）+ machine.local 本机资源（CPU/内存/磁盘+阈值），均零凭据零网络；远程机器/服务器管理（§5 三类之一）按冻结记录不做 |
+| Status Provider | `IConnectionProvider` + `IWidgetProvider` already in place (GitHub connection = reference implementation) |
+| Unified Signal | `WidgetState` (id / title / severity / lifecycle / updatedAt / …) + `StatusAggregator` |
+| Secrets | `credentialRef` + `ISecretStore` (DPAPI, plaintext tokens strictly forbidden) |
+| Refresh | `RefreshScheduler` layered scheduling (the window granularity of status and quota is reusable) |
+| Notification | `NotificationEngine` + Toast (B-5xx already wired) |
+| Actions | `IActionExecutor` + `ActionRunner` (rerun/cancel-type actions already have a landing point) |
+| Usage Provider, Generic HTTP | **Landed**: http.status / http.quota / bigmodel.usage / claude.usage / kimi.coding / deepseek.balance / ark.usage / mimo.usage / codex.usage / copilot.usage / opencode.usage / qwen.usage / moonshot.balance / sensenova.tokenplan (§8, detailed progress) |
+| Jenkins / company packaging slot | **Landed** (2026-10-11): jenkins.build — the open-source standard JSON API (batch 3, supplement 31; the suspended item of batch 3, supplement 27 closed) |
+| Machine Provider | **Partially landed** (2026-10-11 batch 3, supplements 32/33/36): machine.net local network (IP/↑↓ rate/cumulative traffic) + machine.git local Git repos (↑↓·changed·stash, one card per repo) + machine.local local resources (CPU/memory/disk + thresholds), all zero-credential zero-network; remote machine/server management (one of the three categories in §5) is not done, per the frozen record |
 
-## 7. 排期约定
+## 7. Scheduling Agreement
 
-- **先收口 M5**：B-803 真机走查、B-804 干净 Win11 VM，不打断验收；
-- 收口后把 §5 P0 作为增补分组并入 `mvp-issues.md`，按 P0 重排后续阶段优先级；
-- 现有 43 条 issue 内容不变，只做优先级调整与增补。
+- **Close out M5 first**: B-803 real-machine walkthrough, B-804 clean Win11 VM — acceptance must not be interrupted;
+- After close-out, merge the §5 P0 into `mvp-issues.md` as an additional group, and re-rank subsequent phase priorities by P0;
+- The existing 43 issues keep their content unchanged — only priority adjustment and additions.
 
-## 8. 已落地（P0 进度）
+## 8. Landed (P0 Progress)
 
-- **Generic HTTP Provider（P0 #3）**：组件类型 `http.status`——点路径提取 `$.a.b[0].c`，状态词→级别映射可配；
-- **通用额度数值卡（验收反馈）**：组件类型 `http.quota`——任意配额 JSON 字段映射上板：`total_path` 必配，
-  `used_path`/`remaining_path` 二选一（后者自动推导已用），`reset_path` 支持 epoch 秒/毫秒/ISO 自动识别，
-  `unit`/`warn_percent`（默认 60）/`error_percent`（默认 90）可配；`WidgetState.Progress` 渲染为 tile 底部
-  进度条（额度占比同色填充），payload 存裸数值（% 属显示层）；设置页 bigmodel 模块附「一键添加 GLM 额度组件（示例）」，
-  连接测试通过后提示经组件向导上板——绑定流：连接测试 → 选组件类型 → 选连接 → 配字段 → 钉选显示（带 source 标注）。
-- **智谱 GLM 套餐额度（P0 #5 提前）**：组件类型 `bigmodel.usage`——`GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`，
-  裸 Key 认证（Authorization 头不带 Bearer），`data.limits[]` 归一化为 5 小时/周/月三窗口，阈值告警；
-  摘要与 payload 带最近重置时间（监控接口原生 `nextResetTime` epoch ms，5h 窗优先，本地时区 MM-dd HH:mm）；
-  Z.AI 国际站把连接 Endpoint 换成 `https://api.z.ai/api/monitor/usage/quota/limit` 即用；
-- **Claude Code 本机用量（P0 #5）**：组件类型 `claude.usage`——读本机 `~/.claude/projects/**\/*.jsonl`（ccusage 同源数据，
-  ccusage.com 口径），按窗口聚合 token 与 costUSD；零凭据零网络，`daily_cost_limit` 可选阈值告警（无上限恒 Success）；
-- **Kimi For Coding 套餐余量（P0 #5）**：组件类型 `kimi.coding`——默认 `GET https://api.kimi.com/coding/v1/usages`
-  Bearer 认证（sk-kimi-* Key，与 Moonshot 开放平台两套体系）；控制台真实口（2026-10-11 用户实抓）为 POST
-  `www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`（Cookie 认证，Settings 加
-  `http_method=POST`/`auth_header=Cookie`/`http_body` 切换）。响应 `usages[]`（scope=FEATURE_CODING）条目
-  detail=周期窗、limits[]=5h 窗，`totalQuota` 进 payload，数值为字符串（解析容忍）；旧形状（顶层
-  usage+limits[]+membership.level）兼容兜底。窗口归一化 5h/周，按剩余百分比阈值告警（warn 30 / error 10）；
-  卡面/进度条为已用口径（2026-10-13 用户令：已用=100−剩余反推，与 bigmodel/ark 的 Progress 语义一致）。
-  **凭据模型**：Cookie 由用户从浏览器 F12 复制粘贴进设置凭据框（DPAPI 存储、请求时回放），Beacon
-  **不做扫码/登录流**；会话过期后重录一次（与 MiMo 控制台 Cookie 同口径）；
-- **DeepSeek 开放平台余额（P0 #5）**：组件类型 `deepseek.balance`——`GET https://api.deepseek.com/user/balance`，
-  Bearer 认证，`balance_infos[]` 字符串金额，`is_available=false` 直接 Error，余额击穿下限告警（warn 20 / error 5，按余额币种）
-  （2026-10-09 实测真数据：CNY 余额、is_available=true，形状逐字段吻合）；
-- **火山方舟 Coding Plan Pro 额度（P0 #6）**：组件类型 `ark.usage`——火山控制面 OpenAPI `GetCodingPlanUsage`
-  （open.volcengineapi.com，V4 签名火山变体；凭据为控制台 AK/SK 一次粘贴 `AccessKey:SecretKey` 只进 DPAPI——
-  推理 ARK_API_KEY 实测被管控面 400 拒绝，不能互推），`Result.QuotaUsage[]` 归一化 5h/周/月三窗口已用百分比
-  （接口只给百分比，绝对数不经此口）；空数组=未订阅/已回收，渲染「无套餐」Info 卡非错误；
-- **小米 MiMo 用量卡（AI Usage 九家之一）**：组件类型 `mimo.usage`——三档降级：①控制台套餐用量（端点
-  2026-10-10 前端 bundle 实证、**响应真身 2026-10-11 用户实抓**：GET platform.xiaomimimo.com/api/v1/tokenPlan/usage，
-  Cookie `api-platform_ph` 认证 + plan-manage referer；响应 `data.monthUsage/usage` 块 + `items[]`，
-  `percent` 字段是 **0-1 比例**非 0-100，used/limit 自算精确百分比；早前「/usage 等 7 端点全 404」系
-  **推理域 API** 实测，控制台域例外）②本机计数（Settings `usage_endpoint`，防御解析
-  total_calls/window_calls/window_minutes →「本机累计 N 次 · 近M分 K 次」）③皆无 → 额度位「无额度口」+
-  plan-manage 指引、模型数降 Summary 次行（用户令：模型数是目录不是额度，不得占额度位）。
-  Cookie 凭据模型同 Kimi：浏览器复制粘贴 + DPAPI 回放，不做扫码登录，过期重录；
-- **OpenAI Codex 本机统计（AI Usage 九家之一）**：组件类型 `codex.usage`——读本机
-  `~/.codex/sessions/**/rollout-*.jsonl` 的 token_count 事件（total_token_usage 为会话内累计值，每文件取末条求和），
-  零凭据零网络，卡面如实标注「本地统计」（ChatGPT OAuth 官方用量口与「连接+凭据」模型不同构，暂不接）；
-- **GitHub Copilot 套餐配额（AI Usage 第八家）**：组件类型 `copilot.usage`——官方编辑器扩展同款配额端点
-  `GET api.github.com/copilot_internal/user`（PAT 需 copilot scope；Editor-Version / Copilot-Integration-Id
-  两头实测必带，api.githubcopilot.com 域同样两头才通），`quota_snapshots` 三槽——高级请求（Pro 实测 1500/月
-  含额）按已用百分比过阈值（默认 80/95 可配），聊天/补全 unlimited 显 ∞；Pro 月付标官方价 $10/月，
-  `quota_reset_date` 为**额度重置日**（订阅续费日本接口不返回，不编造）；401/403/404→Degraded、5xx→Offline；
-- **OpenCode Go 用量（AI Usage 第九家）**：组件类型 `opencode.usage`——官方 Console Budgets API 直连
-  （文档面正式接口，v2 docs/console/api/budgets）：`GET opencode.ai/console/api/v2/budgets/members`
-  （oc_sk Key Bearer，读 Budgets 需 All 权限；v1 已迁 v2，官方公告 v1 过渡期后下线）。
-  金额为 micro-cents 十进制字符串（1 美元=1 亿，官方防精度口径），
-  `limit_micro_cents` null=无上限；多成员聚合（消费求和/任一 null 即无上限/任一 exceeded 即超）；
-  v2 成员对象新增 `additional_budget_rules`（共享/模型专项预算规则数组）——provider 只取主预算四字段
-  （limit/spent/exceeded/resets_at），未知字段解析自然容忍（JsonDocument+TryGetProperty 不 strict）；
-  官方 `exceeded` 一票 Error；`resets_at` 按 UTC 自然月；卡面「Go $10/月」为展示层套餐标注（用户订阅口径），
-  payload 只存 API 真数字；401/403/404→Degraded、5xx→Offline；
-  卡面/进度条（2026-10-13 用户令）：有限额时 payload 带 percent（限额换算已用%）且 Progress=已用占比 0-1
-  （与 ark/bigmodel 同语义）；exceeded 进度条满格（对齐 ark「已尽=满格」）；无上限沿用 `$spent · 无上限` 不编百分比；
-- **阿里千问 百炼 Token Plan（AI Usage 第十家，2026-10-09）**：组件类型 `qwen.usage`——Token Plan
-  （Coding Plan 专属 Key `sk-sp-` 前缀，Base URL `token-plan.cn-beijing.maas.aliyuncs.com`，OpenAI 兼容口
-  `/compatible-mode/v1`）。**官方额度查询 REST 口未开放**（FAQ 只有控制台
-  「我的订阅」页；社区实证 cc-switch#7484——专属 Key 只授权模型调用，/models 实测 200、控制台查询口不授权），
-  四档探测后如实降级：默认显示 `/models` 模型目录真数据 + 「额度口径官方未开放」；连接 Settings/表单「用量端点」
-  填自定义口（GET + Bearer），响应按防御键名解析（percent/used_percent、remaining_percent 反推、
-  remaining/total_credits、reset_at/reset/period_end ISO 或秒级 epoch）即出额度卡（已用% 进度条 + 阈值告警
-  + 重置时间）。窗口口径：个人版 7 天固定窗口、团队版月度（官方 FAQ），重置以端点数据为准；
-- **Moonshot 开放平台余额（AI Usage 第十一家，2026-10-10）**：组件类型 `moonshot.balance`——开放平台余额监控
-  （与 Kimi For Coding 套餐是两套账号体系），`GET api.moonshot.cn/v1/users/me/balance` Bearer 认证，
-  响应 `{code:0, data:{available_balance}}`；余额 ≤ `warn_below`（默认 20）→ Warning、≤ `error_below`（默认 5）→ Error，
-  响应不含余额数据按 Degraded 处理（连接测试同口径，代理回错误体不算连通）；
-- **商汤 SenseNova Token Plan 积分池（AI Usage 第十二家，2026-10-13 用户令）**：组件类型 `sensenova.tokenplan`——
-  控制台池级额度 `GET platform.sensenova.cn/lite/console/v1/tokenplan/pool-usage`，Bearer **控制台 JWT**
-  （会话令牌不是 API Key，带 `exp` 会过期）；响应 plan + pools[]，每池 window_5h/window_7d（limit/used/remaining/reset_at）
-  与赠额（grant_balance/nearest_grant_expiry）；**最差池的最差窗优先**（已用最高，并列按池序 → 5h → 7d）驱动主数值/
-  进度条/级别，摘要多池齐显，tile 数值位「池名 窗名 已用%」；赠额到期预警（7 天内或剩余占比 ≤10%）不低于 Warning；
-  JWT 过期 401 → Degraded 明示重取指引不静默空数据；多账号 = 多连接；
+- **Generic HTTP Provider (P0 #3)**: component type `http.status` — point-path extraction `$.a.b[0].c`, configurable status-word → level mapping;
+- **Generic quota number card (acceptance feedback)**: component type `http.quota` — map arbitrary quota JSON fields onto the board: `total_path` required,
+  `used_path`/`remaining_path` pick one of the two (the latter auto-derives used), `reset_path` auto-detects epoch seconds/milliseconds/ISO,
+  `unit`/`warn_percent` (default 60)/`error_percent` (default 90) configurable; `WidgetState.Progress` renders as the progress bar at the bottom of the
+  tile (quota fraction filled in the same color), payload stores raw numbers (% belongs to the display layer); the bigmodel module on the settings page attaches 「一键添加 GLM 额度组件（示例）」,
+  and after the connection test passes it prompts onboarding via the component wizard — binding flow: connection test → choose component type → choose connection → configure fields → pin the display (with source annotation).
+- **Zhipu GLM plan quota (P0 #5, ahead of schedule)**: component type `bigmodel.usage` — `GET https://open.bigmodel.cn/api/monitor/usage/quota/limit`,
+  raw Key auth (Authorization header without Bearer), `data.limits[]` normalized into the 5h/weekly/monthly three windows, threshold alerts;
+  summary and payload carry the nearest reset time (the monitor API's native `nextResetTime` epoch ms, 5h window preferred, local timezone MM-dd HH:mm);
+  for the Z.AI international site, just switch the connection Endpoint to `https://api.z.ai/api/monitor/usage/quota/limit` and it works;
+- **Claude Code local usage (P0 #5)**: component type `claude.usage` — reads local `~/.claude/projects/**\/*.jsonl` (the same-source data as ccusage,
+  ccusage.com semantics), aggregates tokens and costUSD by window; zero credentials zero network, `daily_cost_limit` optional threshold alert (no limit stays Success forever);
+- **Kimi For Coding plan remaining (P0 #5)**: component type `kimi.coding` — default `GET https://api.kimi.com/coding/v1/usages`
+  Bearer auth (sk-kimi-* Key, a separate account system from the Moonshot open platform); the console's real endpoint (captured live by the user, 2026-10-11) is POST
+  `www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages` (Cookie auth; add
+  `http_method=POST`/`auth_header=Cookie`/`http_body` in Settings to switch). Response `usages[]` (scope=FEATURE_CODING) entries
+  detail=period window, limits[]=5h window, `totalQuota` into payload, values are strings (parsing is tolerant); the old shape (top-level
+  usage+limits[]+membership.level) is a compatibility fallback. Windows normalized to 5h/weekly, threshold alerts by remaining percentage (warn 30 / error 10);
+  card face/progress bar follow the used semantics (user directive, 2026-10-13: used=100−remaining back-computed, consistent with bigmodel/ark's Progress semantics).
+  **Credential model**: the Cookie is copy-pasted by the user from the browser's F12 into the settings credential box (DPAPI storage, replayed on request); Beacon
+  **does not build QR-scan/login flows**; after session expiry it is re-entered once (same approach as the MiMo console Cookie);
+- **DeepSeek open platform balance (P0 #5)**: component type `deepseek.balance` — `GET https://api.deepseek.com/user/balance`,
+  Bearer auth, `balance_infos[]` string amounts, `is_available=false` goes straight to Error, alert when balance breaches the lower bound (warn 20 / error 5, by balance currency)
+  (verified against real data, 2026-10-09: CNY balance, is_available=true, shape matched field by field);
+- **Volcano Ark Coding Plan Pro quota (P0 #6)**: component type `ark.usage` — the Volcano control-plane OpenAPI `GetCodingPlanUsage`
+  (open.volcengineapi.com, the Volcano variant of V4 signing; credentials are the console AK/SK pasted once as `AccessKey:SecretKey` and only ever into DPAPI —
+  the inference ARK_API_KEY was tested and rejected 400 by the control plane, so the two cannot stand in for each other), `Result.QuotaUsage[]` normalized into 5h/weekly/monthly three windows of used percentage
+  (the API only gives percentages; absolute numbers do not come through this endpoint); empty array = unsubscribed/reclaimed, rendered as a 「无套餐」 Info card, not an error;
+- **Xiaomi MiMo usage card (one of the nine AI Usage providers)**: component type `mimo.usage` — three-tier degradation: ① console plan usage (endpoint
+  evidenced in the front-end bundle 2026-10-10, **response captured live by the user 2026-10-11**: GET platform.xiaomimimo.com/api/v1/tokenPlan/usage,
+  Cookie `api-platform_ph` auth + plan-manage referer; response `data.monthUsage/usage` blocks + `items[]`,
+  the `percent` field is a **0-1 ratio**, not 0-100; used/limit computed by us into exact percentages; the earlier 「/usage 等 7 端点全 404」 came from live testing of the
+  **inference-domain API** — the console domain is the exception) ② local counting (Settings `usage_endpoint`, defensive parsing of
+  total_calls/window_calls/window_minutes → 「本机累计 N 次 · 近M分 K 次」) ③ neither present → quota slot shows 「无额度口」 +
+  plan-manage guidance, model count demoted to a Summary sub-line (user directive: model count is a catalog, not a quota, and must not occupy the quota slot).
+  Cookie credential model same as Kimi: browser copy-paste + DPAPI replay, no QR-scan login, re-enter on expiry;
+- **OpenAI Codex local stats (one of the nine AI Usage providers)**: component type `codex.usage` — reads token_count events from local
+  `~/.codex/sessions/**/rollout-*.jsonl` (total_token_usage is a within-session cumulative; take the last record per file and sum), 
+  zero credentials zero network, card face honestly labeled 「本地统计」 (the ChatGPT OAuth official usage endpoint is not isomorphic with the "connection + credentials" model, not integrating it for now);
+- **GitHub Copilot plan quota (eighth of AI Usage)**: component type `copilot.usage` — the same quota endpoint as the official editor extension
+  `GET api.github.com/copilot_internal/user` (PAT needs the copilot scope; Editor-Version / Copilot-Integration-Id
+  both headers proven required by live testing, and the api.githubcopilot.com domain likewise only works with both), `quota_snapshots` three slots — premium requests (1,500/month on Pro per live testing,
+  included) threshold-checked by used percentage (default 80/95, configurable), chat/completion unlimited show ∞; Pro monthly labeled with the official price $10/month,
+  `quota_reset_date` is the **quota reset day** (the subscription renewal day is not returned by this endpoint, and is not fabricated); 401/403/404→Degraded, 5xx→Offline;
+- **OpenCode Go usage (ninth of AI Usage)**: component type `opencode.usage` — direct connection to the official Console Budgets API
+  (the documented official interface, v2 docs/console/api/budgets): `GET opencode.ai/console/api/v2/budgets/members`
+  (oc_sk Key Bearer, reading Budgets requires the All permission; v1 has migrated to v2, official announcement says v1 is retired after the transition period).
+  Amounts are micro-cents decimal strings (1 dollar = 100 million, the official precision-safe convention),
+  `limit_micro_cents` null = no limit; multi-member aggregation (spend summed / any null means no limit / any exceeded means over);
+  the v2 member object adds `additional_budget_rules` (an array of shared/model-specific budget rules) — the provider takes only the main budget's four fields
+  (limit/spent/exceeded/resets_at); unknown fields are naturally tolerated during parsing (JsonDocument+TryGetProperty, not strict);
+  official `exceeded` is a single vote of Error; `resets_at` follows the UTC calendar month; the card-face 「Go $10/月」 is display-layer plan labeling (the user's subscription semantics),
+  payload stores only the API's real numbers; 401/403/404→Degraded, 5xx→Offline;
+  card face/progress bar (user directive, 2026-10-13): when there is a limit the payload carries percent (used % converted from the limit) and Progress = used fraction 0-1
+  (same semantics as ark/bigmodel); exceeded fills the progress bar (aligned with ark's 「已尽=满格」); no limit keeps `$spent · 无上限`, no fabricated percentage;
+- **Alibaba Qwen Bailian Token Plan (tenth of AI Usage, 2026-10-09)**: component type `qwen.usage` — Token Plan
+  (Coding Plan dedicated Key with `sk-sp-` prefix, Base URL `token-plan.cn-beijing.maas.aliyuncs.com`, OpenAI-compatible
+  `/compatible-mode/v1`). **The official quota-query REST endpoint is not open** (the FAQ only has the console
+  「我的订阅」 page; community evidence cc-switch#7484 — the dedicated Key only authorizes model calls; /models returns 200 in live testing while console query endpoints are not authorized),
+  after four-tier probing it degrades honestly: by default show real `/models` model-catalog data + 「额度口径官方未开放」; fill a custom endpoint in connection Settings/form 「用量端点」
+  (GET + Bearer), and the response is parsed with defensive key names (percent/used_percent, remaining_percent back-computed,
+  remaining/total_credits, reset_at/reset/period_end ISO or second-level epoch) to produce a quota card (used % progress bar + threshold alerts
+  + reset time). Window semantics: personal edition a fixed 7-day window, team edition monthly (official FAQ), reset follows the endpoint data;
+- **Moonshot open platform balance (eleventh of AI Usage, 2026-10-10)**: component type `moonshot.balance` — open-platform balance monitoring
+  (a separate account system from the Kimi For Coding plan), `GET api.moonshot.cn/v1/users/me/balance` Bearer auth,
+  response `{code:0, data:{available_balance}}`; balance ≤ `warn_below` (default 20) → Warning, ≤ `error_below` (default 5) → Error,
+  a response without balance data is treated as Degraded (connection test uses the same rule; a proxy returning an error body does not count as reachable);
+- **SenseTime SenseNova Token Plan credit pool (twelfth of AI Usage, user directive 2026-10-13)**: component type `sensenova.tokenplan` —
+  console pool-level quota `GET platform.sensenova.cn/lite/console/v1/tokenplan/pool-usage`, Bearer **console JWT**
+  (a session token, not an API Key; carries `exp` and expires); response plan + pools[], each pool window_5h/window_7d (limit/used/remaining/reset_at)
+  plus grant (grant_balance/nearest_grant_expiry); **worst pool's worst window wins** (highest used; ties broken by pool order → 5h → 7d) driving the main value/
+  progress bar/level; summary shows all pools together; tile value slot shows 「池名 窗名 已用%」; grant-expiry warning (within 7 days or remaining fraction ≤10%) never below Warning;
+  JWT expiry 401 → Degraded with explicit re-acquisition guidance, not silent empty data; multiple accounts = multiple connections;
 
-- **Jenkins 构建状态（开源 CI，master-plan §13 公司打包工具槽位）**：组件类型 `jenkins.build`——开源 Jenkins
-  标准 JSON API（任意实例通用，非厂商专属）：连接 Endpoint=实例基址，凭据可空（匿名读）或 `user:apiToken`
-  Basic 认证；组件 `job_path` 逐段 `job/<name>` 转义（Folder 嵌套支持）。一次请求 `/job/.../api/json?tree=…`
-  按 `color` 判级（blue→Success、yellow→Warning 不稳定、red/dark_red→Error、aborted→Cancelled、gray/notbuilt
-  →Info 未构建、disabled→已禁用；`_anime` 后缀=构建中 → Running）——job 级 `lastBuild` **不含 result**
-  （weekly.ci.jenkins.io 真实夹具实证），不追打第二击。连接测试取根视图 `/api/json`，2xx 且是 JSON 才算
-  连通（反向代理回 200 HTML 壳按 Degraded，代理假阳性不算连通）；
-- **本机网络（2026-10-11 批3-补32）**：组件类型 `machine.net`——只读本机 `NetworkInterface`（零凭据零网络）：
-  IP + 实时 ↓↑ 速率（相邻两次采样计数差÷时间差，machine 档 15s，首刷无基线只出 IP 与累计值）+ 累计流量
-  （自开机，进 payload 走 L3 详情）；自动选卡=Up+非回环+有 IPv4、有网关者优先，点名网卡不存在按 Degraded；
-  不触及冻结的远程 Machines 管理；
-- **本机 Git 仓库（2026-10-11 批3-补33，用户拍板「git 都搞」）**：组件类型 `machine.git`——每仓库一张卡
-  `beacon ↑2↓5 · 改 7 · stash 1`：git CLI 三连只读（status --porcelain -b / rev-list @{u}...HEAD / stash list，
-  零网络零凭据，无上游不追打第二击）；behind>0 或分叉 → Warning（要动手才亮黄，仅待推 ahead 是 Info）；
-  变更文件前 5 条预览（重命名取 -> 右侧）进 payload 走 L3 详情，32 DIP 装不下也不分页；
-- **本机资源（批3-补32 拍板回执「本机的cpu 内存 磁盘空间」，批3-补36 落地）**：组件类型 `machine.local`——
-  CPU/内存/磁盘一行三个百分比（零凭据零网络）：CPU=相邻两次累计 tick 差分（首刷无基线不出 CPU，回退重记基线）；
-  Linux 读 /proc（stat 首行 + meminfo MemAvailable，老内核 MemFree 兜底）、Windows 走 GetSystemTimes +
-  GlobalMemoryStatusEx，磁盘统一 DriveInfo（空=系统盘/根分区，点名不存在/未就绪 Degraded fail-loud）；
-  三项阈值默认 90%（超线亮黄，Signal 不分级），按四舍五入后的显示值比线（所见即所警）；
-- **Herald 接入（2026-10-11 批3-补35/37，用户拍板 incidents+feed 先行，deliveries 续批补齐）**：连接类型 `herald`——
-  Endpoint=基址，凭据可空（未开 auth 匿名可用）或 API Key 走 X-API-Key 头，测试打恒公开口 `/api/v1/status`
-  （2xx+JSON 才算连通）；`herald.incidents` 事件台账（open 未决>0 亮黄、含 critical 亮红，回看口径恒 Info）+
-  `herald.feed` 订阅源（公开类目 RSS 或私密 token feed——token 即凭据走 DPAPI 不落配置；未读=上次刷新以来
-  新增 guid，首刷只记基线）+ `herald.deliveries` 投递失败（`/api/v1/logs?status=failed`，failed>0 亮黄 =
-  送信没送达要人管；日志态词表 pending/success/failed/shadow 写死四态，重试耗尽 dead 在日志层也写 failed
-  不区分，shadow 被 status 过滤天然排除）。Herald 是用户自有项目（cuihairu/herald，统一订阅与投递中枢）；
-- **全局检查频率（设置 → 常规）**：`AppConfig.PollIntervalSeconds`（0=按各组件刷新档策略表，默认）——
-  组件级「检测间隔」优先，未设组件级的按全局走；五档（按档位/15s/30s/1m/5m）；改动经变化检测重建调度注册
-  （未变不动，避免设置页随手一改全量重拉），立即生效并落日志；
-- **组件类型短名（tile 标签/L2 chip 统一口径）**：`WidgetTypeNames`（Core，纯函数可单测）——此前 PinTile
-  标签兜底取类型尾段（`ark.usage` → tile 名显示「usage」，字段名冒充显示名，2026-10-09 用户实测），
-  现按类型前缀映射连接类型短名（火山方舟/智谱/小米 MiMo/阿里千问/…），QuickPanel 分组 chip 的 GLM/ARK
-  硬编码并入同表；未知前缀仍退类型尾段（不抛）；
-- **方舟 5h 窗口主口径（bug 批3，2026-10-13 用户令修订）**：`ark.usage` tile 主数值/级别/进度条原按
-  Coding Plan 5 小时窗口语义取 session 档为主口径；现统一为**最差窗口优先**——级别/进度条/主数值取
-  已用最高窗（5h/周/月）并标窗名，任一窗 ≥100% 走已尽分支恒定 Error；Summary 带「最差窗 x% · 其余窗 · 重置」，
-  周/月降为 payload 明细供 L3；智谱/千问等各窗口口径不受影响；
-- **PowerToys 形态配置中心**：设置页左侧模块目录（每模块独立 icon + 启停开关），开启才见对应配置页；
-  启停落 `connections.json` 的 `enabled`，宿主跳过刷新，面板残留状态即时清理。
-- **L0 独立悬浮框形态（B-701 扩展）**：设置「悬浮形态」二选一——宿主面板（默认，单窗多 tile）/ 独立悬浮框
-  （每钉选组件一窗，桌面任意拖放，位置按组件各记 `PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）；
-  两形态同享置顶哨兵、点击下钻 L2、停用模块即时消失；切换重启生效。
-  **产品拍板（数值类悬浮：可配置；默认开，2026-10-11 用户令）**：独立悬浮窗对信息密集组件（趋势图/状态灯组，
-  descriptor `FloatingSupported`）恒生效；数值/额度类（descriptor `FloatingOptIn`）由设置「数量悬浮窗」总开关控制——
-  **默认开**（`numericFloatingEnabled` 默认 true；2026-10-08 曾拍默认关，用户令推翻），
-  关闭即刻收回落盘恢复宿主面板承载。当前组件库暂无 FloatingSupported 类型（状态类恒面板承载），开关只挡数值类独立悬浮窗一条路。
+- **Jenkins build status (open-source CI, the master-plan §13 company packaging tool slot)**: component type `jenkins.build` — the open-source Jenkins
+  standard JSON API (works for any instance, not vendor-specific): connection Endpoint = instance base URL, credentials optional (anonymous read) or `user:apiToken`
+  Basic auth; the component's `job_path` escapes each `job/<name>` segment (Folder nesting supported). One request `/job/.../api/json?tree=…`
+  is graded by `color` (blue→Success, yellow→Warning unstable, red/dark_red→Error, aborted→Cancelled, gray/notbuilt
+  →Info not built, disabled→disabled; `_anime` suffix = building → Running) — job-level `lastBuild` **does not include result**
+  (proven with a real fixture from weekly.ci.jenkins.io), no second hit is chased. The connection test hits the root view `/api/json`; only 2xx and JSON count as
+  reachable (a reverse proxy answering 200 with an HTML shell counts as Degraded; a proxy false-positive does not count as reachable);
+- **Local network (2026-10-11, batch 3 supplement 32)**: component type `machine.net` — reads only local `NetworkInterface` (zero credentials zero network):
+  IP + real-time ↓↑ rate (adjacent sample counter delta ÷ time delta, machine tier 15s; the first refresh has no baseline so only IP and cumulative values appear) + cumulative traffic
+  (since boot, into payload for the L3 detail); auto card pick = Up + non-loopback + has IPv4, gateway-having preferred; a named NIC that does not exist counts as Degraded;
+  does not touch the frozen remote Machines management;
+- **Local Git repos (2026-10-11, batch 3 supplement 33, user decision 「git 都搞」)**: component type `machine.git` — one card per repo
+  `beacon ↑2↓5 · 改 7 · stash 1`: git CLI triple read-only (status --porcelain -b / rev-list @{u}...HEAD / stash list,
+  zero network zero credentials; no upstream means no second hit); behind>0 or diverged → Warning (yellow only when action is needed; ahead-only waiting to push is Info);
+  the top 5 changed-file previews (renames take the right side of ->) go into payload for the L3 detail; if 32 DIP cannot fit them, still no pagination;
+- **Local resources (batch 3 supplement 32 decision receipt 「本机的cpu 内存 磁盘空间」, landed in batch 3 supplement 36)**: component type `machine.local` —
+  CPU/memory/disk as three percentages in one line (zero credentials zero network): CPU = delta of adjacent cumulative ticks (first refresh has no baseline so no CPU; on fallback the baseline is re-recorded);
+  Linux reads /proc (stat first line + meminfo MemAvailable, old-kernel MemFree fallback), Windows goes through GetSystemTimes +
+  GlobalMemoryStatusEx, disk uniformly DriveInfo (empty = system disk/root partition; named-but-missing or not-ready → Degraded, fail-loud);
+  the three thresholds default to 90% (over the line lights yellow; Signal is not graded), compared against the rounded display value (what you see is what alerts);
+- **Herald integration (2026-10-11, batch 3 supplements 35/37; user decision: incidents+feed first, deliveries to follow in later batches)**: connection type `herald` —
+  Endpoint = base URL, credentials optional (anonymous works if auth is off) or an API Key via the X-API-Key header; the test hits the always-public endpoint `/api/v1/status`
+  (only 2xx+JSON counts as reachable); `herald.incidents` event ledger (open unresolved >0 lights yellow, contains critical lights red; lookback view stays Info) +
+  `herald.feed` subscription feeds (public-category RSS or private token feed — the token is the credential, goes to DPAPI, never into config; unread = new guid
+  since the last refresh, first refresh only records the baseline) + `herald.deliveries` delivery failures (`/api/v1/logs?status=failed`, failed>0 lights yellow =
+  mail sent but not delivered, needs human attention; the log status vocabulary pending/success/failed/shadow is a hardcoded four states; retry-exhausted dead is also written failed
+  at the log layer with no distinction, and shadow is naturally excluded by the status filter). Herald is the user's own project (cuihairu/herald, a unified subscription and delivery hub);
+- **Global check frequency (Settings → General)**: `AppConfig.PollIntervalSeconds` (0 = follow each component's refresh-tier policy table, the default) —
+  the component-level 「检测间隔」 takes priority; components without one follow the global; five tiers (by tier 15s/30s/1m/5m); changes rebuild the schedule registration through change detection
+  (no change, no action — avoiding a casual settings-page tweak triggering a full re-pull); takes effect immediately and is logged;
+- **Component type short names (tile label/L2 chip unified vocabulary)**: `WidgetTypeNames` (Core, pure function, unit-testable) — previously the PinTile
+  label fallback took the type's tail segment (`ark.usage` → tile name showed 「usage」, a field name impersonating a display name; user live test, 2026-10-09);
+  now the type prefix maps to the connection-type short name (Volcano Ark/Zhipu/Xiaomi MiMo/Alibaba Qwen/…), and the QuickPanel group chip's hardcoded GLM/ARK
+  is merged into the same table; unknown prefixes still fall back to the type tail (no throw);
+- **Ark 5h window primary rule (bug batch 3, revised by user directive 2026-10-13)**: the `ark.usage` tile main value/level/progress bar originally followed
+  the Coding Plan 5-hour window semantics with the session tier as primary; now unified to **worst-window-wins** — level/progress bar/main value take
+  the highest-used window (5h/weekly/monthly) with the window name labeled; any window ≥100% goes to the exhausted branch, constant Error; Summary carries 「最差窗 x% · 其余窗 · 重置」,
+  weekly/monthly demoted to payload detail for L3; Zhipu/Qwen and other per-window rules are unaffected;
+- **PowerToys-style configuration center**: the settings page's left-side module catalog (each module with its own icon + on/off switch); only enabled modules show their config page;
+  enable/disable lands in `connections.json`'s `enabled`; the host skips refresh, and residual panel state is cleaned up immediately.
+- **L0 standalone floating window form (B-701 extension)**: settings offer a 「悬浮形态」 pick-one — host panel (default, single window with multiple tiles) / standalone floating window
+  (one window per pinned component, freely draggable on the desktop; position recorded per component as `PinLayout.FloatingX/Y` physical pixels, never-dragged ones cascade in order);
+  both forms share the always-on-top sentinel, click drills into L2, disabled modules disappear instantly; switching takes effect after restart.
+  **Product decision (numeric-type floating: configurable; default on, user directive 2026-10-11)**: standalone floating windows for information-dense components (trend charts/status-light groups,
+  descriptor `FloatingSupported`) always take effect; numeric/quota types (descriptor `FloatingOptIn`) are controlled by the settings' 「数量悬浮窗」 master switch —
+  **default on** (`numericFloatingEnabled` defaults to true; 2026-10-08 had decided default off, overturned by user directive),
+  turning it off immediately retracts and persists back to host-panel carrying. The current component library has no FloatingSupported types yet (status types are always panel-carried); the switch only gates the numeric standalone floating window path.
 
-### 调研结论（暂缓接入）
+### Research Conclusions (Integration Deferred)
 
-- **阿里云百炼（DashScope/千问）**：~~无独立的余额/用量查询接口……接入成本高、信息增益低，暂缓~~
-  **已被 2026-10-09 Token Plan（Coding Plan）打破**——按量计费口径的结论不再适用：Token Plan 专属 Key
-  只授权模型调用、官方额度查询 REST 口仍未开放，已按「目录真数据 + 自定义用量端点」落 `qwen.usage`
-  （见 §8 AI Usage 第十家）；按量计费用户的账户余额仍走阿里云 BSS OpenAPI `QueryAccountBalance`（暂缓不变）。
-- **小米 MiMo**：API 开放平台（platform.xiaomimimo.com）已开放、模型权重 MIT 开源，但**未见公开的余额/用量查询接口**
-  （2026-10-10 复核：/usage /quota /balance 等 7 端点全 404，响应无限流头）——`mimo.usage` 已按「无额度口 +
-  本机计数」落（见 §8）；官方日后开放即按 bigmodel/kimi 同构升级。另注：小米 key 本机（litellm/relay）无调用方，
-  litellm 的 mimo-v2.6-flash-free 走 DeepSeek serverless 中转非小米直连。
-- **Moonshot 开放平台余额**：~~端点已确认，后续按 deepseek 同构接入~~
-  **已于 2026-10-10 落 `moonshot.balance`**（见 §8 AI Usage 第十一家，按 deepseek 同构）。
-- **OpenAI Codex 用量**：社区走 ChatGPT OAuth（`chatgpt.com/backend-api/wham/usage`，5h/周/月限额+Credits），
-  需要本机 OAuth 凭据封装，与当前"连接+凭据"模型不同构——已按第三档落本机会话 JSONL 统计（`codex.usage`，见 §8），
-  OAuth 口单独排期。
+- **Alibaba Cloud Bailian (DashScope/Qwen)**: ~~No independent balance/usage query interface… high integration cost, low information gain, deferred~~
+  **Overturned by the 2026-10-09 Token Plan (Coding Plan)** — the pay-as-you-go conclusion no longer applies: the Token Plan dedicated Key
+  only authorizes model calls, and the official quota-query REST endpoint is still not open; `qwen.usage` has landed as 「目录真数据 + 自定义用量端点」
+  (see §8, tenth of AI Usage); pay-as-you-go users' account balance still goes through the Alibaba Cloud BSS OpenAPI `QueryAccountBalance` (deferral unchanged).
+- **Xiaomi MiMo**: the API open platform (platform.xiaomimimo.com) is open, model weights are MIT open-source, but **no public balance/usage query interface has been seen**
+  (2026-10-10 recheck: /usage /quota /balance and 7 endpoints all 404, responses lack rate-limit headers) — `mimo.usage` has landed as 「无额度口 +
+  本机计数」 (see §8); once the official one opens, it upgrades isomorphically like bigmodel/kimi. Side note: the Xiaomi key has no local caller (litellm/relay);
+  litellm's mimo-v2.6-flash-free goes through the DeepSeek serverless relay, not a direct Xiaomi connection.
+- **Moonshot open platform balance**: ~~Endpoint confirmed; integrate later isomorphic to deepseek~~
+  **`moonshot.balance` landed on 2026-10-10** (see §8, eleventh of AI Usage, isomorphic to deepseek).
+- **OpenAI Codex usage**: the community goes through ChatGPT OAuth (`chatgpt.com/backend-api/wham/usage`, 5h/weekly/monthly limits + Credits),
+  which needs local OAuth credential wrapping and is not isomorphic with the current "connection + credentials" model — the third tier, local session JSONL stats, has landed (`codex.usage`, see §8);
+  the OAuth endpoint is scheduled separately.
 
-### 配置示例（config 目录 %APPDATA%/Beacon/）
+### Configuration Examples (config directory %APPDATA%/Beacon/)
 
-连接 `connections.json`（凭据只存 `credentialRef`，Key 本体在 DPAPI，设置页录入）：
+Connection `connections.json` (credentials store only `credentialRef`; the Key body lives in DPAPI, entered on the settings page):
 
 ```json
 [
@@ -384,15 +384,15 @@ Codex    71% used   weekly 8h 后重置
 ]
 ```
 
-`http` 连接 settings：`auth_header`（默认 `Authorization`）、`auth_prefix`（默认 `"Bearer "`，可置空）；
-`bigmodel` 连接 endpoint 可空（自动用官方监控接口），认证默认裸 Key（不带前缀）；
-`claude` 连接零凭据零网络（endpoint 可填自定义会话目录）；`kimi`/`deepseek` endpoint 可空走官方接口，Bearer 认证；
-`ark` 凭据为控制台 AK/SK（`AccessKey:SecretKey` 一次粘贴，只进 DPAPI）；`mimo` endpoint 可空走官方推理域，
-`usage_endpoint` 填自定义用量口（计数/百分比形状出数，认不出的形状显式 Degraded——2026-10-13 用户令不透传远端原文上卡面）；`codex` 零凭据零网络（endpoint 可填自定义会话目录）；
-`copilot` 凭据为 GitHub PAT（需 copilot scope），endpoint 可空走官方配额端点（官方扩展同款两头自动带）；
-`opencode` 凭据为 OpenCode Key（oc_sk，读 Budgets 需 All 权限），endpoint 可空走官方 Console Budgets 接口。
+`http` connection settings: `auth_header` (default `Authorization`), `auth_prefix` (default `"Bearer "`, can be emptied);
+`bigmodel` connection endpoint can be empty (the official monitor API is used automatically), auth defaults to raw Key (no prefix);
+`claude` connection is zero-credential zero-network (endpoint can point at a custom session directory); `kimi`/`deepseek` endpoints can be empty to use the official APIs, Bearer auth;
+`ark` credentials are the console AK/SK (`AccessKey:SecretKey` pasted once, into DPAPI only); `mimo` endpoint can be empty to use the official inference domain,
+`usage_endpoint` points at a custom usage endpoint (counting/percentage shapes produce numbers; unrecognized shapes show explicit Degraded — user directive 2026-10-13: no passing remote raw text onto the card face); `codex` is zero-credential zero-network (endpoint can point at a custom session directory);
+`copilot` credentials are a GitHub PAT (needs the copilot scope), endpoint can be empty to use the official quota endpoint (both headers of the official extension carried automatically);
+`opencode` credentials are an OpenCode Key (oc_sk; reading Budgets needs the All permission), endpoint can be empty to use the official Console Budgets API.
 
-组件 `widgets.json`：
+Component `widgets.json`:
 
 ```json
 [
@@ -493,15 +493,15 @@ Codex    71% used   weekly 8h 后重置
 ]
 ```
 
-`http.status` 状态词表可整体省略（用上例默认值）；未知状态词按 Warning 兜底（宁报勿漏）。
-`bigmodel.usage` 摘要形如 `GLM Coding Pro · 5h 窗口已用 42.5% · 周 8% · 月 3%`；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值一律取已用最高的窗口并标窗名，warn/error 阈值仍作用在最差窗已用 % 上（语义不变）。
-`claude.usage` 摘要形如 `Claude · 今日 · $1.00 · 2.5K tok · 12 条`（costUSD 缺失时只报 token，不自行估价）。
-`kimi.coding` 摘要形如 `Pro · 周 已用95% · 5h 已用5%`（社区口带套餐等级；控制台口无等级，head 落 label 或「Kimi」）；卡面/多窗口/进度条为已用口径（2026-10-13 用户令，与 bigmodel/ark 统一，已用=剩余反推），**最差窗口优先**：级别/进度条/主数值取剩余最低（=已用最高）窗并标窗名，阈值 warn 30 / error 10 仍按剩余百分比判定（越低越差，语义不变）。
-`deepseek.balance` 摘要形如 `DeepSeek · ¥110.00（含赠 ¥10.00）`，币种 CNY/USD 自适应。
-`ark.usage` 摘要形如 `方舟 · 月 92% · 5h 42.5% · 周 8% · 待重置`（接口只给百分比；**最差窗口优先** 2026-10-13 用户令：级别/进度条/主数值取已用最高窗并标窗名，其余窗随后，重置跟最差窗；任一窗 ≥100% → 已尽分支恒定 Error + 满格）；`mimo.usage`
-摘要形如 `MiMo · 本机累计 128 次 · 近60分 6 次 · 官方无额度接口（本机计数）`（配计数源）或
-`MiMo · 官方无额度接口 · 8 模型可用`（模型数次行，额度位「无额度口」）；`codex.usage` 摘要形如 `Codex · 今日 · 8 会话 · 12.3K tok · 本地统计`
-（`days` 默认 7，`days=1` 显示「今日」）；`copilot.usage` 摘要形如 `Copilot · Pro $10/月 · 高级 1/1500 · 聊天 ∞ · 补全 ∞ · 11-01 重置`
-（级别取高级请求已用百分比过阈值）；`opencode.usage` 摘要形如 `OpenCode Go $10/月 · $0.00 · 无上限 · 11-01 重置`
-（有上限时 `已用 / 上限` 同段展示）。
+The `http.status` status word lists can be omitted entirely (the default values above are used); unknown status words fall back to Warning (better to over-report than to miss).
+The `bigmodel.usage` summary looks like `GLM Coding Pro · 5h 窗口已用 42.5% · 周 8% · 月 3%`; **worst-window-wins** (user directive 2026-10-13): level/progress bar/main value always take the highest-used window with the window name labeled, and the warn/error thresholds still apply to the worst window's used % (semantics unchanged).
+The `claude.usage` summary looks like `Claude · 今日 · $1.00 · 2.5K tok · 12 条` (when costUSD is missing only tokens are reported; no self-pricing).
+The `kimi.coding` summary looks like `Pro · 周 已用95% · 5h 已用5%` (the community endpoint carries the plan tier; the console endpoint has no tier, and the head falls back to the label or 「Kimi」); card face/multi-window/progress bar follow the used semantics (user directive 2026-10-13, unified with bigmodel/ark: used = remaining back-computed), **worst-window-wins**: level/progress bar/main value take the lowest-remaining (= highest-used) window with the window name labeled; thresholds warn 30 / error 10 are still judged by remaining percentage (lower is worse; semantics unchanged).
+The `deepseek.balance` summary looks like `DeepSeek · ¥110.00（含赠 ¥10.00）`, currency CNY/USD adaptive.
+The `ark.usage` summary looks like `方舟 · 月 92% · 5h 42.5% · 周 8% · 待重置` (the API only gives percentages; **worst-window-wins**, user directive 2026-10-13: level/progress bar/main value take the highest-used window with the window name labeled, other windows follow, reset follows the worst window; any window ≥100% → exhausted branch, constant Error + full bar); the `mimo.usage`
+summary looks like `MiMo · 本机累计 128 次 · 近60分 6 次 · 官方无额度接口（本机计数）` (with a counting source) or
+`MiMo · 官方无额度接口 · 8 模型可用` (model count as sub-line, quota slot 「无额度口」); the `codex.usage` summary looks like `Codex · 今日 · 8 会话 · 12.3K tok · 本地统计`
+(`days` defaults to 7; `days=1` shows 「今日」); the `copilot.usage` summary looks like `Copilot · Pro $10/月 · 高级 1/1500 · 聊天 ∞ · 补全 ∞ · 11-01 重置`
+(level takes the premium requests' used percentage against the threshold); the `opencode.usage` summary looks like `OpenCode Go $10/月 · $0.00 · 无上限 · 11-01 重置`
+(when there is a limit, `已用 / 上限` is shown in the same segment).
 

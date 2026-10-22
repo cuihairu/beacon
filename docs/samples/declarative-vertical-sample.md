@@ -1,33 +1,33 @@
 
-# 可导入样例：GitHub Actions 纵向面（P3-04）
+# Importable sample: GitHub Actions vertical slice (P3-04)
 
-`declarative-vertical-sample.json` 是一份**配置包**（与 设置 → 高级 → 导入/导出配置 同格式），演示声明式组件的一条纵向闭环：同一个 `github.actions.runs` 状态在 L0 tile、L2 面板行、L3 详情三面共用同源事实，并在 L3 详情聚合第二个源（`http.quota` 额度）演示跨源绑定与缺源显示。
+`declarative-vertical-sample.json` is a **config bundle** (same format as Settings → Advanced → Import/Export) demonstrating one vertical declarative loop: a single `github.actions.runs` state feeds the L0 tile, the L2 panel row, and the L3 detail from the same source of truth, while the L3 detail additionally aggregates a second source (`http.quota`) to demonstrate cross-source bindings and missing-source display.
 
-## 里面有什么
+## What is inside
 
-| 内容 | 说明 |
+| Item | Notes |
 |---|---|
-| `w-sample-ci` | GitHub Actions 运行卡：tile / row / detail 三面全部声明式，detail 聚合额度源 |
-| `w-sample-quota` | `http.quota` 额度卡：指向 GitHub 公共 `rate_limit` 端点，无需凭据即可出数；detail 面为 HTML 载体面（受控子集，2026-10-17 裁定） |
-| `conn-sample-github` | GitHub 连接：包内只有 credentialRef，导入后在连接里录入 PAT |
-| `conn-sample-quota` | HTTP 连接：可替换成任意返回 JSON 的额度接口 |
-| `open-quota-doc` | 包内动作（open.url）：HTML 面按钮 `data-action` 引用它，导入即可点 |
+| `w-sample-ci` | GitHub Actions run card: tile / row / detail faces all declarative; detail aggregates the quota source |
+| `w-sample-quota` | `http.quota` card: points at the public GitHub `rate_limit` endpoint, works without any credential; its detail face is an HTML carrier face (controlled subset, 2026-10-17 ruling) |
+| `conn-sample-github` | GitHub connection: bundle carries a credentialRef only; enter your PAT after importing |
+| `conn-sample-quota` | HTTP connection: replace with any JSON quota endpoint you like |
+| `open-quota-doc` | Bundled action (open.url): referenced by the HTML face button's `data-action`; clickable right after import |
 
-## 怎么用
+## How to use
 
-1. **先备份**：导入会整体替换五份配置（含动作库）——先在 设置 → 高级 → 导出配置 存一份。
-2. 设置 → 高级 → 导入配置，选择本文件。
-3. 连接页给 `conn-sample-github` 录入 PAT；把 `w-sample-ci` 的 `repository` / `workflow` 改成你的仓库。
-4. 钉选后走三面：tile（L0）→ 面板行（L2）→ 详情（L3），同一状态三处一致。
+1. **Back up first**: importing replaces all five config files (including the action library) — run Settings → Advanced → Export first.
+2. Settings → Advanced → Import configuration, pick this file.
+3. On the connections page enter a PAT for `conn-sample-github`; change `repository` / `workflow` of `w-sample-ci` to your repo.
+4. Pin it and walk the three faces: tile (L0) → panel row (L2) → detail (L3); one state, three consistent views.
 
-## 验什么
+## What to verify
 
-- [ ] 不改 C#：只编辑 JSON 组件树，保存后对应面立即变化（保存链只重绘，不重新取数）。
-- [ ] 三面同源：L0 / L2 / L3 显示同一份 `w-sample-ci` 状态。
-- [ ] 两源独立：额度源刷新不带动 CI 源取数；detail 的 QUOTA 区随额度源独立更新。
-- [ ] 缺源显示：停用/删除 `w-sample-quota` 后，detail 的 QUOTA 区出现「⚠ 缺少数据源：quota」，不冒充空值、不显示健康旧值；恢复后自动回填。
-- [ ] 清空回退：删掉 `components` / `sources` 键保存，三面全部回传统渲染。
-- [ ] 断网 / 恢复：断网期间 tile 与详情显示陈旧时间，恢复后自愈。
-- [ ] HTML 面回退：删掉动作库里 `open-quota-doc` 重新导入，详情页按钮位变「⚠ 动作不可用」诊断占位，其余面照常。
+- [ ] No C# changes: edit only the JSON component trees; saving updates the target face immediately (save redraws without refetching).
+- [ ] Three faces, one source: L0 / L2 / L3 all show the same `w-sample-ci` state.
+- [ ] Two independent sources: quota refreshes never trigger CI fetches; the QUOTA section in detail updates on its own cadence.
+- [ ] Missing-source display: disable or delete `w-sample-quota` and the QUOTA section shows "⚠ 缺少数据源：quota" — no faked zeros, no stale healthy values; it refills automatically once restored.
+- [ ] Clear-to-fallback: remove the `components` / `sources` keys and save; all three faces return to traditional rendering.
+- [ ] Offline / recovery: while offline the tile and detail show stale timestamps and self-heal after reconnection.
+- [ ] HTML face fallback: delete `open-quota-doc` from the action library and re-import; the detail's button slot degrades to a "⚠ 动作不可用" diagnostic placeholder while the other faces keep working.
 
-以上运行时条目需在 Windows 真机验收。CI 结构门由 `DeclarativeSampleTests` 常青保证：树/源校验通过、附加源闭环指向包内组件、全文无密钥语义词；HTML 载体面解析过词表校验、`data-action` 闭环指向包内动作。
+The runtime items above require acceptance on real Windows. The CI structural gate is kept evergreen by `DeclarativeSampleTests`: trees and sources validate, additional sources close over bundled widgets, and the file carries no secret-like tokens; the HTML carrier face parses through the closed vocabulary and its `data-action` closes over bundled actions.

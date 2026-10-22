@@ -1,91 +1,91 @@
 
-# RFC-001：Beacon 技术方案
+# RFC-001: Beacon Technical Design
 
 | | |
 |---|---|
-| 状态 | Draft（待评审） |
-| 日期 | 2026-10-07 |
-| 上游 | [任务书](../mission.md)（定位 / 分期 / 验收标准） · [产品与技术实施总方案](../master-plan.md)（2026-10-11 定版；冲突处已拍板，见 mvp-issues 拍板记录） |
-| 下游 | [Solution 项目目录](../solution-structure.md) · [MVP Issue 列表](../mvp-issues.md) |
-| 平台 | Windows 10 1809 (17763)+ / Windows 11，仅 Windows（`TargetPlatformMinVersion=10.0.17763.0`） |
+| Status | Draft (pending review) |
+| Date | 2026-10-07 |
+| Upstream | [Mission](../mission.md) (positioning / phasing / acceptance criteria) · [Product & Technical Implementation Master Plan](../master-plan.md) (finalized 2026-10-11; conflicts adjudicated, see the mvp-issues decision log) |
+| Downstream | [Solution project layout](../solution-structure.md) · [MVP issue list](../mvp-issues.md) |
+| Platform | Windows 10 1809 (17763)+ / Windows 11, Windows only (`TargetPlatformMinVersion=10.0.17763.0`) |
 
 ---
 
-## 1. 背景与定位（摘要）
+## 1. Background & Positioning (Summary)
 
-Beacon 是**常驻 Windows 桌面的开发者状态与操作中心**（Developer Status & Action Center），核心是 **Signal + Action**：替开发者盯着开发环境（GitHub / CI / 机器 / Agent），在需要注意时主动发出信号，并提供一键操作。它不是 Web Dashboard，不替代 GitHub / Jenkins / Grafana，只做**聚合 + 提醒 + 低成本下一步操作**。
+Beacon is a **resident developer status & action center on the Windows desktop** (Developer Status & Action Center). Its core is **Signal + Action**: it watches the development environment (GitHub / CI / machines / Agents) on the developer's behalf, proactively raises a signal when attention is needed, and provides one-click actions. It is not a Web Dashboard and does not replace GitHub / Jenkins / Grafana; it only does **aggregation + alerts + low-cost next actions**.
 
-产品定位、场景、分期与 MVP 验收标准以任务书为准，本 RFC 不重复，只落实技术决策。
+Product positioning, scenarios, phasing and MVP acceptance criteria are governed by the mission document; this RFC does not repeat them and settles technical decisions only.
 
-## 2. 目标与非目标
+## 2. Goals and Non-Goals
 
-### 2.1 MVP 目标
+### 2.1 MVP Goals
 
-1. 开机自启、常驻（Tray + 桌面悬浮层），不打扰。
-2. GitHub（PR / Actions）状态聚合为统一 Severity，桌面可见。
-3. 失败发生时主动 Toast；点击即达失败详情。
-4. 一键 Run / Retry / Cancel / Open，全程不开浏览器。
-5. Local First：配置在本机，Secrets 进系统安全存储。
+1. Auto-start on boot, always resident (Tray + desktop floating layer), non-intrusive.
+2. GitHub (PR / Actions) status aggregated into a unified Severity, visible on the desktop.
+3. Proactive Toast when a failure occurs; one click reaches the failure details.
+4. One-click Run / Retry / Cancel / Open, never opening a browser along the way.
+5. Local First: configuration lives on the machine, Secrets go into the system secure store.
 
-### 2.2 非目标（MVP 明确不做）
+### 2.2 Non-Goals (explicitly out of scope for MVP)
 
-复杂插件市场、Workflow DSL/引擎、AI Agent、Jenkins/Docker 全功能管理、数据库、云账号、用户系统、团队协作、云同步、复杂图表、复杂主题。**Beacon 连接工具，不重建工具。**
+A complex plugin marketplace, workflow DSL/engine, AI Agent, full Jenkins/Docker management, databases, cloud accounts, a user system, team collaboration, cloud sync, complex charts, complex theming. **Beacon connects tools; it does not rebuild them.**
 
-## 3. 总体架构
+## 3. Overall Architecture
 
-单进程 WinUI 3 应用，四层职责分离：
+A single-process WinUI 3 app with four layers of separated responsibilities:
 
 ```text
-┌──────────────────── Beacon.App（WinUI 3 Shell，唯一 exe）────────────────────┐
+┌──────────────────── Beacon.App (WinUI 3 Shell, the only exe) ─────────────────┐
 │  Tray │ Hotkey │ PinnedHost(L0/L1) │ QuickPanel(L2) │ Detail(L3) │ Settings │
-│                    Toast │ 启动项 │ 单实例 │ 多显示器/DPI                      │
+│                    Toast │ startup │ single instance │ multi-monitor/DPI      │
 └──────────────┬───────────────────────────────────────────────┬──────────────┘
-               │ Event Bus（UI 只消费状态，不直接拉数据；代码建 UI + code-behind）│
+               │ Event Bus (UI only consumes state, never pulls data; code-built UI + code-behind) │
 ┌──────────────▼──────────── Beacon.Core ───────────────────────▼──────────────┐
 │ Models(Severity/LifecycleState…) │ StatusAggregator │ RefreshScheduler        │
 │ NotificationEngine │ ActionRunner │ CacheStore │                              │
-│ 抽象: IConnectionProvider / IWidgetProvider / IActionExecutor / ISecretStore  │
+│ Abstractions: IConnectionProvider / IWidgetProvider / IActionExecutor / ISecretStore │
 └──────┬─────────────────┬──────────────────────┬─────────────────┬────────────┘
        │                 │                      │                 │
- Beacon.Connections   Beacon.Actions        Beacon.Storage      （二期: Plugin 拆分）
-  GitHub/HTTP/用量     Url/Http/Command       JSON 配置/Cache/
- （六类连接）                               DPAPI Secrets/导入导出
+ Beacon.Connections   Beacon.Actions        Beacon.Storage      (Phase 2: Plugin split)
+  GitHub/HTTP/usage    Url/Http/Command       JSON config/Cache/
+ (six connection types)                       DPAPI Secrets/import-export
 ```
 
-数据流（单向）：
+Data flow (one-way):
 
 ```text
-RefreshScheduler → Connection/WidgetProvider 拉取
+RefreshScheduler → Connection/WidgetProvider pulls
     → WidgetState(Severity + payload + fetchedAt)
     → Event Bus
-        ├→ StatusAggregator → 胶囊 / 托盘 / L0 状态灯
-        ├→ NotificationEngine → 规则匹配 → Toast + 通知中心
-        └→ UI（L0/L2/L3）缓存优先渲染，后台刷新后增量更新
+        ├→ StatusAggregator → capsule / tray / L0 status lights
+        ├→ NotificationEngine → rule matching → Toast + notification center
+        └→ UI (L0/L2/L3) renders cache-first, incremental updates after background refresh
 ```
 
-## 4. 核心领域模型
+## 4. Core Domain Model
 
-### 4.1 Severity（统一五级，全产品唯一口径）
+### 4.1 Severity (five unified levels, the single yardstick across the product)
 
-| 级别 | 视觉 | 语义 |
+| Level | Visual | Semantics |
 |---|---|---|
-| `Info` | 蓝（系统强调色） | 中性信息（PR opened、release） |
-| `Success` | 🟢 绿 | 正常（build succeeded、healthy） |
-| `Warning` | 🟡 黄 | 需留意（running 超时、慢、重试中） |
-| `Error` | 🔴 红 | 失败（build failed、连接错误） |
-| `Critical` | 🔴 红脉冲 | 需立即处理（部署失败、agent 崩溃） |
-| （派生）`Offline` | ⚪ 灰空心 | 连接不可用，显示 Last update |
+| `Info` | Blue (system accent color) | Neutral information (PR opened, release) |
+| `Success` | 🟢 Green | Normal (build succeeded, healthy) |
+| `Warning` | 🟡 Yellow | Needs attention (running overtime, slow, retrying) |
+| `Error` | 🔴 Red | Failure (build failed, connection error) |
+| `Critical` | 🔴 Red pulse | Needs immediate handling (deployment failed, agent crash) |
+| (Derived) `Offline` | ⚪ Gray outline | Connection unavailable, shows Last update |
 
-**Provider 不允许自定义状态**，只能映射到以上枚举 + `LifecycleState`。
+**Providers may not define custom states**; they can only map onto the enums above + `LifecycleState`.
 
-**颜色可配置**（用户确认诉求：「icon 颜色我都可以配置」）：上表为默认调色板；`config.json appearance.severityColors` 可按级别全局覆盖，`widgets.json colorOverride` 可按 Widget 实例覆盖（优先级 Widget > 级别 > 默认，非法值回退默认）。L0 tile / L1 胶囊 / L2/L3 状态点 / 托盘图标共用同一套覆盖后的调色板（schema 见 §9.1）。
+**Colors are configurable** (user-confirmed requirement: 「icon 颜色我都可以配置」): the table above is the default palette; `config.json appearance.severityColors` overrides per level globally, and `widgets.json colorOverride` overrides per widget instance (precedence Widget > level > default; illegal values fall back to the default). L0 tiles / the L1 capsule / L2/L3 status dots / the tray icon all share the same post-override palette (schema in §9.1).
 
-CI/Workflow 统一生命周期：`Queued / Running / Success / Failed / Cancelled / Skipped / Unknown`（UI 与 CI 系统解耦）。
+Unified CI/Workflow lifecycle: `Queued / Running / Success / Failed / Cancelled / Skipped / Unknown` (UI decoupled from CI systems).
 
-### 4.2 配置模型（JSON）
+### 4.2 Configuration Model (JSON)
 
 ```jsonc
-// connections.json —— 只存 credentialRef，不存 token
+// connections.json —— stores only credentialRef, never tokens
 {
   "id": "conn-github-main",
   "type": "github",
@@ -102,10 +102,10 @@ CI/Workflow 统一生命周期：`Queued / Running / Success / Failed / Cancelle
   "config": { "repo": "cuihairu/example", "workflow": "build-client.yml", "branch": "main" },
   "refreshTier": "ci",
   "pinned": false,
-  "pinLayout": null          // pinned=true 时由 pins.json 承载布局（此处为便利引用）
+  "pinLayout": null          // layout is carried by pins.json when pinned=true (here it is a convenience reference)
 }
 
-// pins.json（L0 悬浮组件布局，见 §6.2；嵌套在 tile.layout 下，枚举 camelCase 序列化）
+// pins.json (L0 pinned widget layout, see §6.2; nested under tile.layout, enums serialized camelCase)
 {
   "tiles": [{
     "widgetId": "w-ci-client",
@@ -114,25 +114,25 @@ CI/Workflow 统一生命周期：`Queued / Running / Success / Failed / Cancelle
       "anchor": "bottomRight",
       "offsetDips": { "x": 24, "y": 120 },
       "collapsed": false,
-      "floatingX": null,     // 独立悬浮框形态的窗口位置（物理像素）；panel 模式不写
+      "floatingX": null,     // window position in floating-frame form (physical pixels); not written in panel mode
       "floatingY": null
     }
   }]
 }
 ```
 
-### 4.3 WidgetState（运行时状态）
+### 4.3 WidgetState (Runtime State)
 
 ```text
 WidgetState = { widgetId, widgetType, connectionId, severity, lifecycle?, summary,
                 detailUrl?, progress?, payload, fetchedAt, isStale, connectionHealthy }
 ```
 
-### 4.4 状态聚合
+### 4.4 Status Aggregation
 
-总体状态 = 所有 Widget 的 max severity（Critical > Error > Warning > Info > Success）。胶囊/托盘只回答「有没有事」，点击后 L2 回答「什么事」，L3 回答「细节与操作」。
+Overall status = the max severity across all widgets (Critical > Error > Warning > Info > Success). The capsule/tray only answers 「有没有事」, L2 answers 「什么事」 after a click, and L3 answers 「细节与操作」.
 
-## 5. Provider 抽象
+## 5. Provider Abstraction
 
 ```csharp
 public enum Severity { Info, Success, Warning, Error, Critical }
@@ -144,7 +144,7 @@ public interface IConnectionProvider {
 }
 
 public interface IWidgetProvider {
-    WidgetTypeDescriptor Descriptor { get; }             // 含 pinSupported、refreshTier 建议
+    WidgetTypeDescriptor Descriptor { get; }             // incl. pinSupported, refreshTier suggestion
     Task<WidgetState?> GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
 }
 
@@ -160,45 +160,45 @@ public interface ISecretStore {
 }
 ```
 
-规则：
+Rules:
 
-- **Provider First**：GitHub 不进 Core；Core 只有接口 + 调度 + 聚合。
-- 同一 Connection 被多 Widget 复用，凭据只配一次。
-- GitHub Provider 必须实现 **ETag 条件请求**（304 不计数）与 rate-limit 感知（剩余额度低于阈值自动拉长间隔）。
-- CI Provider（GitHub Actions / Jenkins / GitLab）统一映射到 `LifecycleState`。
-- 二期把 Provider 拆成独立程序集（Plugin），MVP 只需保证接口边界干净。
+- **Provider First**: GitHub does not enter Core; Core holds only interfaces + scheduling + aggregation.
+- The same Connection is reused by multiple widgets; credentials are configured once.
+- The GitHub Provider must implement **ETag conditional requests** (304s do not count against quota) and rate-limit awareness (the interval is automatically stretched when remaining quota drops below a threshold).
+- CI Providers (GitHub Actions / Jenkins / GitLab) map uniformly onto `LifecycleState`.
+- Phase 2 splits Providers into standalone assemblies (Plugins); for the MVP it suffices to keep the interface boundary clean.
 
-## 6. 显示层架构：状态显示与悬浮组件设计（专节）
+## 6. Presentation-Layer Architecture: Status Display & Pinned Widget Design (Dedicated Section)
 
-### 6.1 四层交互模型（Progressive Disclosure）
+### 6.1 Four-Layer Interaction Model (Progressive Disclosure)
 
-在原三层（胶囊 / 快捷面板 / 详情）之下增加 **L0 悬浮组件（Pinned Widget）**，形成四层：
+Beneath the original three layers (capsule / quick panel / detail) an **L0 pinned widget** is added, forming four layers:
 
 ```text
-                    常驻入口：Tray（任意层级可达）+ Global Hotkey（Ctrl+Alt+B）
+                    Always-resident entry: Tray (reachable from any layer) + Global Hotkey (Ctrl+Alt+B)
 
- L0  Pinned Widgets   —— 两种形态（设置「悬浮形态」二选一）：宿主面板（默认，
-                          每显示器一个透明置顶宿主窗口，单窗多 tile）/ 独立悬浮框
-                          （每钉选组件一窗，桌面任意拖放）；均 NoActivate，只看不弹
+ L0  Pinned Widgets   —— two forms (pick one via Settings 「悬浮形态」): host panel (default,
+                          one transparent always-on-top host window per monitor, many tiles per window) / floating frames
+                          (one window per pinned widget, freely draggable on the desktop); both NoActivate — view only, no popups
  ┌────────────┐ ┌────────────┐ ┌──────────────┐
- │ 🔴 CI   1  │ │ 🟡 PR   3  │ │ ⏳ build 62% │    单 Widget 钉住：五级状态灯 + 极简数字
- └─────┬──────┘ └─────┬──────┘ └──────┬───────┘    只放变化敏感内容，分级刷新；离线显示 Last update
-       │ 点击         │ 点击          │ 点击
+ │ 🔴 CI   1  │ │ 🟡 PR   3  │ │ ⏳ build 62% │    single widget pinned: five-level status light + minimal digits
+ └─────┬──────┘ └─────┬──────┘ └──────┬───────┘    change-sensitive content only, tiered refresh; shows Last update offline
+       │ click         │ click          │ click
        ▼              ▼               ▼
- L1  Status Capsule   —— 聚合所有 Widget：overall = max severity
+ L1  Status Capsule   —— aggregates all widgets: overall = max severity
  ┌─────────────────────────────┐
  │ 🟢 18   🟡 3   🔴 1         │
  └─────────────┬───────────────┘
-               ▼ 点击
- L2  Quick Panel   —— 概览 + 最近事件 + 一键操作
+               ▼ click
+ L2  Quick Panel   —— overview + recent events + one-click actions
  ┌────────────────────────────────────────┐
  │ Overview   GitHub 12 · CI 3 · Agents 4 │
  │ Recent     🔴 Server Build Failed      │
  │            🟡 Client Build Running     │
  │ [Build]  [Test]  [Deploy]              │
  └─────────────┬──────────────────────────┘
-               ▼ 需要细节
- L3  Detail Window   —— 单一对象的完整细节与全部操作
+               ▼ need details
+ L3  Detail Window   —— full details and all actions for a single object
  ┌────────────────────────────────────────┐
  │ Build #1024 · Failed · 12m31s · main   │
  │ Stage: Compile   Error: …              │
@@ -206,184 +206,184 @@ public interface ISecretStore {
  └────────────────────────────────────────┘
 ```
 
-| 层 | 载体 | 可见性 | 职责 | 焦点 |
+| Layer | Carrier | Visibility | Responsibility | Focus |
 |---|---|---|---|---|
-| L0 Pinned Widget | 宿主面板形态：透明置顶宿主窗口内的 tile；悬浮框形态：每组件一窗 | 常驻（可收起） | 单 Widget 的变化敏感状态 | **永不抢焦点** |
-| L1 Status Capsule | 独立置顶常驻窗口（`CapsuleWindow`） | 常驻（设置可关） | 全局聚合「有没有事」 | 永不抢焦点 |
-| L2 Quick Panel | 独立 Flyout 窗口 | 点击出现，失焦/ESC 关闭 | 概览 + 快捷操作 | 可激活 |
-| L3 Detail Window | 独立窗口 | 点击出现 | 单对象细节 + 全部 Action | 可激活 |
+| L0 Pinned Widget | Host panel form: tiles inside a transparent always-on-top host window; floating-frame form: one window per widget | Always resident (collapsible) | Change-sensitive state of a single widget | **Never takes focus** |
+| L1 Status Capsule | Independent always-on-top resident window (`CapsuleWindow`) | Always resident (can be turned off in Settings) | Global aggregation of 「有没有事」 (whether anything is wrong) | Never takes focus |
+| L2 Quick Panel | Independent Flyout window | Appears on click, closes on focus loss/ESC | Overview + quick actions | Activatable |
+| L3 Detail Window | Independent window | Appears on click | Single-object details + all Actions | Activatable |
 
-各层是**下钻关系**而非并列 Dashboard：上层永远更小、更安静；问题出现时颜色变红并上浮一层入口。
+The layers form a **drill-down relationship**, not side-by-side dashboards: each layer up is smaller and quieter; when a problem appears it turns red and floats an entry up one layer.
 
-### 6.2 L0 悬浮组件（Pinned Widget）设计
+### 6.2 L0 Pinned Widget Design
 
-#### 6.2.1 创建与开关
+#### 6.2.1 Creation and Toggling
 
-- **设置逐个开关**：Settings → Widgets 列表，每行一个「钉到桌面」开关。
-- **右键 Pin**：L2 中 Widget 项右键 → Pin to desktop / Unpin。
-- 两种入口写同一配置位（`widgets.json` 的 `pinned` 字段），布局落在 `pins.json`。
-- 仅 `Descriptor.pinSupported == true` 的 Widget 类型可钉（准入策略见 6.2.5）。
+- **Per-widget toggle in Settings**: Settings → Widgets list, one 「钉到桌面」 toggle per row.
+- **Right-click Pin**: right-click a widget item in L2 → Pin to desktop / Unpin.
+- Both entries write the same config field (the `pinned` field in `widgets.json`); layout lands in `pins.json`.
+- Only widget types with `Descriptor.pinSupported == true` can be pinned (admission policy in 6.2.5).
 
-#### 6.2.2 形态规范：小胶囊
+#### 6.2.2 Form Factor: Mini Capsule
 
 ```text
- 常态            警告             失败             收起(吸边)        离线
+ Normal           Warning          Failure          Collapsed (edge)  Offline
 ┌──────────┐   ┌──────────┐    ┌──────────┐
-│ 🟢 CI  1 │   │ 🟡 CI 12m│    │ 🔴 CI  1 │    ‖(边缘细条/圆点)  ⚪ CI  Last 10:31
+│ 🟢 CI  1 │   │ 🟡 CI 12m│    │ 🔴 CI  1 │    ‖(thin edge strip/dot)  ⚪ CI  Last 10:31
 └──────────┘   └──────────┘    └──────────┘
 ```
 
-- 尺寸：高 32 DIP，宽随内容（48–120 DIP），圆角胶囊，亚克力/半透明背景，随主题（Light/Dark）。
-- 构成 = **状态灯 + 标签 + 极简数字/进度**，无正文文字。进度型（构建中）显示百分比或细进度条。
-- 状态灯使用 §4.1 统一视觉（默认 `Info 蓝 · Success 绿 · Warning 黄 · Error 红 · Critical 红脉冲 · Offline 灰空心`），颜色支持**按级别/按 Widget 用户覆盖**（§4.1 调色规则）。
-- 动效遵循 §6.2.8：默认（reduced 档）仅状态变色过渡 + Critical 脉冲（≤1Hz）；更丰富的动效族（呼吸灯/闪烁/滑入）由用户在设置中开启，可整体关闭。
+- Size: 32 DIP tall, width follows content (48–120 DIP), rounded capsule, acrylic/semi-transparent background, follows the theme (Light/Dark).
+- Composition = **status light + label + minimal digits/progress**, no body text. Progress-type (building) shows a percentage or a thin progress bar.
+- The status light uses the §4.1 unified visuals (default `Info blue · Success green · Warning yellow · Error red · Critical red pulse · Offline gray outline`); colors support **per-level/per-widget user overrides** (§4.1 palette rules).
+- Motion follows §6.2.8: the default (reduced tier) has only severity color transitions + Critical pulse (≤1Hz); richer motion families (breathing/blinking/slide-in) are enabled by the user in Settings and can be turned off wholesale.
 
-#### 6.2.3 窗口与位置行为
+#### 6.2.3 Window and Position Behavior
 
-| 行为 | 规格 |
+| Behavior | Spec |
 |---|---|
-| 置顶 | Topmost，但 **WS_EX_NOACTIVATE**：点击不抢焦点，当前输入焦点不被打断 |
-| 可拖动 | 左键按住 tile 拖动（3px 死区）；拖动中吸附四边（`SnapDips=16`），拖至屏边收起为细条 |
-| 吸边收起 | 贴死边缘拖放 → 收起为细条/圆点（近边松手回弹展开防误触）；悬停展开、水滴态点击=弹回展开、展开态点击进 L2；收起状态持久化 |
-| 多显示器位置记忆 | 按「显示器标识 + 锚点角 + DIP 偏移」持久化；显示器热插拔/RDP 断连后按锚点恢复；恢复失败（如分辨率变小越界）自动回收到最近合法锚点角 |
-| DPI 自适应 | PerMonitorV2；监听 DPIChanged，tile 以 DIP 布局按显示器缩放 |
-| 多显示器 | 宿主面板形态：**每个显示器一个宿主窗口**，tile 只能在所属显示器宿主内；跨显示器拖动 = 迁移 pinLayout 记录。独立悬浮框形态：每组件一窗，位置按组件各记（`floatingX/Y` 物理像素） |
+| Topmost | Topmost, but **WS_EX_NOACTIVATE**: clicks do not steal focus, and current input focus is never interrupted |
+| Draggable | Left-button drag on the tile (3px dead zone); snaps to the four edges while dragging (`SnapDips=16`); dragging to a screen edge collapses it into a thin strip |
+| Edge-snap collapse | Drop flush against an edge → collapses into a thin strip/dot (releasing near an edge springs it back open to prevent mistouch); hover expands it, a click in droplet state = spring back open, a click in expanded state enters L2; the collapsed state is persisted |
+| Multi-monitor position memory | Persisted as "monitor identity + anchor corner + DIP offset"; restored by anchor after monitor hotplug/RDP disconnect; if restore fails (e.g. out of bounds after a resolution shrink) it is automatically recycled to the nearest legal anchor corner |
+| DPI adaptation | PerMonitorV2; listens to DPIChanged, tiles are laid out in DIPs scaled per monitor |
+| Multi-monitor | Host panel form: **one host window per monitor**; tiles can only live inside their own monitor's host; dragging across monitors = migrating the pinLayout record. Floating-frame form: one window per widget, position recorded per widget (`floatingX/Y` physical pixels) |
 
-#### 6.2.4 渲染架构：单窗口多组件共享渲染
+#### 6.2.4 Rendering Architecture: Single Window, Multi-Widget Shared Rendering
 
-- 默认（宿主面板形态）**不做**每个 pinned widget 一个 HWND（窗口数量爆炸、DPI/hit-test 各自维护）。**做法**：每显示器一个透明分层宿主窗口（`PinnedHostWindow`），内部以 tile 列表布局渲染全部该显示器的 pinned widgets。
-- **独立悬浮框形态**（`pinDisplayMode=floating`，重启生效，B-701 扩展）：每钉选组件一个独立窗口（`FloatingTileWindow`，168×32 DIP，Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`），桌面任意拖放，位置按组件各记（`PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）。设计初衷的「窗口数量爆炸」顾虑由「用户显式选择 + 组件数量少（钉选通常 <10）」化解；两形态共用同一 `PinTile` 渲染与点击下钻链路。
-- **L1 胶囊（`CapsuleWindow`）是独立窗口**，不随悬浮形态变化；宿主面板形态下与 L0 tile 同为置顶 NoActivate 常驻物——「单窗口多组件共享渲染」指宿主面板内的 L0 tile 共享同一渲染管线、事件处理、DPI 处理。
-- **L1 胶囊 = 宿主窗口中的一个常驻聚合 tile**，与 L0 tile 共享同一渲染管线、事件处理、DPI 处理——这是「单窗口多组件共享渲染」的具体含义。
-- 宿主窗口 `ClickThrough=false`（要收点击），仅 tile 矩形参与 hit-test，空白区域点击穿透到桌面。
-- tile 渲染走 Composition（视觉层 + 属性动画），状态变化只更新对应 tile 的视觉属性，不重建整窗。
+- By default (host panel form) we deliberately do **not** create one HWND per pinned widget (window-count explosion, per-window DPI/hit-test upkeep). **Instead**: one transparent layered host window per monitor (`PinnedHostWindow`) that renders all pinned widgets of that monitor as a tile list.
+- **Floating-frame form** (`pinDisplayMode=floating`, effective after restart, B-701 extension): one independent window per pinned widget (`FloatingTileWindow`, 168×32 DIP, Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`), freely draggable on the desktop, position recorded per widget (`PinLayout.FloatingX/Y` physical pixels, cascaded in order if never dragged). The original "window-count explosion" concern is defused by "explicit user choice + few widgets (pinned sets are usually <10)"; both forms share the same `PinTile` rendering and click drill-down chain.
+- **The L1 capsule (`CapsuleWindow`) is an independent window** and does not change with the floating form; in host panel form it is, like the L0 tiles, an always-on-top NoActivate resident — "single-window multi-widget shared rendering" refers to the L0 tiles inside the host panel sharing one rendering pipeline, event handling, and DPI handling.
+- **The L1 capsule = one resident aggregate tile inside the host window**, sharing the same rendering pipeline, event handling and DPI handling as the L0 tiles — that is the concrete meaning of "single-window multi-widget shared rendering".
+- The host window has `ClickThrough=false` (it must receive clicks); only tile rectangles participate in hit-testing; clicks on empty areas pass through to the desktop.
+- Tile rendering goes through Composition (visual layer + property animations); a state change updates only that tile's visual properties, never rebuilding the whole window.
 
-#### 6.2.5 内容准入：只放「变化敏感」内容
+#### 6.2.5 Content Admission: Only 「变化敏感」 Content
 
-L0 只承载**用户需要被动感知变化**的信息，由 Widget 类型元数据声明：
+L0 carries only information whose changes the user needs to passively notice, declared by widget-type metadata:
 
-| 可钉（pinSupported） | 不适合钉 |
+| Pinnable (pinSupported) | Not suitable for pinning |
 |---|---|
-| CI 状态灯、PR 计数、构建进度、Agent 在线状态、机器健康摘要 | Releases 列表、Commit 流、纯静态/低频内容、长文本类 |
+| CI status lights, PR counts, build progress, Agent online status, machine health summaries | Releases lists, commit streams, purely static/low-frequency content, long-text types |
 
-- 刷新沿用 §7 分级策略（CI 10–30s、PR 30–120s…），**L0 不引入新刷新频率**，不钉的 Widget 照常刷新，只是不上桌面。
-- 多个 tile 共用同一 Connection 时共享同一条轮询（调度器按 `(connection, tier)` 合并），不会 N 个 tile = N 倍请求。
+- Refreshing follows the §7 tiered strategy (CI 10–30s, PR 30–120s…); **L0 introduces no new refresh frequencies** — unpinned widgets refresh as usual, they just don't reach the desktop.
+- When several tiles share one Connection they share one poll (the scheduler merges by `(connection, tier)`); N tiles never means N× the requests.
 
-#### 6.2.6 离线与错误降级
+#### 6.2.6 Offline and Error Degradation
 
-- 连接不可用时：tile 变 `Offline 灰空心灯`，显示 `Last update HH:mm`（悬停 tooltip 或窄字号），**绝不弹异常对话框**。
-- 恢复后自动回到正常态。`isStale`（数据超过 2× 刷新周期未更新）在 tooltip 标注。
-- L2/L3 中对应 Widget 显示「⚠ Unable to refresh · Last update 2 minutes ago · [Retry]」。
+- When a connection is unavailable: the tile shows the `Offline gray outline light` plus `Last update HH:mm` (hover tooltip or small type); **it never pops an error dialog**.
+- It returns to normal automatically after recovery. `isStale` (data not updated for more than 2× the refresh period) is flagged in the tooltip.
+- The corresponding widget in L2/L3 shows "⚠ Unable to refresh · Last update 2 minutes ago · [Retry]".
 
-#### 6.2.7 只看不弹原则（L0 铁律）
+#### 6.2.7 The View-Only, No-Popup Principle (L0 Iron Rules)
 
-1. **L0 只展示状态、支持点击下钻**（点击 tile → 打开 L2 聚焦到该 Widget，或直接进 L3）。
-2. **L0 不产生任何弹窗/Toast/声音**——Alert 属于 NotificationEngine（§8）；L0 对 Alert 的唯一表达是状态灯变色。
-3. **L0 不承载需要确认的 Action**（Deploy/Restart 这类只出现在 L2/L3）；最多允许「打开链接」类零风险动作。
-4. L0 永不抢焦点、不出现在 Alt-Tab、不进任务栏。
+1. **L0 only shows status and supports click drill-down** (click a tile → open L2 focused on that widget, or go straight to L3).
+2. **L0 never produces any popup/Toast/sound** — Alerts belong to the NotificationEngine (§8); L0's only expression of an Alert is the status light changing color.
+3. **L0 carries no Actions requiring confirmation** (Deploy/Restart only ever appear in L2/L3); at most zero-risk "open link" actions are allowed.
+4. L0 never steals focus, never appears in Alt-Tab, and never enters the taskbar.
 
-#### 6.2.8 配色与动效（「桌面角落在替我盯着」的表现层）
+#### 6.2.8 Colors and Motion (the presentation layer of 「桌面角落在替我盯着」 — a desktop corner keeping watch for me)
 
-用户效果确认（原话）：「我关心的状态直接悬浮在桌面显示，icon 颜色我都可以配置，最好加点动效。」据此把表现层从「纯静态」修订为「颜色可配 + 默认适度动效、可调可关」：
+User effect confirmation (original words): 「我关心的状态直接悬浮在桌面显示，icon 颜色我都可以配置，最好加点动效。」 Accordingly the presentation layer was revised from "purely static" to "configurable colors + moderate default motion, adjustable and switchable":
 
-| 项 | 规格 |
+| Item | Spec |
 |---|---|
-| 调色 | 默认五级 + Offline 色表；`appearance.severityColors` 按级别全局覆盖、`colorOverride` 按 Widget 覆盖（优先级 Widget > 级别 > 默认，非法值回退默认）；L0/L1/L2/L3/托盘同源换色（§4.1） |
-| 动效档位 | `appearance.motion.mode`：`full / reduced（默认）/ off`；`motion.intensity` 0.5–2.0 缩放时长与幅度 |
-| 动效族 | ① 状态变色过渡（旧色→新色交叉淡变 ~200ms）② 提醒闪烁（状态变化后短促 2 次）③ 呼吸灯（明暗缓慢循环，full 档常驻）④ 脉冲（Critical 默认，≤1Hz）⑤ 滑入（tile 首次出现/收起展开） |
-| 约束修订 | 原「桌面常驻物不允许持续动画耗电」从铁律**降级为默认值**：reduced 档只有变色过渡 + Critical 脉冲；full 档允许常驻动效（用户自担功耗）；off 档全静止。**不变**：动效永不抢焦点、不发声、不产生弹窗（§6.2.7 铁律照旧） |
-| 实现 | Composition 属性动画（ColorKeyFrame/ExpressionAnimation）只作用于对应 tile 的视觉层，不重建整窗；窗口不可见/收起态暂停动画循环 |
+| Palette | Default five levels + Offline color table; `appearance.severityColors` overrides globally per level, `colorOverride` per widget (precedence Widget > level > default; illegal values fall back to default); L0/L1/L2/L3/tray recolor from the same source (§4.1) |
+| Motion tiers | `appearance.motion.mode`: `full / reduced (default) / off`; `motion.intensity` 0.5–2.0 scales duration and amplitude |
+| Motion families | (1) severity color transition (cross-fade old color → new color, ~200ms) (2) alert blink (two short blinks after a state change) (3) breathing light (slow bright/dim loop, resident in full tier) (4) pulse (Critical by default, ≤1Hz) (5) slide-in (tile first appearance / collapse-expand) |
+| Constraint revision | The former "desktop residents must not run continuous animations (power drain)" iron rule is **downgraded to a default**: the reduced tier has only color transitions + Critical pulse; the full tier allows resident motion (power cost borne by the user); off is fully static. **Unchanged**: motion never steals focus, makes sound, or pops anything (the §6.2.7 iron rules remain) |
+| Implementation | Composition property animations (ColorKeyFrame/ExpressionAnimation) act only on the given tile's visual layer, never rebuilding the window; animation loops pause when the window is invisible or collapsed |
 
-### 6.3 L1 Status Capsule（摘要）
+### 6.3 L1 Status Capsule (Summary)
 
-独立置顶常驻窗口（`CapsuleWindow`，屏幕右下角，位置记忆），显示各 severity 计数；点击打开 L2。可在设置中关闭胶囊只留 L0，反之亦然（`showCapsule`）。
+An independent always-on-top resident window (`CapsuleWindow`, bottom-right of the screen, position remembered) showing per-severity counts; clicking opens L2. The capsule can be turned off in Settings leaving only L0, and vice versa (`showCapsule`).
 
-### 6.4 L2 Quick Panel（摘要）
+### 6.4 L2 Quick Panel (Summary)
 
-Flyout 窗口，出现在胶囊/托盘附近，**380 × 540 DIP**（master-plan §3.2 建议带取中，批3-补27④）：
-Overview（按来源计数）+ **NEEDS ATTENTION / RUNNING 当前状态三分区**（Core `QuickPanelSections` 判定：
-Warning 及以上 / 数据过期 / 连接断 = 需要关注；Running/Queued 无告警 = 正在运行；空区隐藏）+
-Recent Events（滚动最近状态变化，即 master-plan「最近状态」）+ 通知中心（notifications.json 落盘水合，单击标已读）。
-单击行进 L3，右键 Pin to desktop 落 widgets.json。可激活以支持键盘（ESC 关闭、Tab 导航）；
-**常驻档**（`config.keepQuickPanelOpen`，托盘菜单 Keep Panel Open 打勾）失焦不自隐，Esc/再次点托盘仍可显式关。
+A Flyout window appearing near the capsule/tray, **380 × 540 DIP** (centered on the master-plan §3.2 recommendation, batch-3 supplement 27④):
+Overview (counts by source) + **NEEDS ATTENTION / RUNNING three current-status sections** (Core `QuickPanelSections` decides:
+Warning and above / stale data / broken connection = needs attention; Running/Queued without alerts = running; empty sections hidden) +
+Recent Events (scrolling recent state changes, i.e. the master-plan's 「最近状态」) + the notification center (hydrated from notifications.json on disk, single click marks read).
+Single-click a row to enter L3; right-click Pin to desktop lands in widgets.json. Activatable for keyboard support (ESC closes, Tab navigation);
+**resident tier** (`config.keepQuickPanelOpen`, tray menu Keep Panel Open checked) does not auto-hide on focus loss; Esc or clicking the tray again still closes it explicitly.
 
-### 6.5 L3 Detail Window（摘要）
+### 6.5 L3 Detail Window (Summary)
 
-单对象完整视图：状态、仓库/分支、时长、失败阶段、错误摘要 + 全部 Action（Open / Retry / Cancel / Open Logs）。从 L2 事件或 L0 tile 点击进入。
+Full single-object view: status, repo/branch, duration, failing stage, error summary + all Actions (Open / Retry / Cancel / Open Logs). Entered from an L2 event or an L0 tile click.
 
-### 6.6 层间数据一致性
+### 6.6 Cross-Layer Data Consistency
 
-四层渲染同一份 `WidgetState`（Event Bus 广播），任何一层不存在独立拉取逻辑——保证胶囊、tile、面板、详情显示的状态与时间戳完全一致。
+All four layers render the same `WidgetState` (broadcast on the Event Bus); no layer has its own pull logic — guaranteeing that capsule, tiles, panel and detail show exactly the same state and timestamps.
 
-## 7. 刷新、缓存与离线
+## 7. Refresh, Caching and Offline
 
-### 7.1 分级刷新（唯一策略表）
+### 7.1 Tiered Refresh (the one strategy table)
 
-| 数据类别 | 周期 | 备注 |
+| Data category | Period | Notes |
 |---|---|---|
-| GitHub PR | 30–120s（默认 60s） | ETag 条件请求 |
-| CI / Actions | 10–30s（默认 15s） | Running 态取下限，Queued 取上限 |
-| Machine | 15s（区间设计 5–30s，配置可覆盖） | 已实现 |
-| Agent | 10s（区间设计 5–15s，配置可覆盖） | 已实现 |
-| Workflow 执行 | 事件优先 / 10s 跟随 | 触发后短轮询直至终态 |
-| 静态配置 | 手动 | — |
+| GitHub PR | 30–120s (default 60s) | ETag conditional requests |
+| CI / Actions | 10–30s (default 15s) | Running takes the lower bound, Queued the upper |
+| Machine | 15s (designed range 5–30s, config-overridable) | Implemented |
+| Agent | 10s (designed range 5–15s, config-overridable) | Implemented |
+| Workflow execution | Event-first / 10s follow-up | Short polling after trigger until terminal state |
+| Static config | Manual | — |
 
-- 抖动 ±20% 防齐发；失败指数退避（×2^n，封顶 10×），成功后复位。
-- 调度键 = `(connectionId, tier)`，同连接同级别 Widget 合并一次拉取后分发。
+- Jitter ±20% to avoid thundering herds; exponential backoff on failure (×2^n, capped at 10×), reset on success.
+- Scheduling key = `(connectionId, tier)`; widgets on the same connection and tier are merged into one fetch, then fanned out.
 
-### 7.2 缓存优先启动
+### 7.2 Cache-First Startup
 
 ```text
-启动 → 读 cache\{connectionId}\last-known-state → 立即渲染（标记 fetchedAt）
-     → 后台按分级刷新 → 状态变化经 Event Bus 增量更新 UI
+Startup → read cache\{connectionId}\last-known-state → render immediately (mark fetchedAt)
+     → background tiered refresh → state changes incrementally update the UI via the Event Bus
 ```
 
-**Beacon 打开永远不白屏等网络。**
+**Beacon never opens to a blank screen waiting on the network.**
 
-### 7.3 离线模式
+### 7.3 Offline Mode
 
-断网/连接失败进入降级态：Last known state 可见 + `Offline · Last update 10:31` 横幅（L1/L2）或灰灯（L0）；网络恢复自动重连并复位退避。
+Losing the network / connection failure enters a degraded state: the last known state stays visible + an `Offline · Last update 10:31` banner (L1/L2) or a gray light (L0); when the network recovers it reconnects automatically and resets the backoff.
 
-## 8. 通知引擎
+## 8. Notification Engine
 
-通知不是裸 Toast，是**规则求值**：
+Notifications are not bare Toasts — they are **rule evaluation**:
 
 ```jsonc
 {
   "id": "rule-ci-failed",
-  "widgetType": "github.actions.runs",   // null = 匹配所有类型；另有 widgetId 精确匹配
-  "severityAtLeast": "Error",            // 与可选 severityAtMost 构成频带（如「仅 Warning」）
+  "widgetType": "github.actions.runs",   // null = matches all types; widgetId gives exact matching
+  "severityAtLeast": "Error",            // pairs with optional severityAtMost to form a band (e.g. 「仅 Warning」, Warning only)
   "toast": true,
   "sound": true,
-  "cooldown": "00:10:00"                 // TimeSpan 序列化值；null = 同一阈值期间只提醒一次
+  "cooldown": "00:10:00"                 // serialized TimeSpan; null = remind only once per threshold crossing
 }
 ```
 
-- 规则引擎输入 = WidgetState 变化事件；表驱动，可单测。
-- 内置默认规则（无需配置即生效）：CI Failed → Toast；运行超 15min → Warning。
-- 去重：同 widget 同 severity 冷却期内不重复提醒；状态转好可发 Success 通知。
-- 通知记录滚动保留（默认 200 条）+ 已读/未读；L2 Recent Events 与通知中心同源。**已落盘（2026-10-09）**：`notifications.json` 持久化滚动记录与已读态（启动水合 + RecordsChanged 即存；重启后在告警期的组件按阈值跨越语义重新提醒一次，属预期）。
-- 通道：Windows Toast（§10）+ 托盘图标着色 + L0/L1 状态灯。
+- The rule engine's input = WidgetState change events; table-driven and unit-testable.
+- Built-in default rules (effective with no configuration): CI Failed → Toast; running over 15 min → Warning.
+- Dedup: no repeated alerts for the same widget at the same severity within the cooldown; a turn for the better may raise a Success notification.
+- Notification records kept on a rolling basis (200 by default) + read/unread state; L2 Recent Events and the notification center share one source. **Landed (2026-10-09)**: `notifications.json` persists the rolling records and read state (hydrated at startup + saved whenever RecordsChanged; after a restart, widgets that were inside an alert period remind once more under threshold-crossing semantics — by design).
+- Channels: Windows Toast (§10) + tray icon tinting + L0/L1 status lights.
 
-## 9. 配置、密钥与导入导出
+## 9. Configuration, Secrets and Import/Export
 
-### 9.1 本地存储（Local First，%AppData%\Beacon\）
+### 9.1 Local Storage (Local First, %AppData%\Beacon\)
 
 ```text
 %AppData%\Beacon\
-├── config.json            # 全局设置（hotkey、startup、appearance、refresh 覆盖、通知规则）
-├── connections.json       # 连接元数据（credentialRef，无明文密钥；enabled 启停）
-├── widgets.json           # Widget 实例（含 pinned 标记与 pinLayout 便利引用）
-├── pins.json              # L0 tile 布局（嵌套 layout：锚点/偏移/收起态 + floating 悬浮框位置）
-├── notifications.json     # 通知记录 + 已读态（滚动保留跨重启，JsonNotificationRecordStore）
+├── config.json            # global settings (hotkey, startup, appearance, refresh overrides, notification rules)
+├── connections.json       # connection metadata (credentialRef, no plaintext keys; enabled toggling)
+├── widgets.json           # widget instances (incl. the pinned flag and the pinLayout convenience reference)
+├── pins.json              # L0 tile layout (nested layout: anchor/offset/collapsed state + floating-frame position)
+├── notifications.json     # notification records + read state (rolling, survives restarts, JsonNotificationRecordStore)
 ├── cache\{connId}\states.json  # last-known-state
-├── secrets.bin            # DPAPI(CurrentUser) 加密的密钥库
-└── logs\beacon-YYYYMMDD.log  # 按天滚动（保留 7 天）+ crash-*.log 崩溃日志，token 一律脱敏
+├── secrets.bin            # DPAPI (CurrentUser) encrypted secret vault
+└── logs\beacon-YYYYMMDD.log  # rolls daily (7 days kept) + crash-*.log crash logs; tokens always redacted
 ```
 
-写入策略：临时文件 + 原子替换 + 上一版备份（防写坏配置）。
+Write strategy: temp file + atomic replace + previous-version backup (protects against corrupted writes).
 
-config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/B-707 实现、B-805 设置页承载）：
+The appearance/motion section of config.json (palette and motion, §4.1/§6.2.8; implemented by B-706/B-707, surfaced on the B-805 settings page):
 
 ```json
 {
@@ -397,89 +397,89 @@ config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/
 
 ### 9.2 Secret Storage
 
-- 默认实现：**DPAPI CurrentUser** 加密文件（`secrets.bin`），多密钥无长度限制、随用户漫游受限 appropriately。
-- 备选实现：Windows Credential Manager（同一 `ISecretStore` 接口）。
-- 配置文件中只出现 `credentialRef`；**任何 JSON 中严禁出现明文 token**（导入导出同理，见 9.3）。
-- 日志/异常/遥测输出一律脱敏。
+- Default implementation: a **DPAPI CurrentUser** encrypted file (`secrets.bin`); multiple keys with no length limit; roaming with the user profile is limited appropriately.
+- Alternative implementation: Windows Credential Manager (the same `ISecretStore` interface).
+- Config files only ever contain `credentialRef`; **plaintext tokens are strictly forbidden in any JSON** (same for import/export, see 9.3).
+- Logs/exception/telemetry output is always redacted.
 
-### 9.3 导入导出
+### 9.3 Import/Export
 
-导出 = config + connections + widgets + pins 的打包 JSON，**不含 secrets**；导入后对每个 `credentialRef` 提示重新录入。
+Export = a packaged JSON of config + connections + widgets + pins, **without secrets**; after import, each `credentialRef` prompts for re-entry.
 
-## 10. Windows 平台集成点
+## 10. Windows Platform Integration Points
 
-| 能力 | 方案 | 备注 |
+| Capability | Approach | Notes |
 |---|---|---|
-| 打包形态 | **Unpackaged**（自包含 exe） | 便携、%AppData% 直写、开发迭代快；二期可加 MSIX |
-| System Tray | Win32 `Shell_NotifyIcon` 自实现（TrayIconService，不引第三方托盘库） | NOTIFYICONDATA + 消息窗回调；图标按配置色 GDI+ 运行时绘制（B-706） |
-| Toast 通知 | Microsoft.Toolkit.Uwp.Notifications（`ToastNotificationManagerCompat`） | unpackaged 应用由 Compat Initialize 首次触碰时写 HKCU\Software\Classes\AppUserModelId\<aumid> 注册键（含 CustomActivator），缺失下次启动重建自愈；toolkit 7.1.3 不创建 .lnk（Show 只调 CreateToastNotifier().Show）；激活路由回 Beacon（深链到 L3） |
-| Global Hotkey | `RegisterHotKey`（默认 Ctrl+Alt+B） | 设置可改；冲突时提示重设 |
-| 开机自启 | HKCU `Run` 键 | MSIX 化后改 StartupTask |
-| 置顶/不激活 | `AppWindow.IsAlwaysOnTop` + `WS_EX_NOACTIVATE` interop | 见 §16 风险 1 |
-| DPI | PerMonitorV2 manifest | 宿主窗口处理 DPIChanged |
-| 多显示器 | 宿主面板形态：每显示器一个 PinnedHostWindow；悬浮框形态：每组件一 FloatingTileWindow | 监听显示拓扑变化重建/越界回收 |
-| 单实例 | 命名 Mutex | 二次启动唤起已有实例 |
-| 崩溃兜底 | 全局异常 → 写日志 + 托盘气泡，**不闪退不留僵尸窗口** | |
+| Packaging form | **Unpackaged** (self-contained exe) | Portable, writes %AppData% directly, fast dev iteration; MSIX can come in phase 2 |
+| System Tray | Hand-rolled Win32 `Shell_NotifyIcon` (TrayIconService, no third-party tray library) | NOTIFYICONDATA + message-window callback; the icon is drawn at runtime with GDI+ in the configured color (B-706) |
+| Toast notifications | Microsoft.Toolkit.Uwp.Notifications (`ToastNotificationManagerCompat`) | For unpackaged apps, Compat Initialize writes the HKCU\Software\Classes\AppUserModelId\<aumid> registry key (incl. CustomActivator) on first touch; rebuilt self-healing at next start if missing; toolkit 7.1.3 creates no .lnk (Show only calls CreateToastNotifier().Show); activation routes back to Beacon (deep link to L3) |
+| Global hotkey | `RegisterHotKey` (default Ctrl+Alt+B) | Changeable in Settings; prompts to rebind on conflict |
+| Autostart | HKCU `Run` key | Switch to StartupTask once MSIX |
+| Topmost / no-activate | `AppWindow.IsAlwaysOnTop` + `WS_EX_NOACTIVATE` interop | See §16 risk 1 |
+| DPI | PerMonitorV2 manifest | Host windows handle DPIChanged |
+| Multi-monitor | Host panel form: one PinnedHostWindow per monitor; floating-frame form: one FloatingTileWindow per widget | Rebuild / recycle out-of-bounds tiles on display-topology changes |
+| Single instance | Named Mutex | A second launch summons the existing instance |
+| Crash fallback | Global exception → write log + tray balloon, **no flash-quit, no zombie windows** | |
 
-## 11. 进程与线程模型
+## 11. Process and Threading Model
 
-- 单进程。UI 线程（DispatcherQueue）只做渲染与交互；所有网络/命令在后台线程。
-- Event Bus 线程安全；UI 订阅方负责 marshal 回 UI 线程。
-- Action 执行：独立 Task + 超时 + 取消；local command 捕获输出写缓存，供 L3「Open Logs」。
-- 长时动作（workflow_dispatch 后的构建）不在 Beacon 进程内等待——以状态轮询驱动 UI，Beacon 不阻塞。
+- Single process. The UI thread (DispatcherQueue) only renders and handles interaction; all network/command work stays on background threads.
+- The Event Bus is thread-safe; UI subscribers are responsible for marshaling back to the UI thread.
+- Action execution: standalone Task + timeout + cancellation; local commands capture output into the cache for L3 "Open Logs".
+- Long-running actions (a build after workflow_dispatch) are not awaited inside the Beacon process — the UI is driven by state polling; Beacon does not block.
 
-## 12. 错误处理
+## 12. Error Handling
 
-- 分层降级：网络错误只影响对应 Connection 的 Widget（变 Offline/黄灯），**绝不让 Beacon 崩溃或整窗报错**。
-- 用户可见文案统一：「⚠ Unable to refresh · Last update 2 minutes ago · [Retry]」——永远给出最后已知时间与重试入口。
-- 所有异常进滚动日志；GitHub 401/403（token 失效/限流）给专门提示（「Token 已失效，去设置更新」）。
+- Layered degradation: a network error affects only that Connection's widgets (they go Offline/yellow); **never crash Beacon or error out a whole window**.
+- One unified user-facing message: "⚠ Unable to refresh · Last update 2 minutes ago · [Retry]" — always giving the last-known time and a retry entry.
+- All exceptions go to the rolling log; GitHub 401/403 (token expired / rate-limited) gets a dedicated prompt (「Token 已失效，去设置更新」 — token expired, update it in Settings).
 
-## 13. 安全考量
+## 13. Security Considerations
 
-- GitHub PAT 最小授权：`repo` + `workflow`，不请求 admin 域。
-- Secrets 只经 `ISecretStore`；内存中 token 不落日志/崩溃转储。
-- local command Action 默认要求**执行前确认**（可按 Action 关闭）；命令内容在设置中明文可见。
-- 导出文件不含密钥（§9.3）；卸载不残留 secrets.bin 之外的敏感数据。
+- GitHub PAT least privilege: `repo` + `workflow`; admin scopes are never requested.
+- Secrets only pass through `ISecretStore`; in-memory tokens never reach logs/crash dumps.
+- local command Actions require **confirmation before execution** by default (can be disabled per Action); command contents are visible in plaintext in Settings.
+- Export files contain no secrets (§9.3); uninstalling leaves no sensitive data behind beyond secrets.bin.
 
-## 14. 可扩展路线（Provider → Plugin）
+## 14. Extensibility Roadmap (Provider → Plugin)
 
-- MVP：Provider 以程序集内文件夹组织（`Beacon.Connections/GitHub|Rest`），接口即边界。
-- 二期：Provider 拆独立程序集（`Beacon.Connections.Jenkins` 等），走 .NET 插件加载（AssemblyLoadContext）+ 清单注册；Plugin 可贡献 Connection/Widget/Action/Trigger。**【冻结 2026-10-11】**（master-plan §2.3「不做复杂插件平台」拍板）：接口边界保持干净，程序集拆分与插件加载按需再议。
-- Agent/中央服务器同样以 Connection + Provider 接入，**不写死进 Core**。**【冻结 2026-10-11】**（master-plan §2.3「不做 AI Agent 管理/远程机器管理/控制中心」拍板）。
-- 二期/三期增强层：**本地 AI 支持**（Ollama / OpenAI-compatible API）——「Ask Beacon」收集 CI 结果、日志、提交上下文交模型分析（原方案有此项，归二期不丢）；AI 只是增强层，不进 Core 架构。**【冻结 2026-10-11】**（master-plan §2.3 拍板：维护成本优先）。
+- MVP: Providers organized as folders inside the assembly (`Beacon.Connections/GitHub|Rest`); the interface is the boundary.
+- Phase 2: split Providers into standalone assemblies (`Beacon.Connections.Jenkins` etc.) loaded as .NET plugins (AssemblyLoadContext) + manifest registration; Plugins can contribute Connection/Widget/Action/Trigger. **【Frozen 2026-10-11】** (master-plan §2.3 verdict 「不做复杂插件平台」): keep the interface boundary clean; assembly splitting and plugin loading are revisited as needed.
+- Agents / a central server also connect via Connection + Provider, **never hard-coded into Core**. **【Frozen 2026-10-11】** (master-plan §2.3 verdict 「不做 AI Agent 管理/远程机器管理/控制中心」).
+- Phase 2/3 enhancement layer: **local AI support** (Ollama / OpenAI-compatible API) — "Ask Beacon" gathers CI results, logs and commit context for the model to analyze (present in the original plan, deferred to phase 2, not dropped); AI is only an enhancement layer and does not enter the Core architecture. **【Frozen 2026-10-11】** (master-plan §2.3 verdict: maintenance cost first).
 
-## 15. 测试策略
+## 15. Test Strategy
 
-| 层 | 方式 |
+| Layer | Approach |
 |---|---|
-| Core（聚合/调度/规则引擎/退避） | xUnit 单测，表驱动；时钟注入（模拟退避/冷却） |
-| Connections | Fake HttpMessageHandler + GitHub API 响应夹具；ETag/限流分支覆盖 |
-| Storage | 配置读写往返、原子写、secrets 加解密（Windows 环境） |
-| UI（四层交互） | 手动验收清单（随 Issue 附带）；WinUI 无法在 Linux CI 跑 |
-| CI | GitHub Actions `windows-latest`：build + test（P0 建立） |
+| Core (aggregation/scheduling/rule engine/backoff) | xUnit unit tests, table-driven; clock injection (to simulate backoff/cooldown) |
+| Connections | Fake HttpMessageHandler + GitHub API response fixtures; ETag/rate-limit branch coverage |
+| Storage | Config read/write round-trips, atomic writes, secret encrypt/decrypt (on Windows) |
+| UI (four-layer interaction) | Manual acceptance checklist (attached to the Issues); WinUI cannot run on Linux CI |
+| CI | GitHub Actions `windows-latest`: build + test (established at P0) |
 
-## 16. 风险与开放问题
+## 16. Risks and Open Questions
 
-| # | 风险 | 缓解 |
+| # | Risk | Mitigation |
 |---|---|---|
-| 1 | WinUI 3 的 Topmost + NoActivate + 点击穿透组合需 Win32 interop，行为需验证 | 隔离为 `PinnedHostWindow` 单类；兜底方案：改用纯 Win32 分层窗口承载 Composition 内容 |
-| 2 | unpackaged Toast 的 AUMID 快捷方式在某些环境注册失败 | 启动时自检并修复快捷方式；兜底退化为托盘气泡 + 声音 |
-| 3 | GitHub rate limit（多仓库多 Widget） | ETag 必选 + (connection,tier) 合并轮询 + 额度感知退避（§5/§7） |
-| 4 | 多显示器热插拔/RDP 导致 tile 丢失 | 锚点角恢复策略 + 越界回收（§6.2.3）；显示拓扑变化事件驱动重建 |
-| 5 | 范围膨胀回「大 Dashboard」 | 非目标清单（§2.2）写进每个 Issue 的评审基线；Issue 列表外的需求一律入二期 |
-| 6 | ~~开放问题：胶囊与 L0 是否允许分开在不同显示器~~ **已决策：允许** —— 胶囊本身即常驻 tile，pins.json 按显示器存锚点，天然支持胶囊与 L0 tile 分布在不同显示器 | 显示拓扑变化时各显示器宿主独立恢复 |
-| 7 | ~~桌面常驻物不允许持续动画（防耗电）~~ **已决策（用户效果确认）：降级为默认值** —— 「我关心的状态悬浮桌面、颜色可配、最好带动效」：动效三档 full/reduced/off（默认 reduced）+ intensity 可调，颜色按级别/按 Widget 覆盖 | 设置页（B-805）提供三档+强度+调色板；窗口不可见/收起暂停动画；L0 铁律（不抢焦点/不发声/不弹窗）不变 |
-| 8 | ~~技术栈：.NET 8~~ **已决策（用户点名+拍板，2026-10-07）：升 .NET 10 LTS** —— .NET 8 于 2026-11 EOL 在即，.NET 10 为现行 LTS，舰队口径钉官方最新稳定 | 全系 TFM `net10.0` / `net10.0-windows10.0.19041.0`；`global.json` pin `10.0.100`（rollForward latestFeature）；CI setup-dotnet `10.0.x`；WindowsAppSDK 与 .NET 10 兼容性在 CI 编译验证，不兼容则升版并回记本行 |
+| 1 | WinUI 3's Topmost + NoActivate + click-through combination needs Win32 interop; behavior must be verified | Isolated into a single `PinnedHostWindow` class; fallback: host the Composition content in a pure Win32 layered window |
+| 2 | The unpackaged Toast AUMID shortcut fails to register in some environments | Self-check and repair the shortcut at startup; fallback degrades to a tray balloon + sound |
+| 3 | GitHub rate limits (many repos, many widgets) | ETag mandatory + (connection,tier) merged polling + quota-aware backoff (§5/§7) |
+| 4 | Monitor hotplug/RDP losing tiles | Anchor-corner restore strategy + out-of-bounds recycling (§6.2.3); display-topology-change-driven rebuild |
+| 5 | Scope creep back into a "big Dashboard" | The non-goals list (§2.2) goes into every Issue's review baseline; anything outside the Issue list goes to phase 2 |
+| 6 | ~~Open question: may the capsule and L0 sit on different monitors~~ **Decided: allowed** — the capsule is itself a resident tile, and pins.json stores anchors per monitor, so a capsule and L0 tiles spread across monitors comes for free | Each monitor's host restores independently on display-topology changes |
+| 7 | ~~Desktop residents must not animate continuously (power drain)~~ **Decided (user effect confirmation): downgraded to a default** — 「我关心的状态悬浮桌面、颜色可配、最好带动效」: motion in three tiers full/reduced/off (default reduced) + adjustable intensity; colors overridable per level/per widget | The settings page (B-805) offers three tiers + intensity + the palette; animations pause when windows are invisible/collapsed; the L0 iron rules (no focus stealing / no sound / no popups) unchanged |
+| 8 | ~~Tech stack: .NET 8~~ **Decided (user-named + verdict, 2026-10-07): upgrade to .NET 10 LTS** — .NET 8 hits EOL 2026-11 imminently, .NET 10 is the current LTS, the fleet standard pinned to the latest official stable | All TFMs `net10.0` / `net10.0-windows10.0.19041.0`; `global.json` pins `10.0.100` (rollForward latestFeature); CI setup-dotnet `10.0.x`; WindowsAppSDK/.NET 10 compatibility is verified by CI compilation — if incompatible, bump the version and record it back on this row |
 
-## 17. 里程碑与下游
+## 17. Milestones and Downstream
 
-| 里程碑 | 内容 | Issue |
+| Milestone | Scope | Issues |
 |---|---|---|
-| M1 可常驻 | 工程地基 + Shell（Tray/胶囊/Hotkey/自启） | P0–P1 |
-| M2 有内核 | 配置/Secrets/Event Bus/调度/聚合/缓存/离线 | P2 |
-| M3 GitHub 闭环 | PR/Actions Provider + 四类 Action | P3–P4 |
-| M4 会提醒 | Toast + 通知引擎 + Quick Panel/Detail | P5–P6 |
-| M5 = MVP | L0 悬浮组件 + Settings + 导入导出 + 验收发布 | P7–P8 |
+| M1 Resident | Engineering foundation + Shell (Tray/capsule/Hotkey/autostart) | P0–P1 |
+| M2 Has a kernel | Config/Secrets/Event Bus/scheduling/aggregation/cache/offline | P2 |
+| M3 GitHub loop closed | PR/Actions Provider + the four Action types | P3–P4 |
+| M4 Can alert | Toast + notification engine + Quick Panel/Detail | P5–P6 |
+| M5 = MVP | L0 pinned widgets + Settings + import/export + acceptance release | P7–P8 |
 
-- 项目/程序集划分与脚手架命令：[solution-项目目录](../solution-structure.md)
-- 可执行任务拆解（43 个 Issue，含验收标准）：[MVP-Issue列表](../mvp-issues.md)
+- Project/assembly layout and scaffolding commands: [solution project layout](../solution-structure.md)
+- Executable task breakdown (43 Issues, with acceptance criteria): [MVP Issue list](../mvp-issues.md)

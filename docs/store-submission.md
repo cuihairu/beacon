@@ -1,75 +1,75 @@
 
-# 商店提交前置清单
+# Store submission pre-checklist
 
-Beacon 本体仍是 **unpackaged 自包含**（RFC §10，`WindowsPackageType=None`）——商店提交只是多产一个 MSIX 包，把 publish 输出整体包起来，包内 Identity 给商店识别用；应用运行形态不变。本页记三件事：MSIX 怎么产、隐私政策页要什么字段、商店素材要备什么。
+Beacon itself remains **unpackaged and self-contained** (RFC §10, `WindowsPackageType=None`) — a store submission only adds an MSIX package that wraps the whole publish output, with an in-package Identity for the store to recognize; the app's runtime shape does not change. This page records three things: how the MSIX is produced, what fields the privacy-policy page needs, and what store assets to prepare.
 
-## 状态（2026-10-12）
+## Status (2026-10-12)
 
-| 项 | 状态 |
+| Item | Status |
 |---|---|
-| SignPath 免费签名 | **参数已接真**（2026-10-12）：`api-token` 与 `organization-id` 走仓库 Secrets（`SIGNPATH_API_TOKEN` / `SIGNPATH_ORGANIZATION_ID`，不硬编码），`project-slug: beacon`、`signing-policy-slug: beacon`；`artifact-configuration-slug` 为可选参数，省略 = 用项目默认 Artifact Configuration（用户在控制台建 Portable Executable + deep signing 配置后如需指定可再填）。**剩用户侧一步（不由 agent 代做）**：在 SignPath 控制台把 API token 所属用户加进 signing policy「beacon」的 **Submitters** 列表——做完后下一次 `v*` tag 起自动签名；未做前版本 tag 构建会在签名步红（fail closed，不静默发未签名正式版）。政策见 README「代码签名政策」 |
-| MSIX 打包 | **已在 Windows runner 验证通过并字节级验包**（2026-10-12 两轮 dry run 全绿，包内 manifest 版本替换实测发生）：MakeAppx 就位、清单被接受、约 66 MB 包产出。打包逻辑与 daily-build 版本 tag 通道共用 `.github/workflows/scripts/msix-pack.ps1` |
-| 商店应用预留 | 未开始。Partner Center 预留应用名后才确定 `appxmanifest` 的 `Identity Name` / `Publisher` |
-| 隐私政策页 | **已就绪**：<https://cuihairu.github.io/beacon/privacy-policy/>（`docs/privacy-policy.md`，随 docs 工作流发布；字段对照见第 1 节） |
-| 商店素材 | 图标已备；截图 / 说明 / 分类 / 分级问卷未备（见第 2 节） |
+| SignPath free signing | **Parameters wired for real** (2026-10-12): `api-token` and `organization-id` go through repository secrets (`SIGNPATH_API_TOKEN` / `SIGNPATH_ORGANIZATION_ID`, nothing hard-coded), with `project-slug: beacon` and `signing-policy-slug: beacon`; `artifact-configuration-slug` is an optional parameter — omitting it uses the project's default Artifact Configuration (fill it in later if needed, once a Portable Executable + deep signing configuration has been created in the console). **One user-side step remains (not done by an agent)**: in the SignPath console, add the user who owns the API token to the **Submitters** list of the "beacon" signing policy — once done, the next `v*` tag onward signs automatically; until then a version-tag build goes red at the signing step (fail closed; an unsigned official release is never shipped silently). Policy in the README "Code signing policy" section |
+| MSIX packaging | **Verified on a Windows runner with byte-level package checks** (2026-10-12, two green dry runs, manifest version replacement observed to happen): MakeAppx in place, the manifest accepted, a package of about 66 MB produced. The packaging logic shares `.github/workflows/scripts/msix-pack.ps1` with the daily-build version-tag channel |
+| Store app reservation | Not started. `Identity Name` / `Publisher` in the `appxmanifest` can only be fixed after reserving the app name in Partner Center |
+| Privacy policy page | **Ready**: <https://cuihairu.github.io/beacon/privacy-policy/> (`docs/privacy-policy.md`, published by the docs workflow; the field mapping is in section 1) |
+| Store assets | Icon prepared; screenshots / description / category / rating questionnaire not prepared (see section 2) |
 
-## 1. 隐私政策页必填字段
+## 1. Required fields of the privacy policy page
 
-商店规则：应用访问个人数据或具备网络访问能力时，必须提供**公开可访问**的隐私政策 URL。Beacon 有网络访问（GitHub API + 各 AI 平台用量端点）且在本地保存 API token，属必填项。
+Store rule: an app that accesses personal data or has network capability must provide a **publicly accessible** privacy-policy URL. Beacon has network access (the GitHub API + AI-platform usage endpoints) and stores API tokens locally, so this is mandatory.
 
-页面至少写清这些字段（左列是字段，右列是 Beacon 的实际答案，可直接抄）：
+The page must state at least these fields (left column = the field, right column = Beacon's actual answer, copyable):
 
-| 字段 | Beacon 的实际答案 |
+| Field | Beacon's actual answer |
 |---|---|
-| 收集哪些数据 | API token（GitHub PAT、各 AI 平台 key）；用户配置（连接、刷新间隔、主题、组件布局）；本机状态读数（CPU / 内存 / 磁盘 / 网络速率 / IP） |
-| 数据存在哪 | 全部本地：token 写 DPAPI 密钥库，配置写 `%AppData%\Beacon\config.json`（仅存 credentialRef，**绝无明文 token**），日志写 `%AppData%\Beacon\logs` |
-| 数据如何离开本机 | 只发给用户自己配置的 API 端点（GitHub API、各 AI 平台控制台/用量端点）；不发给任何第三方，无遥测上报 |
-| 数据用途 | 仅本地展示状态与执行本地操作；token 只用于向对应平台鉴权查询 |
-| 保留与删除 | 随安装目录删除；卸载走系统「添加或删除程序」；无云端副本 |
-| 联系方式 | 待填（邮箱或 GitHub profile） |
+| What data is collected | API tokens (GitHub PAT, AI-platform keys); user configuration (connections, refresh intervals, theme, widget layout); local machine readings (CPU / memory / disk / network speed / IP) |
+| Where the data lives | All local: tokens go into the DPAPI secret store; configuration goes to `%AppData%\Beacon\config.json` (only a credentialRef is stored, **never a plaintext token**); logs go to `%AppData%\Beacon\logs` |
+| How data leaves the machine | Sent only to the API endpoints the user configured (GitHub API, AI-platform console/usage endpoints); sent to no third party, no telemetry reporting |
+| What the data is used for | Local display of state and local execution of actions only; tokens are used only to authenticate queries against the corresponding platforms |
+| Retention and deletion | Removed with the install directory; uninstall through the system "Add or Remove Programs"; no cloud copy |
+| Contact | To fill in (email or GitHub profile) |
 
-落地要求：
+Landing requirements:
 
-- [x] 公开 URL 已就绪：`https://cuihairu.github.io/beacon/privacy-policy/`（`docs/privacy-policy.md`，docs 工作流发布，提交页直接填它）
-- [ ] 提交前该 URL 必须已可访问（商店会抓取）
-- [ ] 不能是 `localhost` / 内网地址 / 需登录才能看的页面
+- [x] The public URL is ready: `https://cuihairu.github.io/beacon/privacy-policy/` (`docs/privacy-policy.md`, published by the docs workflow — submit exactly this)
+- [ ] Before submission the URL must already be reachable (the store crawls it)
+- [ ] It must not be a `localhost` / intranet address / a page that requires login
 
-## 2. 商店素材清单
+## 2. Store asset checklist
 
-| 项 | 要求 | Beacon 现状 |
+| Item | Requirement | Beacon status |
 |---|---|---|
-| 应用图标 | 310x310 PNG；manifest 内 `Logo`（商店列表小图标）用 50x50 | 已备：`packaging/msix/Square310x310Logo.png`、`StoreLogo.png`（由 `docs/img/logo.svg` 光栅化，同批还有 44/71/150/310x150 供包内磁贴用） |
-| 截图 | 至少 1 张，建议 4 张以上；PNG 或 JPG；常见尺寸 1920x1080（也接受 1366x768 / 2560x1440）；单文件大小上限按提交页提示 | 未备。可从 `docs/img/evidence/` 现有取证截图里选底，但那些多为暗色主题特写，需补浅色主题 + 多屏 + 设置页 |
-| 应用说明 | 最多 10000 字符；写产品定位 / 功能点 / 支持场景，可含关键词 | 未备。可复用 README 的安装段 + `docs/mission.md` 的定位段改写 |
-| 分类 | 主分类 + 次分类，从商店分类列表里选（开发者工具 / 效率是候选） | 未拍板 |
-| 年龄分级问卷 | IARC 问卷逐项答：暴力、恐怖或惊悚、粗俗语言、烟酒、色情或裸露、用户交互、应用内购买 | 未答。Beacon 无内容风险项，预期结果为「Everyone」 |
-| 支持 URL | 需填（GitHub issues 即可） | 未拍板 |
+| App icon | 310x310 PNG; the manifest `Logo` (small store-listing icon) uses 50x50 | Ready: `packaging/msix/Square310x310Logo.png`, `StoreLogo.png` (rasterized from `docs/img/logo.svg`; the same batch also produced 44/71/150/310x150 for in-package tiles) |
+| Screenshots | At least 1, 4+ recommended; PNG or JPG; common size 1920x1080 (1366x768 / 2560x1440 also accepted); per-file size limit per the submission page | Not prepared. Bases can be picked from existing evidence screenshots in `docs/img/evidence/`, but those are mostly dark-theme close-ups; light-theme, multi-screen, and settings shots are still needed |
+| App description | Up to 10000 characters; cover positioning / features / supported scenarios, keywords allowed | Not prepared. Can be adapted from the README install section + the positioning section of `docs/mission.md` |
+| Category | Primary + secondary category, chosen from the store's list (Developer tools / Productivity are candidates) | Not decided |
+| Age rating questionnaire | The IARC questionnaire answered item by item: violence, horror or fear, crude language, tobacco/alcohol, sexual content or nudity, user interaction, in-app purchases | Unanswered. Beacon has no content-risk items; the expected result is "Everyone" |
+| Support URL | Required (GitHub issues works) | Not decided |
 
-> 具体尺寸上限、可选分类值与问卷措辞以提交时 Partner Center 页面为准——本表的数字是常见口径，提交前对照一次。
+> Exact size limits, allowed category values, and questionnaire wording follow the Partner Center page at submission time — the numbers in this table are the common conventions; check against the page once before submitting.
 
-## 3. MSIX 打包：卡点与替代方案
+## 3. MSIX packaging: blockers and alternatives
 
-打包链路（`.github/workflows/daily-build.yml`，仅 `v*` tag 通道）：
+The packaging chain (`.github/workflows/daily-build.yml`, `v*` tag channel only):
 
 ```
-publish/（自包含输出）+ packaging/msix/appxmanifest.xml（版本按 tag 替换）
-  → 暂存目录 AppxManifest.xml + publish 全部文件
-  → makeappx pack /d <暂存> /p <asset>.msix
-  → 进 SHA256SUMS + gh release upload
+publish/ (self-contained output) + packaging/msix/appxmanifest.xml (version replaced per tag)
+  → staging directory with AppxManifest.xml + all publish files
+  → makeappx pack /d <staging> /p <asset>.msix
+  → into SHA256SUMS + gh release upload
 ```
 
-- **版本对齐**：manifest 里 `Version="0.0.0.0"` 是占位，工作流按 `v*` tag 四段化替换（`v0.1.3` → `0.1.3.0`）；exe 自身的 `Version` 由 publish 步骤注入同一 tag 版本，两者恒等。
-- **未签名 MSIX 是有意为之**：商店提交阶段由 Microsoft 代签，本地不签。sideload 测试需自备开发证书（`makeappx pack /o` + 自签证书），属提交前的本地验证步骤，不在 CI 里做。
-- **提交前必须替换的占位**：`Identity Name="Beacon.CuiHairu"` → Partner Center 预留的应用名；`Publisher="CN=cuihairu"` → 提交证书主题（与 `PublisherDisplayName` 一致）。
-- **Windows runner 实测（2026-10-12，两轮 dry run 全绿：38230149697 + 38233094172）**：
-  - MakeAppx 在 runner 上就位：`C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\makeappx.exe`
-  - 手写清单被 MakeAppx 接受（命名空间 / `uap:VisualElements` / `uap:DefaultTile` / `rescap:runFullTrust` 全部有效），打包约 10s 完成
-  - 包级字节验证（产物下载回本地解包）：zip 容器有效，约 66 MB / 502 条目；`AppxManifest.xml` + 6 张 Logo 全在包根且字节数与仓库文件逐一吻合；`Beacon.App.exe` 与 `Assets\` 随 publish 进包
-  - 版本替换路径实测（run 38233094172，试跑台故意传 9.9.9.9 ≠ 占位）：包内 Identity 实际变为 `Version="9.9.9.9"`、占位 `0.0.0.0` 消失——「版本与 v* tag 对齐」机制被证明真实发生，不是空替换
-- **当时唯一的卡点是「没法试跑」**：MSIX 步骤只在 `v*` tag 通道跑，而版本 tag 由作者手动给出（仓库红线：不打 tag），用已有 tag 试跑会往已发布 release 上传别的 commit 的资产，属交付完整性违规。解法是抽共享脚本 `.github/workflows/scripts/msix-pack.ps1` + 只建包不碰 release/tag 的 `.github/workflows/msix-dry-run.yml` 试跑台。
+- **Version alignment**: `Version="0.0.0.0"` in the manifest is a placeholder, replaced by the workflow with the four-segment form of the `v*` tag (`v0.1.3` → `0.1.3.0`); the exe's own `Version` gets the same tag version injected at the publish step, so the two are always equal.
+- **The unsigned MSIX is deliberate**: the store signs it at submission (Microsoft's signature); locally it is not signed. Sideload testing needs your own development certificate (`makeappx pack /o` + a self-signed certificate) — that is a local pre-submission verification step, not done in CI.
+- **Placeholders that must be replaced before submission**: `Identity Name="Beacon.CuiHairu"` → the app name reserved in Partner Center; `Publisher="CN=cuihairu"` → the submission certificate subject (consistent with `PublisherDisplayName`).
+- **Windows runner field test (2026-10-12, two green dry runs: 38230149697 + 38233094172)**:
+  - MakeAppx is present on the runner: `C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x86\makeappx.exe`
+  - The hand-written manifest was accepted by MakeAppx (namespaces / `uap:VisualElements` / `uap:DefaultTile` / `rescap:runFullTrust` all valid); packing completes in about 10 s
+  - Package-level byte verification (artifact downloaded and unpacked locally): the zip container is valid, about 66 MB / 502 entries; `AppxManifest.xml` + 6 Logos are all at the package root with byte counts matching the repository files one by one; `Beacon.App.exe` and `Assets\` entered the package from publish
+  - The version-replacement path was observed live (run 38233094172, the dry-run harness deliberately passed 9.9.9.9 ≠ the placeholder): the in-package Identity actually became `Version="9.9.9.9"` and the placeholder `0.0.0.0` disappeared — the "version aligned to the `v*` tag" mechanism is proven to really happen, not an empty replacement
+- **The only blocker at the time was "no way to dry-run"**: the MSIX step runs only in the `v*` tag channel, and version tags are given manually by the author (a repository red line: no tags); dry-running with an existing tag would upload another commit's assets onto an already-published release, violating delivery integrity. The solution was to extract the shared script `.github/workflows/scripts/msix-pack.ps1` plus a dry-run harness `.github/workflows/msix-dry-run.yml` that only builds the package and never touches the release or tags.
 
-如果打包链路将来出问题，替代方案（按推荐顺序）：
+If the packaging chain breaks in the future, alternatives (in recommended order):
 
-1. **Sparse 包**（`WindowsPackageType=Sparse`）——WinUI 3 官方支持的「有包标识但仍按 unpackaged 运行」模式：csproj 加 `WindowsPackageType=Sparse` + `PackageCertificateKeyFile`，appxmanifest 由 MSBuild 自动生成（不用手写）。代价：本地开发与便携形态要跟着换模式。
-2. **App Installer 分发**（`.appinstaller`）——不进商店的企业/个人分发通道。
-3. **只发 zip + setup.exe**——商店不是分发必需品：便携 zip + Inno Setup 安装包已覆盖个人分发，MSIX 仅为上架。
+1. **Sparse package** (`WindowsPackageType=Sparse`) — the WinUI 3-supported mode of "has package identity but still runs unpackaged": add `WindowsPackageType=Sparse` + `PackageCertificateKeyFile` to the csproj and the appxmanifest is generated by MSBuild automatically (no hand-writing). Cost: local development and the portable form would have to switch mode along with it.
+2. **App Installer distribution** (`.appinstaller`) — an enterprise / personal distribution channel that bypasses the store.
+3. **Zip + setup.exe only** — the store is not a distribution requirement: the portable zip + Inno Setup installer already cover personal distribution; MSIX exists purely for listing.

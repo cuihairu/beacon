@@ -1,10 +1,10 @@
 
-# Beacon Solution / 项目目录
+# Beacon Solution / Project Directory
 
-> 配套 [RFC-001](rfc/RFC-001-technical-design.md)。本文以**当前仓库实际结构**为准（2026-10-09 同步）。
-> Beacon 代码只能在 Windows 上构建运行（WinUI 3，CI `windows-latest`）；Linux 工作环境可构建并运行 4 个测试项目作为本地门禁。
+> Companion to [RFC-001](rfc/RFC-001-technical-design.md). This document is based on **the actual current repository structure** (synchronized 2026-10-09).
+> Beacon code can only be built and run on Windows (WinUI 3, CI `windows-latest`); a Linux development environment can build and run the 4 test projects as a local gate.
 
-## 1. Solution 总览
+## 1. Solution Overview
 
 ```text
 Beacon/
@@ -29,7 +29,7 @@ Beacon/
     └── Beacon.Actions.Tests/
 ```
 
-## 2. 项目依赖规则
+## 2. Project Dependency Rules
 
 ```text
 Beacon.App ──────► Beacon.Core ◄────── Beacon.Connections
@@ -39,16 +39,16 @@ Beacon.App ──────► Beacon.Core ◄────── Beacon.Connec
 tests/* ──► 对应被测项目（+ Beacon.Core 接口）
 ```
 
-硬规则：
+Hard rules:
 
-1. `Beacon.Core` **不引用任何项目**（仅引用 BCL + `Microsoft.Extensions.Logging.Abstractions`）——保证 UI 与 Provider 可替换。
-2. Connections / Actions / Storage 只依赖 Core（实现其接口），互相不依赖。
-3. `Beacon.App` 是唯一可执行项目，负责 DI 组装：把 Provider/Executor/Store 注册进 `Microsoft.Extensions.DependencyInjection`（`App.BuildServices` + `BeaconRuntime`）。
-4. 二期 Plugin 化时，把 Connections 内的 Provider 拆为独立程序集，接口不变。
+1. `Beacon.Core` **references no projects** (only BCL + `Microsoft.Extensions.Logging.Abstractions`) — ensures UI and Provider are replaceable.
+2. Connections / Actions / Storage depend only on Core (implementing its interfaces) and are independent of each other.
+3. `Beacon.App` is the only executable project, responsible for DI assembly: registers Providers/Executors/Stores into `Microsoft.Extensions.DependencyInjection` (`App.BuildServices` + `BeaconRuntime`).
+4. In the Phase 2 plugin transition, split the Providers inside Connections into separate assemblies, keeping the interfaces unchanged.
 
-## 3. 各项目内容
+## 3. Contents of Each Project
 
-### 3.1 src/Beacon.Core（类库）
+### 3.1 src/Beacon.Core (class library)
 
 ```text
 Beacon.Core/
@@ -93,7 +93,7 @@ Beacon.Core/
     └── BeaconJson.cs                  # JsonSerializerOptions（camelCase + 枚举字符串）
 ```
 
-### 3.2 src/Beacon.Connections（类库，文件平铺无子目录）
+### 3.2 src/Beacon.Connections (class library, flat files with no subdirectories)
 
 ```text
 Beacon.Connections/                    # 35 文件
@@ -150,7 +150,7 @@ Beacon.Connections/                    # 35 文件
     └── SenseNovaUsageProvider.cs     # type: sensenova.usage（控制台 Token Plan 积分池：多池 × 5h/7d 双窗，最差窗判级）+ SenseNovaWidgetDescriptors + SenseNovaConnectionProvider（同文件）
 ```
 
-### 3.3 src/Beacon.Actions（类库）
+### 3.3 src/Beacon.Actions (class library)
 
 ```text
 Beacon.Actions/                        # 5 文件
@@ -161,9 +161,9 @@ Beacon.Actions/                        # 5 文件
 └── LocalCommandExecutor.cs            # local.command（powershell/cmd/exe，工作目录/Env/超时/捕获输出）
 ```
 
-- `gh.workflow_dispatch / gh.workflow_rerun / gh.workflow_cancel` 三个执行器在 `Beacon.Connections/GitHubWorkflowExecutors.cs`。
+- The three executors `gh.workflow_dispatch / gh.workflow_rerun / gh.workflow_cancel` are in `Beacon.Connections/GitHubWorkflowExecutors.cs`.
 
-### 3.4 src/Beacon.Storage（类库）
+### 3.4 src/Beacon.Storage (class library)
 
 ```text
 Beacon.Storage/                        # 6 文件
@@ -175,9 +175,9 @@ Beacon.Storage/                        # 6 文件
 └── ImportExport.cs                    # 打包导出（不含 secrets）/导入
 ```
 
-备选（未实现）：Windows Credential Manager 密钥存储——同一 `ISecretStore` 接口，代码未落地。
+Alternative (not implemented): Windows Credential Manager secret storage — same `ISecretStore` interface, code not landed.
 
-### 3.5 src/Beacon.App（WinUI 3，打包=None）
+### 3.5 src/Beacon.App (WinUI 3, packaging=None)
 
 ```text
 Beacon.App/
@@ -214,32 +214,32 @@ Beacon.App/
                                        #   悬浮形态二选一、导入导出、通知规则；代码建 UI）
 ```
 
-注：无 `Controls/`、`ViewModels/`、`Themes/`、`Notifications/` 目录——状态灯/PinTile 等以代码类组合（`PinTile` 在 `PinnedHostWindow.cs` 内），无 XAML 资源字典；Toast 在 `Services/`。
+Note: no `Controls/`, `ViewModels/`, `Themes/`, `Notifications/` directories — status lights/PinTile etc. are composed as code classes (`PinTile` is inside `PinnedHostWindow.cs`), no XAML resource dictionaries; Toast is in `Services/`.
 
 ### 3.6 tests/
 
-xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 1057 个测试（Connections 652 / Core 347 / Actions 27 / Storage 31），即本地门禁。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。
+xUnit; `Beacon.Core.Tests` (aggregation/scheduling/backoff/rules/notification engine/ActionRunner, clock injection; SvgPathParser, full parseability and aliases of the BrandIcons dictionary, WidgetValueHint numeric mapping), `Beacon.Connections.Tests` (fake HttpMessageHandler + API fixtures + ETag branches, assembly serialization to avoid shared client cache races), `Beacon.Storage.Tests` (round-trip/atomic write/DPAPI, requires Windows environment), `Beacon.Actions.Tests` (open.url/local.command/http/webhook executors, Windows-only test cases OS-gated). All wired into coverlet.collector (CI reports to Codecov). Currently 4 projects with a total of 1057 tests (Connections 652 / Core 347 / Actions 27 / Storage 31), i.e. the local gate. The Core side also covers QuickPanelSections three-section classification, ContrastMath/HighContrastPalette contrast pairings, WidgetTypeNames short-name mapping, PinLayoutMath/DpiLayoutMath conversion and clamping, and UpdateCheck version parsing and SemVer comparison (v prefix/build metadata/pre-release rules/rate-limit degraded body).
 
-## 4. 关键 NuGet 包（Directory.Packages.props 统一版本）
+## 4. Key NuGet Packages (unified versions in Directory.Packages.props)
 
-| 包 | 用于 |
+| Package | Used for |
 |---|---|
-| `Microsoft.WindowsAppSDK` | WinUI 3 运行时 |
-| `Microsoft.Windows.SDK.BuildTools` | Win32 interop（NoActivate/热键等） |
-| `CommunityToolkit.Mvvm` | App 工程已引用，当前代码未使用（UI 为 code-behind 代码建，见 §6） |
-| 托盘 | 不引第三方库，Win32 `Shell_NotifyIcon` 自实现（TrayIconService） |
-| `Microsoft.Toolkit.Uwp.Notifications` | Toast（unpackaged AUMID 自愈与激活路由） |
-| `System.Drawing.Common` | 托盘图标按配置色运行时绘制（GDI+ 位图 → HICON，B-706） |
-| GitHub API | 手写 REST 客户端（ETag/限额可控，B-301 决策，不引 Octokit） |
-| `System.Security.Cryptography.ProtectedData` | DPAPI 密钥存储 |
-| `Microsoft.Extensions.Hosting` / `.DependencyInjection` / `.Logging` | DI/日志 |
-| `xunit` / `NSubstitute` / `coverlet.collector` | 测试与覆盖率 |
+| `Microsoft.WindowsAppSDK` | WinUI 3 runtime |
+| `Microsoft.Windows.SDK.BuildTools` | Win32 interop (NoActivate/hotkeys, etc.) |
+| `CommunityToolkit.Mvvm` | Referenced in App project but currently unused (UI is code-behind, see §6) |
+| Tray | No third-party library; Win32 `Shell_NotifyIcon` implemented in-house (TrayIconService) |
+| `Microsoft.Toolkit.Uwp.Notifications` | Toast (unpackaged AUMID self-healing and activation routing) |
+| `System.Drawing.Common` | Tray icon drawn at runtime with configured color (GDI+ bitmap → HICON, B-706) |
+| GitHub API | Hand-written REST client (ETag/rate-limit controllable, B-301 decision, no Octokit) |
+| `System.Security.Cryptography.ProtectedData` | DPAPI secret storage |
+| `Microsoft.Extensions.Hosting` / `.DependencyInjection` / `.Logging` | DI/logging |
+| `xunit` / `NSubstitute` / `coverlet.collector` | Testing and coverage |
 
-（版本集中在 Directory.Packages.props；表中不含未引用的包。）
+(Versions centralized in Directory.Packages.props; the table excludes unreferenced packages.)
 
-## 5. Windows 机器上的脚手架命令（历史存档，工程已建成）
+## 5. Scaffolding Commands on Windows (historical archive, project already built)
 
-> 下列为初始建仓时实际使用的命令，保留备查；当前结构与文件以 §1/§3 为准。
+> The following are the commands actually used when initially creating the repository, retained for reference; the current structure and files are authoritative as in §1/§3.
 
 ```powershell
 dotnet new sln -n Beacon
@@ -255,12 +255,12 @@ dotnet new xunit -o tests/Beacon.Actions.Tests
 dotnet sln add (git ls-files "**/*.csproj")
 ```
 
-注意（.NET 10 LTS，RFC §16 决策 8）：四个类库目标框架 `net10.0`（DPAPI 走 `System.Security.Cryptography.ProtectedData` 包，无 Windows 专属 TFM）；`Beacon.App` 目标 `net10.0-windows10.0.19041.0`，`TargetPlatformMinVersion=10.0.17763.0`（WinUI 3 / Windows App SDK）。SDK 版本由根 `global.json` 钉 `10.0.100`（rollForward latestFeature）。
+Note (.NET 10 LTS, RFC §16 decision 8): the four class libraries target `net10.0` (DPAPI via the `System.Security.Cryptography.ProtectedData` package, no Windows-specific TFM); `Beacon.App` targets `net10.0-windows10.0.19041.0`, `TargetPlatformMinVersion=10.0.17763.0` (WinUI 3 / Windows App SDK). The SDK version is pinned to `10.0.100` by the root `global.json` (rollForward latestFeature).
 
-## 6. 编码约定
+## 6. Coding Conventions
 
-- `nullable enable`、file-scoped namespace、C# 12。
-- UI 以**代码构建 + code-behind** 为主（WinUI `Window` 子类直接组装控件），状态来自事件总线订阅（`BeaconRuntime`/窗口内 `Subscribe`）；`CommunityToolkit.Mvvm` 包已引用但当前未使用（无 ViewModel 层）。
-- 所有时间相关逻辑经 `IClock` 注入。
-- 配置 JSON 用 `System.Text.Json`：`BeaconJson` 统一 `JsonSerializerOptions`（camelCase 属性 + 枚举字符串），非 source-gen。
-- 日志经 `ILogger`，Secrets 一律不进日志（RFC-001 §13）。
+- `nullable enable`, file-scoped namespace, C# 12.
+- UI is primarily **code-built + code-behind** (WinUI `Window` subclasses directly compose controls), state comes from event bus subscriptions (`BeaconRuntime`/`Subscribe` inside windows); the `CommunityToolkit.Mvvm` package is referenced but currently unused (no ViewModel layer).
+- All time-related logic is injected via `IClock`.
+- Configuration JSON uses `System.Text.Json`: `BeaconJson` centralizes `JsonSerializerOptions` (camelCase properties + enum strings), not source-gen.
+- Logging via `ILogger`, Secrets never go into logs (RFC-001 §13).
