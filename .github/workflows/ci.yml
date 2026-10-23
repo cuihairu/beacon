@@ -20,7 +20,7 @@ on:
       - '.editorconfig'
 jobs:
   build-test:
-    runs-on: windows-latest
+    runs-on: ${{ vars.CI_RUNNER || 'windows-latest' }}
     steps:
       - uses: actions/checkout@v7.0.1
 

@@ -36,7 +36,7 @@ concurrency:
 jobs:
   build-publish:
     name: Build & publish nightly (windows-x86_64)
-    runs-on: windows-latest
+    runs-on: ${{ vars.CI_RUNNER || 'windows-latest' }}
     timeout-minutes: 90
     # SignPath 代码签名凭据：api-token 与 organization-id 走仓库 Secrets
     # （SIGNPATH_API_TOKEN / SIGNPATH_ORGANIZATION_ID，均已配置），绝不硬编码。

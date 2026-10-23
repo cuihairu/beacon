@@ -22,7 +22,7 @@ concurrency:
 jobs:
   msix:
     name: Pack MSIX (windows-x86_64, no release side effects)
-    runs-on: windows-latest
+    runs-on: ${{ vars.CI_RUNNER || 'windows-latest' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
