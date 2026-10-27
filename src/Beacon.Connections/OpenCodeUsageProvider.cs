@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -15,6 +16,7 @@ public static class OpenCodeWidgetDescriptors
         Type = UsageType,
         DisplayName = "OpenCode Go 用量",
         PinSupported = true,
+        DataKinds = DisplayTemplateKinds.ProgressOnly, // 类型级能力：产百分比（评审 P1 语义描述）
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Default, // 月度预算窗口（resets_at 按 UTC 自然月）
         Fields =

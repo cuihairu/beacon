@@ -1268,6 +1268,16 @@ internal sealed class SettingsWindow : Window
         form.Children.Add(reset);
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _motionModeBox, _motionIntensitySlider } });
         form.Children.Add(_progressStyleBox);
+        // 2026-10-22 评审 G10 口径声明：此档是「传统渲染」的全局额度表现（无展示样式面的组件）；
+        // 组件行「展示样式」另选的面不受影响，想回传统渲染 = 组件中心「恢复传统渲染」。
+        form.Children.Add(new TextBlock
+        {
+            Text = "此档管传统渲染的全局额度表现（未选展示样式的组件）；组件行「展示样式」所选面不受影响，回传统渲染在组件中心点「恢复传统渲染」。",
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
+            TextWrapping = TextWrapping.Wrap,
+            Width = 260,
+        });
         form.Children.Add(_densityBox);
         form.Children.Add(new StackPanel
         {
@@ -2737,32 +2747,68 @@ internal sealed class SettingsWindow : Window
     }
 
     /// <summary>组件行「展示样式」：定向打开组件中心——自动带入该组件最新真实状态
-    /// （Host.GetState 单源快照，预览即真实数据），应用回调不再要求先载入树编辑器。</summary>
+    /// （Host.GetState 单源快照，可空=空状态等待数据，评审 P0 断链修复），类型数据能力
+    /// （DataKinds）随描述符带入供能力级筛选；已存面反解（DisplayTemplates.Identify）供样式恢复。
+    /// 只捕获 widget.Id：应用/恢复时按 Id 重取最新配置（评审 P0 旧对象覆盖——中途在组件页
+    /// 保存过树也不被闭包旧对象覆写）。</summary>
     private void OpenComponentStyleCenter(WidgetConfig widget)
     {
         if (_gallery is not null)
         {
             _gallery.Close(); // 单实例换目标：闭包内旧 widget 失效，重建而非复用
         }
-        var state = _runtime.Host.GetState(widget.Id);
+        var latest = _runtime.Config.FindWidget(widget.Id) ?? widget;
+        var state = _runtime.Host.GetState(latest.Id);
+        var descriptor = AllWidgetDescriptors().FirstOrDefault(d => d.Type == latest.Type);
+        var (restoreId, restoreSurface, restoreRoot) = ResolveCurrentStyle(latest);
         _gallery = new SampleGalleryWindow(
             _runtime,
             () => _gallery = null,
             applyToSettings: null,
+            targetWidgetId: latest.Id,
             targetState: state,
-            applyTargeted: (root, surface) => ApplyComponentDirect(widget, root, surface));
+            applyTargeted: (root, surface) => ApplyComponentDirect(latest.Id, root, surface),
+            resetTargeted: () => ApplyComponentReset(latest.Id),
+            restoreTemplateId: restoreId,
+            restoreSurface: restoreSurface,
+            restoreRootJson: restoreRoot,
+            dataKinds: descriptor?.DataKinds);
         _gallery.Activate();
+    }
+
+    /// <summary>反解组件当前已存展示样式（评审 P0 样式恢复）：按 tile→row→detail 顺序找首个
+    /// 已存面，经 DisplayTemplates.Identify 反解模板身份 + 面名 + 树 JSON（参数回填用）；
+    /// 无树/自定义树 → (null, tile, null)——组件中心按能力筛选默认档，不假装是某模板。</summary>
+    private (string? TemplateId, string Surface, string? RootJson) ResolveCurrentStyle(WidgetConfig widget)
+    {
+        foreach (var surface in new[] { "tile", "row", "detail" })
+        {
+            if (widget.Components is not null
+                && widget.Components.TryGetValue(surface, out var root)
+                && root is not null)
+            {
+                return (DisplayTemplates.Identify(root), surface, BeaconJson.Serialize(root));
+            }
+        }
+        return (null, "tile", null);
     }
 
     /// <summary>组件中心定向模式「应用展示样式」回调（评审 P1）：校验通过即所选面落盘
     /// （其余既有面保留）+ PinsChanged 即时重渲（ReloadTiles 带 _latest 状态重放，不取数不加
-    /// 请求），与 SaveComponentTree 同一条校验/UpsertWidget 单一落盘链，不新增写入路径。</summary>
-    private string ApplyComponentDirect(WidgetConfig target, ComponentDescriptor root, string surface)
+    /// 请求），与 SaveComponentTree 同一条校验/UpsertWidget 单一落盘链，不新增写入路径。
+    /// 按 Id 重取最新配置（评审 P0 旧对象覆盖）：窗打开期间组件页/另一应用面可能已改过树，
+    /// 闭包旧对象会把那些改动整面覆写丢掉。</summary>
+    private string ApplyComponentDirect(string widgetId, ComponentDescriptor root, string surface)
     {
         var validation = ComponentTreeValidator.Validate(root);
         if (!validation.Ok)
         {
             return $"✗ 组件树非法（未保存）：{string.Join("；", validation.Errors)}";
+        }
+        var target = _runtime.Config.FindWidget(widgetId);
+        if (target is null)
+        {
+            return $"✗ 组件 {widgetId} 已不存在（未保存）。";
         }
         var surfaces = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, existing) in target.Components ?? new Dictionary<string, ComponentDescriptor>())
@@ -2773,6 +2819,20 @@ internal sealed class SettingsWindow : Window
         ReplaceWidgetComponents(target, surfaces);
         PinsChanged?.Invoke();
         return $"✓ 已应用展示样式到 {target.Id} 的 {surface} 面（其余面保留，即时重渲）；高级组合仍可走「组件树」编辑器。";
+    }
+
+    /// <summary>组件中心定向模式「恢复传统渲染」回调（评审 P1 兜底）：清空该组件全部展示样式面
+    /// 回传统渲染；同样按 Id 重取最新配置（与 ApplyComponentDirect 同口径）。</summary>
+    private string ApplyComponentReset(string widgetId)
+    {
+        var target = _runtime.Config.FindWidget(widgetId);
+        if (target is null)
+        {
+            return $"✗ 组件 {widgetId} 已不存在（未保存）。";
+        }
+        ReplaceWidgetComponents(target, null);
+        PinsChanged?.Invoke(); // 展示面即时回传统渲染
+        return $"✓ 已恢复 {target.Id} 的传统渲染（全部展示样式面已清空，即时重渲）。";
     }
 
     private UIElement MakeWidgetRow(WidgetConfig widget)
@@ -2828,6 +2888,8 @@ internal sealed class SettingsWindow : Window
         treeButton.Click += (_, _) => OpenComponentTreeEditor(widget);
         // 展示样式入口（2026-10-18 外部评审 P0）：定向打开组件中心，自动带入该组件真实状态
         var styleButton = new Button { Content = "展示样式" };
+        // UIA 取证/CI 入口（评审场景 AE）：每行样式入口稳定锚（与 widget-delete-{id} 同排布）
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(styleButton, $"style-button-{widget.Id}");
         styleButton.Click += (_, _) => OpenComponentStyleCenter(widget);
         row.Children.Add(label);
         row.Children.Add(styleButton);

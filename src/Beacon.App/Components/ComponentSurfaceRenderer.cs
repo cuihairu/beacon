@@ -122,11 +122,19 @@ internal static class ComponentSurfaceRenderer
         },
         ["sectionlabel"] = context =>
             ComponentLayout.SectionLabel(DisplayText(context.Binding("text"), context.Prop("text")), context.Foreground),
-        ["metric"] = context => ComponentMetric.Value(
-            DisplayText(context.Binding("value"), context.Prop("value")),
-            context.Node.Props.TryGetValue("unit", out var unit) && !string.IsNullOrWhiteSpace(unit) ? unit : null,
-            context.Foreground,
-            context.PropDouble("fontSize", DesignTokens.FontHeader)),
+        ["metric"] = context =>
+        {
+            var value = DisplayText(context.Binding("value"), context.Prop("value"));
+            if (string.IsNullOrEmpty(value))
+            {
+                return WaitingDataCaption(); // 绑定在而值缺席（percent 选择器无进度）：缺失 ≠ 0%（评审 G07）
+            }
+            return ComponentMetric.Value(
+                value,
+                context.Node.Props.TryGetValue("unit", out var unit) && !string.IsNullOrWhiteSpace(unit) ? unit : null,
+                context.Foreground,
+                context.PropDouble("fontSize", DesignTokens.FontHeader));
+        },
         ["progress"] = Progress,
         ["ring"] = Ring,
         ["pool"] = Pool,
@@ -262,14 +270,19 @@ internal static class ComponentSurfaceRenderer
             () => context.Actions!.Run(action));
     }
 
-    /// <summary>进度条：绑定槽 progress（0..1，越界钳位）优先，回退静态 Props.progress；width 默认 96 DIP。</summary>
+    /// <summary>进度条：绑定槽 progress（0..1，越界钳位）优先，回退静态 Props.progress；width 默认 96 DIP。
+    /// 绑定在而值缺席（首取数前/字段缺）→「等待数据」占位（评审 G07：缺数据 ≠ 0%，不给假的确定进度）。</summary>
     /// <summary>注册类型键（设置页可视化树编辑器的类型词汇单源——渲染侧已知什么才允许声明什么）。
     /// 必须在 Registry 字段初始化之后取值（静态初始化按文本序）。</summary>
     public static IReadOnlyList<string> KnownTypes { get; } = Registry.Keys.Order().ToArray();
 
     private static FrameworkElement Progress(NodeContext context)
     {
-        var fraction = BoundFraction(context);
+        var source = ResolveFraction(context, out var fraction);
+        if (source == ProgressSource.Missing)
+        {
+            return WaitingDataCaption();
+        }
         var (track, fill) = ComponentProgress.Bar(fraction, context.PropDouble("width", 96));
         // 2026-10-18 修复：fill 色原漏上（Shape.Fill 默认 null=透明，声明式树进度条只剩浅轨）——
         // 补档位色（ProgressTiers 判档），与传统 tile 链（PinnedHostWindow）同口径。
@@ -280,12 +293,34 @@ internal static class ComponentSurfaceRenderer
         return host;
     }
 
-    /// <summary>进度槽取值（Progress/Ring/Pool 同口径）：绑定槽 progress 优先（0..1 钳位），
-    /// 回退静态 Props.progress；绑定为空串（无状态/字段缺）即回退静态值。</summary>
-    private static double BoundFraction(NodeContext context)
-        => double.TryParse(context.Binding("progress"), CultureInfo.InvariantCulture, out var bound)
-            ? Math.Clamp(bound, 0, 1)
-            : Math.Clamp(context.PropDouble("progress", 0), 0, 1);
+    /// <summary>「等待数据」占位（评审 G07 缺失值区分）：绑定在而值缺席的进度位/数值位统一出它，
+    /// 与有效 0%（空轨/空环/0% 读数）显式区分。</summary>
+    private static FrameworkElement WaitingDataCaption()
+        => ComponentText.Caption("等待数据", new SolidColorBrush(ThemeColors.Label()));
+
+    private enum ProgressSource { Bound, Static, Missing }
+
+    /// <summary>进度槽三态取值（Progress/Ring/Pool 同口径，评审 G07）：
+    /// Bound=绑定解析成功（0..1 钳位，0 也是有效值）；Static=无绑定回退静态 Props.progress；
+    /// Missing=绑定声明在但取不到值（无状态/字段缺）——不回退静态 0 假装「0%」。</summary>
+    private static ProgressSource ResolveFraction(NodeContext context, out double fraction)
+    {
+        var hasBinding = context.Node.Bindings.Any(b =>
+            b is not null && string.Equals(b.Field, "progress", StringComparison.OrdinalIgnoreCase));
+        if (hasBinding)
+        {
+            var bound = context.Binding("progress");
+            if (double.TryParse(bound, CultureInfo.InvariantCulture, out var parsed))
+            {
+                fraction = Math.Clamp(parsed, 0, 1);
+                return ProgressSource.Bound;
+            }
+            fraction = 0;
+            return ProgressSource.Missing; // 绑定在而值缺席：数据驱动意图明确，不用静态值冒充
+        }
+        fraction = Math.Clamp(context.PropDouble("progress", 0), 0, 1);
+        return ProgressSource.Static;
+    }
 
     /// <summary>静态数值 Props 的有界钳位（Ring/Pool 专用）：解析值越界取边界，非有限值
     /// （NaN/Infinity 可被 TryParse 解析出来）回缺省——NaN 进 Width/Height 恒 E_INVALIDARG。</summary>
@@ -300,7 +335,11 @@ internal static class ComponentSurfaceRenderer
     /// 从 12 点方向起笔）；size/thickness 静态 Props 可调（有界钳位）。</summary>
     private static FrameworkElement Ring(NodeContext context)
     {
-        var fraction = BoundFraction(context);
+        var source = ResolveFraction(context, out var fraction);
+        if (source == ProgressSource.Missing)
+        {
+            return WaitingDataCaption(); // 空环与 0% 环不可分——缺失位直接出占位（评审 G07）
+        }
         var size = ClampedProp(context, "size", 30, 16, 96);
         var thickness = ClampedProp(context, "thickness", 3, 1, size / 4);
         var circumference = Math.PI * (size - thickness);
@@ -328,7 +367,11 @@ internal static class ComponentSurfaceRenderer
     /// Radius 随容器；不用 Clip——UIElement.Clip 在 WinUI 只收 RectangleGeometry，8b94469 实证）。</summary>
     private static FrameworkElement Pool(NodeContext context)
     {
-        var fraction = BoundFraction(context);
+        var source = ResolveFraction(context, out var fraction);
+        if (source == ProgressSource.Missing)
+        {
+            return WaitingDataCaption(); // 空池与 0% 池不可分——缺失位直接出占位（评审 G07）
+        }
         var width = ClampedProp(context, "width", 30, 16, 96);
         var height = ClampedProp(context, "height", 30, 16, 96);
         const double radius = 6;

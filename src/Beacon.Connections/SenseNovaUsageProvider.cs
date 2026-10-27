@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -16,6 +17,7 @@ public static class SenseNovaWidgetDescriptors
         Type = UsageType,
         DisplayName = "商汤套餐池额度（Token Plan）",
         PinSupported = true,
+        DataKinds = DisplayTemplateKinds.ProgressOnly, // 类型级能力：产百分比（评审 P1 语义描述）
         FloatingOptIn = true,
         SuggestedTier = RefreshTiers.Ci,
         Fields =

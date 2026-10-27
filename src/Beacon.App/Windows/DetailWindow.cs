@@ -46,12 +46,18 @@ internal sealed class DetailWindow : Window
         ((FrameworkElement)Content).Loaded += OnContentLoaded; // 量内容需视觉树就绪（Activate 前触发，无闪跳）
         // P3-03 快照-再-订阅：先订阅再取 Store 快照（总线发布同步落 Store，间隙事件不丢；
         // 同对象重复投递 ApplyState 幂等跳过）。事件发布在刷新线程，UI 对象回本窗 DispatcherQueue。
+        // 评审 G08 源映射：声明式 detail 面声明的附加源变化也要重渲（缺源位由「缺」变「有」），
+        // 只重渲树——自身 _state 不动（附加源事件不属于本组件状态）。
         _subscription = runtime.Bus.Subscribe<WidgetStateChanged>(evt =>
             DispatcherQueue.EnqueueGuarded(() =>
             {
                 if (string.Equals(evt.State.WidgetId, _state.WidgetId, StringComparison.Ordinal))
                 {
                     ApplyState(evt.State);
+                }
+                else if (ConsumesSource(evt.State.WidgetId))
+                {
+                    RebuildContent();
                 }
             }));
         if (runtime.Host.GetState(_state.WidgetId) is { } latest && !ReferenceEquals(latest, _state))
@@ -77,10 +83,27 @@ internal sealed class DetailWindow : Window
         }
         _state = state;
         Title = $"Beacon · {state.Summary}";
+        RebuildContent();
+    }
+
+    /// <summary>整树重建（ApplyState 与附加源变化共用）：新内容重量高（内容随状态变化，clamp 口径不变）。</summary>
+    private void RebuildContent()
+    {
+        if (_dialogOpen)
+        {
+            return;
+        }
         var content = (FrameworkElement)BuildContent();
-        content.Loaded += OnContentLoaded; // 新内容重量高（内容随状态变化，clamp 口径不变）
+        content.Loaded += OnContentLoaded;
         Content = content;
     }
+
+    /// <summary>该详情窗是否消费此 widget 的状态（评审 G08）：detail 树声明的附加源全集
+    /// （ComponentSourceIndex）含它即消费——无关源变化不重渲。</summary>
+    private bool ConsumesSource(string widgetId)
+        => _runtime.Config.FindWidget(_state.WidgetId) is { } detailWidget
+            && WidgetInstanceResolver.Resolve(detailWidget, "detail") is { } declarative
+            && ComponentSourceIndex.ConsumedWidgetIds(declarative).Contains(widgetId);
 
     /// <summary>窗尺寸：客户区 = 宽 DIP 设计值 × DPI、高 = 内容自然高 clamp 到 [min,max]（超出走 ScrollViewer）。
     /// 与胶囊/快捷面板同口径：DIP 只在 Win32 边界经 DpiLayoutMath 换算一次。
@@ -187,7 +210,9 @@ internal sealed class DetailWindow : Window
         root.Padding = new Thickness(18, 16, 18, 16);
 
         // 声明式详情面（P3-01）：widgets.json 带 detail 树时，头部/meta/反馈/附加表/趋势整体换成
-        // 渲染器输出（绑定驱动自身状态）；最近事件与动作区恒保留（时间线跨状态、动作反馈是契约面）。
+        // 渲染器输出（绑定驱动自身状态 + 附加源映射，评审 G08：附加源按 widgetId 从 Host 取最新
+        // 快照，缺源出缺失态不冒充空值——不再把 Sources 声明当不存在）；最近事件与动作区恒保留
+        // （时间线跨状态、动作反馈是契约面）。
         // Phase 4（2026-10-17 裁定）：HTML 载体面可能声明 actionbutton——动作全集（actions.json +
         // 连接 DSL）与既有执行链注入渲染器；执行走 RunCustomAsync（确认/反馈与手写动作按钮同一链）。
         var detailWidget = _runtime.Config.FindWidget(_state.WidgetId);
@@ -196,7 +221,11 @@ internal sealed class DetailWindow : Window
             var actionBridge = new ComponentActionContext(
                 _runtime.Config.Actions.Concat(_runtime.DslActions).ToList(),
                 RunCustomAsync);
-            root.Children.Add(ComponentSurfaceRenderer.Render(declarative, _state, _palette, actionBridge));
+            var sources = WidgetInstanceResolver.ResolveSources(declarative, id =>
+                string.Equals(id, _state.WidgetId, StringComparison.Ordinal)
+                    ? _state
+                    : _runtime.Host.GetState(id));
+            root.Children.Add(ComponentSurfaceRenderer.Render(declarative, sources, _palette, actionBridge));
         }
         else
         {

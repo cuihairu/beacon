@@ -33,6 +33,7 @@ public static class HttpWidgetDescriptors
     public static WidgetTypeDescriptor Quota { get; } = new()
     {
         Type = QuotaType,
+        DataKinds = DisplayTemplateKinds.ProgressOnly, // 类型级能力：产百分比（评审 P1 语义描述）
         DisplayName = "HTTP 额度（数值卡，任意配额 JSON）",
         PinSupported = true,
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）

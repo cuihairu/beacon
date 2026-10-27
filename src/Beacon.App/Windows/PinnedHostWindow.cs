@@ -38,8 +38,9 @@ internal sealed class PinTile
     // 档位阈值（≥80% warning / ≥98% error）下沉 Core ProgressTiers 单源（Phase 2），此处不再持有
     private const double BarMinFillDips = 2; // 极小进度保底可辨
 
-    /// <summary>tile 高（DIP，尺寸档实例级——TileSizing.TileHeightDips 单源；常规 32 恒等）。</summary>
-    public int TileHeightDips { get; }
+    /// <summary>tile 高（DIP）：max(尺寸档, 模板最小高)——带模板树时按模板防裁切放大
+    /// （评审 P2 裁切：数字卡 48/圆环 34 等），无树恒等尺寸档（TileSizing 单源；常规 32 恒等）。</summary>
+    public int TileHeightDips { get; private set; }
 
     /// <summary>进度百分比字号随 tile 高度分级（固定 12 会在任何 tile 尺寸变化后裁字——
     /// 5K/200% 裁字同族缺陷；DIP 恒定比例，高缩放下 XAML 按新 DPI 等比放大不裁）。</summary>
@@ -97,9 +98,13 @@ internal sealed class PinTile
     private WidgetState? _lastState;
     private readonly string? _connectionType; // 传统面品牌图标用（BuildTraditionalContent，非 ctor 局部）
 
-    /// <summary>该面声明式实例（P3-01）：widgets.json 带 tile 组件树且结构合法时非空——整面走渲染器
-    /// 而非传统六列；非法树 Resolve 已回 null（传统渲染，诊断在加载侧），清空配置即恢复旧面。</summary>
+    /// <summary>该面声明式实例（P3-01）：widgets.json 带 tile 组件树且结构合法时非空——数据槽位
+    /// 走渲染器（外围灯/品牌图标/标签保留，评审 P0 槽位化替换）；非法树 Resolve 已回 null
+    /// （传统渲染，诊断在加载侧），清空配置即恢复旧面。</summary>
     private WidgetInstance? _declarative;
+    /// <summary>声明式数据槽位宿主（评审 P0 槽位化替换）：null=当前是传统六列面——
+    /// RenderDeclarativeFace 据此分流（槽位在位换槽内容，不在位整面替换后由 RefreshConfig 重建）。</summary>
+    private Grid? _declarativeHost;
     private Severity? _lastSeverity;
     private global::Windows.UI.Color? _lastFillColor; // 上次状态灯着色——变色过渡只在色变 tick 重放，同色 tick 直接填充不闪灯
     private bool _suspended; // 收起态暂停动画循环（B-707 验收：隐藏/收起无动画循环）
@@ -201,25 +206,68 @@ internal sealed class PinTile
     {
         WidgetId = widget.Id;
         TileWidthDips = TileSizing.TileWidthDips(widget);
-        TileHeightDips = TileSizing.TileHeightDips(widget); // 尺寸档（Config["sizeTier"]，常规 32 恒等）
-        _root.Height = TileHeightDips;
-        _progressText.FontSize = ProgressFontDips; // 随 tile 高度分级（高×0.375），尺寸档变化后不裁字
         _widget = widget;
         _palette = palette;
         _motion = motion;
         _connectionType = connectionType;
 
-        // 声明式 tile（P3-01）：带合法 tile 树时整面走渲染器——传统六列不建（BuildTraditionalContent
-        // 可随时重建，配置清空树后 RefreshConfig 走它恢复旧面）；非法树 Resolve 已回 null（传统渲染）。
-        // 此处走自身状态单源渲染（state: 具名消歧）：StateLookup 尚未挂（对象初始化器在构造后执行），
-        // 带源渲染会把未到齐的附加源误报缺失态——首帧后宿主重放状态即换带源渲染（P3-03）。
+        // 声明式 tile（P3-01）：带合法 tile 树时数据槽位走渲染器，外围（灯/品牌图标/标签）保留
+        // （评审 P0 槽位化替换：换样式不丢「这是哪个源」的上下文）；非法树 Resolve 已回 null（传统渲染）。
         _declarative = WidgetInstanceResolver.Resolve(widget, "tile");
+        // 高度 = max(尺寸档, 模板最小高)（评审 P2 裁切）：数字卡 48/圆环 34 等按需放大，无树恒等尺寸档
+        TileHeightDips = EffectiveTileHeight(widget, _declarative);
+        _root.Height = TileHeightDips;
+        _progressText.FontSize = ProgressFontDips; // 随 tile 高度分级（高×0.375），尺寸档变化后不裁字
         if (_declarative is not null)
         {
-            _root.Child = ComponentSurfaceRenderer.Render(_declarative, state: null, _palette);
+            BuildSlottedContent();
             return;
         }
         BuildTraditionalContent();
+    }
+
+    /// <summary>tile 有效高（评审 P2 裁切）：声明式树经 DisplayTemplates.MinTileHeightDipsOf 反解
+    /// 模板身份取最小高（自定义树 0 不放大），与尺寸档取大——「模板要的高」和「用户选的档」都满足。</summary>
+    private static int EffectiveTileHeight(WidgetConfig widget, WidgetInstance? declarative)
+    {
+        var tier = TileSizing.TileHeightDips(widget); // 尺寸档（Config["sizeTier"]，常规 32 恒等）
+        var templateMin = (int)Math.Ceiling(DisplayTemplates.MinTileHeightDipsOf(declarative?.Root));
+        return Math.Max(tier, templateMin);
+    }
+
+    /// <summary>声明式槽位面构建（评审 P0 槽位化替换）：外围三列（灯/品牌图标/标签——与传统面同源
+    /// 同位，「这是哪个源」的上下文换样式不丢）+ 数据槽位（Star 列，模板树渲染进 _declarativeHost）。
+    /// 池/条/进度文本等传统专属件不建（模板树自带进度表现）；灯照常随状态驱动（Update 声明式分支）。</summary>
+    private void BuildSlottedContent()
+    {
+        var widget = _widget;
+        _label.Text = LabelOf(widget);
+        var icon = BrandIconFactory.TryCreate(_connectionType, 16, ThemeColors.Label(), iconOverride: widget.Config.GetValueOrDefault("icon"), strokeWidth: 1)
+            ?? new FontIcon
+            {
+                Glyph = "\uE774", // Segoe Fluent World：通用数据源兜底（与 BuildTraditionalContent 同口径）
+                FontSize = DesignTokens.FontTitle,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(ThemeColors.Label()),
+            };
+        _declarativeHost = new Grid();
+        var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, _palette.Density), GridLength.Auto, GridLength.Auto,
+            new GridLength(1, GridUnitType.Star));
+        Grid.SetColumn(_light, 0);
+        Grid.SetColumn(icon, 1);
+        Grid.SetColumn(_label, 2);
+        Grid.SetColumn(_declarativeHost, 3);
+        grid.Children.Add(_light);
+        grid.Children.Add(icon);
+        grid.Children.Add(_label);
+        grid.Children.Add(_declarativeHost);
+        _root.Child = grid;
+        if (_declarative is { } declarative)
+        {
+            // 首帧自身状态单源渲染（_lastState 此时尚空）：StateLookup 还没挂（对象初始化器在构造后
+            // 执行），带源渲染会把未到齐的附加源误报缺失态——首帧后宿主重放状态即换带源渲染（P3-03）。
+            RenderDeclarativeFace(declarative);
+        }
     }
 
     /// <summary>传统六列 tile 构建（灯/品牌图标/标签/值/池或条/进度文本）——原构造主体，
@@ -300,7 +348,8 @@ internal sealed class PinTile
     }
 
     /// <summary>配置对象刷新（P3-01）：UpsertWidget 是替换语义，宿主 ReloadTiles 把新 WidgetConfig
-    /// 交给已存 tile——树变更下一帧即重渲生效；无树→有树、有树→无树（清空配置回传统面）都在此收口。</summary>
+    /// 交给已存 tile——树变更下一帧即重渲生效；无树→有树、有树→无树（清空配置回传统面）都在此收口。
+    /// 声明式在位时高度随模板重算（评审 P2 裁切：换更高模板即放大行高，不用等重建）。</summary>
     public void RefreshConfig(WidgetConfig widget)
     {
         _widget = widget;
@@ -312,11 +361,26 @@ internal sealed class PinTile
         _declarative = declarative;
         if (declarative is not null)
         {
-            RenderDeclarativeFace(declarative);
+            var height = EffectiveTileHeight(widget, declarative);
+            if (_declarativeHost is null || height != TileHeightDips)
+            {
+                // 传统→声明式首切（槽位未建），或模板变了导致目标高变了：重建槽位面（外围随新标签/图标一起挂）
+                TileHeightDips = height;
+                _root.Height = TileHeightDips;
+                BuildSlottedContent();
+            }
+            else
+            {
+                RenderDeclarativeFace(declarative); // 同高换树/换参数：只换数据槽内容
+            }
         }
         else
         {
-            BuildTraditionalContent(); // 清空配置恢复旧面：重建传统六列（含 SizeChanged 几何回调重挂）
+            // 清空配置恢复旧面：重建传统六列（含 SizeChanged 几何回调重挂），高度回尺寸档
+            _declarativeHost = null;
+            TileHeightDips = EffectiveTileHeight(widget, null);
+            _root.Height = TileHeightDips;
+            BuildTraditionalContent();
         }
     }
 
@@ -334,9 +398,20 @@ internal sealed class PinTile
         _lastState = state;
         if (_declarative is { } declarative)
         {
-            // 声明式分支（P3-01/P3-03）：整树重渲（≤256 节点、无跨帧局部状态；附加源经 StateLookup
-            // 取宿主快照）+ 沿用传统面的陈旧/离线 tooltip 口径；动效（闪烁/脉冲/呼吸）暂不作用于
-            // 声明式树，色彩语义由绑定档位色承担。
+            // 声明式分支（P3-01/P3-03）：数据槽整树重渲（≤256 节点、无跨帧局部状态；附加源经
+            // StateLookup 取宿主快照）+ 沿用传统面的陈旧/离线 tooltip 口径；动效（闪烁/脉冲/呼吸）
+            // 暂不作用于声明式树，色彩语义由绑定档位色承担。
+            // 外围灯照常随状态驱动（评审 P0 槽位化替换：外围保留且活——含 colorOverride 与离线灰空心）
+            if (state.ConnectionHealthy)
+            {
+                _light.Fill = new SolidColorBrush(_palette.SeverityColor(state.Severity, widgetOverride: _widget.ColorOverride));
+                _light.Stroke = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+            else
+            {
+                _light.Fill = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                _light.Stroke = new SolidColorBrush(_palette.SeverityColor(state.Severity, offline: true)); // Offline 灰
+            }
             RenderDeclarativeFace(declarative);
             ToolTipService.SetToolTip(_root,
                 !state.ConnectionHealthy
@@ -399,13 +474,24 @@ internal sealed class PinTile
     }
 
     /// <summary>声明式面渲染统一入口（P3-03）：附加源经 ResolveSources 从 StateLookup 取宿主快照；
-    /// 未接 lookup 回自身状态单源（P3-01 切片语义不变）。缺席源由渲染器出缺失态，不冒充空值。</summary>
+    /// 未接 lookup 回自身状态单源（P3-01 切片语义不变）。缺席源由渲染器出缺失态，不冒充空值。
+    /// 槽位化替换（评审 P0）：只换数据槽内容（_declarativeHost），外围灯/图标/标签不动；
+    /// 宿主不在位（防御：构建顺序异常）退整面替换。</summary>
     private void RenderDeclarativeFace(WidgetInstance declarative)
     {
         var lookup = StateLookup;
         var sources = WidgetInstanceResolver.ResolveSources(declarative, lookup
             ?? (id => string.Equals(id, declarative.Id, StringComparison.Ordinal) ? _lastState : null));
-        _root.Child = ComponentSurfaceRenderer.Render(declarative, sources, _palette);
+        var rendered = ComponentSurfaceRenderer.Render(declarative, sources, _palette);
+        if (_declarativeHost is { } host)
+        {
+            host.Children.Clear();
+            host.Children.Add(rendered);
+        }
+        else
+        {
+            _root.Child = rendered;
+        }
     }
 
     /// <summary>该面是否消费此 widget 的状态（P3-03 依赖路由）：传统面只认自身；声明式面按

@@ -1,3 +1,5 @@
+using Beacon.Core.Services;
+
 namespace Beacon.Core.Models;
 
 /// <summary>
@@ -28,4 +30,8 @@ public sealed record WidgetTypeDescriptor
     public bool FloatingOptIn { get; init; }
     public string SuggestedTier { get; init; } = RefreshTiers.Default;
     public IReadOnlyList<WidgetFieldDescriptor> Fields { get; init; } = [];
+    /// <summary>语义数据能力（2026-10-22 评审 P1 语义描述）：类型稳定声明的输出数据种类
+    /// （"progress" 百分比等），与当前值无关——空状态/离线也要按能力列展示样式，不把
+    /// 「这次没值」等同「不支持进度」（评审 G06）。DisplayTemplates 按此判断兼容性。</summary>
+    public IReadOnlySet<string> DataKinds { get; init; } = DisplayTemplateKinds.None;
 }

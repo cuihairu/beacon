@@ -576,7 +576,12 @@ function Start-MockServer
         $bigmodel = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":38,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         # 档位翻转态（G 场景状态变化/动效断言）：主窗 percentage 95 ≥ error_percent(90) → severity Error
         $bigmodelError = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":95,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":61,"nextResetTime":0}]}}'
-        # 档位文件：内容 "error" = 95% 态，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
+        # 四态渲染档（场景 AE 验收③）：p0=0%（percent 选择器出「0%」，0 是有效值）/ p52=52%（中位）/
+        # p100=100%（满格，Progress=1.0 →「100%」）；三窗最高窗取主窗值，severity 走各自档
+        $bigmodelP0 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":0,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":0,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":0,"nextResetTime":0}]}}'
+        $bigmodelP52 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":52,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":10,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
+        $bigmodelP100 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":100,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
+        # 档位文件：内容 "error"=95% / "p0"=0% / "p52"=52% / "p100"=100%，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
         $modeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
@@ -606,7 +611,12 @@ function Start-MockServer
                     "/api/monitor/usage/quota/limit" {
                         $mode = ""
                         try { $mode = (Get-Content $modeFile -Raw -ErrorAction Stop).Trim() } catch { }
-                        $body = if ($mode -eq "error") { $bigmodelError } else { $bigmodel } # 38% 健康链 / 95% Error 链按档位文件翻转
+                        # 38% 健康链 / 95% Error 链 / 0%-52%-100% 四态链按档位文件翻转
+                        $body = if ($mode -eq "error") { $bigmodelError }
+                            elseif ($mode -eq "p0") { $bigmodelP0 }
+                            elseif ($mode -eq "p52") { $bigmodelP52 }
+                            elseif ($mode -eq "p100") { $bigmodelP100 }
+                            else { $bigmodel }
                     }
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
@@ -1193,6 +1203,38 @@ function Get-ClickPoint([System.Windows.Automation.AutomationElement] $element)
     try { $r = $element.Current.BoundingRectangle } catch { }
     if ($null -eq $r -or $r.IsEmpty -or [double]::IsNaN($r.X) -or [double]::IsNaN($r.Y) -or [double]::IsNaN($r.Width) -or [double]::IsNaN($r.Height)) { return $null }
     return @( [int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2) )
+}
+
+# 组件中心窗定位（场景 AE）：SampleGalleryWindow Title 恒「Beacon · 组件中心」（与 Find-SettingsWindow 同款）
+function Find-GalleryWindow([int] $timeoutSec = 20)
+{
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Beacon · 组件中心")
+    $deadline = (Get-Date).AddSeconds($timeoutSec)
+    while ((Get-Date) -lt $deadline)
+    {
+        $found = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $condition)
+        if ($found) { return $found }
+        Start-Sleep -Milliseconds 500
+    }
+    return $null
+}
+
+# 元素坐标点击（场景 AE）：ListView 行选择走 ItemClick 链（UIA SelectionItem.Select 不触发 ItemClick）。
+# 先 ForceForeground 防坐标被最上层窗吃掉（tile 压行实证），坐标 NaN/空 6s 轮询后仍无即抛（NaN 进 [int] 会裸炸）。
+function Send-ElementClick([IntPtr] $hwnd, [System.Windows.Automation.AutomationElement] $element, [string] $tag)
+{
+    [WinEnum]::ForceForeground($hwnd)
+    Start-Sleep -Milliseconds 400
+    $point = $null
+    $deadline = (Get-Date).AddSeconds(6)
+    while ((Get-Date) -lt $deadline)
+    {
+        $point = Get-ClickPoint $element
+        if ($point) { break }
+        Start-Sleep -Milliseconds 400
+    }
+    if (!$point) { Save-FullScreenshot "AE-FAIL-no-point-$tag.png"; throw "断言失败（场景 AE）：$tag 取不到可点坐标（BoundingRectangle NaN/空——虚拟化或未布局？）" }
+    [WinEnum]::ClickAt($point[0], $point[1])
 }
 
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
@@ -5512,6 +5554,218 @@ catch
     Save-FullScreenshot "AD-FAIL-unexpected.png"
     $failures.Add("场景 AD：$($_.Exception.Message)")
     Write-Host "::error::场景 AD 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 AE：展示样式能力闭环（2026-10-24 评审 G01-G07/G10 CI 代验；todo 行 136-139 验收 ①②③④）——
+# AE1 空状态可配置（验收①/G01 断链/G06 能力筛选/G07 缺失态）：zhipu enabled=false → 刷新链静默跳过
+#   （WidgetHost）→ GLM 恒 null 状态（确定性空态，PublishStale 都不触发）；组件行「展示样式」照常
+#   定向打开（模式由目标组件决定，不由状态有无决定）；模板列表按类型能力 DataKinds=progress 列全 5 项
+#   （空状态不降级成只有状态行）；预览出「等待数据」占位（绑定在值缺席 ≠ 0%）；选数字卡应用落盘。
+# AE2 四态渲染（验收③/G07/G05 槽位）：mock 档位文件 p0/p52/p100 → GLM tile 数字卡面依次显
+#   精确「0%」「52%」「100%」（0 是有效值不是缺失）；Stop-MockServer → 刷新失败合成态 Progress=null
+#   → tile 数字位显「等待数据」。首轮顺带断言「GLM」外围标签仍在（验收④槽位替换保外围）。
+# AE3 双面不互覆 + 样式恢复 + 重置（验收②/G02 旧对象/G04 恢复/G10 兜底）：同一窗会话先应用
+#   tile=数字卡（AE1 已落）再切 row=圆环应用 → widgets.json 双面并存（应用按 Id 重取最新，闭包旧
+#   对象不覆写）；重开样式中心反解选中数字卡（Identify 非默认横条）；style-reset 清面回传统渲染。
+try
+{
+    # ===== AE1 空状态可配置 =====
+    Write-GConfig "" "off" 1.0
+    # zhipu 停用（在册 enabled=false）：GLM 无状态且不弹「拉取失败」——GetState 恒 null 的唯一确定性路径
+    @'
+[
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": false },
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
+]
+'@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    Ensure-MockServer # ds 健康链用（GLM 不请求）
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { Save-FullScreenshot "AE-FAIL-no-settings.png"; throw "断言失败（场景 AE1）：--settings 启动 30s 内未见设置窗" }
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { throw "断言失败（场景 AE1）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    $styleButton = Find-UiaById $settings "style-button-bigmodel.usage:GLM" 10
+    if (!$styleButton) { Save-FullScreenshot "AE-FAIL-no-style-button.png"; throw "断言失败（场景 AE1）：UIA 未找到 style-button-bigmodel.usage:GLM（锚点丢失？）" }
+    Invoke-Uia $styleButton
+    $gallery = Find-GalleryWindow 15
+    if (!$gallery) { Save-FullScreenshot "AE-FAIL-no-gallery.png"; throw "断言失败（场景 AE1）：展示样式窗 15s 未开——空状态（GetState null）定向链断（G01 回归）" }
+    $galleryHandles = [WinEnum]::VisibleHandlesByTitle("Beacon · 组件中心")
+    if ($galleryHandles.Count -ne 1) { throw "断言失败（场景 AE1）：组件中心窗句柄数 $($galleryHandles.Count)（期望 1）" }
+    # 能力级列表（G06）：空状态也列全 4 进度模板 + 状态行
+    foreach ($templateId in @("bar", "ring", "number", "pool", "statusline"))
+    {
+        if (!(Find-UiaById $gallery "style-item-$templateId" 6))
+        {
+            Save-FullScreenshot "AE-FAIL-missing-item-$templateId.png"
+            throw "断言失败（场景 AE1）：样式列表缺 style-item-$templateId——空状态未按类型能力列全（G06 回归：把「这次没值」当「不支持」）"
+        }
+    }
+    # 预览缺失态（G07）：绑定在值缺席 → 「等待数据」占位，不显 0%
+    $galleryTexts = Get-WindowUiaTexts $galleryHandles[0]
+    if (@($galleryTexts) -notcontains "等待数据")
+    {
+        Save-FullScreenshot "AE-FAIL-preview-missing-state.png"
+        throw "断言失败（场景 AE1）：空状态预览未见「等待数据」（G07 回归）；实际：$(@($galleryTexts) -join ' | ')"
+    }
+    # 选数字卡（坐标点击走 ItemClick 链）→ 应用 → 反馈 ✓ + widgets.json tile 面落盘
+    $numberItem = Find-UiaById $gallery "style-item-number" 8
+    Send-ElementClick $galleryHandles[0] $numberItem "style-item-number"
+    Start-Sleep -Seconds 1
+    Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
+    $appliedAE1 = $false
+    $feedbackEl = $null
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $feedbackEl = Find-UiaById $gallery "style-feedback" 4
+        if ($feedbackEl)
+        {
+            try { if ($feedbackEl.Current.Name -like "*已应用展示样式*") { $appliedAE1 = $true; break } } catch { }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$appliedAE1)
+    {
+        Save-FullScreenshot "AE-FAIL-apply-feedback.png"
+        $fbName = ""
+        try { $fbName = $feedbackEl.Current.Name } catch { }
+        throw "断言失败（场景 AE1）：应用反馈未见「已应用展示样式」（实际：$fbName）——空状态应用链断"
+    }
+    $appliedFile = $false
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.components -and $glmEntry.components.tile) { $appliedFile = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (!$appliedFile) { Save-FullScreenshot "AE-FAIL-tree-not-saved.png"; throw "断言失败（场景 AE1）：widgets.json GLM components.tile 未落盘——空状态应用未持久化" }
+    Write-Host "场景 AE1 通过：空状态照常定向（5 模板列全 + 等待数据占位 + 应用落盘）——G01/G06/G07 验收①"
+    Stop-Beacon
+
+    # ===== AE2 四态渲染（0/52/100/缺失）+ 槽位保外围 =====
+    $aeModeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
+    Set-Content -Path $aeModeFile -Value "p0" -Encoding ASCII # 首跳即 0%（0 是有效值）
+    @'
+[
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
+]
+'@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    function Get-GlmTileHandle
+    {
+        foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+        {
+            $texts = Get-WindowUiaTexts $h
+            if (@($texts) -contains "GLM") { return $h }
+        }
+        return [IntPtr]::Zero
+    }
+    function Wait-GlmTileText([string] $exact, [int] $timeoutSec, [string] $stage)
+    {
+        $deadline = (Get-Date).AddSeconds($timeoutSec)
+        while ((Get-Date) -lt $deadline)
+        {
+            $h = Get-GlmTileHandle
+            if ($h -ne [IntPtr]::Zero)
+            {
+                $texts = @(Get-WindowUiaTexts $h)
+                if ($texts -contains $exact) { return $texts }
+            }
+            Start-Sleep -Seconds 2
+        }
+        $h = Get-GlmTileHandle
+        $last = if ($h -ne [IntPtr]::Zero) { @(Get-WindowUiaTexts $h) -join " | " } else { "（GLM tile 未建窗）" }
+        Save-FullScreenshot "AE-FAIL-state-$stage.png"
+        throw "断言失败（场景 AE2 $stage）：GLM tile 文本未见精确「$exact」（ci 档 15s，等 ${timeoutSec}s）；实际：$last"
+    }
+    $texts0 = Wait-GlmTileText "0%" 60 "p0"
+    if (@($texts0) -notcontains "GLM") { Save-FullScreenshot "AE-FAIL-slot-peripheral.png"; throw "断言失败（场景 AE2）：模板树接管数据槽但外围标签 GLM 消失（验收④槽位替换保外围回归）" }
+    Write-Host "场景 AE2（0%）通过：数字卡显「0%」且外围 GLM 标签在（槽位替换保外围——验收④）"
+    Set-Content -Path $aeModeFile -Value "p52" -Encoding ASCII
+    Wait-GlmTileText "52%" 60 "p52" | Out-Null
+    Write-Host "场景 AE2（52%）通过：数字卡显「52%」"
+    Set-Content -Path $aeModeFile -Value "p100" -Encoding ASCII
+    Wait-GlmTileText "100%" 60 "p100" | Out-Null
+    Write-Host "场景 AE2（100%）通过：数字卡显「100%」"
+    Stop-MockServer # 缺失态：刷新失败 → PublishStale 合成态 Progress=null → 数字位「等待数据」（G07）
+    Wait-GlmTileText "等待数据" 60 "missing" | Out-Null
+    Write-Host "场景 AE2（缺失）通过：刷新失败合成态数字位显「等待数据」（缺失 ≠ 0%）——四态渲染齐（验收③）"
+
+    # ===== AE3 双面不互覆 + 样式恢复 + 恢复传统渲染 =====
+    Stop-Beacon
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow
+    if (!$settings) { Save-FullScreenshot "AE-FAIL-no-settings3.png"; throw "断言失败（场景 AE3）：--settings 启动 30s 内未见设置窗" }
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { throw "断言失败（场景 AE3）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    Invoke-Uia (Find-UiaById $settings "style-button-bigmodel.usage:GLM" 10)
+    $gallery = Find-GalleryWindow 15
+    if (!$gallery) { Save-FullScreenshot "AE-FAIL-no-gallery3.png"; throw "断言失败（场景 AE3）：展示样式窗 15s 未开" }
+    $galleryHandles = [WinEnum]::VisibleHandlesByTitle("Beacon · 组件中心")
+    # 恢复（G04）：已存 tile=数字卡 → 重开选中数字卡（Identify 反解；默认横条=回归）
+    $numberItem = Find-UiaById $gallery "style-item-number" 8
+    $barItem = Find-UiaById $gallery "style-item-bar" 8
+    if (!$numberItem -or !$barItem) { throw "断言失败（场景 AE3）：样式列表缺数字卡/横条锚" }
+    $numberSelected = $false; $barSelected = $true
+    try { $numberSelected = ($numberItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Current.IsSelected } catch { }
+    try { $barSelected = ($barItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Current.IsSelected } catch { }
+    if (!$numberSelected -or $barSelected) { Save-FullScreenshot "AE-FAIL-restore.png"; throw "断言失败（场景 AE3）：重开未反解选中数字卡（number=$numberSelected bar=$barSelected）——样式恢复回归（G04，默认横条=断链）" }
+    Write-Host "场景 AE3（恢复）通过：重开反解选中数字卡（Identify）——G04"
+    # 双面应用（验收②/G02）：同一会话切面 row=圆环再应用 → 双面并存
+    $surfaceCombo = Find-UiaById $gallery "style-surface-box" 8
+    if (!$surfaceCombo) { throw "断言失败（场景 AE3）：UIA 未找到 style-surface-box（锚点丢失？）" }
+    Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
+    $ringItem = Find-UiaById $gallery "style-item-ring" 8
+    Send-ElementClick $galleryHandles[0] $ringItem "style-item-ring"
+    Start-Sleep -Seconds 1
+    Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
+    $twoFaces = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.components -and $glmEntry.components.tile -and $glmEntry.components.row) { $twoFaces = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (!$twoFaces)
+    {
+        Save-FullScreenshot "AE-FAIL-two-faces.png"
+        throw "断言失败（场景 AE3）：连续双面应用后 widgets.json 未同时保有 tile+row 面——面互覆（G02 旧对象覆写回归，验收②）"
+    }
+    Write-Host "场景 AE3（双面）通过：tile=数字卡 + row=圆环 双面并存（应用按 Id 重取最新）——G02/验收②"
+    # 恢复传统渲染（G10 兜底）：style-reset → 清面回传统渲染
+    Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
+    $resetDone = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $null -eq $glmEntry.components) { $resetDone = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (!$resetDone)
+    {
+        Save-FullScreenshot "AE-FAIL-reset.png"
+        throw "断言失败（场景 AE3）：恢复传统渲染后 widgets.json components 未清空——G10 兜底回归"
+    }
+    Write-Host "场景 AE3（重置）通过：components 清空回传统渲染——G10"
+    Remove-Item $aeModeFile -Force -ErrorAction SilentlyContinue # 还原默认 38% 态（不毒化后续场景）
+    Stop-Beacon
+    Write-Host "场景 AE 通过：空状态可配置 + 四态渲染 + 双面不互覆 + 槽位保外围 + 恢复/重置——展示样式能力闭环（验收 ①②③④）"
+}
+catch
+{
+    Stop-Beacon
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "AE-FAIL-unexpected.png"
+    $failures.Add("场景 AE：$($_.Exception.Message)")
+    Write-Host "::error::场景 AE 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——

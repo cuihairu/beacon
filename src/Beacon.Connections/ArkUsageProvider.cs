@@ -20,6 +20,7 @@ public static class ArkWidgetDescriptors
         Type = UsageType,
         DisplayName = "方舟 Coding Plan 额度（火山）",
         PinSupported = true,
+        DataKinds = DisplayTemplateKinds.ProgressOnly, // 类型级能力：产百分比（评审 P1 语义描述）
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
