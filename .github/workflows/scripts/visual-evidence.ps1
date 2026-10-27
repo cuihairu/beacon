@@ -5587,8 +5587,11 @@ catch
 #   定向打开（模式由目标组件决定，不由状态有无决定）；模板列表按类型能力 DataKinds=progress 列全 5 项
 #   （空状态不降级成只有状态行）；预览出「等待数据」占位（绑定在值缺席 ≠ 0%）；选数字卡应用落盘。
 # AE2 四态渲染（验收③/G07/G05 槽位）：mock 档位文件 p0/p52/p100 → GLM tile 数字卡面依次显
-#   精确「0%」「52%」「100%」（0 是有效值不是缺失）；Stop-MockServer → 刷新失败合成态 Progress=null
-#   → tile 数字位显「等待数据」。首轮顺带断言「GLM」外围标签仍在（验收④槽位替换保外围）。
+#   精确「0%」「52%」「100%」（0 是有效值不是缺失）；Stop-MockServer + 删 cache/zhipu → 无缓存
+#   刷新失败合成态 Progress=null → tile 数字位显「等待数据」。首轮顺带断言「GLM」外围标签仍在
+#   （验收④槽位替换保外围）。注意 PublishStale 两分支（40574990674 红跑实证）：有缓存 = B-206
+#   last-known 保留旧值（p100 照显 100%，灰显走 ConnectionHealthy）；「等待数据」面只属无缓存分支
+#   （Progress=null + 摘要「拉取失败：…」）——缺失态必须删缓存才可命中，两分支各是对的、别混断。
 # AE3 双面不互覆 + 样式恢复 + 重置（验收②/G02 旧对象/G04 恢复/G10 兜底）：同一窗会话先应用
 #   tile=数字卡（AE1 已落）再切 row=圆环应用 → widgets.json 双面并存（应用按 Id 重取最新，闭包旧
 #   对象不覆写）；重开样式中心反解选中数字卡（Identify 非默认横条）；style-reset 清面回传统渲染。
@@ -5727,9 +5730,19 @@ try
     Set-Content -Path $aeModeFile -Value "p100" -Encoding ASCII
     Wait-GlmTileText "100%" 60 "p100" | Out-Null
     Write-Host "场景 AE2（100%）通过：数字卡显「100%」"
-    Stop-MockServer # 缺失态：刷新失败 → PublishStale 合成态 Progress=null → 数字位「等待数据」（G07）
-    Wait-GlmTileText "等待数据" 60 "missing" | Out-Null
-    Write-Host "场景 AE2（缺失）通过：刷新失败合成态数字位显「等待数据」（缺失 ≠ 0%）——四态渲染齐（验收③）"
+    # 缺失态必须钉「无缓存」分支：Stop-MockServer 后 p100 成功跳已把值写进 cache/zhipu——有缓存时
+    # PublishStale 走 B-206 last-known（保留旧值 100%，摘要不动），数字位永远不是「等待数据」。
+    # 删缓存后下一跳失败即走 cached=null 合成（Progress=null + 摘要「拉取失败：…」）；若删之前恰有
+    # 一跳失败已抢先发过有缓存态也无妨——下一跳（15s 档）即收敛，60s 窗口盖 3-4 跳。
+    Stop-MockServer
+    Remove-Item -LiteralPath (Join-Path $configDir "cache/zhipu") -Recurse -Force -ErrorAction SilentlyContinue
+    $missingTexts = Wait-GlmTileText "等待数据" 60 "missing"
+    if (!(@($missingTexts) | Where-Object { $_ -like "拉取失败*" }))
+    {
+        Save-FullScreenshot "AE-FAIL-missing-branch.png"
+        throw "断言失败（场景 AE2 missing）：数字位「等待数据」在但摘要未见「拉取失败」前缀（分支身份不明——或有缓存 last-known 态在位）；实际：$(@($missingTexts) -join ' | ')"
+    }
+    Write-Host "场景 AE2（缺失）通过：无缓存刷新失败合成态数字位显「等待数据」+ 摘要「拉取失败」前缀（缺失 ≠ 0%）——四态渲染齐（验收③）"
 
     # ===== AE3 双面不互覆 + 样式恢复 + 恢复传统渲染 =====
     Stop-Beacon
