@@ -1219,22 +1219,40 @@ function Find-GalleryWindow([int] $timeoutSec = 20)
     return $null
 }
 
-# 元素坐标点击（场景 AE）：ListView 行选择走 ItemClick 链（UIA SelectionItem.Select 不触发 ItemClick）。
-# 先 ForceForeground 防坐标被最上层窗吃掉（tile 压行实证），坐标 NaN/空 6s 轮询后仍无即抛（NaN 进 [int] 会裸炸）。
-function Send-ElementClick([IntPtr] $hwnd, [System.Windows.Automation.AutomationElement] $element, [string] $tag)
+# 样式条目点击（场景 AE）：坐标点击 + 选中态回读 + 重试（40547402881 AE2 红实证：坐标点击静默
+# 落偏/被吃，ItemClick 未触发 → 默认模板照常应用，错模板直到 tile 渲染才暴露）。回读走
+# SelectionItemPattern.IsSelected——ItemClick 处理器本身 SelectCatalogItem 设 SelectedItem，
+# 选中=处理器跑过的可靠信号（比等渲染副作用近一层）。三连未选中才红，红前留全屏取证。
+function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId)
 {
-    [WinEnum]::ForceForeground($hwnd)
-    Start-Sleep -Milliseconds 400
-    $point = $null
-    $deadline = (Get-Date).AddSeconds(6)
-    while ((Get-Date) -lt $deadline)
+    foreach ($attempt in 1..3)
     {
-        $point = Get-ClickPoint $element
-        if ($point) { break }
+        $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+        $item = Find-UiaById $root $itemId 8
+        if (!$item) { throw "断言失败（场景 AE）：UIA 未找到 $itemId（第 $attempt 次重找仍无）" }
+        [WinEnum]::ForceForeground($hwnd)
         Start-Sleep -Milliseconds 400
+        $point = Get-ClickPoint $item
+        if (!$point) { Save-FullScreenshot "AE-FAIL-no-point-$itemId-$attempt.png"; throw "断言失败（场景 AE）：$itemId 取不到可点坐标（第 $attempt 次）" }
+        [WinEnum]::ClickAt($point[0], $point[1])
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $deadline)
+        {
+            $fresh = Find-UiaById ([System.Windows.Automation.AutomationElement]::FromHandle($hwnd)) $itemId 3
+            if ($fresh)
+            {
+                try
+                {
+                    $sel = $fresh.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+                    if ($sel.Current.IsSelected) { return }
+                }
+                catch { }
+            }
+            Start-Sleep -Milliseconds 400
+        }
     }
-    if (!$point) { Save-FullScreenshot "AE-FAIL-no-point-$tag.png"; throw "断言失败（场景 AE）：$tag 取不到可点坐标（BoundingRectangle NaN/空——虚拟化或未布局？）" }
-    [WinEnum]::ClickAt($point[0], $point[1])
+    Save-FullScreenshot "AE-FAIL-click-$itemId.png"
+    throw "断言失败（场景 AE）：$itemId 坐标点击三连未选中（ItemClick 未触发或点偏——见 AE-FAIL-click 截图）"
 }
 
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
@@ -5613,10 +5631,8 @@ try
         Save-FullScreenshot "AE-FAIL-preview-missing-state.png"
         throw "断言失败（场景 AE1）：空状态预览未见「等待数据」（G07 回归）；实际：$(@($galleryTexts) -join ' | ')"
     }
-    # 选数字卡（坐标点击走 ItemClick 链）→ 应用 → 反馈 ✓ + widgets.json tile 面落盘
-    $numberItem = Find-UiaById $gallery "style-item-number" 8
-    Send-ElementClick $galleryHandles[0] $numberItem "style-item-number"
-    Start-Sleep -Seconds 1
+    # 选数字卡（坐标点击走 ItemClick 链，选中态回读+重试）→ 应用 → 反馈 ✓ + widgets.json tile 面落盘
+    Invoke-StyleItemClick $galleryHandles[0] "style-item-number"
     Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
     $appliedAE1 = $false
     $feedbackEl = $null
@@ -5646,6 +5662,15 @@ try
         Start-Sleep -Seconds 1
     }
     if (!$appliedFile) { Save-FullScreenshot "AE-FAIL-tree-not-saved.png"; throw "断言失败（场景 AE1）：widgets.json GLM components.tile 未落盘——空状态应用未持久化" }
+    # 模板身份钉死（40547402881 教训：「有树」不等于「对树」——数字卡=column 根 + metric 子，
+    # 错模板静默混过此断言的话要到 AE2 tile 渲染才暴露，定位距离拉远）
+    $tileTree = $glmEntry.components.tile
+    $hasMetricChild = @($tileTree.children | Where-Object { $_.type -eq "metric" }).Count -gt 0
+    if ($tileTree.type -ne "column" -or !$hasMetricChild)
+    {
+        Save-FullScreenshot "AE-FAIL-wrong-template.png"
+        throw "断言失败（场景 AE1）：tile 面落盘非数字卡（root=$($tileTree.type)，metric 子节点缺席）——点击切模板未生效或应用了默认横条"
+    }
     Write-Host "场景 AE1 通过：空状态照常定向（5 模板列全 + 等待数据占位 + 应用落盘）——G01/G06/G07 验收①"
     Stop-Beacon
 
@@ -5725,9 +5750,7 @@ try
     $surfaceCombo = Find-UiaById $gallery "style-surface-box" 8
     if (!$surfaceCombo) { throw "断言失败（场景 AE3）：UIA 未找到 style-surface-box（锚点丢失？）" }
     Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
-    $ringItem = Find-UiaById $gallery "style-item-ring" 8
-    Send-ElementClick $galleryHandles[0] $ringItem "style-item-ring"
-    Start-Sleep -Seconds 1
+    Invoke-StyleItemClick $galleryHandles[0] "style-item-ring"
     Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
     $twoFaces = $false
     $deadline = (Get-Date).AddSeconds(20)
@@ -5741,6 +5764,14 @@ try
     {
         Save-FullScreenshot "AE-FAIL-two-faces.png"
         throw "断言失败（场景 AE3）：连续双面应用后 widgets.json 未同时保有 tile+row 面——面互覆（G02 旧对象覆写回归，验收②）"
+    }
+    # row 面模板身份钉死：圆环=row 根 + ring 子（同 AE1 数字卡口径）
+    $rowTree = $glmEntry.components.row
+    $hasRingChild = @($rowTree.children | Where-Object { $_.type -eq "ring" }).Count -gt 0
+    if ($rowTree.type -ne "row" -or !$hasRingChild)
+    {
+        Save-FullScreenshot "AE-FAIL-wrong-row-template.png"
+        throw "断言失败（场景 AE3）：row 面落盘非圆环（root=$($rowTree.type)，ring 子节点缺席）"
     }
     Write-Host "场景 AE3（双面）通过：tile=数字卡 + row=圆环 双面并存（应用按 Id 重取最新）——G02/验收②"
     # 恢复传统渲染（G10 兜底）：style-reset → 清面回传统渲染
