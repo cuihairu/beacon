@@ -316,6 +316,10 @@ internal sealed class SampleGalleryWindow : Window
             }
         }
         _catalogList.ItemClick += OnCatalogItemClicked;
+        // ItemClick 依赖完整指针语义：合成输入（CI SendInput）只翻选中位不触发该事件（run 40560895375
+        // 实证：条目选中高亮但表单仍是旧模板）。SelectionChanged 对两种输入都成立，由它兜底驱动切换；
+        // 两条路在 OnCatalogSelectionChanged 以「目标已是该键」幂等跳过，不会双清参数。
+        _catalogList.SelectionChanged += OnCatalogSelectionChanged;
         catalog.Children.Add(_catalogList);
         Grid.SetColumn(catalog, 0);
         root.Children.Add(catalog);
@@ -452,6 +456,37 @@ internal sealed class SampleGalleryWindow : Window
             _paramValues.Clear();
         }
         SelectCatalogItem(key);
+        BuildForm();
+        RefreshPreviewAndJson();
+    }
+
+    /// <summary>
+    /// 选中兜底驱动：ItemClick 不触发的输入路径（合成点击只改选中位）由 SelectionChanged 接管切换。
+    /// 初始预选与「ItemClick 先到」都命中幂等守卫直接返回——恢复流预填参数不被误清。
+    /// </summary>
+    private void OnCatalogSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_catalogList.SelectedItem is not ListViewItem { Tag: string key })
+        {
+            return;
+        }
+        if (IsTargeted)
+        {
+            if (string.Equals(_templateId, key, StringComparison.Ordinal))
+            {
+                return;
+            }
+            _templateId = key;
+            _paramValues.Clear();
+        }
+        else
+        {
+            if (string.Equals(_selectedType, key, StringComparison.Ordinal))
+            {
+                return;
+            }
+            _selectedType = key;
+        }
         BuildForm();
         RefreshPreviewAndJson();
     }

@@ -1219,11 +1219,13 @@ function Find-GalleryWindow([int] $timeoutSec = 20)
     return $null
 }
 
-# 样式条目点击（场景 AE）：坐标点击 + 选中态回读 + 重试（40547402881 AE2 红实证：坐标点击静默
-# 落偏/被吃，ItemClick 未触发 → 默认模板照常应用，错模板直到 tile 渲染才暴露）。回读走
-# SelectionItemPattern.IsSelected——ItemClick 处理器本身 SelectCatalogItem 设 SelectedItem，
-# 选中=处理器跑过的可靠信号（比等渲染副作用近一层）。三连未选中才红，红前留全屏取证。
-function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId)
+# 样式条目点击（场景 AE）：坐标点击 + 选中态回读 + 表单头回读 + 重试。两轮红跑演进：
+# ① 40547402881（c4b0358 修）：点击落偏静默失败 → 补 IsSelected 回读 + 三连重试；
+# ② 40560895375：IsSelected=true 但表单仍旧模板——WinUI ItemClick 依赖完整指针语义，合成点击只翻
+#    选中位不触发事件（选中高亮≠切换生效）。故回读升级为语义级：给 $expectText（表单头「样式 · 数字卡」
+#    之类），IsSelected 通过后还要窗口文本里等到它；产品侧已补 SelectionChanged 兜底驱动切换，双保险。
+# 三连未达预期才红，红前留全屏取证。
+function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId, [string] $expectText)
 {
     foreach ($attempt in 1..3)
     {
@@ -1235,7 +1237,7 @@ function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId)
         $point = Get-ClickPoint $item
         if (!$point) { Save-FullScreenshot "AE-FAIL-no-point-$itemId-$attempt.png"; throw "断言失败（场景 AE）：$itemId 取不到可点坐标（第 $attempt 次）" }
         [WinEnum]::ClickAt($point[0], $point[1])
-        $deadline = (Get-Date).AddSeconds(5)
+        $deadline = (Get-Date).AddSeconds(6)
         while ((Get-Date) -lt $deadline)
         {
             $fresh = Find-UiaById ([System.Windows.Automation.AutomationElement]::FromHandle($hwnd)) $itemId 3
@@ -1244,7 +1246,12 @@ function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId)
                 try
                 {
                     $sel = $fresh.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
-                    if ($sel.Current.IsSelected) { return }
+                    if ($sel.Current.IsSelected)
+                    {
+                        if (!$expectText) { return }
+                        $texts = Get-WindowUiaTexts $hwnd
+                        if (@($texts | Where-Object { $_ -eq $expectText }).Count -gt 0) { return }
+                    }
                 }
                 catch { }
             }
@@ -1252,7 +1259,7 @@ function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId)
         }
     }
     Save-FullScreenshot "AE-FAIL-click-$itemId.png"
-    throw "断言失败（场景 AE）：$itemId 坐标点击三连未选中（ItemClick 未触发或点偏——见 AE-FAIL-click 截图）"
+    throw "断言失败（场景 AE）：$itemId 坐标点击三连后表单头未见「$expectText」（选中翻但切换未生效，或点偏——见 AE-FAIL-click 截图）"
 }
 
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
@@ -5632,7 +5639,7 @@ try
         throw "断言失败（场景 AE1）：空状态预览未见「等待数据」（G07 回归）；实际：$(@($galleryTexts) -join ' | ')"
     }
     # 选数字卡（坐标点击走 ItemClick 链，选中态回读+重试）→ 应用 → 反馈 ✓ + widgets.json tile 面落盘
-    Invoke-StyleItemClick $galleryHandles[0] "style-item-number"
+    Invoke-StyleItemClick $galleryHandles[0] "style-item-number" "样式 · 数字卡"
     Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
     $appliedAE1 = $false
     $feedbackEl = $null
@@ -5750,7 +5757,7 @@ try
     $surfaceCombo = Find-UiaById $gallery "style-surface-box" 8
     if (!$surfaceCombo) { throw "断言失败（场景 AE3）：UIA 未找到 style-surface-box（锚点丢失？）" }
     Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
-    Invoke-StyleItemClick $galleryHandles[0] "style-item-ring"
+    Invoke-StyleItemClick $galleryHandles[0] "style-item-ring" "样式 · 圆环"
     Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
     $twoFaces = $false
     $deadline = (Get-Date).AddSeconds(20)
