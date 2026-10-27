@@ -5587,11 +5587,13 @@ catch
 #   定向打开（模式由目标组件决定，不由状态有无决定）；模板列表按类型能力 DataKinds=progress 列全 5 项
 #   （空状态不降级成只有状态行）；预览出「等待数据」占位（绑定在值缺席 ≠ 0%）；选数字卡应用落盘。
 # AE2 四态渲染（验收③/G07/G05 槽位）：mock 档位文件 p0/p52/p100 → GLM tile 数字卡面依次显
-#   精确「0%」「52%」「100%」（0 是有效值不是缺失）；Stop-MockServer + 删 cache/zhipu → 无缓存
-#   刷新失败合成态 Progress=null → tile 数字位显「等待数据」。首轮顺带断言「GLM」外围标签仍在
-#   （验收④槽位替换保外围）。注意 PublishStale 两分支（40574990674 红跑实证）：有缓存 = B-206
-#   last-known 保留旧值（p100 照显 100%，灰显走 ConnectionHealthy）；「等待数据」面只属无缓存分支
-#   （Progress=null + 摘要「拉取失败：…」）——缺失态必须删缓存才可命中，两分支各是对的、别混断。
+#   精确「0%」「52%」「100%」（0 是有效值不是缺失）；缺失态 = 重启 staging（停 app → 停 mock → 删
+#   cache/zhipu → 重启）→ 首跳刷新失败走无缓存合成分支 → 数字位显「等待数据」+ 摘要「拉取失败：…」。
+#   首轮顺带断言「GLM」外围标签仍在（验收④槽位替换保外围）。PublishStale 两分支（40574990674 红跑
+#   实证）：有缓存 = B-206 last-known 保留旧值（p100 照显 100%，灰显走 ConnectionHealthy）；
+#   「等待数据」面只属无缓存分支（Progress=null + 「拉取失败」摘要）。且 JsonCacheStore 是内存写穿
+#   缓存（EnsureLoaded 首载后 _memory 永驻，40588765179 实证：运行中删 states.json 文件够不到内存
+#   副本）——会话内曾成功过的组件恒走 last-known，缺失态必须删缓存**加**重启才可命中。
 # AE3 双面不互覆 + 样式恢复 + 重置（验收②/G02 旧对象/G04 恢复/G10 兜底）：同一窗会话先应用
 #   tile=数字卡（AE1 已落）再切 row=圆环应用 → widgets.json 双面并存（应用按 Id 重取最新，闭包旧
 #   对象不覆写）；重开样式中心反解选中数字卡（Identify 非默认横条）；style-reset 清面回传统渲染。
@@ -5730,19 +5732,40 @@ try
     Set-Content -Path $aeModeFile -Value "p100" -Encoding ASCII
     Wait-GlmTileText "100%" 60 "p100" | Out-Null
     Write-Host "场景 AE2（100%）通过：数字卡显「100%」"
-    # 缺失态必须钉「无缓存」分支：Stop-MockServer 后 p100 成功跳已把值写进 cache/zhipu——有缓存时
-    # PublishStale 走 B-206 last-known（保留旧值 100%，摘要不动），数字位永远不是「等待数据」。
-    # 删缓存后下一跳失败即走 cached=null 合成（Progress=null + 摘要「拉取失败：…」）；若删之前恰有
-    # 一跳失败已抢先发过有缓存态也无妨——下一跳（15s 档）即收敛，60s 窗口盖 3-4 跳。
+    # 缺失态必须重启 staging：JsonCacheStore 内存写穿（_memory 永驻），运行中删 states.json 文件
+    # 够不到内存副本 → PublishStale 恒走有缓存 last-known（保留旧值，40588765179 实证）。停 app →
+    # 停 mock → 删 cache/zhipu → 重启：首跳失败即走 cached=null 合成（Progress=null + 摘要
+    # 「拉取失败：…」）→ 数字位「等待数据」。断言锚「拉取失败」前缀（分支身份——空态面先于首跳
+    # 失败就会出现，不能当合成态证据），「等待数据」随后核。
+    Stop-Beacon
     Stop-MockServer
     Remove-Item -LiteralPath (Join-Path $configDir "cache/zhipu") -Recurse -Force -ErrorAction SilentlyContinue
-    $missingTexts = Wait-GlmTileText "等待数据" 60 "missing"
-    if (!(@($missingTexts) | Where-Object { $_ -like "拉取失败*" }))
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    $missingTexts = $null
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline -and !$missingTexts)
     {
-        Save-FullScreenshot "AE-FAIL-missing-branch.png"
-        throw "断言失败（场景 AE2 missing）：数字位「等待数据」在但摘要未见「拉取失败」前缀（分支身份不明——或有缓存 last-known 态在位）；实际：$(@($missingTexts) -join ' | ')"
+        $h = Get-GlmTileHandle
+        if ($h -ne [IntPtr]::Zero)
+        {
+            $texts = @(Get-WindowUiaTexts $h)
+            if (@($texts | Where-Object { $_ -like "拉取失败*" }).Count -gt 0) { $missingTexts = $texts }
+        }
+        if (!$missingTexts) { Start-Sleep -Seconds 2 }
     }
-    Write-Host "场景 AE2（缺失）通过：无缓存刷新失败合成态数字位显「等待数据」+ 摘要「拉取失败」前缀（缺失 ≠ 0%）——四态渲染齐（验收③）"
+    if (!$missingTexts)
+    {
+        $h = Get-GlmTileHandle
+        $last = if ($h -ne [IntPtr]::Zero) { @(Get-WindowUiaTexts $h) -join " | " } else { "（GLM tile 未建窗）" }
+        Save-FullScreenshot "AE-FAIL-state-missing.png"
+        throw "断言失败（场景 AE2 missing）：GLM tile 未见「拉取失败」摘要（无缓存合成态未触发或 tile 未建）；实际：$last"
+    }
+    if (@($missingTexts) -notcontains "等待数据")
+    {
+        Save-FullScreenshot "AE-FAIL-missing-no-placeholder.png"
+        throw "断言失败（场景 AE2 missing）：摘要「拉取失败」在但数字位未见「等待数据」（G07：缺数据 ≠ 0%）；实际：$(@($missingTexts) -join ' | ')"
+    }
+    Write-Host "场景 AE2（缺失）通过：重启无缓存合成态数字位显「等待数据」+ 摘要「拉取失败」前缀（缺失 ≠ 0%）——四态渲染齐（验收③）"
 
     # ===== AE3 双面不互覆 + 样式恢复 + 恢复传统渲染 =====
     Stop-Beacon
