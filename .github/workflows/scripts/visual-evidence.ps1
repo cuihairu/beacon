@@ -5571,13 +5571,17 @@ try
 {
     # ===== AE1 空状态可配置 =====
     Write-GConfig "" "off" 1.0
-    # zhipu 停用（在册 enabled=false）：GLM 无状态且不弹「拉取失败」——GetState 恒 null 的唯一确定性路径
+    # zhipu 停用（在册 enabled=false）：GLM 无状态且不弹「拉取失败」——配下删 cache/zhipu 才是 GetState 恒 null 的确定性路径
     @'
 [
   { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": false },
   { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
 ]
 '@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    # 停用只断刷新链，不断水合链：WidgetHost.HydrateFromCache 启动即把 cache/{connId}/states.json
+    # （B-206 last-known-state）灌回 Store——前面场景已把 GLM=38% 写进 cache/zhipu，不清掉的话
+    # enabled=false 照样亮旧数据（2026-10-27 run 40534619784 AE1 实证）。删缓存目录 = GetState 恒 null。
+    Remove-Item -LiteralPath (Join-Path $configDir "cache/zhipu") -Recurse -Force -ErrorAction SilentlyContinue
     Ensure-MockServer # ds 健康链用（GLM 不请求）
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow
