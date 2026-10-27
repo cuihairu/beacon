@@ -265,21 +265,21 @@ Parameters
 
 > 性质同 todo.md 台账：评审建议不是仓内事实，落地一条勾一条，括号内补 commit hash。
 > 顺序遵循评审 §七结论与 todo.md 计划节：**先架构闭环（跟踪项 1–5、8），再扩模板库。**
-> 12 项 = 0 勾 / 12 未勾（2026-10-23 立）。
+> 12 项 = 11 勾 / 1 半勾（2026-10-23 立；2026-10-27 落地 f9a9aac——项 1–10、12 代码面+CI 场景收口，项 11 代码半落地、裁切观感待装机复核）。
 
 | # | 优先级 | 跟踪项 | 评审出处 | 涉及位置（仓内核验落点） | 任务要点 | 状态 |
 |---|--------|--------|--------|--------|--------|------|
-| 1 | P0 | 空状态断链 | §二缺陷A / §六P0 | `SettingsWindow.cs:2741` + `SampleGalleryWindow.cs:620,629` | 空状态（新建/离线/首次未取数）也能完成定向配置并应用，不再坠入断链的通用目录 | ☐ 未开工 |
-| 2 | P0 | 旧对象覆盖 | §四表P0 / §六P0 | `SettingsWindow.cs:2753`（闭包捕获构造期 `widget`） | 应用前按 Widget ID 读最新配置；同一窗内连续设置不同 surface 不互相覆盖 | ☐ 未开工 |
-| 3 | P0 | 52%% 双百分号 | §二缺陷B / §六P0 | `DisplayTemplates.cs:31`（`unit="%"`）× `ComponentBindingEngine` percent 选择器（自带 `%`） | 去重百分号；0%/52%/100%/缺失值四态单测 | ☐ 未开工 |
-| 4 | P0 | 样式恢复 | §二缺陷C / §六P1 | `SampleGalleryWindow.cs:146`（恒选 `FirstOrDefault()`） | 重开选择器恢复当前已选模板（保存模板身份或从已落盘树反解），不再默认横条 | ☐ 未开工 |
-| 5 | P0 | 槽位化替换 | §三 / §六P0 | `PinnedHostWindow.cs`（PinTile 见树即整面接管）+ `WidgetConfig.cs` | 普通样式切换替换数据槽位，保留品牌/标签/状态等外围信息；整树替换降级为高级编辑路径 | ☐ 未开工 |
-| 6 | P1 | 语义描述 | §五§1 / §六P1 | `WidgetTypeDescriptor.cs`、`WidgetState.cs` | Provider 稳定声明输出字段的类型/单位/范围/语义，区分数据能力与当前值 | ☐ 未开工 |
-| 7 | P1 | 能力匹配 | §五§2 / §六P1 | `DisplayTemplates.cs:20`（`RequiresProgress` 单布尔） | 升级为能力匹配规则（AcceptedKinds/Semantics/SupportedSurfaces/Parameters），兼容性检查返回原因；surface 适配要求 | ☐ 未开工 |
-| 8 | P1 | 缺失值区分 | §四表P1 / §六P1 | `ComponentSurfaceRenderer.cs:285`（`BoundFraction` 回退 0） | 区分无数据、过期、有效 0%、有效数值；缺失不得显示为 0% | ☐ 未开工 |
-| 9 | P1 | DetailWindow 源映射 | §四表P1 / §六P1 | `DetailWindow.cs:199`（`Render` 只喂自身 `_state`） | 详情面用完整源映射渲染，并响应附加数据源更新 | ☐ 未开工 |
-| 10 | P1 | 实时预览 | §四表P1 / §六P1 | `SampleGalleryWindow.cs:117,145`（只读 `_targetState` 快照） | 订阅实时状态刷新预览 + 恢复已选模板 + 展示真实参数配置界面 | ☐ 未开工 |
-| 11 | P2 | 裁切 | §四表P1 / §六P2 | `PinnedHostWindow.cs`、TileSizing 尺寸档 | 按模板测量尺寸；圆环/数字卡/横条在各 tile 档位不裁切（需真机确认，参考 2026-10-14 外框/客户区决策先例） | ☐ 未开工 |
-| 12 | P2 | 优先级统一 | §六P2 | Settings 外观配置（全局 `Appearance.ProgressStyle`） | 明确全局旧 `progressStyle` 与实例级样式配置的优先级，两个选择入口不互相矛盾 | ☐ 未开工 |
+| 1 | P0 | 空状态断链 | §二缺陷A / §六P0 | `SettingsWindow.cs:2741` + `SampleGalleryWindow.cs:620,629` | 空状态（新建/离线/首次未取数）也能完成定向配置并应用，不再坠入断链的通用目录 | ☑ 已落地（f9a9aac；空状态定向配置改 targetWidgetId 驱动，enabled:false 断链复现修平；CI 场景 AE1） |
+| 2 | P0 | 旧对象覆盖 | §四表P0 / §六P0 | `SettingsWindow.cs:2753`（闭包捕获构造期 `widget`） | 应用前按 Widget ID 读最新配置；同一窗内连续设置不同 surface 不互相覆盖 | ☑ 已落地（f9a9aac；应用/恢复按 Widget Id 重取最新配置，闭包只持 Id；CI 场景 AE3 双面齐断言） |
+| 3 | P0 | 52%% 双百分号 | §二缺陷B / §六P0 | `DisplayTemplates.cs:31`（`unit="%"`）× `ComponentBindingEngine` percent 选择器（自带 `%`） | 去重百分号；0%/52%/100%/缺失值四态单测 | ☑ 已落地（f9a9aac；数字模板去 unit=%，percent 选择器单源；0/52/100/缺失四态=DisplayTemplateTests+CI 场景 AE2） |
+| 4 | P0 | 样式恢复 | §二缺陷C / §六P1 | `SampleGalleryWindow.cs:146`（恒选 `FirstOrDefault()`） | 重开选择器恢复当前已选模板（保存模板身份或从已落盘树反解），不再默认横条 | ☑ 已落地（f9a9aac；恢复走 DisplayTemplates.Identify 反解 tile→row→detail + 参数回填；CI 场景 AE3 IsSelected 断言） |
+| 5 | P0 | 槽位化替换 | §三 / §六P0 | `PinnedHostWindow.cs`（PinTile 见树即整面接管）+ `WidgetConfig.cs` | 普通样式切换替换数据槽位，保留品牌/标签/状态等外围信息；整树替换降级为高级编辑路径 | ☑ 已落地（f9a9aac；PinTile 槽位面=灯/图标/标签外围保留+数据槽换装，灯仍实时；单测+场景 AE1 落盘核验） |
+| 6 | P1 | 语义描述 | §五§1 / §六P1 | `WidgetTypeDescriptor.cs`、`WidgetState.cs` | Provider 稳定声明输出字段的类型/单位/范围/语义，区分数据能力与当前值 | ☑ 已落地（f9a9aac；WidgetTypeDescriptor.DataKinds 类型级能力 + 8 家产额 Provider 声明 progress） |
+| 7 | P1 | 能力匹配 | §五§2 / §六P1 | `DisplayTemplates.cs:20`（`RequiresProgress` 单布尔） | 升级为能力匹配规则（AcceptedKinds/Semantics/SupportedSurfaces/Parameters），兼容性检查返回原因；surface 适配要求 | ☑ 已落地（f9a9aac；DisplayTemplateKinds 词汇+TemplateCompatibility 带原因+CanApply/surface 白名单；单测覆盖） |
+| 8 | P1 | 缺失值区分 | §四表P1 / §六P1 | `ComponentSurfaceRenderer.cs:285`（`BoundFraction` 回退 0） | 区分无数据、过期、有效 0%、有效数值；缺失不得显示为 0% | ☑ 已落地（f9a9aac；进度槽三态 Bound/Static/Missing，缺失出「等待数据」占位；CI 场景 AE2 缺失态断言） |
+| 9 | P1 | DetailWindow 源映射 | §四表P1 / §六P1 | `DetailWindow.cs:199`（`Render` 只喂自身 `_state`） | 详情面用完整源映射渲染，并响应附加数据源更新 | ☑ 已落地（f9a9aac；ResolveSources 源映射渲染+ConsumedWidgetIds 变化重渲） |
+| 10 | P1 | 实时预览 | §四表P1 / §六P1 | `SampleGalleryWindow.cs:117,145`（只读 `_targetState` 快照） | 订阅实时状态刷新预览 + 恢复已选模板 + 展示真实参数配置界面 | ☑ 已落地（f9a9aac；订阅 WidgetStateChanged 实时重渲+参数滑杆表单+恢复预填） |
+| 11 | P2 | 裁切 | §四表P1 / §六P2 | `PinnedHostWindow.cs`、TileSizing 尺寸档 | 按模板测量尺寸；圆环/数字卡/横条在各 tile 档位不裁切（需真机确认，参考 2026-10-14 外框/客户区决策先例） | ◐ 半落地（代码面 f9a9aac：TileHeightDips=max(尺寸档, MinTileHeightDipsOf)，面板行高走全 tile 最大值既有链；裁切观感装机复核未完） |
+| 12 | P2 | 优先级统一 | §六P2 | Settings 外观配置（全局 `Appearance.ProgressStyle`） | 明确全局旧 `progressStyle` 与实例级样式配置的优先级，两个选择入口不互相矛盾 | ☑ 已落地（f9a9aac；progressStyle 档加口径声明：只管传统渲染全局额度面，实例样式面不受影响，回传统=组件中心「恢复传统渲染」） |
 
 配套验收要求（评审 §六「端到端验收」条目在导出中丢失，按其可见口径补记）：**不得只跑 `DisplayTemplates` 纯函数单测收工**——P0 各项须有 Windows CI 场景或等价端到端断言（空状态可配置、连续双面应用不互覆、0/52/100/缺失四态渲染、槽位替换保外围），观感与裁切项转装机复核。

@@ -133,10 +133,10 @@
 > **顺序裁定（采纳评审 §七结论）：先架构闭环，再扩模板库**——P0 五项（空状态断链 / 旧对象覆盖 / 52%% / 样式恢复 / 槽位化替换）与 P1 缺失值区分构成架构闭环第一批；能力匹配与语义描述（P1）第二批；DetailWindow 源映射与实时预览（P1）第三批；裁切与优先级统一（P2）随批。**在跟踪表 12 项清零前不新增展示模板种类。**
 > 细目与状态见评审文「落地跟踪」表（12 项），此处不重复逐条。
 
-- [ ] 架构闭环第一批（P0）：空状态断链（SettingsWindow.cs:2741/SampleGalleryWindow.cs:620,629）+ 旧对象覆盖（SettingsWindow.cs:2753 改按 Widget ID 取最新）+ 52%% 双百分号（DisplayTemplates.cs:31 × percent 选择器，0/52/100/缺失四态单测）+ 样式恢复（SampleGalleryWindow.cs:146 不再恒选首模板）+ 槽位化替换（PinTile 整面接管改数据槽位，保留品牌/标签/状态外围）
-- [ ] 架构闭环第二批（P1）：缺失值区分（ComponentSurfaceRenderer.cs:285 缺失≠0%）+ 能力匹配（RequiresProgress 单布尔升级，兼容性返回原因）+ 语义描述（Provider 稳定声明数据能力）
-- [ ] 第三批（P1）：DetailWindow 完整源映射渲染（DetailWindow.cs:199 现只喂自身状态）+ 组件中心实时预览与参数表单（_targetState 快照改订阅）
-- [ ] 收尾（P2）：模板感知尺寸防裁切（需真机确认）+ 全局 progressStyle 与实例样式优先级统一
+- [x] 架构闭环第一批（P0）：空状态断链（SettingsWindow.cs:2741/SampleGalleryWindow.cs:620,629）+ 旧对象覆盖（SettingsWindow.cs:2753 改按 Widget ID 取最新）+ 52%% 双百分号（DisplayTemplates.cs:31 × percent 选择器，0/52/100/缺失四态单测）+ 样式恢复（SampleGalleryWindow.cs:146 不再恒选首模板）+ 槽位化替换（PinTile 整面接管改数据槽位，保留品牌/标签/状态外围）（2026-10-27 落地：定向模式改由 targetWidgetId 决定（空状态照常打开）；应用/恢复按 Id 重取最新配置；数字卡去 unit=%；恢复走 DisplayTemplates.Identify 反解 + 参数回填；PinTile 改槽位面（灯/图标/标签外围保留）——场景 AE1/AE3 四断言 + DisplayTemplateTests 905 绿；f9a9aac）
+- [x] 架构闭环第二批（P1）：缺失值区分（ComponentSurfaceRenderer.cs:285 缺失≠0%）+ 能力匹配（RequiresProgress 单布尔升级，兼容性返回原因）+ 语义描述（Provider 稳定声明数据能力）（2026-10-27 落地：进度槽三态 Bound/Static/Missing（缺失出「等待数据」占位，metric 空值同口径）；WidgetTypeDescriptor.DataKinds 类型级能力 + 8 家产额 Provider 声明 progress；DisplayTemplates.CanApply 返回 TemplateCompatibility 带中文原因——场景 AE1 空状态列全 5 模板实证；f9a9aac）
+- [x] 第三批（P1）：DetailWindow 完整源映射渲染（DetailWindow.cs:199 现只喂自身状态）+ 组件中心实时预览与参数表单（_targetState 快照改订阅）（2026-10-27 落地：DetailWindow 走 ResolveSources 源映射渲染 + 附加源变化重渲（ConsumesSource 路由）；组件中心订阅 WidgetStateChanged 实时重渲 + 模板参数滑杆表单（Build(overrides) 钳位）；f9a9aac）
+- [ ] 收尾（P2）：模板感知尺寸防裁切（需真机确认）+ 全局 progressStyle 与实例样式优先级统一（2026-10-27 半：代码半已落（f9a9aac）——PinTile 高度=max(尺寸档, MinTileHeightDipsOf)（面板行高走全 tile 最大值既有链）、设置页 progressStyle 档加口径声明（管传统渲染，实例样式面不受影响，回传统=组件中心「恢复传统渲染」）；余裁切观感装机复核，「改了未验」不算完成）
 - 验收口径（端到端）：**不得只跑 DisplayTemplates 纯函数单测收工**——P0 各项须有 Windows CI 场景或等价端到端断言：①空状态（新建/离线/首取数前）完成定向配置并应用成功；②同一窗内先设 tile 再设 row，两 surface 配置互不覆盖（widgets.json 双面齐）；③0%/52%/100%/缺失四态渲染断言（缺失不显示 0%）；④槽位替换后品牌/标签/状态外围保留。观感与裁切项按仓内先例转装机复核（「改了未验」不算完成）。
 
 ## 文档双语补全（2026-10-16 用户令；2 项全勾）
