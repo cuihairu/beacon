@@ -19,10 +19,10 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- 头部：总体状态灯 + 告警计数 + 未读通知徽标 -->
+            <!-- 头部：总体状态灯 + 告警计数 + 未读通知徽标（2026-10-29 UI 升级：题字阶 16；灯初值 UpdateHeader 覆盖） -->
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
-                <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="#4ADE80" VerticalAlignment="Center" />
-                <TextBlock Text="Beacon" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="15" FontWeight="SemiBold" />
+                <Ellipse x:Name="OverallLight" Width="10" Height="10" Fill="{ThemeResource SystemFillColorSuccessBrush}" VerticalAlignment="Center" />
+                <TextBlock Text="Beacon" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontSize="16" FontWeight="SemiBold" />
                 <TextBlock x:Name="OverallSummary" Text="all clear" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
                 <Border
                     x:Name="UnreadBadge"
@@ -44,7 +44,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="NotificationsHeader" Text="NOTIFICATIONS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+                    <TextBlock Grid.Column="0" x:Name="NotificationsHeader" Text="NOTIFICATIONS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" CharacterSpacing="60" />
                     <HyperlinkButton
                         Grid.Column="1"
                         x:Name="MarkAllReadButton"
@@ -62,10 +62,14 @@
                     ItemClick="OnNotificationItemClick" />
             </StackPanel>
 
-            <!-- B-602：按来源计数区（GitHub / CI / …） -->
+            <!-- B-602：按来源卡片区（2026-10-29 UI 升级：chip 横排 → 卡片栅格，每源一卡=迷你健康环+计数+来源名） -->
             <StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="6">
-                <TextBlock x:Name="OverviewHeader" Text="OVERVIEW" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
-                <StackPanel x:Name="SourceCounts" Orientation="Horizontal" Spacing="6" />
+                <TextBlock x:Name="OverviewHeader" Text="OVERVIEW" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" CharacterSpacing="60" />
+                <ItemsRepeater x:Name="SourceCounts">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout MinItemWidth="104" MinItemHeight="44" MinRowSpacing="6" MinColumnSpacing="6" />
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
             </StackPanel>
 
             <!-- 批3-补27 拍板④（master-plan §3.2 三分区）：当前状态区——NEEDS ATTENTION（失败/超时/离线/过期）
@@ -109,7 +113,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" x:Name="RecentHeader" Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="11" CharacterSpacing="60" />
+                <TextBlock Grid.Row="0" x:Name="RecentHeader" Text="RECENT EVENTS" Foreground="{ThemeResource TextFillColorTertiaryBrush}" FontSize="12" CharacterSpacing="60" />
                 <ListView
                     Grid.Row="1"
                     x:Name="RecentList"

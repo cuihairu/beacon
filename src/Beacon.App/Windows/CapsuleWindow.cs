@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Beacon.App.Components;
 using Beacon.App.Infrastructure;
 using Beacon.App.Services;
 using Beacon.Core.Events;
@@ -6,8 +7,10 @@ using Beacon.Core.Models;
 using Beacon.Core.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
 
 namespace Beacon.App.Windows;
@@ -21,6 +24,7 @@ public sealed partial class CapsuleWindow : Window
 {
     private readonly ShellStateStore _shellState;
     private readonly UiPalette _palette;
+    private readonly MotionEngine _motion;
     private readonly NativeMethods.RECT _defaultWorkAreaFallback = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
 
     private IntPtr _hwnd;
@@ -38,12 +42,18 @@ public sealed partial class CapsuleWindow : Window
     private int _x;
     private int _y;
     private DateTimeOffset _lastFetchedAt;
+    private Severity _lastOverall = Severity.Success; // 级别抬升判定基线（Flash 触发面）
+    private bool _hovered; // 指针在窗内（悬停预览展开条件之一）
+    private IReadOnlyList<SourcePreviewRow> _previewRows = Array.Empty<SourcePreviewRow>();
 
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
 
     /// <summary>右键 → 直达设置（master-plan §3.1「右键打开…常用设置」；批3-补28）。</summary>
     public event Action? SettingsRequested;
+
+    /// <summary>悬停预览行（2026-10-29 UI 升级）：来源聚合一行——级别点 + 来源名 + 最差态摘要。</summary>
+    public sealed record SourcePreviewRow(string Source, Severity Worst, string Summary);
 
     public CapsuleWindow(ShellStateStore shellState, Beacon.Storage.JsonConfigurationStore config)
     {
@@ -52,6 +62,11 @@ public sealed partial class CapsuleWindow : Window
         SystemBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
         _shellState = shellState;
         _palette = new UiPalette(config); // B-706：聚合灯随 appearance.SeverityColors
+        _motion = new MotionEngine(config); // 入场/抬升动效（档位实时读，off 档全瞬时）
+        // 初始灯/晕色（XAML 无 x:Static 不落 hex，语义色板单源 ThemeColors）
+        var initial = ThemeColors.StatusOk();
+        OverallLight.Fill = new SolidColorBrush(initial);
+        OverallHalo.Fill = new SolidColorBrush(ThemeColors.Halo(initial, 64));
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
     }
 
@@ -76,6 +91,7 @@ public sealed partial class CapsuleWindow : Window
         SubclassForDpiChange();
         ApplySize(); // 按内容实测定尺寸（DIP×DPI 转物理像素，宽随内容=§6.2.2）
         RestorePosition();
+        _motion.SlideIn(RootBorder); // 入场滑入（full 档专属，其余档瞬时；2026-10-29 UI 升级）
         if (!_startVisible)
         {
             _appWindow.Hide(); // showCapsule=false：注册(hwnd/AppWindow 就绪)但不显示
@@ -128,10 +144,86 @@ public sealed partial class CapsuleWindow : Window
         {
             return;
         }
+        HidePreview(); // 拖动起手先收预览：拖动中 ApplySize 的 Move 会与拖拽 Move 互抢（WM_DPICHANGED 同型）
         _dragging = true;
         _dragStartCursor = CursorPx();
         _dragOrigin = (_x, _y);
         Root.CapturePointer(e.Pointer);
+    }
+
+    /// <summary>悬停展开预览（BrimDeck 对照，2026-10-29 UI 升级）：入窗即展、出窗即收；
+    /// 按住进入/拖动中/无数据不展——展开=窗变高，与拖动互抢必须挡。</summary>
+    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _hovered = true;
+        if (_dragging || e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed || _previewRows.Count == 0)
+        {
+            return;
+        }
+        ShowPreview();
+    }
+
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _hovered = false;
+        HidePreview();
+    }
+
+    private void ShowPreview()
+    {
+        if (SourcePreview.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+        RebuildPreview();
+        SourcePreview.Visibility = Visibility.Visible;
+        ApplySize(); // 高随预览行数（锚点角自动贴位：底锚=向上展开）
+    }
+
+    private void HidePreview()
+    {
+        if (SourcePreview.Visibility == Visibility.Collapsed)
+        {
+            return;
+        }
+        SourcePreview.Visibility = Visibility.Collapsed;
+        ApplySize();
+    }
+
+    /// <summary>预览行重建：级别点 + 来源名 + 最差态摘要（裁尾），上限 5 行。</summary>
+    private void RebuildPreview()
+    {
+        var panel = new StackPanel { Spacing = 5 };
+        foreach (var row in _previewRows.Take(5))
+        {
+            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            line.Children.Add(new Ellipse
+            {
+                Width = 7,
+                Height = 7,
+                Fill = new SolidColorBrush(_palette.SeverityColor(row.Worst)),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            line.Children.Add(new TextBlock
+            {
+                Text = row.Source,
+                FontSize = 12,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            line.Children.Add(new TextBlock
+            {
+                Text = row.Summary,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 92,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            panel.Children.Add(line);
+        }
+        SourcePreview.Content = panel;
     }
 
     /// <summary>右键直达设置（左键拖动已在 Pressed 过滤非左键，互不干扰）。</summary>
@@ -194,7 +286,8 @@ public sealed partial class CapsuleWindow : Window
     }
 
     /// <summary>
-    /// 宽随内容实测（RFC §6.2.2：常态 48–120 DIP，离线横幅放宽到 132），高最小 32 DIP；
+    /// 宽随内容实测（RFC §6.2.2：常态 48–120 DIP；2026-10-29 UI 升级环+灯并置后极值文案
+    /// 「1 ok · 1 err」实测放宽到 156，悬停预览/离线横幅同上限），高最小 32 DIP；
     /// AppWindow.Resize/Size 一律物理像素，XAML 布局是 DIP——统一 ×DPI，不乘会在高缩放下被裁成一条。
     /// </summary>
     private (int Width, int Height) MeasureSizePx()
@@ -202,7 +295,7 @@ public sealed partial class CapsuleWindow : Window
         Root.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var desired = Root.DesiredSize;
         var dpi = GetDpi();
-        var widthDips = Math.Clamp(Math.Ceiling(desired.Width), 48, 132);
+        var widthDips = Math.Clamp(Math.Ceiling(desired.Width), 48, 156);
         var heightDips = Math.Max(32, Math.Ceiling(desired.Height));
         return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
     }
@@ -332,7 +425,8 @@ public sealed partial class CapsuleWindow : Window
     public void ApplyOpacity(double opacity)
         => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
 
-    /// <summary>接入真实聚合（B-504）：极简计数（零值组不显示，§6.2.2）+ 离线横幅（§6.2.6）。</summary>
+    /// <summary>接入真实聚合（B-504）：极简计数（零值组不显示，§6.2.2）+ 健康环/光晕灯（2026-10-29 UI 升级）
+    /// + 离线横幅（§6.2.6）。计数文案格式是 Q 场景 UIA 断言锚（「2 ok」「1 ok · 1 err」），不动。</summary>
     public void UpdateStatus(AggregateStatusChanged status)
     {
         var ok = status.Counts.GetValueOrDefault(Severity.Success) + status.Counts.GetValueOrDefault(Severity.Info);
@@ -353,7 +447,18 @@ public sealed partial class CapsuleWindow : Window
         }
         CountText.Text = parts.Count == 0 ? "Beacon" : string.Join(" · ", parts);
 
-        OverallLight.Fill = new SolidColorBrush(_palette.SeverityColor(status.Overall));
+        // 灯/晕/环三面同色（UiPalette 实时读 config——G4/G5 改色即变色链不动）；换色走 MotionEngine
+        // 过渡（off 档瞬时直设），级别抬升再叠一次 Flash（full 档）
+        var lightColor = _palette.SeverityColor(status.Overall);
+        _motion.TransitionFill(OverallLight, lightColor);
+        OverallHalo.Fill = new SolidColorBrush(ThemeColors.Halo(lightColor, 64));
+        var total = ok + warn + error;
+        HealthRing.Content = StatusRing.Build(16, 2.5, total == 0 ? 1.0 : (double)ok / total, lightColor);
+        if (status.Overall > _lastOverall)
+        {
+            _motion.Flash(OverallLight);
+        }
+        _lastOverall = status.Overall;
 
         var offline = status.OfflineConnections > 0;
         OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
@@ -364,5 +469,17 @@ public sealed partial class CapsuleWindow : Window
         }
         // 横幅/文案变化会改变内容尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
         ApplySize();
+    }
+
+    /// <summary>悬停预览喂数（App.xaml.cs 按 WidgetStateChanged 聚合后推）：仅悬停中即时重画，
+    /// 非悬停只存行集——下次展开用最新（悬停展开时读的就是已存最新行）。</summary>
+    public void UpdateSourcePreview(IReadOnlyList<SourcePreviewRow> rows)
+    {
+        _previewRows = rows;
+        if (_hovered && !_dragging && _previewRows.Count > 0)
+        {
+            RebuildPreview();
+            ApplySize(); // 行数变化窗高随之（贴锚点）
+        }
     }
 }

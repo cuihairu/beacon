@@ -194,7 +194,14 @@ public partial class App : Application
         var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
         _capsule = capsule; // 退出清理用
         capsule.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
-        runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.EnqueueGuarded(() => capsule.NoteFetch(evt.State.FetchedAt)));
+        // 悬停预览喂数（2026-10-29 UI 升级）：widget 级状态留底 → 按来源聚合推胶囊（UI 线程内改字典，无锁）
+        var lastStates = new Dictionary<string, WidgetState>();
+        runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.EnqueueGuarded(() =>
+        {
+            lastStates[evt.State.WidgetId] = evt.State;
+            capsule.NoteFetch(evt.State.FetchedAt);
+            capsule.UpdateSourcePreview(GroupSourcePreviews(lastStates));
+        }));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.EnqueueGuarded(() =>
         {
             capsule.UpdateStatus(status);
@@ -463,6 +470,21 @@ public partial class App : Application
         var tip = $"Beacon · {ok} ok / {warn} warn / {error} error";
         return status.OfflineConnections > 0 ? $"{tip} · {status.OfflineConnections} offline" : tip;
     }
+
+    /// <summary>胶囊悬停预览聚合（2026-10-29 UI 升级）：按来源（QuickPanelFilter 同口径）分组，
+    /// 组内取最差级别及其摘要；排序=最差在前、同档按名序。</summary>
+    private static List<Windows.CapsuleWindow.SourcePreviewRow> GroupSourcePreviews(
+        IReadOnlyDictionary<string, WidgetState> states)
+        => states.Values
+            .GroupBy(state => QuickPanelFilter.SourceKey(state.WidgetType))
+            .Select(group =>
+            {
+                var worst = group.OrderByDescending(state => state.Severity).First();
+                return new Windows.CapsuleWindow.SourcePreviewRow(group.Key, worst.Severity, worst.Summary);
+            })
+            .OrderByDescending(row => row.Worst)
+            .ThenBy(row => row.Source, StringComparer.Ordinal)
+            .ToList();
 
     /// <summary>Toast 点击激活路由（B-501）：有 DetailUrl 直接深链，L3 详情窗就绪（B-603）前回退浏览器；否则唤出 L2。</summary>
     private void OpenToastTarget(ToastActivation activation)

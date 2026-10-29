@@ -5,27 +5,46 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Beacon Status">
     <!-- RFC §6.2.2 形态规范：高 32 DIP、宽随内容、圆角胶囊、亚克力/半透明、随主题；
-         构成 = 状态灯 + 极简计数（无正文文字）；离线降级见 §6.2.6（灰空心灯 + Last update） -->
-    <Grid x:Name="Root" Background="Transparent" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased" RightTapped="OnRightTapped">
-        <StackPanel Spacing="4">
+         构成 = 健康环 + 状态灯（微光晕）+ 极简计数（无正文文字）；离线降级见 §6.2.6（灰空心灯 + Last update）。
+         2026-10-29 UI 升级（BrimDeck 对照）：注意力份额画环、光晕灯两层层叠、悬停展开各数据源摘要。 -->
+    <Grid x:Name="Root" Background="Transparent" PointerPressed="OnPointerPressed" PointerMoved="OnPointerMoved" PointerReleased="OnPointerReleased" PointerEntered="OnPointerEntered" PointerExited="OnPointerExited" RightTapped="OnRightTapped">
+        <!-- 窗高下限 32 DIP（MeasureSizePx），常态内容 ~28 垂直居中不贴顶 -->
+        <StackPanel Spacing="4" VerticalAlignment="Center">
             <Border
                 x:Name="RootBorder"
                 CornerRadius="{StaticResource RadiusPill}"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                Padding="12,6">
-                <StackPanel Orientation="Horizontal" Spacing="7">
-                    <Ellipse x:Name="OverallLight" Width="9" Height="9" Fill="#4ADE80" VerticalAlignment="Center" />
+                Padding="12,5">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <!-- 健康环：ok 份额弧段，环色=聚合级别色（每次 UpdateStatus 重建） -->
+                    <ContentControl x:Name="HealthRing" Width="16" Height="16" VerticalAlignment="Center" IsTabStop="False" />
+                    <!-- 状态灯（微光晕）：外层同色低透明晕 + 核心 Ø8 灯；OverallLight 是 G4/G5 像素锚，元素名与取色链不动。
+                         初始色由 ctor 代码侧喂 ThemeColors（WinUI 3 无 x:Static，XAML 不落 hex） -->
+                    <Grid Width="16" Height="16" VerticalAlignment="Center">
+                        <Ellipse x:Name="OverallHalo" Width="15" Height="15" />
+                        <Ellipse x:Name="OverallLight" Width="8" Height="8" />
+                    </Grid>
                     <TextBlock
                         x:Name="CountText"
                         Text="Beacon"
                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                        FontSize="12.5"
+                        FontSize="12"
                         FontWeight="SemiBold"
                         VerticalAlignment="Center" />
                 </StackPanel>
             </Border>
+            <!-- 悬停预览：各数据源一行（级别点 + 来源 + 摘要），PointerEntered 展开/退出收起；
+                 无数据/拖动中不展开（宽随内容，行文本裁尾） -->
+            <Border
+                x:Name="SourcePreview"
+                CornerRadius="{StaticResource RadiusInner}"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                Padding="9,6"
+                Visibility="Collapsed" />
             <!-- 离线横幅：灰空心灯 + Last update（§4.1 Offline 灰空心），主题化半透明底 -->
             <Border
                 x:Name="OfflineBanner"

@@ -280,27 +280,47 @@ public sealed partial class QuickPanelWindow : Window
         OverallLight.Fill = new SolidColorBrush(_palette.SeverityColor(overall));
     }
 
-    /// <summary>OVERVIEW 区（用户单①）：默认「全部」chip 在首 + 来源计数 chip 可点击过滤；
-    /// 当前看哪一类必须界面可见——激活 chip 高亮填充 + OVERVIEW 头带「· 来源」后缀双保险。</summary>
+    /// <summary>OVERVIEW 区（用户单①；2026-10-29 UI 升级：chip 横排 → 卡片栅格）：
+    /// 默认「全部」卡在首 + 来源卡可点击过滤；当前看哪一类必须界面可见——激活卡强调色填充
+    /// + OVERVIEW 头带「· 来源」后缀双保险。</summary>
     private void UpdateOverview()
     {
         OverviewHeader.Text = _activeSource is null
             ? UiStrings.BoardOverview
             : $"{UiStrings.BoardOverview} · {_activeSource}";
-        SourceCounts.Children.Clear();
-        SourceCounts.Children.Add(MakeChip(
-            UiStrings.BoardAll, _states.Values.Count,
-            _states.Values.Count == 0 ? Severity.Success : _states.Values.Max(s => s.Severity),
-            sourceKey: null, active: _activeSource is null));
-        foreach (var group in _states.Values
+        var states = _states.Values.ToList();
+        var cards = new List<Border>
+        {
+            MakeSourceCard(
+                UiStrings.BoardAll, states.Count,
+                states.Count == 0 ? Severity.Success : states.Max(s => s.Severity),
+                HealthFraction(states),
+                sourceKey: null, active: _activeSource is null),
+        };
+        foreach (var group in states
             .GroupBy(state => QuickPanelFilter.SourceKey(state.WidgetType))
             .OrderBy(group => group.Key, StringComparer.Ordinal))
         {
-            var worst = group.Max(state => state.Severity);
-            SourceCounts.Children.Add(MakeChip(group.Key, group.Count(), worst,
+            var groupStates = group.ToList();
+            // 组内首个可解析连接的类型 → 品牌图标（无映射 TryCreate 返 null，卡仍以环为视觉锚）
+            var connectionType = groupStates
+                .Select(s => _runtime.Config.FindWidget(s.WidgetId))
+                .Where(w => w is not null)
+                .Select(w => _runtime.Config.Connections.FirstOrDefault(c => c.Id == w!.ConnectionId)?.Type)
+                .FirstOrDefault(t => t is not null);
+            cards.Add(MakeSourceCard(
+                group.Key, groupStates.Count,
+                groupStates.Max(s => s.Severity),
+                HealthFraction(groupStates),
+                connectionType,
                 sourceKey: group.Key, active: _activeSource == group.Key));
         }
+        SourceCounts.ItemsSource = cards; // ItemsRepeater 无 Children 集合，走 ItemsSource 整表替换
     }
+
+    /// <summary>健康份额（卡/环共用口径）：非关注态（&lt; Warning）占比，空集=1（全清）。</summary>
+    private static double HealthFraction(IReadOnlyCollection<WidgetState> states)
+        => states.Count == 0 ? 1.0 : (double)states.Count(s => s.Severity < Severity.Warning) / states.Count;
 
     /// <summary>chip 点击过滤（用户单①）：点某类只看该类，再点同类取消回全部；「全部」chip 恒回全部。</summary>
     private void ApplySourceFilter(string? sourceKey)
@@ -312,34 +332,53 @@ public sealed partial class QuickPanelWindow : Window
         RebuildNotifications();
     }
 
-    private Border MakeChip(string label, int count, Severity worst, string? sourceKey = null, bool active = false)
+    /// <summary>来源卡（2026-10-29 UI 升级，BrimDeck 对照）：品牌图标 + 迷你健康环 + 计数 + 来源名，整卡点击过滤。
+    /// 激活卡=强调色填充白字；非激活=轻卡面（ThemeColors.SurfaceCard）+ 弱描边。色值全部走 ThemeColors 语义板。</summary>
+    private Border MakeSourceCard(string label, int count, Severity worst, double healthFraction, string? connectionType = null, string? sourceKey = null, bool active = false)
     {
-        var dot = new Ellipse { Width = 7, Height = 7, Fill = new SolidColorBrush(_palette.SeverityColor(worst)) };
-        var text = new TextBlock
+        var white = new SolidColorBrush(SeverityPalette.Rgb(255, 255, 255, 255));
+        var topRow = ComponentLayout.Row(DesignTokens.Spacing(6, _runtime.Config.App.Appearance.Density));
+        topRow.Children.Add(StatusRing.Build(14, 2, healthFraction, _palette.SeverityColor(worst)));
+        topRow.Children.Add(new TextBlock
         {
-            Text = $"{label} {count}",
-            Foreground = new SolidColorBrush(active ? SeverityPalette.Rgb(255, 255, 255, 255) : IsDarkTheme ? SeverityPalette.Rgb(255, 241, 245, 249) : SeverityPalette.Rgb(255, 30, 41, 59)),
-            FontSize = DesignTokens.FontCaption,
+            Text = $"{count}",
+            FontSize = DesignTokens.FontBody,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = active ? white : new SolidColorBrush(ThemeColors.TextPrimary()),
             VerticalAlignment = VerticalAlignment.Center,
-        };
-        var row = ComponentLayout.Row(DesignTokens.Spacing(5, _runtime.Config.App.Appearance.Density));
-        row.Children.Add(dot);
-        row.Children.Add(text);
-        // 激活态=当前在看：实色填充（两主题同色白字，对比可辨）；非激活维持原浅底
-        var chip = new Border
+        });
+        if (BrandIconFactory.TryCreate(connectionType, 14,
+                active ? SeverityPalette.Rgb(255, 255, 255, 255) : ThemeColors.TextSecondary()) is { } brandIcon)
         {
-            Background = new SolidColorBrush(active ? SeverityPalette.Rgb(255, 37, 99, 235) : IsDarkTheme ? SeverityPalette.Rgb(28, 255, 255, 255) : SeverityPalette.Rgb(20, 15, 23, 42)),
-            CornerRadius = DesignTokens.RadiusChip,
-            Padding = new Thickness(8, 3, 8, 3),
-            Child = row,
+            brandIcon.VerticalAlignment = VerticalAlignment.Center;
+            topRow.Children.Add(brandIcon);
+        }
+        var cardBody = new StackPanel { Spacing = 2 };
+        cardBody.Children.Add(topRow);
+        cardBody.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = DesignTokens.FontBody,
+            Foreground = active ? white : new SolidColorBrush(ThemeColors.TextSecondary()),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        var accent = ThemeColors.AccentFill();
+        var card = new Border
+        {
+            Background = new SolidColorBrush(active ? accent : ThemeColors.SurfaceCard()),
+            BorderBrush = new SolidColorBrush(active ? accent : ThemeColors.TextSecondary()) { Opacity = 0.35 },
+            BorderThickness = new Thickness(1),
+            CornerRadius = DesignTokens.RadiusInner,
+            Padding = new Thickness(8, 6, 8, 6),
+            Child = cardBody,
         };
-        // UIA 取证/CI 点击入口。Border 非 Control 无自带 peer，只设 AutomationId 不进 UIA 树
-        // （CI 38533804493/38542642112 实证「面板未找到 chip-智谱」，chip 却在截图里）——
-        // 与 SettingsWindow.cs:306 分隔条同口径：Name 强制创建 FrameworkElementAutomationPeer。
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(chip, $"{label} {count}");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(chip, $"chip-{sourceKey ?? "all"}");
-        chip.Tapped += (_, _) => ApplySourceFilter(sourceKey); // sourceKey=null 的「全部」chip 恒回全部
-        return chip;
+        // UIA 取证/CI 点击入口（口径沿 chip：Border 非 Control 无自带 peer，只设 AutomationId 不进 UIA 树——
+        // CI 38533804493/38542642112 实证，Name 强制创建 FrameworkElementAutomationPeer；
+        // Id/Name 格式不变=改版不破 W3 场景锚 chip-智谱 / 「label count」）。
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, $"{label} {count}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(card, $"chip-{sourceKey ?? "all"}");
+        card.Tapped += (_, _) => ApplySourceFilter(sourceKey); // sourceKey=null 的「全部」卡恒回全部
+        return card;
     }
 
     private void RebuildRecent()
@@ -430,14 +469,14 @@ public sealed partial class QuickPanelWindow : Window
         var time = new TextBlock
         {
             Text = record.Timestamp.ToLocalTime().ToString("MM-dd HH:mm"),
-            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             FontSize = DesignTokens.FontCaption,
             VerticalAlignment = VerticalAlignment.Center,
         };
         var title = new TextBlock
         {
             Text = record.Title,
-            Foreground = new SolidColorBrush(IsDarkTheme ? SeverityPalette.Rgb(255, 226, 232, 240) : SeverityPalette.Rgb(255, 30, 41, 59)),
+            Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
             FontSize = DesignTokens.FontBody,
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
@@ -505,12 +544,8 @@ public sealed partial class QuickPanelWindow : Window
     {
         var dot = ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(state.Severity,
             widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)));
-        var time = ComponentText.Caption(timeText, new SolidColorBrush(IsDarkTheme
-            ? SeverityPalette.Rgb(255, 148, 163, 184)
-            : SeverityPalette.Rgb(255, 100, 116, 139)));
-        var label = ComponentText.Body(state.Summary, new SolidColorBrush(IsDarkTheme
-            ? SeverityPalette.Rgb(255, 226, 232, 240)
-            : SeverityPalette.Rgb(255, 30, 41, 59)), maxWidth: 260); // 面板加宽 320→380 后同步放开（原 210）
+        var time = ComponentText.Caption(timeText, new SolidColorBrush(ThemeColors.TextSecondary()));
+        var label = ComponentText.Body(state.Summary, new SolidColorBrush(ThemeColors.TextPrimary()), maxWidth: 260); // 面板加宽 320→380 后同步放开（原 210）
         var row = ComponentLayout.Row(DesignTokens.Spacing(7, _runtime.Config.App.Appearance.Density));
         row.Children.Add(dot);
         row.Children.Add(time);
