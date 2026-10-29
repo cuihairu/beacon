@@ -1187,6 +1187,39 @@ function Find-PanelRow([System.Windows.Automation.AutomationElement] $root, [str
     return $null
 }
 
+# AF 用：按摘要文本锚定行后取「支持 InvokePattern 的最近祖先」＝InvokeableListItem 行本体。
+# 不走 ControlType==ListItem 过滤（X 实证该口径在 RecentList 零命中；且行内容为 Grid 时行自身
+# Name 为空，「ListItem 元素 Name 匹配」两坑叠加——run 40887021700 面板明明渲染 GLM 行却 60s 零命中）。
+# Name 命中沿用 Get-UiaListSummaries 的 TrueCondition 口径（子 TextBlock 即可命中），再沿控制视图
+# 向上找首个带 Invoke 的元素——行 peer 挂 Invoke（InvokeableListItemPeer），ListView 容器不挂，
+# 向上第一站即行本体，不越界到整框。
+function Find-InvokableRowByName([System.Windows.Automation.AutomationElement] $root, [string] $nameRegex)
+{
+    $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+    foreach ($item in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition))
+    {
+        try
+        {
+            if ($item.Current.Name -notmatch $nameRegex) { continue }
+            $node = $item
+            for ($depth = 0; $depth -lt 8; $depth++)
+            {
+                try
+                {
+                    $pattern = $node.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+                    if ($pattern) { return $node }
+                }
+                catch { }
+                $parent = $walker.GetParent($node)
+                if ($null -eq $parent) { break }
+                $node = $parent
+            }
+        }
+        catch { }
+    }
+    return $null
+}
+
 # UIA 点击落点解析（X1 行右键/菜单点击、W3 chip 点击共用）：38619441591 X 红实证——RecentList 行被
 # 虚拟化或刷新 tick 重建中途时，UIA BoundingRectangle 返 NaN 矩形，[int] 转换直接炸（"Cannot convert
 # value NaN to Int32"），无任何断言消息。优先 GetClickablePoint（元素不可点时抛 PointUnavailableException
@@ -5905,27 +5938,72 @@ try
         Start-Sleep -Milliseconds 250
     }
     if ($panelHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "AF-FAIL-no-panel.png"; throw "断言失败（场景 AF）：热键触发后 5s 内快速面板未出现" }
-    # RecentList 等 GLM 行（mock 38% 态到位即入列；InvokeableListItem Invoke 走 ItemClick 同链，S4 实证）
+    # RecentList 等 GLM 行（mock 38% 态到位即入列）。等待口径=Get-UiaListSummaries 摘要（TrueCondition
+    # 任意后代 Name，U1 同款）；行本体=Find-InvokableRowByName 向上找带 Invoke 的祖先（ItemClick 同链，S4 实证）。
     $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
     $glmRow = $null
+    $recentSeen = @()
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline -and !$glmRow)
     {
-        $recentListEl = Find-UiaById $panelEl "RecentList" 5
-        if ($recentListEl)
+        # 面板失焦自隐防线（U2 ①同款）：不可见=重发 WM_HOTKEY 重开再找，隐藏元素 UIA 读数照来但 Invoke 必炸
+        if (@([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")) -notcontains $panelHandle)
         {
-            $rows = $recentListEl.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
-            foreach ($row in $rows)
+            [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0)
+            Start-Sleep -Seconds 2
+            $ph = @([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板"))
+            if ($ph.Count -ge 1)
             {
-                try { if ($row.Current.Name -match "GLM") { $glmRow = $row; break } } catch { }
+                $panelHandle = $ph[0]
+                $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
             }
+            continue
         }
-        if (!$glmRow) { Start-Sleep -Seconds 2 }
+        $recentSeen = Get-UiaListSummaries $panelEl "RecentList"
+        if (@($recentSeen | Where-Object { $_ -match "GLM" }).Count -ge 1)
+        {
+            $recentListEl = Find-UiaById $panelEl "RecentList" 5
+            if ($recentListEl) { $glmRow = Find-InvokableRowByName $recentListEl "GLM" }
+            if ($glmRow) { break }
+        }
+        Start-Sleep -Seconds 2
     }
-    if (!$glmRow) { Save-FullScreenshot "AF-FAIL-no-glm-row.png"; throw "断言失败（场景 AF）：60s 内 RecentList 无 GLM 行（刷新链未到位）" }
+    if (!$glmRow)
+    {
+        Save-FullScreenshot "AF-FAIL-no-glm-row.png"
+        throw "断言失败（场景 AF）：60s 内 RecentList 无 GLM 行（实际摘要：$(@($recentSeen) -join ' | ')）——刷新链或行锚定未到位"
+    }
     $afBefore = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
-    try { $glmRow.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
-    catch { Save-FullScreenshot "AF-FAIL-row-invoke.png"; throw "断言失败（场景 AF）：GLM 行 Invoke 失败：$($_.Exception.Message)" }
+    # Invoke 三轮兜底（U2 ②同款）：Find 与 Invoke 之间刷新 tick 重建行容器→元素失联；每轮重开检查+重找行
+    $invoked = $false
+    $invokeErr = ""
+    for ($attempt = 1; $attempt -le 3 -and !$invoked; $attempt++)
+    {
+        if ($attempt -gt 1)
+        {
+            if (@([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")) -notcontains $panelHandle)
+            {
+                [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0)
+                Start-Sleep -Seconds 2
+            }
+            $ph = @([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板"))
+            if ($ph.Count -ge 1)
+            {
+                $panelHandle = $ph[0]
+                $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+                $recentListEl = Find-UiaById $panelEl "RecentList" 5
+                if ($recentListEl) { $glmRow = Find-InvokableRowByName $recentListEl "GLM" }
+            }
+            if (!$glmRow) { $invokeErr = "第 $attempt 轮重找 GLM 行失败"; Start-Sleep -Seconds 2; continue }
+        }
+        try
+        {
+            $glmRow.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+            $invoked = $true
+        }
+        catch { $invokeErr = $_.Exception.Message.Trim(); Start-Sleep -Seconds 2 }
+    }
+    if (!$invoked) { Save-FullScreenshot "AF-FAIL-row-invoke.png"; throw "断言失败（场景 AF）：GLM 行 Invoke 三连失败：$invokeErr" }
     $detailHandle = [IntPtr]::Zero
     $deadline = (Get-Date).AddSeconds(10)
     while ((Get-Date) -lt $deadline)
