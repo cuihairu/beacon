@@ -223,7 +223,7 @@ public sealed partial class CapsuleWindow : Window
             });
             panel.Children.Add(line);
         }
-        SourcePreview.Content = panel;
+        SourcePreview.Child = panel; // Border 装饰件只有 Child（Content 是 ContentControl 面）
     }
 
     /// <summary>右键直达设置（左键拖动已在 Pressed 过滤非左键，互不干扰）。</summary>
