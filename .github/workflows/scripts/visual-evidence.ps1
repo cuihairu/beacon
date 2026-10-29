@@ -5846,6 +5846,161 @@ catch
     Write-Host "::error::场景 AE 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 AF：动作端到端（todo 行 210「端到端实际命令执行」CI 代验半；补充 A-14 ①③④本地半）——
+# actions.json 种 local.command 动作 → 面板 RecentList GLM 行 Invoke 开 L3 详情窗 → 自定义动作按钮
+# 在窗（ActionVisibility widgetType 过滤实证）→ AF1 确认弹窗「取消」拦执行（marker 不在）；
+# AF2 「确认」真拉起 cmd 子进程写 %TEMP% marker 文件（真实进程执行硬证据）+ 结果文本「✓ 退出码 0」；
+# AF3 无确认坏命令 → 「✗ 无法启动命令」（本地失败反馈不静默；远端失败反馈已由 U5 代验）。
+# URL 动作真开浏览器保持装机手动（A-2/A-14 余半）。
+try
+{
+    @'
+{
+  "configVersion": 1,
+  "hotkey": "Ctrl+Alt+B",
+  "launchOnStartup": false,
+  "theme": "dark",
+  "pinDisplayMode": "floating",
+  "numericFloatingEnabled": false,
+  "numericFloatingResetDone": true,
+  "showCapsule": false
+}
+'@ | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+    @'
+[
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true }
+]
+'@ | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    @'
+[
+  { "id": "bigmodel.usage:GLM", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "pinned": true,
+    "config": { "label": "GLM" } }
+]
+'@ | Set-Content -Path (Join-Path $configDir "widgets.json") -Encoding UTF8
+    @'
+[
+  { "id": "af-marker", "type": "local.command", "name": "写标记", "requireConfirmation": true,
+    "parameters": { "widgetType": "bigmodel.usage", "shell": "exe", "command": "cmd", "args": "/C echo af-marker-ok > %TEMP%\\beacon-af-marker.txt" } },
+  { "id": "af-bad", "type": "local.command", "name": "坏命令", "requireConfirmation": false,
+    "parameters": { "widgetType": "bigmodel.usage", "shell": "exe", "command": "definitely-missing-xyz.exe" } }
+]
+'@ | Set-Content -Path (Join-Path $configDir "actions.json") -Encoding UTF8
+    '{ "tiles": [] }' | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
+    Remove-Item -LiteralPath (Join-Path $configDir "cache/zhipu") -Recurse -Force -ErrorAction SilentlyContinue
+    $afMarker = Join-Path $env:TEMP "beacon-af-marker.txt"
+    Remove-Item $afMarker -Force -ErrorAction SilentlyContinue
+    Ensure-MockServer
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 18
+    $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+    if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+    if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 AF 前置）：托盘消息窗未找到" }
+    [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY 开面板
+    $panelHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline -and $panelHandle -eq [IntPtr]::Zero)
+    {
+        $ph = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($ph.Count -ge 1) { $panelHandle = $ph[0] }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panelHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "AF-FAIL-no-panel.png"; throw "断言失败（场景 AF）：热键触发后 5s 内快速面板未出现" }
+    # RecentList 等 GLM 行（mock 38% 态到位即入列；InvokeableListItem Invoke 走 ItemClick 同链，S4 实证）
+    $panelEl = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+    $glmRow = $null
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline -and !$glmRow)
+    {
+        $recentListEl = Find-UiaById $panelEl "RecentList" 5
+        if ($recentListEl)
+        {
+            $rows = $recentListEl.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem)))
+            foreach ($row in $rows)
+            {
+                try { if ($row.Current.Name -match "GLM") { $glmRow = $row; break } } catch { }
+            }
+        }
+        if (!$glmRow) { Start-Sleep -Seconds 2 }
+    }
+    if (!$glmRow) { Save-FullScreenshot "AF-FAIL-no-glm-row.png"; throw "断言失败（场景 AF）：60s 内 RecentList 无 GLM 行（刷新链未到位）" }
+    $afBefore = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · "))
+    try { $glmRow.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+    catch { Save-FullScreenshot "AF-FAIL-row-invoke.png"; throw "断言失败（场景 AF）：GLM 行 Invoke 失败：$($_.Exception.Message)" }
+    $detailHandle = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline)
+    {
+        $hits = @([WinEnum]::VisibleHandlesByTitlePrefix("Beacon · ") | Where-Object { $afBefore -notcontains $_ })
+        if ($hits.Count -ge 1) { $detailHandle = $hits[0]; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if ($detailHandle -eq [IntPtr]::Zero) { Save-FullScreenshot "AF-FAIL-no-detail.png"; throw "断言失败（场景 AF）：GLM 行 Invoke 未打开 L3 详情窗" }
+    $detailEl = [System.Windows.Automation.AutomationElement]::FromHandle($detailHandle)
+    $markerButton = Find-UiaByName $detailEl "写标记" 10
+    if (!$markerButton) { Save-FullScreenshot "AF-FAIL-no-action-button.png"; throw "断言失败（场景 AF）：详情窗无「写标记」按钮——actions.json 动作未显面（ActionVisibility/渲染链断）" }
+    # AF1 确认弹窗「取消」拦执行：marker 必须不在
+    Invoke-Uia $markerButton
+    $cancelButton = Find-UiaByName $detailEl "取消" 10
+    if (!$cancelButton) { Save-FullScreenshot "AF-FAIL-no-dialog.png"; throw "断言失败（场景 AF1）：动作后 10s 内确认弹窗「取消」按钮不可达" }
+    if (!((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '执行「写标记」' }))
+    {
+        throw "断言失败（场景 AF1）：确认弹窗文案缺「执行「写标记」」——确认语义回归"
+    }
+    Invoke-Uia $cancelButton
+    Start-Sleep -Seconds 3
+    if (Test-Path $afMarker) { Save-FullScreenshot "AF-FAIL-cancel-ran.png"; throw "断言失败（场景 AF1）：弹窗「取消」后 marker 仍在——取消未拦截执行" }
+    Write-Host "场景 AF1 通过：确认弹窗可关（取消后未执行，marker 不在）"
+    # AF2 确认全链：真拉起 cmd 子进程写 marker + 结果文本 ✓ 退出码 0
+    Invoke-Uia $markerButton
+    $okButton = Find-UiaByName $detailEl "确认" 10
+    if (!$okButton) { Save-FullScreenshot "AF-FAIL-no-confirm.png"; throw "断言失败（场景 AF2）：第二轮动作后确认弹窗未出现" }
+    Invoke-Uia $okButton
+    $okText = $false
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline -and !$okText)
+    {
+        if ((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '✓' -and $_ -match '退出码 0' }) { $okText = $true }
+        if (!$okText) { Start-Sleep -Milliseconds 500 }
+    }
+    if (!$okText -or !(Test-Path $afMarker))
+    {
+        Save-FullScreenshot "AF-FAIL-no-marker.png"
+        throw "断言失败（场景 AF2）：确认后 ✓ 退出码 0=$okText / marker 落盘=$(Test-Path $afMarker)——本地命令执行链失效"
+    }
+    Write-Host "场景 AF2 通过：确认 → cmd 子进程真执行（marker 落盘）+ 结果「✓ 退出码 0」"
+    # AF3 本地失败反馈：坏命令（无确认）→ ✗ 无法启动命令，不静默
+    $badButton = Find-UiaByName $detailEl "坏命令" 5
+    if (!$badButton) { Save-FullScreenshot "AF-FAIL-no-bad-button.png"; throw "断言失败（场景 AF3）：详情窗无「坏命令」按钮" }
+    Invoke-Uia $badButton
+    $failText = $false
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline -and !$failText)
+    {
+        if ((Get-WindowUiaTexts $detailHandle) | Where-Object { $_ -match '无法启动命令' }) { $failText = $true }
+        if (!$failText) { Start-Sleep -Milliseconds 500 }
+    }
+    if (!$failText) { Save-FullScreenshot "AF-FAIL-no-fail-text.png"; throw "断言失败（场景 AF3）：坏命令执行后未见「✗ 无法启动命令」——本地失败反馈回归" }
+    Write-Host "场景 AF3 通过：本地坏命令 → 「✗ 无法启动命令」（失败可见不静默）"
+    # 收尾：关详情窗（面板若在场一并收起），marker 清档
+    [WinEnum]::Post($detailHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) # WM_CLOSE
+    if (@([WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")).Count -gt 0)
+    {
+        [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0)
+        Start-Sleep -Seconds 1
+    }
+    Remove-Item $afMarker -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Write-Host "场景 AF 通过：本地命令动作端到端（确认拦执行/真进程落盘/失败反馈）——行 210 CI 代验半"
+}
+catch
+{
+    Stop-Beacon
+    Remove-Item (Join-Path $env:TEMP "beacon-af-marker.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "AF-FAIL-unexpected.png"
+    $failures.Add("场景 AF：$($_.Exception.Message)")
+    Write-Host "::error::场景 AF 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
