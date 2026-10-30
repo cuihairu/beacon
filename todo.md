@@ -39,7 +39,7 @@
 - **tile 状态灯像素断言阈值重标定（亚像素渲染漂移）**（2026-10-12 批3-补51，38261911354 工件逐像素取证）：8DIP 状态灯同一几何在不同窗口实例渲染于不同亚像素位置 → 匹配像素 10~44 px 漂移（D 场景五实例 10、G2 三轮 44、G1 品红两跑 44/24、G4 橙 24/24；tol45=tol60 计数相同，tol90 起误吞 icon 灰）。G4 连红两轮的 24 px 是半像素偏移的正常渲染（精确核 16 + 0.89 覆盖率均匀边缘环 8），**非 3be02b6 所诊「呼吸调光」**——呼吸只存在于 full 档（StartBreathing 入口 `Mode != Full` 即返回），reduced/off 根本不启动；该次误诊引入的 motion off 钉死无害（G7b 帧差分仍依赖），保留。GLM tile 无进度条（state.Progress 为空 bar 收起，G2 绿 bbox 8×8 实证），此前「状态灯+条带」「95% 填充外推 ~92px」均为误设。失效模式（palette 未用新色/渲染缺失）恒 0 px → 色彩存在性断言统一定标实测底（10）之下、0 之上 = 8（G1/G2/G4/G5/G7a 五处）。另证：PS 非前台时 BringToFront 对任意窗口静默失败（E2/E3 菜单仍不弹的根因），托盘菜单驱动改 AttachThreadInput 共享前台权（WinEnum.ForceForeground）。
 - **reduced 档变色过渡被每 tick 重放（同色闪灯缺陷）**（2026-10-13 patrol-20261013-A1，读码发现）：PinnedHostWindow.Update 的 TransitionFill 不受色变门控（`changed` 只闸 Flash）——reduced 档下每个刷新 tick（ci 档 15s）状态灯都 opacity 0→1 凭空灭一次再渐亮（400ms×intensity），违反 MotionEngine 自述「换色后亮度渐入」契约。修复：`_lastFillColor` 记录上次着色，只在色变 tick 过渡（含离线恢复灰空心→实色），同色 tick 直接填充；full 档呼吸/Critical 脉冲路径不变。转化场景 L（todo 行54）：状态灯条带裁图 20×18 @ tile 内偏移 x6/y10（G2 工件实测灯 bbox x13-20/y15-22），~15ms 周期连拍；L1 同色 tick 22s 灯恒在 ≥8px；L2 mock 交替翻档，TransitionFill=200ms×2.0 前载缓动（cubic-bezier 0.1,0.9）可视渐入窗 ~50ms，环内找「与两端都差 ≥8px」中间态帧——瞬时切换只可能出现端点帧，中间态帧即渐入的直接证据；≥2 可判定轮零中间态=真回归红，采样空洞降级 warning 转装机（同 G7c 口径）。
 
-## MVP 待验/未修项（50 项 = 31 勾 / 19 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
+## MVP 待验/未修项（50 项 = 39 勾 / 11 未勾；原样搬自 docs/mvp-issues.md，未完成项即装机清单）
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；**2026-10-17 真机实证双半**：本机双击（os.startfile 同路径）二次启动进程数恒 1，主实例日志 `Balloon dispatched: Beacon - Beacon 已在运行。`（Shell_NotifyIconW 返回 true=Windows 已接受气泡）+ `Secondary instance exit.` 双锚；随批给 ShowBalloon 补日志锚——原实现丢弃 Shell_NotifyIconW 返回值，装机复测无取证点，现成功落 Information/失败落 Warning（TrayIconService.cs:99-110））
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
 - [ ] BLOCKED：重启位置与普通拖动已有场景 R/R3 证据（38750239155）；跨 DPI 拖动无错乱需真实双 DPI 显示器，当前环境缺第二块不同 DPI 的 Windows 显示器。
@@ -164,7 +164,7 @@
 
 > 性质：外部设计稿，不是本仓事实。核验结论——设计稿关于「已有实现」的断言约六成在仓内确有其事；「响应式状态系统」「显示组件库」两章的基本前提在仓内大面积查无；「HTML 小屏幕」一章查无，且仓内已有反向记录（`docs/master-plan.md:769`）。查无只说明从未写下来，不证明从未设计过，不得当作全新需求立项。
 > 期次划分照设计稿 Phase 0 到 Phase 6，共 7 期 43 条，**不自行重排**。落地一条勾一条，括号内补落地 commit hash。
-> 进度：43 条 = 40 勾 / 3 未勾（2026-10-18 复算：Phase 0/1/2/3/4/5 全清——Phase 3 六行、Phase 4 六行（2026-10-17 用户裁定「这个设计下吧」，b1893a1 起五提交落地）与 Phase 5 五行均已落地，Phase 6 行 193 订阅重建链由场景 AB 三段闭环代验落地（run 39057049259）；未勾 = Phase 6 三条，均余装机半）。
+> 进度：43 条 = 42 勾 / 1 未勾（2026-10-30 复算：Phase 0-5 全清；Phase 6 六行落五——订阅重建链 run 39057049259，动作端到端命令执行半由场景 AF CI 实证（run 40903469089，cf43001），URL 开浏览器半归 A-2；未勾 = 重启恢复一条，余装机半。历史口径：2026-10-18 复算 40/3，其间一次翻勾漏更本注）。
 
 ### Phase 0 现状审计与契约冻结（6 条 = 6 勾，期次完成）
 
@@ -223,7 +223,7 @@
 
 ### Phase 6 回归与真机验收（6 条）
 
-- [ ] BLOCKED：刷新/状态已有本机日志 beacon-20261017.log（356 次全 ok）和 Actions 27 项测试；端到端实际命令执行需 Windows 桌面及可操作目标程序，当前环境无 Windows 运行时。
+- [x] 动作端到端（命令执行半）：本机日志 356 次全 ok + Actions 27 测试；场景 AF Windows CI 实跑 cmd.exe 写 marker 文件（真实子进程落地）+ 确认弹窗取消不执行与确认执行双径 + 坏命令失败反馈「无法启动命令」（run 40903469089，cf43001）；URL 开浏览器半维持 L58 BLOCKED 归 A-2。
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）由场景 AB 三段闭环 CI 代验——AB1 停用 zhipu 落盘 enabled=false + GLM tile 摘除 + 静默窗（GLM 零新行退订 / ds 持续 ≥2 行不误伤）、AB2 恢复落盘 enabled=true + tile 回归 + 静默窗 ≥2 新行复订、AB3 删除 ds 后 widgets.json 行消失 + ds tile 摘除无幽灵刷新（run 39057049259 全绿；此前两轮恒红非产品：PS 5.1 顶层数组读法分叉使判据与文件内容无关，Get-ConfigRecords 收编 4 读点 bff77d7））
 - [ ] BLOCKED：重启恢复已有两轮实机记录（pins.json monitor/anchor/offset/collapsed）；显示器切换、DPI 拖动仍需第二块显示器和解锁的 Windows GUI。
