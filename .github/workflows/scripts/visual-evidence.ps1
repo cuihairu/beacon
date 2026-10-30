@@ -5251,7 +5251,9 @@ try
 {
     Write-GConfig "" "off" 1.0
     Ensure-MockServer # 防御：不依赖前序场景收尾（38470370548 级联红根因）
-    $abLog = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    # 午夜翻日防（40971738405）：nightly 跨 UTC 00:00 时应用写新日期日志，固定路径读旧文件——
+    # AB3 静默窗切片为空 ds=0/GLM=0 假红。每次读取按当天日期解析。
+    function Get-AbLog { Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log") }
     $abWidgets = Join-Path $configDir "widgets.json"
     $abConns = Join-Path $configDir "connections.json"
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
@@ -5271,9 +5273,9 @@ try
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline)
     {
-        if (Test-Path $abLog)
+        if (Test-Path (Get-AbLog))
         {
-            $logNow = Get-Content $abLog -Raw -Encoding UTF8
+            $logNow = Get-Content (Get-AbLog) -Raw -Encoding UTF8
             if (($logNow -match "Widget bigmodel\.usage:GLM refreshed ok") -and ($logNow -match "Widget deepseek\.balance:ds refreshed ok")) { $bothSeen = $true; break }
         }
         Start-Sleep -Seconds 3
@@ -5328,7 +5330,7 @@ try
     {
         Save-FullScreenshot "AB-FAIL-disable-not-saved.png"
         Copy-Item $abConns (Join-Path $evidence "connections-AB1-fail.json") -Force -ErrorAction SilentlyContinue
-        Copy-Item $abLog (Join-Path $evidence "beacon-AB1-fail.log") -Force -ErrorAction SilentlyContinue
+        Copy-Item (Get-AbLog) (Join-Path $evidence "beacon-AB1-fail.log") -Force -ErrorAction SilentlyContinue
         throw "断言失败（场景 AB1）：Toggle 后 20s（两轮）connections.json zhipu enabled 未翻 false——事后 ToggleState=$stateAfter（Off=停用链已走、磁盘判据面问题；On=Toggle 打空），读 connections-AB1-fail.json / beacon-AB1-fail.log 定因"
     }
     $tiles1 = -1
@@ -5343,21 +5345,21 @@ try
     {
         Save-FullScreenshot "AB-FAIL-disable-tile-alive.png"
         Copy-Item $abConns (Join-Path $evidence "connections-AB1-fail.json") -Force -ErrorAction SilentlyContinue
-        Copy-Item $abLog (Join-Path $evidence "beacon-AB1-fail.log") -Force -ErrorAction SilentlyContinue
+        Copy-Item (Get-AbLog) (Join-Path $evidence "beacon-AB1-fail.log") -Force -ErrorAction SilentlyContinue
         throw "断言失败（场景 AB1）：停用后 20s 内 GLM tile 未消失（tile=$tiles1，期望 1）——PinsChanged→ReloadTiles 重建链回归"
     }
     Write-Host "场景 AB1 通过：停用 zhipu → enabled=false 落盘 + GLM tile 摘除"
     # 静默窗口径：tile 摘除已过=重建链已跑；+5s 让 in-flight 落地，随后 50s（≥3 跳）零新 GLM 行而 ds ≥2
     Start-Sleep -Seconds 5
-    $len1 = (Get-Content $abLog -Raw -Encoding UTF8).Length
+    $len1 = (Get-Content (Get-AbLog) -Raw -Encoding UTF8).Length
     Start-Sleep -Seconds 50
-    $log1 = Get-Content $abLog -Raw -Encoding UTF8
+    $log1 = Get-Content (Get-AbLog) -Raw -Encoding UTF8
     $slice1 = if ($log1.Length -ge $len1) { $log1.Substring($len1) } else { $log1 }
     $glmNew1 = ([regex]::Matches($slice1, [regex]::Escape("Widget bigmodel.usage:GLM refreshed ok"))).Count
     $dsNew1 = ([regex]::Matches($slice1, [regex]::Escape("Widget deepseek.balance:ds refreshed ok"))).Count
     if ($glmNew1 -ne 0 -or $dsNew1 -lt 2)
     {
-        Copy-Item $abLog (Join-Path $evidence "beacon-AB1-silence-fail.log") -Force -ErrorAction SilentlyContinue
+        Copy-Item (Get-AbLog) (Join-Path $evidence "beacon-AB1-silence-fail.log") -Force -ErrorAction SilentlyContinue
         throw "断言失败（场景 AB1 静默窗）：停用后 50s 窗内 GLM 新行=$glmNew1（期望 0——幽灵刷新）/ ds 新行=$dsNew1（期望 ≥2——不误伤）"
     }
     Write-Host "场景 AB1 静默窗通过：GLM 零新行（退订）/ ds 持续 ≥2 行（不误伤）"
@@ -5391,14 +5393,14 @@ try
     }
     Write-Host "场景 AB2 通过：恢复 zhipu → enabled=true 落盘 + GLM tile 回归"
     Start-Sleep -Seconds 5
-    $len2 = (Get-Content $abLog -Raw -Encoding UTF8).Length
+    $len2 = (Get-Content (Get-AbLog) -Raw -Encoding UTF8).Length
     Start-Sleep -Seconds 50
-    $log2 = Get-Content $abLog -Raw -Encoding UTF8
+    $log2 = Get-Content (Get-AbLog) -Raw -Encoding UTF8
     $slice2 = if ($log2.Length -ge $len2) { $log2.Substring($len2) } else { $log2 }
     $glmNew2 = ([regex]::Matches($slice2, [regex]::Escape("Widget bigmodel.usage:GLM refreshed ok"))).Count
     if ($glmNew2 -lt 2)
     {
-        Copy-Item $abLog (Join-Path $evidence "beacon-AB2-resume-fail.log") -Force -ErrorAction SilentlyContinue
+        Copy-Item (Get-AbLog) (Join-Path $evidence "beacon-AB2-resume-fail.log") -Force -ErrorAction SilentlyContinue
         throw "断言失败（场景 AB2 静默窗）：恢复后 50s 窗内 GLM 新行=$glmNew2（期望 ≥2——复订未恢复刷新）"
     }
     Write-Host "场景 AB2 静默窗通过：GLM 恢复 ≥2 新行（复订）"
@@ -5441,15 +5443,15 @@ try
     Start-Sleep -Seconds 5
     $procs3 = @(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count
     if ($procs3 -ne 1) { throw "断言失败（场景 AB3）：删除链后进程数=$procs3（期望 1——删除链炸进程）" }
-    $len3 = (Get-Content $abLog -Raw -Encoding UTF8).Length
+    $len3 = (Get-Content (Get-AbLog) -Raw -Encoding UTF8).Length
     Start-Sleep -Seconds 50
-    $log3 = Get-Content $abLog -Raw -Encoding UTF8
+    $log3 = Get-Content (Get-AbLog) -Raw -Encoding UTF8
     $slice3 = if ($log3.Length -ge $len3) { $log3.Substring($len3) } else { $log3 }
     $dsNew3 = ([regex]::Matches($slice3, [regex]::Escape("Widget deepseek.balance:ds refreshed ok"))).Count
     $glmNew3 = ([regex]::Matches($slice3, [regex]::Escape("Widget bigmodel.usage:GLM refreshed ok"))).Count
     if ($dsNew3 -ne 0 -or $glmNew3 -lt 2)
     {
-        Copy-Item $abLog (Join-Path $evidence "beacon-AB3-ghost-fail.log") -Force -ErrorAction SilentlyContinue
+        Copy-Item (Get-AbLog) (Join-Path $evidence "beacon-AB3-ghost-fail.log") -Force -ErrorAction SilentlyContinue
         throw "断言失败（场景 AB3 静默窗）：删除后 50s 窗内 ds 新行=$dsNew3（期望 0——幽灵刷新）/ GLM 新行=$glmNew3（期望 ≥2——不误伤）"
     }
     Write-Host "场景 AB 通过：停用退订静默/恢复复订/删除无幽灵刷新——订阅重建链三段闭环（todo 行 193）"
