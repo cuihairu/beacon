@@ -43,6 +43,7 @@
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（CI 已代验进程半：场景 E1 二次启动进程数恒 1；E1b 气泡呈现探测已建、无头会话不可见降级 ::warning（38619441591）；**2026-10-17 真机实证双半**：本机双击（os.startfile 同路径）二次启动进程数恒 1，主实例日志 `Balloon dispatched: Beacon - Beacon 已在运行。`（Shell_NotifyIconW 返回 true=Windows 已接受气泡）+ `Secondary instance exit.` 双锚；随批给 ShowBalloon 补日志锚——原实现丢弃 Shell_NotifyIconW 返回值，装机复测无取证点，现成功落 Information/失败落 Warning（TrayIconService.cs:99-110））
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2 关窗进程驻留 + E3 托盘菜单 Exit 退出已代验）
 - [ ] BLOCKED：重启位置与普通拖动已有场景 R/R3 证据（38750239155）；跨 DPI 拖动无错乱需真实双 DPI 显示器，当前环境缺第二块不同 DPI 的 Windows 显示器。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 任意前台应用下热键生效；可在设置改键并持久化（场景 K1 注册成功 + N 改键落盘重启新键注册 + WM_HOTKEY 直驱面板出现已代验）
 - [x] 开关即时生效（重启验证）；卸载清理（场景 J 静默安装卸载 + M HKCU Run 双向断言已代验）
 - [x] 人为抛异常：进程存活、日志含堆栈、无僵尸窗口（场景 T2 外部故障注入 + V3 崩溃注入已代验，38494525200；V3 曾红出真实发现并建 DispatcherQueueGuard，见决策记录）
@@ -56,37 +57,47 @@
 - [x] 失败在 UI 有可见反馈（场景 U5 已代验：mock 500 后 L3 失败反馈文本硬断言，U4 成功反馈同链对照）
 - [x] 模板渲染单测（TemplateRendererTests 11 例）
 - [ ] BLOCKED：URL 拼接已有 TemplateRendererTests 覆盖；端到端打开验证需要 Windows 桌面和用户默认浏览器，当前环境无法观察真实浏览器导航。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] API 封装单测（假 Handler 单测：GitHubApiClientTests 10 例 + GitHubWorkflowExecutorTests 6 例）
 - [x] 真实仓库手动：运行中到终态全程可在 Beacon 看到（公共 API / 本地桩替代，不依赖 PAT：workflow_dispatch 匿名 401 需鉴权，改用可造数据桩先出 in_progress 再出 completed 驱动 provider，Running→Success 渲染翻转全程，GitHubPublicApiLiveTests.Item4 恒跑，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 两例：超时杀进程仍写日志、真实命令捕获输出写日志）
 - [x] 确认弹窗可关（按 Action 配置）（场景 U3 已代验：弹窗可关 + 取消后 mock 零 POST 负证；U4 确认走通）
 - [ ] BLOCKED：AUMID 自愈已有场景 F5t 证据（38494525200）；Toast 发送、点击、激活路由需要 Windows 通知中心与真人点击，当前 Linux 环境不可执行。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 规则引擎表驱动单测（含冷却）（NotificationEngineTests 17 例）
 - [x] 注入 Failed 状态收到且仅收到一条 Toast（NotificationEngineTests 17 例覆盖引擎去重 + 场景 F5 断网降级恰 1 条硬断言）
 - [ ] BLOCKED：tile 更新已有场景 G7a 证据（38%→95%，75s）；托盘图标颜色/状态像素和刷新周期需 Windows 通知区实机截图，当前环境没有 Windows 托盘。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致（场景 F2 tile + O 面板 + Q 胶囊三面已代验）
 - [x] 打开 <100ms（缓存优先，无网络等待白屏）；键盘可完整操作关闭（Item12 代码侧完成 2026-10-18 判定：缓存优先打开走 JsonCacheStore（BeaconRuntime.cs:27,113 缓存优先、无网络等待），键盘关闭走 Esc KeyboardAccelerator（QuickPanelWindow.cs:116-118）；CI 已代验缓存无白屏 + Esc 键盘关闭面板：场景 K3 Esc 改硬断言全链实证，根因 INPUT.type 误写 0（INPUT_MOUSE）静默丢键已修 84f9aad，run 38743014862；100ms 精确计时属真人观感，代码侧缓存优先链已闭环）
 - [x] 计数/事件与状态一致；右键 Pin 落库（计数半场景 O + Recent 事件流半场景 S + 右键 Pin 落库半场景 X1 已代验：右键 ContextFlyout 点 Unpin 后 widgets.json 翻转 + 悬浮 GLM tile 移除，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 UIA Invoke 开详情 + U1-U5 Retry 全链已代验）
 - [ ] BLOCKED：已按裁定给每个浮动 tile 整窗添加 WS_EX_TRANSPARENT（FloatingTileWindow.cs、NativeMethods.cs；commit 0341abc）；不使用全局鼠标钩子。跨进程点击穿透/焦点行为需真实 Windows 桌面实测，且当前 Linux 无法运行 WinUI XamlCompiler.exe（NETSDK1100/Exec format error）。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a 两 tile 独立 + H WS_EX_TOOLWINDOW 置位已代验）
 - [x] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（Item11 形态选型决策 2026-10-18：**悬浮形态为主**——每组件一窗（FloatingTileWindow）可拖放 + 重启后位置还原（widgets.json floatingX/Y 落盘），本轮即此形态；**宿主面板（PinnedHostWindow）作为后续可选形态，本轮不做**；还原与二选一已代验：场景 H 两轮重启精确落位 + panel 模式悬浮窗归零；拖放功能链已代验：H6 SendInput 拖 +80/+60 窗随动 + widgets.json floatingX/Y 落盘 200,180 + 重启还原闭环（38750239155））
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X 已代验：X1 面板右键 Unpin 落库 + tile 移除；X2 重启后设置钉开关读态 Off 再 Toggle On 同链落库 + tile 回归；X3 再重启读态 On + 行标已钉，run 38590456994）
 - [x] 非准入类型在两处入口均不可钉（场景 Y 已代验：播种未登记类型 pinned:true，Y1 主机 Resolve=null skipped 日志+零 tile，Y2 面板右键无 Pin 菜单项，Y3 设置 scope 过滤整行不产，Y4 widgets.json pinned 恒 true 零改写，run 38608625892）
 - [x] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（Item7 2026-10-18 合并成一次回归：位置还原+收起态还原两条链锁进同一逻辑级回归 PositionAndCollapsedRestore_SingleRegression_BothChainsHold（PinLayoutMathTests，Place→Locate 逆解→Place 重放位置一致 + Collapsed 标志往返保持），commit b08cbf7，测试通过；位置半场景 H + 收起态半场景 P 已代验；拔显示器物理事件待物理显示器验证）
 - [ ] BLOCKED：需 Windows 多显示器/虚拟显示驱动，验证跨 DPI 拖放和降低分辨率后的越界回收；当前环境没有该显示栈。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 内读数回归已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（Item6 代码侧完成 2026-10-18：L0 变色+脉冲走 Composition 属性动画，仅作用 tile 状态灯——PinnedHostWindow.cs:398-400 severity==Critical→StartPulse，MotionEngine.cs:132-155 CreateVector3KeyFrameAnimation Scale 循环，无 Activate/无 SetForegroundWindow/无发声（grep StartPulse 调用点仅状态灯+设置预览两处）；Toast 仍由通知引擎独立发出（NotificationEngineTests 17 例）；L0 变色+脉冲已代验：场景 V1/V2，38459944253；Toast 引擎链已代验：场景 V4 注入 Critical 恰 1 条 critical 记录（connection-degraded 跨界），38661655290）
 - [ ] BLOCKED：RFC §6.2.7 四项要求真人操作与真实网络环境；缺可交互 Windows 装机验收会话及真实网络环境记录。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [ ] BLOCKED：tile 与胶囊改色/重置已有 G4/G5、38953986133 证据；托盘图标同步需要 Windows 通知区像素实测，当前环境无 Windows 托盘。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验：品红 ≥8px + DeepSeek 零渗 ≤4px）
 - [x] 非法颜色值回退默认色不崩溃；重启后保持（场景 G2 两轮启动已代验：进程存活 + 非法值零渗 + 默认绿 ≥8px）
 - [x] Success 到 Error 状态变化有平滑变色过渡（reduced 档）（场景 L1/L2 已代验：38284623093 三轮渐入中间态帧 + 同色 tick 不闪灯）
 - [ ] BLOCKED：默认/档位/强度与动画帧差分已有 G6/G7b/G7c/V2 证据；视觉观感与强度裁量需解锁的 Windows 桌面真人验收。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 动效不抢焦点、不发声；隐藏/收起时无动画循环（功耗）（焦点半：场景 H1 前台不变；发声半：常青门 AudioApiAbsenceTests 全源 206 文件 ×10 发声 API 词断言红绿自证，新增发声面即红，通知链显式 Sound:false、OS toast 声属用户规则面非动效面；循环半代码审计：Forever 循环仅 MotionEngine.StartBreathing/StartPulse 两入口，消费面仅 PinTile.ApplyLoops 与设置页预览（显式 stop），收起帘控 PinnedHostWindow.ApplyLayout strip→SuspendMotion 全 tile、悬停/拖拽/Reconcile 全路径经 ApplyLayout，悬浮窗只挂一次性 Flash/SlideIn 且 stale 窗 Close 销毁非隐藏常驻；真机听声目检仍可装机复核）
 - [x] 导出文件全文无 token；导入+重录密钥后行为与原机一致（场景 Z picker 双驱代验：导出→导入往返反馈计数逐字段对齐+重录密钥提示在案+导出全文无密钥真值；204b884，run 38725138151）
 - [ ] BLOCKED：CI 截图已有 visual-evidence 工件；真人全流程录屏归档需要解锁的 Windows 桌面和完整操作流程，当前环境无法录制。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [ ] BLOCKED：B-803 必须在干净 Windows 11 虚拟机下载并运行；当前环境为 Linux，无 Windows 11 VM/桌面。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 调色/动效改动即时预览并持久化，重启生效（场景 G4 改色即时 + G6 档位落盘 + G6b 重启 UIA 选中态恢复已代验）
 - [x] 重置默认一键还原；off 档预览即全静止（场景 G5 重置回默认 + G7b off 三帧差分 ≤12px 已代验）
 - [x] tile 底部进度条显示不全（2026-10-14 缺陷单「还是一样的问题」）（02a5de1 修复，38500538817 复证全绿：client 32px/frame 38px chrome 6px + 条带 620/676 真像素，见决策记录同名条）
@@ -95,14 +106,18 @@
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化（38434164526 实证 U1-U5 全绿；解锁行 32/38/46；98f7a2d 后 U 连红根因=ComponentText.Body MaxWidth=NaN 恒 E_INVALIDARG 致 L3 详情窗必炸：896758c 修复 + 0df60a8 取证（38976398309 拿到栈）+ e9f393c 场景加固，38999120347 复证全绿）
 - [x] Critical 与崩溃注入机制（debug 门控）（DebugInjection 8 例单测 + DispatcherQueueGuard 兜底；38494525200 实证 V1/V2/V3 全绿，V3 红出真实发现见决策记录）
 - [ ] BLOCKED：缺目标厂商名称、私有 API 文档/端点、真实认证字段与可用凭据；Jenkins 标准 API Provider 已落位（2026-10-11）。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1 修复：记忆尺寸存客户区 DIP 直喂外框，每次开窗矮一标题栏）
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
 ## MVP 验收标准（master-plan §14，8 项 = 5 勾 / 3 未勾，需真实装机验证）
 - [ ] BLOCKED：Run 注册表值交 ShellExecute 已有 M3 证据（38761946476）；真实 explorer 登录会话调度需 Windows 注销/登录实机，当前没有 Windows 会话。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [ ] BLOCKED：托盘驻留和 15 分钟浸泡已有 E2/E3、AD 证据（39057049259）；更长时稳定及胶囊视觉观感需 Windows 实机持续运行观察。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 全局快捷键正常打开悬浮面板（场景 K1 注册 + N 改键重启注册无失败 + WM_HOTKEY 直驱面板硬断言已代验）
 - [ ] BLOCKED：需要用户提供可用的 GitHub PAT 与目标仓库（或明确授权的真实仓库）；当前无凭据，现有 mock/匿名 API 证据不能替代此项。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 
 验收：CI windows-latest 出截图或给安装包名 + SHA256 让用户自验；「改了未验」不算完成。
 
@@ -137,6 +152,7 @@
 - [x] 架构闭环第二批（P1）：缺失值区分（ComponentSurfaceRenderer.cs:285 缺失≠0%）+ 能力匹配（RequiresProgress 单布尔升级，兼容性返回原因）+ 语义描述（Provider 稳定声明数据能力）（2026-10-27 落地：进度槽三态 Bound/Static/Missing（缺失出「等待数据」占位，metric 空值同口径）；WidgetTypeDescriptor.DataKinds 类型级能力 + 8 家产额 Provider 声明 progress；DisplayTemplates.CanApply 返回 TemplateCompatibility 带中文原因——场景 AE1 空状态列全 5 模板实证；f9a9aac）
 - [x] 第三批（P1）：DetailWindow 完整源映射渲染（DetailWindow.cs:199 现只喂自身状态）+ 组件中心实时预览与参数表单（_targetState 快照改订阅）（2026-10-27 落地：DetailWindow 走 ResolveSources 源映射渲染 + 附加源变化重渲（ConsumesSource 路由）；组件中心订阅 WidgetStateChanged 实时重渲 + 模板参数滑杆表单（Build(overrides) 钳位）；f9a9aac）
 - [ ] 收尾（P2）：模板感知尺寸防裁切（需真机确认）+ 全局 progressStyle 与实例样式优先级统一（2026-10-27 半：代码半已落（f9a9aac）——PinTile 高度=max(尺寸档, MinTileHeightDipsOf)（面板行高走全 tile 最大值既有链）、设置页 progressStyle 档加口径声明（管传统渲染，实例样式面不受影响，回传统=组件中心「恢复传统渲染」）；余裁切观感装机复核，「改了未验」不算完成）
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - 验收口径（端到端）：**不得只跑 DisplayTemplates 纯函数单测收工**——P0 各项须有 Windows CI 场景或等价端到端断言：①空状态（新建/离线/首取数前）完成定向配置并应用成功；②同一窗内先设 tile 再设 row，两 surface 配置互不覆盖（widgets.json 双面齐）；③0%/52%/100%/缺失四态渲染断言（缺失不显示 0%）；④槽位替换后品牌/标签/状态外围保留。观感与裁切项按仓内先例转装机复核（「改了未验」不算完成）。
 
 ## 文档双语补全（2026-10-16 用户令；2 项全勾）
@@ -208,8 +224,10 @@
 ### Phase 6 回归与真机验收（6 条）
 
 - [ ] BLOCKED：刷新/状态已有本机日志 beacon-20261017.log（356 次全 ok）和 Actions 27 项测试；端到端实际命令执行需 Windows 桌面及可操作目标程序，当前环境无 Windows 运行时。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 验证多窗口订阅与取消订阅（测试面已代验：EventBus Subscribe/Unsubscribe/快照隔离 5 例 + bigmodel/ark/kimi 三窗 provider 测试全绿，真机日志见 GLM/Kimi 多窗值渲染（5h/周/月）；连接停用/组件删除的取消订阅重建链（SettingsWindow PinsChanged→ReloadTiles）由场景 AB 三段闭环 CI 代验——AB1 停用 zhipu 落盘 enabled=false + GLM tile 摘除 + 静默窗（GLM 零新行退订 / ds 持续 ≥2 行不误伤）、AB2 恢复落盘 enabled=true + tile 回归 + 静默窗 ≥2 新行复订、AB3 删除 ds 后 widgets.json 行消失 + ds tile 摘除无幽灵刷新（run 39057049259 全绿；此前两轮恒红非产品：PS 5.1 顶层数组读法分叉使判据与文件内容无关，Get-ConfigRecords 收编 4 读点 bff77d7））
 - [ ] BLOCKED：重启恢复已有两轮实机记录（pins.json monitor/anchor/offset/collapsed）；显示器切换、DPI 拖动仍需第二块显示器和解锁的 Windows GUI。
+  已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] HTML 安全边界与错误恢复（HtmlTemplateParserTests 62 例 + HtmlTemplateSanitizeTests 4 例：拒绝 script/iframe/img/a/on*、实体、字面色、超限树；解析失败回退传统渲染、加载错误入 LoadErrors；样例导入 CI run 39043157904 全绿）。
 - [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验：JsonCacheStoreTests 缓存往返 + OutageRecoveryIntegrationTests 断网停服恢复（PointConnectionAtServer 探针）+ DpapiSecretStoreTests 凭据 DPAPI 面 + Actions 失败路径（未知壳抛错/签名不匹配），四测试项目 1328 全绿，de528f9/75f4a85 批回归）
 - [x] 验证现有 Provider、AI 额度显示与通知规则不回归（测试面+真机双证：Connections 662 全绿（全部 provider）+ NotificationEngineTests 阈值带/单次触发/冷却/禁用规则全绿；真机日志 GLM 26%/Kimi 多窗额度持续刷新 356 次零失败——尺寸档/树编辑器两批改动后无回归，de528f9/75f4a85）
