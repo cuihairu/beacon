@@ -1,13 +1,11 @@
 [English](README.md) | [中文](README.zh.md)
 
-<p align="center">
-  <img src="docs/img/logo.svg" width="64" alt="Beacon logo">
-</p>
+<p align="center"><img src="docs/img/logo.svg" width="64" alt="Beacon logo"> <a href="https://cuihairu.github.io/beacon/zh/"><img src="https://img.shields.io/badge/docs-文档-blue" alt="docs"></a></p>
 
 <h1 align="center">Beacon</h1>
 
 <p align="center">
-<a href="https://github.com/cuihairu/beacon/actions/workflows/ci.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <a href="https://codecov.io/gh/cuihairu/beacon"><img src="https://codecov.io/gh/cuihairu/beacon/branch/main/graph/badge.svg" alt="Code coverage"></a> <a href="https://cuihairu.github.io/beacon/"><img src="https://img.shields.io/badge/docs-online-8A2BE2" alt="在线文档"></a> <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 10"> <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows11&logoColor=white" alt="Windows 10/11"> <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3DA639" alt="License: Apache-2.0"></a> <a href="https://github.com/cuihairu/beacon/actions/workflows/nightly.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/nightly.yml/badge.svg" alt="Daily Build"></a>
+<a href="https://github.com/cuihairu/beacon/actions/workflows/ci.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <a href="https://codecov.io/gh/cuihairu/beacon"><img src="https://codecov.io/gh/cuihairu/beacon/branch/main/graph/badge.svg" alt="Code coverage"></a> <a href="https://cuihairu.github.io/beacon/zh/"><img src="https://img.shields.io/badge/docs-online-8A2BE2" alt="在线文档"></a> <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 10"> <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows11&logoColor=white" alt="Windows 10/11"> <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3DA639" alt="License: Apache-2.0"></a> <a href="https://github.com/cuihairu/beacon/actions/workflows/nightly.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/nightly.yml/badge.svg" alt="Daily Build"></a>
 </p>
 
 > **Windows Developer Status & Action Center** — See what needs your attention.
