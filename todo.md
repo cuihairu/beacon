@@ -233,3 +233,9 @@
 - [x] 验证现有 Provider、AI 额度显示与通知规则不回归（测试面+真机双证：Connections 662 全绿（全部 provider）+ NotificationEngineTests 阈值带/单次触发/冷却/禁用规则全绿；真机日志 GLM 26%/Kimi 多窗额度持续刷新 356 次零失败——尺寸档/树编辑器两批改动后无回归，de528f9/75f4a85）
 
 
+
+- [ ] **DOC-GIF · P2 · 文档 · 配置开关效果动态图(每个开关 off→on 对比+GIF)**
+  - 交付:枚举本仓全部「开启后有效果」的开关/配置项;自动流水线生成证据——GUI 类用 @vscode/test-electron 或应用截图(off 一张/on 一张+切换过程录屏),CLI 类用终端录屏(asciinema→GIF 或 ffmpeg);ffmpeg 缝合动态 GIF。
+  - 文档:docs「配置效果」页(双语)逐开关嵌入:说明+off 图+on 图+GIF。
+  - 验收:清单内每个开关都有 off/on+GIF;流水线可重跑(配置变更随时再生成);兼作配置效果回归测试。
+  - 参考:kode todo C-24 同款流水线模式(2026-11-01 用户令全舰队推广)。
