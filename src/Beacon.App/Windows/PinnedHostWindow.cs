@@ -658,16 +658,7 @@ internal sealed class PinTile
     /// 否则取连接类型短名（WidgetTypeNames）。旧兜底取类型尾段——ark.usage tile 显示成「usage」，
     /// 字段名冒充了显示名（2026-10-09 用户实测悬浮框名字错误）；未知前缀才退尾段。</summary>
     private static string LabelOf(WidgetConfig widget)
-    {
-        foreach (var key in new[] { "label", "repo", "owner" })
-        {
-            if (widget.Config.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
-        }
-        return WidgetTypeNames.Of(widget.Type);
-    }
+        => ComponentCenterCatalog.ItemLabel(widget); // 标签口径 Core 单源（组件中心条目同名）
 
     /// <summary>数值位短文本：映射规则在 Core（WidgetValueHint，Linux 可单测），此处仅委托。</summary>
     private static string ValueOf(WidgetState state) => WidgetValueHint.Of(state);
@@ -776,6 +767,12 @@ internal sealed class PinnedHostWindow
         {
             if (!widget.Pinned || !IsPinSupported(widget.Type))
             {
+                continue;
+            }
+            // 组件中心（Component Center）勾选隐藏的组件不占桌面（config.hiddenComponents，与设置页同口径 Core 单源）
+            if (ComponentCenterCatalog.IsHidden(_runtime.Config.App, widget.Id))
+            {
+                _latest.Remove(widget.Id);
                 continue;
             }
             // 模块停用（连接 Enabled=false）的组件不占桌面

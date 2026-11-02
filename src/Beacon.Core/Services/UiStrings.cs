@@ -30,6 +30,7 @@ public static class UiStrings
         ["tray.keepPanelOpen"] = "Keep Panel Open",
         ["tray.refreshAll"] = "Refresh All",
         ["tray.settings"] = "Settings",
+        ["tray.components"] = "Component Center",
         ["tray.exit"] = "Exit",
         ["settings.language"] = "Language (board & tray apply immediately)",
         ["settings.languageAuto"] = "Auto (follow system)",
@@ -55,6 +56,7 @@ public static class UiStrings
         ["tray.keepPanelOpen"] = "面板常驻",
         ["tray.refreshAll"] = "全部刷新",
         ["tray.settings"] = "设置",
+        ["tray.components"] = "组件中心",
         ["tray.exit"] = "退出",
         ["settings.language"] = "语言（看板与托盘即时生效）",
         ["settings.languageAuto"] = "自动（跟随系统）",
@@ -122,6 +124,7 @@ public static class UiStrings
     public static string TrayKeepPanelOpen => Get("tray.keepPanelOpen");
     public static string TrayRefreshAll => Get("tray.refreshAll");
     public static string TraySettings => Get("tray.settings");
+    public static string TrayComponents => Get("tray.components");
     public static string TrayExit => Get("tray.exit");
     public static string SettingsLanguage => Get("settings.language");
     public static string SettingsLanguageAuto => Get("settings.languageAuto");

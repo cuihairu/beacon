@@ -359,10 +359,14 @@ public partial class App : Application
         }
 
         Windows.SettingsWindow? settingsWindow = null;
-        void OpenSettings()
+        void OpenSettings(string? moduleKey = null)
         {
             if (settingsWindow is { } open)
             {
+                if (moduleKey is { } directKey)
+                {
+                    open.OpenModule(directKey); // 已开着：直达指定模块（托盘「组件中心」）
+                }
                 open.Activate();
                 return;
             }
@@ -371,8 +375,12 @@ public partial class App : Application
                 settingsWindow = new Windows.SettingsWindow(runtime);
                 settingsWindow.Closed += (_, _) => settingsWindow = null;
                 settingsWindow.SettingsApplied += ApplySettingsEffects;
-                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排
+                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）
                 settingsWindow.Activate();
+                if (moduleKey is { } key)
+                {
+                    settingsWindow.OpenModule(key); // 托盘「组件中心」直达设置 → 组件中心模块
+                }
             }
             catch (Exception exception)
             {
@@ -382,14 +390,16 @@ public partial class App : Application
                 tray.ShowBalloon("设置窗口打开失败", exception.Message);
             }
         }
-        tray.SettingsRequested += () => Dispatcher.EnqueueGuarded(OpenSettings);
+        tray.SettingsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings());
+        // 组件中心（Component Center）：托盘直达设置 → 组件中心模块（勾选显隐，主入口）
+        tray.ComponentsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings("components"));
         // master-plan §3.1：胶囊右键直达设置（批3-补28）——须在 OpenSettings/hotkey 声明之后挂（CS0165）
-        capsule.SettingsRequested += () => Dispatcher.EnqueueGuarded(OpenSettings);
+        capsule.SettingsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings());
 
         // --settings 启动参数：装配完成即开设置页（CI 视觉取证/装机排查入口，与托盘入口同一 OpenSettings 路径）
         if (Environment.GetCommandLineArgs().Any(a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
         {
-            Dispatcher.EnqueueGuarded(OpenSettings);
+            Dispatcher.EnqueueGuarded(() => OpenSettings());
         }
 
         _logger.LogInformation("Beacon started (tray resident, no main window).");

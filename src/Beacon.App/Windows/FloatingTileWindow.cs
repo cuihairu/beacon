@@ -135,6 +135,12 @@ internal sealed class FloatingTileHost
             {
                 continue;
             }
+            // 组件中心（Component Center）勾选隐藏的组件不占桌面（与单宿主面板同口径 Core 单源）
+            if (ComponentCenterCatalog.IsHidden(_runtime.Config.App, widget.Id))
+            {
+                _latest.Remove(widget.Id);
+                continue;
+            }
             // 模块停用（连接 Enabled=false）的组件不占桌面（与单宿主同口径）
             if (_runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId) is { Enabled: false })
             {

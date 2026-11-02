@@ -150,6 +150,7 @@ internal sealed class SettingsWindow : Window
         [
             new ModuleDef("general", "常规", "热键 · 自启 · 主题 · 胶囊", "\ue713", null),
             new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
+            new ModuleDef("components", "组件中心", "全部组件按类型分组 · 勾选显隐", "\ue71d", null),
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
             new ModuleDef("jenkins", "Jenkins", "构建状态 · 开源标准 API", "\ue9d5", "jenkins"),
             new ModuleDef("machine", "本机", "本机资源 · 网络 · Git · 零凭据", "\ue772", "machine"),
@@ -556,10 +557,21 @@ internal sealed class SettingsWindow : Window
         {
             "general" => BuildGeneralPage(),
             "appearance" => BuildAppearancePage(),
+            "components" => BuildComponentCenterPage(),
             "actions" => BuildActionsPage(),
             "advanced" => BuildAdvancedPage(),
             _ => BuildProviderPage(module),
         };
+    }
+
+    /// <summary>外部直达入口（托盘「组件中心」）：按模块键选中左栏并重建右栏；键不存在保持当前页（不抛）。</summary>
+    public void OpenModule(string key)
+    {
+        var module = _modules.FirstOrDefault(m => m.Key == key);
+        if (module is not null)
+        {
+            SelectModule(module);
+        }
     }
 
     /// <summary>模块下的组件描述符：按「组件类型前缀 = 连接类型」约定（github.* / http.* / bigmodel.*）。</summary>
@@ -652,6 +664,88 @@ internal sealed class SettingsWindow : Window
         page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认开；关闭即刻生效=桌面零残留）。"));
         page.Children.Add(BuildAboutSection());
         return page;
+    }
+
+    /// <summary>组件中心（Component Center）：当前全部可展示组件（widgets.json 实例）按真实注册类型
+    /// 分组（ComponentCenterCatalog 五类别，纯 Core 单源）列出，勾选=显示、取消=隐藏；隐藏集落
+    /// config.json hiddenComponents（AppConfig.HiddenComponents），主宿主面板与独立悬浮框只渲染
+    /// 未隐藏组件（两宿主 ReloadTiles 同口径过滤），重启保留。钉选/布局数据不动，重新勾选即恢复。</summary>
+    private UIElement BuildComponentCenterPage()
+    {
+        var page = PageShell();
+        page.Children.Add(SectionTitle("组件中心"));
+        page.Children.Add(Hint("按类型分组的全部可展示组件：勾选=显示到悬浮面板，取消=隐藏（即时生效、重启保留）。钉选与布局数据不受影响，重新勾选即恢复。"));
+
+        var groups = ComponentCenterCatalog.Group(_runtime.Config.Widgets);
+        if (groups.Count == 0)
+        {
+            page.Children.Add(Hint("尚无组件——先在左侧模块页创建连接与组件，再回这里管理显隐。"));
+            return page;
+        }
+
+        foreach (var group in groups)
+        {
+            page.Children.Add(SectionTitle($"{group.DisplayName}（{group.Items.Count}）"));
+            foreach (var item in group.Items)
+            {
+                page.Children.Add(BuildComponentCenterRow(item));
+            }
+        }
+        return page;
+    }
+
+    /// <summary>组件中心单行：勾选框 + 显示名/副题（类型键 · 钉选态）。勾选变化即时落库并联动 L0。</summary>
+    private UIElement BuildComponentCenterRow(ComponentCenterItem item)
+    {
+        var hidden = ComponentCenterCatalog.IsHidden(_runtime.Config.App, item.WidgetId);
+        var toggle = new CheckBox
+        {
+            IsChecked = !hidden,
+            MinWidth = 0,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"component-center-{item.WidgetId}");
+
+        var label = new TextBlock
+        {
+            Text = item.Label,
+            FontSize = DesignTokens.FontBody,
+            Foreground = new SolidColorBrush(ThemeColors.Label()),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var subtitle = new TextBlock
+        {
+            Text = $"{item.TypeName} · {(item.Pinned ? "已钉选" : "未钉选")}{(hidden ? " · 已隐藏" : "")}",
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var textColumn = new StackPanel { Spacing = 2 };
+        textColumn.Children.Add(label);
+        textColumn.Children.Add(subtitle);
+
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(toggle, 0);
+        Grid.SetColumn(textColumn, 1);
+        row.Children.Add(toggle);
+        row.Children.Add(textColumn);
+        row.Padding = new Thickness(0, 2, 0, 2);
+
+        // 先取 IsChecked 再挂事件（构造期赋值不触发写路径；用户点击才落库）
+        toggle.Checked += (_, _) => SaveComponentVisibility(item.WidgetId, visible: true);
+        toggle.Unchecked += (_, _) => SaveComponentVisibility(item.WidgetId, visible: false);
+        return row;
+    }
+
+    /// <summary>组件中心显隐落库（设置页唯一写入口）：Core SetVisible 单源改集 → SaveApp → PinsChanged
+    /// 联动（App 侧既有路径重挂 L0 两宿主 ReloadTiles，隐藏/恢复即时生效）。</summary>
+    private void SaveComponentVisibility(string widgetId, bool visible)
+    {
+        ComponentCenterCatalog.SetVisible(_runtime.Config.App, widgetId, visible);
+        _runtime.Config.SaveApp();
+        PinsChanged?.Invoke();
     }
 
     /// <summary>「关于」（master-plan §10）：版本行 + 检查更新（B-806 真比较）+ 开源许可证 + 项目主页。

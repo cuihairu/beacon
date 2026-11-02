@@ -44,6 +44,10 @@ public sealed class AppConfig
     public bool NumericFloatingResetDone { get; set; }
     /// <summary>用户通知规则；空列表时使用 DefaultNotificationRules（RFC §8）。</summary>
     public List<NotificationRule> NotificationRules { get; set; } = [];
+    /// <summary>组件中心（Component Center，设置 → 组件中心 / 托盘菜单）勾选隐藏的组件 Id 集
+    /// （widgets.json WidgetId）：L0 两宿主（面板/独立悬浮框）只渲染未隐藏的组件；缺席 = 显示。
+    /// 增量可选字段：存量 config.json 零迁移可读（未落键，ConfigVersion 不动）。</summary>
+    public List<string> HiddenComponents { get; set; } = [];
     /// <summary>外观：级别色覆盖与动效（config.json appearance 段，RFC §4.1/§6.2.8/§9.1）。</summary>
     public AppearanceConfig Appearance { get; set; } = new();
 }

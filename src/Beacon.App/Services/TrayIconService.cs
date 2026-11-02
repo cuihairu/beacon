@@ -18,6 +18,7 @@ internal sealed class TrayIconService : IDisposable
     private const int MenuSettings = 2;
     private const int MenuNotifications = 3;
     private const int MenuRefreshAll = 4;
+    private const int MenuComponents = 6;
     private const int MenuKeepPanel = 5;
     private const int MenuExit = 99;
 
@@ -32,6 +33,8 @@ internal sealed class TrayIconService : IDisposable
 
     public event Action? OpenPanelRequested;
     public event Action? SettingsRequested;
+    /// <summary>「组件中心」被点击（App 开设置窗口并直达组件中心模块）。</summary>
+    public event Action? ComponentsRequested;
     public event Action? NotificationsRequested;
     public event Action? RefreshAllRequested;
     public event Action? ExitRequested;
@@ -271,6 +274,7 @@ internal sealed class TrayIconService : IDisposable
                 UiStrings.TrayKeepPanelOpen);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuNotifications, UiStrings.TrayNotifications);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuRefreshAll, UiStrings.TrayRefreshAll);
+            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuComponents, UiStrings.TrayComponents);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuSettings, UiStrings.TraySettings);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuExit, UiStrings.TrayExit);
@@ -299,6 +303,9 @@ internal sealed class TrayIconService : IDisposable
                     break;
                 case MenuSettings:
                     SettingsRequested?.Invoke();
+                    break;
+                case MenuComponents:
+                    ComponentsRequested?.Invoke();
                     break;
                 case MenuExit:
                     ExitRequested?.Invoke();
