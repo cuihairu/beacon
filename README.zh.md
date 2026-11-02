@@ -1,7 +1,7 @@
 [English](README.md) | [中文](README.zh.md)
 
 <p align="center">
-  <img src="docs/img/logo.svg" width="64" alt="Beacon logo"> <a href="https://cuihairu.github.io/beacon/zh//"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-blue" alt="docs"></a>
+  <img src="docs/img/logo.svg" width="64" alt="Beacon logo"> <a href="https://cuihairu.github.io/beacon/zh/"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-blue" alt="docs"></a>
 </p>
 
 <h1 align="center">Beacon</h1>
@@ -9,7 +9,6 @@
 <p align="center">
   <a href="https://github.com/cuihairu/beacon/actions/workflows/ci.yml"><img src="https://github.com/cuihairu/beacon/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/cuihairu/beacon"><img src="https://codecov.io/gh/cuihairu/beacon/branch/main/graph/badge.svg" alt="Code coverage"></a>
-  <a href="https://cuihairu.github.io/beacon/zh//"><img src="https://img.shields.io/badge/docs-online-8A2BE2" alt="在线文档"></a>
   <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 10">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?logo=windows11&logoColor=white" alt="Windows 10/11">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-3DA639" alt="License: Apache-2.0"></a>
@@ -26,7 +25,7 @@
 
 ## 在线文档
 
-**[https://cuihairu.github.io/beacon/](https://cuihairu.github.io/beacon/)** — 由 [docs 工作流](.github/workflows/docs.yml)自动发布到 GitHub Pages（mkdocs-material）。
+**[https://cuihairu.github.io/beacon/zh/](https://cuihairu.github.io/beacon/zh/)** — 由 [docs 工作流](.github/workflows/docs.yml)自动发布到 GitHub Pages（mkdocs-material）。
 
 ## 下载
 
@@ -42,7 +41,7 @@
 
 首启自动常驻托盘并显示状态胶囊（屏幕右下角）与启动通知气泡。GitHub PAT 在托盘菜单 → 设置 → 连接里录入（token 只写 DPAPI 密钥库，配置 JSON 仅存 credentialRef，绝不落明文）。全局热键默认 `Ctrl+Alt+B` 唤出面板；开机自启默认开启（HKCU Run，设置里可关）。权限仅常规用户态——读写 `%AppData%\Beacon\`、DPAPI 加密、`Shell_NotifyIcon`、`RegisterHotKey`，无需管理员。
 
-**双击没反应？** → [故障排查手册](docs/troubleshooting.md)（SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志，一页说清）。
+**双击没反应？** → [故障排查手册](docs/zh/troubleshooting.md)（SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志，一页说清）。
 
 ## 代码签名政策
 
@@ -54,14 +53,14 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 
 | 文档 | 内容 |
 |---|---|
-| [docs/mission.md](docs/mission.md) | 产品定位 / 核心概念 / 分期 / MVP 验收标准（原始方案见同目录摘录） |
-| [docs/rfc/RFC-001-technical-design.md](docs/rfc/RFC-001-technical-design.md) | 技术方案：架构 / 领域模型 / **显示层架构（L0 悬浮组件 + 四层交互）** / 刷新 / 通知 / 存储 / 风险 |
-| [docs/master-plan.md](docs/master-plan.md) | 产品与技术实施总方案：产品范围与设计基线（2026-10-11）——边界 / 交互 / 架构 / 验收 / agent 约束 |
-| [docs/solution-structure.md](docs/solution-structure.md) | Solution / 项目结构 / 依赖规则 / 脚手架命令（Windows 机器可执行） |
-| [docs/configuration.md](docs/configuration.md) | 配置手册：全部设置项逐项列明——文件、全局设置、外观、通知规则、17 类连接（含各厂商端点与额度语义）、组件字段、钉选布局、动作、导入导出 |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | 故障排查手册：SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志 |
-| [docs/store-submission.md](docs/store-submission.md) | 商店提交前置清单：MSIX 打包 / 隐私政策页必填字段 / 商店素材（截图尺寸·描述·分类·年龄分级问卷） |
-| [docs/mvp-issues.md](docs/mvp-issues.md) | 43 个 MVP Issue（P0–P8，含验收标准与依赖关系） |
+| [docs/zh/mission.md](docs/zh/mission.md) | 产品定位 / 核心概念 / 分期 / MVP 验收标准（原始方案见同目录摘录） |
+| [docs/zh/rfc/RFC-001-technical-design.md](docs/zh/rfc/RFC-001-technical-design.md) | 技术方案：架构 / 领域模型 / **显示层架构（L0 悬浮组件 + 四层交互）** / 刷新 / 通知 / 存储 / 风险 |
+| [docs/zh/master-plan.md](docs/zh/master-plan.md) | 产品与技术实施总方案：产品范围与设计基线（2026-10-11）——边界 / 交互 / 架构 / 验收 / agent 约束 |
+| [docs/zh/solution-structure.md](docs/zh/solution-structure.md) | Solution / 项目结构 / 依赖规则 / 脚手架命令（Windows 机器可执行） |
+| [docs/zh/configuration.md](docs/zh/configuration.md) | 配置手册：全部设置项逐项列明——文件、全局设置、外观、通知规则、17 类连接（含各厂商端点与额度语义）、组件字段、钉选布局、动作、导入导出 |
+| [docs/zh/troubleshooting.md](docs/zh/troubleshooting.md) | 故障排查手册：SmartScreen / 托盘无主窗 / 日志位置 / 启动失败弹窗与 crash 日志 |
+| [docs/zh/store-submission.md](docs/zh/store-submission.md) | 商店提交前置清单：MSIX 打包 / 隐私政策页必填字段 / 商店素材（截图尺寸·描述·分类·年龄分级问卷） |
+| [docs/zh/mvp-issues.md](docs/zh/mvp-issues.md) | 43 个 MVP Issue（P0–P8，含验收标准与依赖关系） |
 
 ## 路线
 
@@ -70,7 +69,7 @@ Free code signing provided by SignPath.io, certificate by SignPath Foundation.
 3. ✅ M2 Core 内核（刷新调度 / 状态聚合 / 缓存 / 事件总线）
 4. ✅ M3 GitHub 闭环（PR / Actions Provider，ETag + 限额感知）
 5. ✅ M4 通知与面板（Action 执行器 / Toast / 通知中心 / 托盘着色）
-6. 🔨 M5 L0 悬浮组件 + Quick Panel = MVP（代码级完成；余 [装机验收执行清单 71 条](docs/acceptance-checklist.md)——每条含前置条件/验证步骤/预期结果，含 B-803 真机走查与 B-804 干净 VM 验收，待 Windows 机器执行）
+6. 🔨 M5 L0 悬浮组件 + Quick Panel = MVP（代码级完成；余 [装机验收执行清单 71 条](docs/zh/acceptance-checklist.md)——每条含前置条件/验证步骤/预期结果，含 B-803 真机走查与 B-804 干净 VM 验收，待 Windows 机器执行）
 
 > 构建要求：Windows + .NET 10 SDK + Windows App SDK（WinUI 3 不支持跨平台构建）。
 
