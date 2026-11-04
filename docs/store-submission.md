@@ -39,7 +39,7 @@ Landing requirements:
 | Item | Requirement | Beacon status |
 |---|---|---|
 | App icon | 310x310 PNG; the manifest `Logo` (small store-listing icon) uses 50x50 | Ready: `packaging/msix/Square310x310Logo.png`, `StoreLogo.png` (rasterized from `docs/img/logo.svg`; the same batch also produced 44/71/150/310x150 for in-package tiles) |
-| Screenshots | At least 1, 4+ recommended; PNG or JPG; common size 1920x1080 (1366x768 / 2560x1440 also accepted); per-file size limit per the submission page | Not prepared. Bases can be picked from existing evidence screenshots in `docs/img/evidence/`, but those are mostly dark-theme close-ups; light-theme, multi-screen, and settings shots are still needed |
+| Screenshots | At least 1, 4+ recommended; PNG or JPG; common size 1920x1080 (1366x768 / 2560x1440 also accepted); per-file size limit per the submission page | Not prepared. Bases can be picked from existing evidence screenshots in `docs//img/evidence/`, but those are mostly dark-theme close-ups; light-theme, multi-screen, and settings shots are still needed |
 | App description | Up to 10000 characters; cover positioning / features / supported scenarios, keywords allowed | Not prepared. Can be adapted from the README install section + the positioning section of `docs/mission.md` |
 | Category | Primary + secondary category, chosen from the store's list (Developer tools / Productivity are candidates) | Not decided |
 | Age rating questionnaire | The IARC questionnaire answered item by item: violence, horror or fear, crude language, tobacco/alcohol, sexual content or nudity, user interaction, in-app purchases | Unanswered. Beacon has no content-risk items; the expected result is "Everyone" |
