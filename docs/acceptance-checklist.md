@@ -1,7 +1,7 @@
 
 # Installation acceptance checklist (71 items · 2026-10-12)
 
-> Source: the three ledgers in `docs/mvp-issues.md`「装机对照清单」(✅ verified 1 + 🔧 fixed-pending-verify 17 + ⬜ not fixed 53 = **71 items**; 2026-10-12 eleventh re-sort corrected the original 51/68 sum drift; 批3-补47 added 2.17 and then line-by-line recount).
+> Source: the three ledgers in `docs/mvp-issues.md`「装机对照清单」(verified 1 + fixed-pending-verify 17 + not fixed 53 = **71 items**; 2026-10-12 eleventh re-sort corrected the original 51/68 sum drift; 批3-补47 added 2.17 and then line-by-line recount).
 > This version expands each item into a three-part form: **preconditions / verification steps / expected results**. Every step can be followed as written and every item can be receipted individually.
 > Items with local automation evidence annotate the corresponding unit tests under "Appendix: local automation coverage notes"; the real machine only supplies the UI/interaction half.
 
@@ -26,7 +26,7 @@ Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; 
 
 ---
 
-## 1. ✅ Verified (1 item, archived, not executed again)
+## 1. Verified (1 item, archived, not executed again)
 
 | Item | Conclusion |
 |---|---|
@@ -34,7 +34,7 @@ Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; 
 
 ---
 
-## 2. 🔧 Fixed, pending verification (17 items — focus on these with the latest nightly)
+## 2. Fixed, pending verification (17 items — focus on these with the latest nightly)
 
 ### 2.1 B-301 | Real PAT connection test success/failure paths
 - **Preconditions**: E0, E2; one revocable real GitHub PAT.
@@ -123,7 +123,7 @@ Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; 
 
 ---
 
-## 3. ⬜ Not fixed (53 items: code in place, first verification; of these, the app side of B-103/B-104/B-502 was fully CI/unit-test proxied on 2026-10-13 patrol-B and checked off in the todo/mvp-issues ledgers — this chapter keeps the corresponding entries only as installation walkthrough recheck steps)
+## 3. Not fixed (53 items: code in place, first verification; of these, the app side of B-103/B-104/B-502 was fully CI/unit-test proxied on 2026-10-13 patrol-B and checked off in the todo/mvp-issues ledgers — this chapter keeps the corresponding entries only as installation walkthrough recheck steps. Count rule: F2 rides the same ledger line as F1 and is not counted separately)
 
 ### A Installation and process
 

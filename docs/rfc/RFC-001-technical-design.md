@@ -139,9 +139,10 @@ public enum Severity { Info, Success, Warning, Error, Critical }
 public enum LifecycleState { Queued, Running, Success, Failed, Cancelled, Skipped, Unknown }
 
 public interface IConnectionProvider {
-    string ConnectionType { get; }                       // "github" | "http" | "bigmodel" | "claude" | "kimi" | "deepseek"
-    Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
+    string ConnectionType { get; }                       // 17 types: github|http|bigmodel|ark|claude|kimi|moonshot|deepseek|mimo|codex|copilot|opencode|qwen|sensenova|jenkins|machine|herald
+    Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
 }
+// ConnectionTestResult = readonly record struct (ConnectionHealthState Health, string? Detail) — Healthy 时 Detail 为 null。
 
 public interface IWidgetProvider {
     WidgetTypeDescriptor Descriptor { get; }             // incl. pinSupported, refreshTier suggestion
@@ -149,8 +150,8 @@ public interface IWidgetProvider {
 }
 
 public interface IActionExecutor {
-    string ActionType { get; }                           // "open.url" | "http" | "gh.workflow_dispatch" | "local.command"
-    Task<ActionResult> ExecuteAsync(ActionConfig a, CancellationToken ct);
+    string ActionType { get; }                           // open.url|http|gh.workflow_dispatch|gh.workflow_rerun|gh.workflow_cancel|local.command|webhook
+    Task<ActionResult> ExecuteAsync(ActionConfig action, ActionExecutionContext context, CancellationToken ct);
 }
 
 public interface ISecretStore {
@@ -252,9 +253,9 @@ The layers form a **drill-down relationship**, not side-by-side dashboards: each
 #### 6.2.4 Rendering Architecture: Single Window, Multi-Widget Shared Rendering
 
 - By default (host panel form) we deliberately do **not** create one HWND per pinned widget (window-count explosion, per-window DPI/hit-test upkeep). **Instead**: one transparent layered host window per monitor (`PinnedHostWindow`) that renders all pinned widgets of that monitor as a tile list.
-- **Floating-frame form** (`pinDisplayMode=floating`, effective after restart, B-701 extension): one independent window per pinned widget (`FloatingTileWindow`, 168×32 DIP, Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`), freely draggable on the desktop, position recorded per widget (`PinLayout.FloatingX/Y` physical pixels, cascaded in order if never dragged). The original "window-count explosion" concern is defused by "explicit user choice + few widgets (pinned sets are usually <10)"; both forms share the same `PinTile` rendering and click drill-down chain.
+- **Floating-frame form** (`pinDisplayMode=floating`, effective after restart, B-701 extension): one independent window per pinned widget (`FloatingTileWindow`, 168×32 DIP **minimum** — width floors at `TileSizing.FloorDips=168` and grows with content, height `BaseTileHeightDips=32`; Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`), freely draggable on the desktop, position recorded per widget (`PinLayout.FloatingX/Y` physical pixels, cascaded in order if never dragged). The original "window-count explosion" concern is defused by "explicit user choice + few widgets (pinned sets are usually <10)"; both forms share the same `PinTile` rendering and click drill-down chain.
 - **The L1 capsule (`CapsuleWindow`) is an independent window** and does not change with the floating form; in host panel form it is, like the L0 tiles, an always-on-top NoActivate resident — "single-window multi-widget shared rendering" refers to the L0 tiles inside the host panel sharing one rendering pipeline, event handling, and DPI handling.
-- **The L1 capsule = one resident aggregate tile inside the host window**, sharing the same rendering pipeline, event handling and DPI handling as the L0 tiles — that is the concrete meaning of "single-window multi-widget shared rendering".
+- **The L1 capsule (`CapsuleWindow`) is an independent always-on-top window** rendering the aggregate status capsule with its own rendering pipeline, event handling and DPI handling — it is **not** a tile inside the host window; "single-window multi-widget shared rendering" refers only to the L0 tiles inside each `PinnedHostWindow`.
 - The host window has `ClickThrough=false` (it must receive clicks); only tile rectangles participate in hit-testing; clicks on empty areas pass through to the desktop.
 - Tile rendering goes through Composition (visual layer + property animations); a state change updates only that tile's visual properties, never rebuilding the whole window.
 
@@ -443,7 +444,7 @@ Export = a packaged JSON of config + connections + widgets + pins, **without sec
 
 ## 14. Extensibility Roadmap (Provider → Plugin)
 
-- MVP: Providers organized as folders inside the assembly (`Beacon.Connections/GitHub|Rest`); the interface is the boundary.
+- MVP: Providers are flat files inside the assembly (`Beacon.Connections/*.cs`, no subfolders); the interface is the boundary.
 - Phase 2: split Providers into standalone assemblies (`Beacon.Connections.Jenkins` etc.) loaded as .NET plugins (AssemblyLoadContext) + manifest registration; Plugins can contribute Connection/Widget/Action/Trigger. **【Frozen 2026-10-11】** (master-plan §2.3 verdict 「不做复杂插件平台」): keep the interface boundary clean; assembly splitting and plugin loading are revisited as needed.
 - Agents / a central server also connect via Connection + Provider, **never hard-coded into Core**. **【Frozen 2026-10-11】** (master-plan §2.3 verdict 「不做 AI Agent 管理/远程机器管理/控制中心」).
 - Phase 2/3 enhancement layer: **local AI support** (Ollama / OpenAI-compatible API) — "Ask Beacon" gathers CI results, logs and commit context for the model to analyze (present in the original plan, deferred to phase 2, not dropped); AI is only an enhancement layer and does not enter the Core architecture. **【Frozen 2026-10-11】** (master-plan §2.3 verdict: maintenance cost first).

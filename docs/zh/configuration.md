@@ -103,7 +103,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | jenkins | 必填实例基址（如 jenkins.example.com） | user:apiToken（可空 = 匿名读；Manage Jenkins → Users → API Token 创建，Basic 认证） | GET /api/json（2xx 且是 JSON 才算连通，防反向代理假阳性） |
 | machine | 无（留空） | 无（本机数据，零凭据零网络） | 不适用：连接恒通（本机即本机） |
 | herald | Herald 基址（必填，如 `http://127.0.0.1:8080`） | API Key（可空 = 匿名；`auth.enabled` 开启时必填，X-API-Key 头，只写 DPAPI） | GET `/api/v1/status`（恒公开口）：2xx 且是 JSON 才算连通，反代 HTML 壳按 Degraded |
-| bigmodel | open.bigmodel.cn | 智谱 API Key（监控接口裸 Key 直传，无 Bearer 前缀） | GET quota/limit |
+| bigmodel | https://open.bigmodel.cn/api/monitor/usage/quota/limit | 智谱 API Key（监控接口裸 Key 直传，无 Bearer 前缀） | GET quota/limit |
 | ark | open.volcengineapi.com | 火山 `AccessKey:SecretKey` 冒号分隔一次粘贴（控制台「API 访问密钥」创建；推理 ARK_API_KEY 调不了管控面） | V4 签名调 GetCodingPlanUsage |
 | claude | 无（读本机） | 留空 | 本机会话目录可读 |
 | kimi | api.kimi.com/coding/v1/usages（社区 GET 口，默认）。控制台口 `www.kimi.com/apiv2/kimi.gateway.billing.v1.BillingService/GetUsages`：endpoint 整串直填 + Settings 加 `http_method=POST`、`auth_header=Cookie`（载荷照 F12 → 网络 → 该请求补 `http_body`） | 二选一：Kimi For Coding Key（sk-kimi- 前缀），或浏览器 Cookie（F12 → Cookies 复制值粘贴）。**Beacon 不做扫码/登录流**——Cookie 凭据由用户从浏览器复制粘贴，DPAPI 加密存储，请求时原样回放；会话过期（浏览器登出/过期）后重录一次即可。与 Moonshot 开放平台是两套账号 | GET usages / POST GetUsages（2xx 即连通） |
@@ -139,7 +139,7 @@ Beacon 的全部配置落在 `%APPDATA%\Beacon\` 下的 JSON 文件里。设置�
 | mimo | usage_endpoint | 自定义用量口（GET + Bearer）：计数形状出「本机累计 N 次」；百分比形状（used/total 等）出已用/百分比；认不出的形状显式 Degraded 并附原始响应（不透传上卡面） |
 | mimo | litellm_spend_url | LiteLLM 网关记账端点（如 `http://127.0.0.1:4000/spend/logs`）。**默认空=不外发**（本机 127.0.0.1 记账不算外发）；请求带本月起止 `start_date/end_date + summarize=true`（网关 openapi 参数名） |
 | mimo | litellm_key_ref | LiteLLM 网关 key 的凭据引用，默认 `mimo:litellm`（有则带 Bearer，无则裸调——本机记账常免鉴权）；网关无 DB 时 spend 面全回 `no_db_connection`，卡按 Degraded 明示「未接数据库」 |
-| mimo | console_usage_url | 控制台套餐用量 API 地址（默认 `/api/v1/tokenPlan/usage`，GET + api-platform_ph Cookie + plan-manage referer） |
+| mimo | console_usage_url | 控制台套餐用量 API URL（默认 `https://platform.xiaomimimo.com/api/v1/tokenPlan/usage`，GET + api-platform_ph Cookie + plan-manage referer） |
 | mimo | console_credential_ref | 控制台 Cookie 的凭据引用，默认 `mimo:console`（Cookie 值 = 浏览器 F12 → Cookies → api-platform_ph 的值（整行 Cookie 粘进来也行，自动取 api-platform_ph）；**粘贴 + DPAPI 回放，不做扫码登录**，会话过期重录） |
 | http | dsl_path | Provider DSL 声明文件路径（YAML，见下节「Provider DSL」）。**不配即零变化**；配了则 mapping 供数据提取缺省值（widget.Config 实例值仍优先），actions 进组件详情页动作区。文件缺失/解析失败 → 相关卡按 Degraded 明示，绝不静默 |
 
@@ -178,8 +178,8 @@ actions:                          # 可选：声明动作（进详情页动作�
 
 | 连接 | 组件类型 | 额度口径 | 数据源与降级行为 |
 |---|---|---|---|
-| ark | ark.usage | 5h 滚动窗 + 周窗 + 月窗三窗已用百分比；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取已用最高窗并标窗名，warn/error 阈值仍作用在最差窗已用 % 上 | 管控面 OpenAPI（V4 签名）。任一窗 100% 整卡显示「额度用尽（窗名，重置时间）」；收到 429 配额耗尽码（AccountQuotaExceeded 等）直接按该窗已尽处理并带重置时间；纯限流 429 不翻转 |
-| bigmodel | bigmodel.usage | 5h 滚动窗 + 周窗 + 月窗已用百分比（窗口上限无绝对 token 口，监控接口只给百分比）；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取已用最高窗并标窗名，阈值仍作用在最差窗已用 % 上 | 监控接口 quota/limit。主数值不再按 rolling → weekly → monthly 可用性兜底，改取已用最高窗 |
+| ark | ark.usage | 5h 滚动窗 + 周窗 + 月窗三窗已用百分比；**嵌套窗口口径**（2026-10-15 用户令，同 bigmodel）：月 ⊇ 周 ⊇ 5h 嵌套，多窗尽按外层优先命名主摘要并带其重置（不是重置时间最早），全部尽窗列 payload `exhausted_windows`；未耗尽仍按 2026-10-13 最差窗口优先——级别/进度条/主数值取已用最高窗并标窗名，warn/error 阈值仍作用在最差窗已用 % 上 | 管控面 OpenAPI（V4 签名）。任一窗 100% 整卡显示「额度用尽（窗名，重置时间）」；收到 429 配额耗尽码（AccountQuotaExceeded 等）直接按该窗已尽处理并带重置时间；纯限流 429 不翻转 |
+| bigmodel | bigmodel.usage | 5h 滚动窗 + 周窗 + 月窗已用百分比（窗口上限无绝对 token 口，监控接口只给百分比）；**嵌套窗口口径**（2026-10-15 用户令，覆盖 2026-10-13 最差窗口规则）：月 ⊇ 周 ⊇ 5h 嵌套，耗尽判定外层优先（月→周→5h，只报真实耗尽层）；正常态（三窗均有余额）取展示窗 5h（缺失退周、月），级别/进度条/主数值与 warn/error 阈值均作用其上 | 监控接口 quota/limit |
 | claude | claude.usage | 窗口内 token 与成本（costUSD 存在才计成本，不自行估价） | 读本机 `~/.claude/projects/**/*.jsonl`，零凭据零网络。设了 daily_cost_limit 才按用量升级别 |
 | codex | codex.usage | 近 N 天 token（每会话文件取最后一条累计值求和，如实标注「本地统计，非官方口径」） | 读本机 `~/.codex/sessions/**/rollout-*.jsonl`。官方口需 OAuth，落本地统计档 |
 | kimi | kimi.coding | 卡面/进度条=已用%（剩余反推），级别仍按剩余判（余 0% 显示「已用尽」）；**最差窗口优先**（2026-10-13 用户令）：级别/进度条/主数值取剩余最低（=已用最高）窗并标窗名，阈值仍按剩余百分比 | `usages[]`（scope=FEATURE_CODING）条目 detail=周期窗、条目内 limits[]=5h 窗，`totalQuota` 进 payload；数值为字符串（2026-10-11 实抓，解析容忍）。旧形状（顶层 usage+limits[]）兼容兜底 |
@@ -281,7 +281,7 @@ github.pull_requests：
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | repo | 必填 | `owner/repo` |
-| warnOnReviewRequested | — | `true` 时「有待你 review 的 PR」告警 |
+| warnOnReviewRequested | true | `true` 时「有待你 review 的 PR」告警 |
 | warnOnRedCi | `false` | `true` 时 PR 的 CI 红灯（combined status `failure`）计入告警。按 PR 记忆 CI 状态：终态且未换 commit 复用记忆（稳态零额外请求），仅新 push 或运行中的 PR 发探测；开启后首次全量每 PR 一请求，大仓库首刷代价高 |
 
 github.actions.runs：
@@ -340,7 +340,7 @@ http.quota：
 | remaining_path | 与已用二选一 | 剩余字段路径 |
 | reset_path | — | 重置时间路径（epoch 秒/毫秒/ISO 自动识别） |
 | unit | — | 单位文案（如 tokens） |
-| warn_percent / error_percent | 60 / 90 | 阈值；缺数据按 Warning |
+| warn_percent / error_percent | 60 / 90 | 阈值；缺数据（total 未取到，或 used_path/remaining_path 均未配置/取到）显式 Degraded 并附原因 |
 
 ark.usage / bigmodel.usage / qwen.usage / copilot.usage / opencode.usage：只有通用字段（label、warn_percent、error_percent），各家阈值默认见「额度口径」表（bigmodel/ark/qwen 60/90，copilot/opencode 80/95）。mimo.usage 只有 label（阈值固定 90/100，不可配）。
 

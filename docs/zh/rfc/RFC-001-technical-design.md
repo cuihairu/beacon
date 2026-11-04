@@ -139,9 +139,10 @@ public enum Severity { Info, Success, Warning, Error, Critical }
 public enum LifecycleState { Queued, Running, Success, Failed, Cancelled, Skipped, Unknown }
 
 public interface IConnectionProvider {
-    string ConnectionType { get; }                       // "github" | "http" | "bigmodel" | "claude" | "kimi" | "deepseek"
-    Task<ConnectionHealthState> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
+    string ConnectionType { get; }                       // 17 类：github|http|bigmodel|ark|claude|kimi|moonshot|deepseek|mimo|codex|copilot|opencode|qwen|sensenova|jenkins|machine|herald
+    Task<ConnectionTestResult> TestAsync(ConnectionConfig connection, ConnectionContext context, CancellationToken ct);
 }
+// ConnectionTestResult = readonly record struct (ConnectionHealthState Health, string? Detail) — Healthy 时 Detail 为 null。
 
 public interface IWidgetProvider {
     WidgetTypeDescriptor Descriptor { get; }             // 含 pinSupported、refreshTier 建议
@@ -149,8 +150,8 @@ public interface IWidgetProvider {
 }
 
 public interface IActionExecutor {
-    string ActionType { get; }                           // "open.url" | "http" | "gh.workflow_dispatch" | "local.command"
-    Task<ActionResult> ExecuteAsync(ActionConfig a, CancellationToken ct);
+    string ActionType { get; }                           // open.url|http|gh.workflow_dispatch|gh.workflow_rerun|gh.workflow_cancel|local.command|webhook
+    Task<ActionResult> ExecuteAsync(ActionConfig action, ActionExecutionContext context, CancellationToken ct);
 }
 
 public interface ISecretStore {
@@ -252,9 +253,9 @@ public interface ISecretStore {
 #### 6.2.4 渲染架构：单窗口多组件共享渲染
 
 - 默认（宿主面板形态）**不做**每个 pinned widget 一个 HWND（窗口数量爆炸、DPI/hit-test 各自维护）。**做法**：每显示器一个透明分层宿主窗口（`PinnedHostWindow`），内部以 tile 列表布局渲染全部该显示器的 pinned widgets。
-- **独立悬浮框形态**（`pinDisplayMode=floating`，重启生效，B-701 扩展）：每钉选组件一个独立窗口（`FloatingTileWindow`，168×32 DIP，Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`），桌面任意拖放，位置按组件各记（`PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）。设计初衷的「窗口数量爆炸」顾虑由「用户显式选择 + 组件数量少（钉选通常 <10）」化解；两形态共用同一 `PinTile` 渲染与点击下钻链路。
+- **独立悬浮框形态**（`pinDisplayMode=floating`，重启生效，B-701 扩展）：每钉选组件一个独立窗口（`FloatingTileWindow`，168×32 DIP **下限**——宽度取 `TileSizing.FloorDips=168` 为底、随内容加宽，高度 `BaseTileHeightDips=32`；Topmost + `WS_EX_NOACTIVATE` + `WS_EX_TOOLWINDOW`），桌面任意拖放，位置按组件各记（`PinLayout.FloatingX/Y` 物理像素，未拖过按序级联）。设计初衷的「窗口数量爆炸」顾虑由「用户显式选择 + 组件数量少（钉选通常 <10）」化解；两形态共用同一 `PinTile` 渲染与点击下钻链路。
 - **L1 胶囊（`CapsuleWindow`）是独立窗口**，不随悬浮形态变化；宿主面板形态下与 L0 tile 同为置顶 NoActivate 常驻物——「单窗口多组件共享渲染」指宿主面板内的 L0 tile 共享同一渲染管线、事件处理、DPI 处理。
-- **L1 胶囊 = 宿主窗口中的一个常驻聚合 tile**，与 L0 tile 共享同一渲染管线、事件处理、DPI 处理——这是「单窗口多组件共享渲染」的具体含义。
+- **L1 胶囊（`CapsuleWindow`）是独立置顶常驻窗口**，独立渲染管线/事件处理/DPI 处理渲染聚合状态胶囊——**不是**宿主窗口内的 tile；「单窗口多组件共享渲染」仅指各 `PinnedHostWindow` 内的 L0 tile。
 - 宿主窗口 `ClickThrough=false`（要收点击），仅 tile 矩形参与 hit-test，空白区域点击穿透到桌面。
 - tile 渲染走 Composition（视觉层 + 属性动画），状态变化只更新对应 tile 的视觉属性，不重建整窗。
 
@@ -443,7 +444,7 @@ config.json 的 appearance/motion 段（调色与动效，§4.1/§6.2.8；B-706/
 
 ## 14. 可扩展路线（Provider → Plugin）
 
-- MVP：Provider 以程序集内文件夹组织（`Beacon.Connections/GitHub|Rest`），接口即边界。
+- MVP：Provider 为程序集内平铺文件（`Beacon.Connections/*.cs`，无子目录），接口即边界。
 - 二期：Provider 拆独立程序集（`Beacon.Connections.Jenkins` 等），走 .NET 插件加载（AssemblyLoadContext）+ 清单注册；Plugin 可贡献 Connection/Widget/Action/Trigger。**【冻结 2026-10-11】**（master-plan §2.3「不做复杂插件平台」拍板）：接口边界保持干净，程序集拆分与插件加载按需再议。
 - Agent/中央服务器同样以 Connection + Provider 接入，**不写死进 Core**。**【冻结 2026-10-11】**（master-plan §2.3「不做 AI Agent 管理/远程机器管理/控制中心」拍板）。
 - 二期/三期增强层：**本地 AI 支持**（Ollama / OpenAI-compatible API）——「Ask Beacon」收集 CI 结果、日志、提交上下文交模型分析（原方案有此项，归二期不丢）；AI 只是增强层，不进 Core 架构。**【冻结 2026-10-11】**（master-plan §2.3 拍板：维护成本优先）。

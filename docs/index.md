@@ -18,7 +18,7 @@ A developer status and action center that lives on the Windows desktop: it aggre
 | [RFC-001 technical design](rfc/RFC-001-technical-design.md) | Technical design: architecture / domain model / display layer (L0 floating components + four interaction levels) / refresh / notification / storage / risks |
 | [Product & technical master plan](master-plan.md) | Design baseline (2026-10-11): boundaries / interaction / architecture / acceptance / agent constraints |
 | [Solution and project layout](solution-structure.md) | Solution / project structure / dependency rules / NuGet manifest |
-| [MVP issue list](mvp-issues.md) | 43 MVP issues (P0–P8, each with acceptance criteria and dependencies) |
+| [MVP issue list](zh/mvp-issues.md) | 43 MVP issues (P0–P8, each with acceptance criteria and dependencies; the ledger is maintained on the Chinese page) |
 | [Troubleshooting](troubleshooting.md) | Installation and launch FAQ: log locations, SmartScreen, SHA256 verification |
 | [Configuration reference](configuration.md) | Every setting itemized: files and when they take effect, global settings, appearance and motion, notification rules, endpoint / credential / quota conventions for 17 connection types, component fields, pinned layout, action library, import and export |
 | [Documentation and source consistency audit](审计-文档一致性.md) | Ledger of documentation-versus-source drift (34 baseline items plus 24 dated 2026-10-11, with the P0 list) |

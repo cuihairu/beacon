@@ -455,7 +455,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 - **evidence-before 分支处置**：`git branch -D` 删除（2026-10-10 用户令）。该分支为 2026-10-09 晚的
   rebase 前安全快照（3 commit：visual-evidence 扩展/BOM/automation ids），`git cherry origin/main
   evidence-before` 全 `-` 证实补丁内容已全部等价存在于 main，无未合并工作；删除前已逐 commit 核对
-  （daily-build.yml 场景 C/D 描述、ps1 BOM、automation ids 均在 main）。
+  （nightly.yml 场景 C/D 描述、ps1 BOM、automation ids 均在 main）。
 
 ### 2026-10-11 总方案四项拍板（用户授权「按你的权限自行拍板，选有据可依的一边」）
 1. **层级编号**：**RFC-001 编号为产品唯一口径**（L0=钉选悬浮组件 / L1=胶囊 / L2=Quick Panel / L3=详情）。
@@ -1091,13 +1091,13 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 **装包版本门**：2026-10-10T17:30Z 后的 nightly（zip `a0b255bd…`，commit c880f5d）才含补22 三修复；
 此前用户报「没有修复」时装的是旧包（见补22 nightly 归属核实）。
 
-### ✅ 已验（2 条，无需再看）
+### 已验（2 条，无需再看）
 | 项 | 位置 | 结论 |
 |---|---|---|
 | 悬浮透明度下限 0.4→0.2 | 批3-补10/批3-补13⑤ | 用户 2026-10-10 装机确认修好，保持别动 |
 | B-802 导入导出端到端 | 批3-补63 | 场景 Z picker 双驱代验：导出→导入往返反馈计数逐字段对齐+重录密钥提示在案+导出全文无密钥真值（204b884，run 38725138151） |
 
-### 🔧 已修待验（16 条，装最新 nightly 重点看这些）
+### 已修待验（16 条，装最新 nightly 重点看这些）
 | 项 | 位置 | 修了什么 / 证据 |
 |---|---|---|
 | 真实 PAT 连接测试成功/失败路径 | B-301 | 批3-补14 修 2 真 bug（缓存键只用 Id 换 token 不生效；空 PAT 匿名 200 误报「连接正常」）；假 Handler 8 例 |
@@ -1216,7 +1216,7 @@ B-001 ─ B-002 ─ B-003          (P0 地基)
 
 ### 批3-补47 检查更新真比较 + 版本口径统一（2026-10-12 用户令，接批3-补46）
 - **背景**：批3-补46 的「检查更新」只是打开 nightly 下载页的链接按钮，没有版本比较；`Beacon.App.csproj` `<Version>0.1.0</Version>` 落后于仓库最新正式发布 v0.1.2（2026-10-12 Latest）。用户令：口径统一 + 真检查 + 失败降级 + 比较逻辑进 Core 可 Linux 单测。
-- **版本口径（读 .github/workflows 确认）**：csproj `<Version>` = **唯一权威基准**（FileVersion/AssemblyVersion 同步 0.1.2.0；InformationalVersion 由 SDK 派生，关于页展示用）。每日构建 daily-build.yml 发布时注入 `-p:Version=yyyy.M.d -p:InformationalVersion=$version+$env:GITHUB_SHA` 并滚 `nightly` tag（`--latest=false`，不冒充 latest）——**仓库无正式发版 workflow**（仅 ci/daily-build/docs），正式发版时的 tag 注入待用户首次令发版时再建（红线：版本号只能用户手动给）。nightly 日期版本（2026.10.9+sha）在 SemVer 比较中数值高于 0.1.x → 滚动 main 如实报「已是最新」，无需特判。
+- **版本口径（读 .github/workflows 确认）**：csproj `<Version>` = **唯一权威基准**（FileVersion/AssemblyVersion 同步 0.1.2.0；InformationalVersion 由 SDK 派生，关于页展示用）。每日构建 nightly.yml 发布时注入 `-p:Version=yyyy.M.d -p:InformationalVersion=$version+$env:GITHUB_SHA` 并滚 `nightly` tag（`--latest=false`，不冒充 latest）——**仓库无正式发版 workflow**（仅 ci/nightly/docs/msix-dry-run），正式发版时的 tag 注入待用户首次令发版时再建（红线：版本号只能用户手动给）。nightly 日期版本（2026.10.9+sha）在 SemVer 比较中数值高于 0.1.x → 滚动 main 如实报「已是最新」，无需特判。
 - **实现**：`Beacon.Core/Services/UpdateCheck.cs` 纯函数——`Parse`（v/V 前缀、+构建元数据剥离、-预发布段、1–3 段全数字、前导零/符号/空段 fail → null）、`Compare`（SemVer 2.0.0：主干三元组 → 正式版>预发布 → 数字段按值/字母段按序数/数字<字母 → 前缀相等段多者大）、`Evaluate`（任一侧不可解析 → Incomparable）、`ExtractTagName`（System.Text.Json 取 tag_name，限流体/畸形 JSON → null）。`Beacon.App/Services/UpdateCheckService.cs`——静态 HttpClient（User-Agent 必带，缺失 403）、10s 超时链、SemaphoreSlim 串行、进程生命周期缓存 `Last`（启动 20s 后自检一次 force=false 命中缓存不重打；手动按钮 force=true）；所有失败（断网/超时/非 200/限流体）→ `UpdateCheckOutcome.Failure` 折返 + 日志，绝不向 UI 抛异常（Offline 口径）。设置 → 关于三行：当前版本（InformationalVersion 含 +SHA）/ 远程最新版本（tag_name，未检查显示 —）/ 检查结果（已是最新 / 有新版本 vN + 「打开下载页」按钮 / 无法检查更新 + 时间）+ 最后检查时间行；比较只认正式发布（`releases/latest` 天然排除 prerelease/draft，nightly 不参与）。
 - **验收**：新增 UpdateCheckTests 48 例（解析形态/拒绝表、SemVer 12 组比较、Evaluate 含 nightly 日期口径、限流降级体）；本机四项目 958 全绿（Core 325 = 277+48 逐项复核 / Connections 575 / Actions 27 / Storage 31）；App 编译门 CI windows-latest。
 

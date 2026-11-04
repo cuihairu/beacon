@@ -9,7 +9,8 @@ namespace Beacon.Connections;
 /// http.quota（验收反馈 2026-10-08：连上额度源却无组件可展示）：任意 HTTP JSON 额度/配额接口 → 数值卡。
 /// 字段映射可配：total_path（必填）+ used_path / remaining_path 二选一 + reset_path（epoch 秒/毫秒/ISO 自动识别），
 /// 已用百分比 = used/total（只配 remaining 时 = (total-remaining)/total），进度条走 WidgetState.Progress（0-1）。
-/// 级别阈值与 bigmodel.usage 同口径：≥error_percent → Error，≥warn_percent → Warning，缺数据 → Warning（宁报勿漏）。
+/// 级别阈值与 bigmodel.usage 同口径：≥error_percent → Error，≥warn_percent → Warning；缺数据（total 未取到，
+/// 或 used_path/remaining_path 均未配置/取到）显式抛 ConnectionException(Degraded) 附原因，不静默按 Warning 兜底。
 /// </summary>
 public sealed class HttpQuotaProvider : IWidgetProvider
 {
