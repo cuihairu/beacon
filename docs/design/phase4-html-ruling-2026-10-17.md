@@ -63,12 +63,12 @@ event attributes and external protocols are **inexpressible in the grammar** —
 
 ## 5. Controlled data bridge
 
-The `{{...}}` interpolation desugars into existing `ComponentBinding` (zero binding-engine changes):
+The <code v-pre>{{...}}</code> interpolation desugars into existing `ComponentBinding` (zero binding-engine changes):
 
-- `{{state.summary}}` → state source; the field name must be in the engine's closed field set (summary / severity /
+- <code v-pre>{{state.summary}}</code> → state source; the field name must be in the engine's closed field set (summary / severity /
   progress / detailUrl / lifecycle / connectionId / widgetId / widgetType);
-- `{{payload.run_id}}` → state source in `payload:run_id` form (non-empty key, no second colon);
-- `{{selector.value-hint}}` → selector source; the name must be in the selector registry (value-hint / quota-windows);
+- <code v-pre>{{payload.run_id}}</code> → state source in `payload:run_id` form (non-empty key, no second colon);
+- <code v-pre>{{selector.value-hint}}</code> → selector source; the name must be in the selector registry (value-hint / quota-windows);
 - mixed interpolation in text content → split into a literal / bound child-node sequence; an attribute value that is exactly one interpolation → that attribute slot gets a binding,
   an attribute value mixing literal text with interpolation → parse error (error out, do not guess); `when` / `gap` / `class` / `size` / `unit` /
   `key` / `width` / `data-action` accept no interpolation (attributes are the configuration face; the data face is binding slots only).

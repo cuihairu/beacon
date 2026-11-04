@@ -63,12 +63,12 @@
 
 ## 5. 受控数据桥接
 
-插值 `{{...}}` 脱糖为既有 `ComponentBinding`（绑定引擎零改动）：
+插值 <code v-pre>{{...}}</code> 脱糖为既有 `ComponentBinding`（绑定引擎零改动）：
 
-- `{{state.summary}}` → state 源，字段名须在引擎封闭字段集内（summary / severity /
+- <code v-pre>{{state.summary}}</code> → state 源，字段名须在引擎封闭字段集内（summary / severity /
   progress / detailUrl / lifecycle / connectionId / widgetId / widgetType）；
-- `{{payload.run_id}}` → state 源 `payload:run_id` 形（键非空、无二级冒号）；
-- `{{selector.value-hint}}` → selector 源，名字须在选择器注册表（value-hint / quota-windows）；
+- <code v-pre>{{payload.run_id}}</code> → state 源 `payload:run_id` 形（键非空、无二级冒号）；
+- <code v-pre>{{selector.value-hint}}</code> → selector 源，名字须在选择器注册表（value-hint / quota-windows）；
 - 文本内容混合插值 → 拆为 literal / 绑定子节点序列；属性值整体为单个插值 → 该属性槽绑定，
   属性值混合字面与插值 → 解析错（宁报错不猜）；`when` / `gap` / `class` / `size` / `unit` /
   `key` / `width` / `data-action` 不接受插值（属性是配置面，数据面只有绑定槽）。
