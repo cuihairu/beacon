@@ -189,6 +189,7 @@
 
 ## 待派工
 
-- [ ] BUG-1 概览 OpenCode 品牌图标渲染成实心方块：BrandIconFactory.cs:67 强制 FillRule.Nonzero，而 BrandIcons.cs opencode path 是同向双矩形镂空「0」形（nonzero 下内框 winding=2 被填实）——截图实证选中卡显示 ⊡；修复=该字典条目标记 even-odd 或工厂统一 FillRule.EvenOdd（Simple Icons 无自交图形，even-odd 等价），Core 补解析单测断言镂空语义（2026-11-05 用户截图报障）
-- [ ] BUG-2 概览来源卡文字截断：QuickPanelWindow.cs:363（chip 标签）与 :481-482、:548（MaxWidth=260 + CharacterEllipsis）在窄窗三列布局下把来源名截没（用户截图「文字都显示不全」）——修复方向=chip 最小宽/名称换行不省略/Tooltip 全名兜底，窄窗优先保完整名（2026-11-05 用户截图报障）
+- [x] BUG-1 概览 OpenCode 品牌图标渲染成实心方块：BrandIconFactory.cs:67 强制 FillRule.Nonzero，而 BrandIcons.cs opencode path 是同向双矩形镂空「0」形（nonzero 下内框 winding=2 被填实）——修复=工厂统一 FillRule.EvenOdd（Simple Icons 无自交图形，even-odd 等价），Core 补解析单测断言镂空语义（SvgPathParserTests.Parse_OpencodePath_IsNestedDoubleRectangle，948 Core 绿）（2026-11-05 用户截图报障；3443ad3，CI run 41956471135 绿；观感复核=装机后概览选中 opencode 来源卡看「0」形镂空）
+- [x] BUG-2 概览来源卡文字截断：QuickPanelWindow.cs:363（chip 标签）与 :481-482、:548（MaxWidth=260 + CharacterEllipsis）在窄窗三列布局下把来源名截没（用户截图「文字都显示不全」）——修复=来源卡标签换行不省略+卡片 MinWidth=96+整卡 Tooltip 全名，通知标题与状态行摘要改换行优先（260 只作换行边界）（2026-11-05 用户截图报障；e3a8b3a，CI run 41956565696 绿；UI 截断不可单测，人工验收=装机后窄窗拖小面板看来源卡全名换行+悬停 Tooltip）
+- [x] 悬浮岛 CapsuleWindow（display-modes-analysis §7 Phase 2，2026-11-05 用户单）：config.capsuleIsland 展示形态开关默认关保持现状；开=顶部居中锚定（CapsuleIslandMath 纯函数 6 例 Core 锁口径）+ 收起态=状态环+未读/异常徽标+品牌标 + 点击唤起看板（§1 只读契约不变）+ 拖动位置独立持久化（shell-state.json islandLayout，与经典胶囊布局互不覆盖）+ 设置页开关即时生效（capsule-island-toggle，UiStrings 双语）；ace0cdb+9a03daa，1683 测试全绿，CI run 41957917477 绿；岛观感/拖动/徽标不可单测，人工验收=设置开「悬浮岛形态」看胶囊顶部居中+徽标随未读/异常变色、拖动重启还原、点击唤起看板
 - [ ] DOC-GIF：为全部「开启后有效果」的开关/配置项生成 off/on 对比图与切换 GIF，落 docs「配置效果」双语页，流水线可重跑兼作回归（kode todo C-24 同款，2026-11-01 用户令全舰队推广）
