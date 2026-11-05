@@ -26,6 +26,21 @@ if ($PSVersionTable.PSVersion.Major -ne 5)
     exit $LASTEXITCODE
 }
 
+# —— 总超时护栏（回归 run 41958504066/41963265872：脚本中途无进展时只能人肉盯着取消）——
+# 分离 watchdog 进程倒计时，到点强杀本脚本进程（pid 定向）：步骤非 0 退出=红构建，
+# 「挂满 job timeout / 数小时」从机制上不再可能。缺省 4800s=80min：本脚本含 15min 浸泡
+# （场景 AD）与 40+ 场景，历史全程实测 ~70-90min（不能按 15min 设——会在浸泡中段误杀）；
+# 早于 job timeout-minutes=90 触发，让 evidence 照常走 always() 上传步留证。
+# 可用环境变量 BEACON_EVIDENCE_TIMEOUT_SEC 覆盖（本地调试缩短用）。
+[int]$script:EvidenceTimeoutSec = 4800
+if ($env:BEACON_EVIDENCE_TIMEOUT_SEC)
+{
+    [int]::TryParse($env:BEACON_EVIDENCE_TIMEOUT_SEC, [ref]$script:EvidenceTimeoutSec) | Out-Null
+}
+$evidenceWatchdogCmd = 'Start-Sleep -Seconds ' + $script:EvidenceTimeoutSec + '; $p = Get-Process -Id ' + $PID + ' -ErrorAction SilentlyContinue; if ($p) { Stop-Process -Id $p.Id -Force }'
+$script:EvidenceWatchdog = Start-Process powershell.exe -WindowStyle Hidden -ArgumentList @('-NoProfile', '-Command', $evidenceWatchdogCmd) -PassThru
+Write-Host "总超时护栏已武装：watchdog pid=$($script:EvidenceWatchdog.Id)，${script:EvidenceTimeoutSec}s 后强杀本脚本（pid=$PID）；可用 BEACON_EVIDENCE_TIMEOUT_SEC 覆盖"
+
 Set-Location $env:GITHUB_WORKSPACE
 
 Add-Type -AssemblyName System.Drawing
@@ -437,10 +452,42 @@ $evidence = Join-Path $env:GITHUB_WORKSPACE "evidence"
 New-Item -ItemType Directory -Force -Path $evidence | Out-Null
 $failures = New-Object System.Collections.Generic.List[string]
 
+# —— 开场窗口基线（回归 run 41958504066/41963265872 排查面）：跑任何场景前把 Beacon 进程与
+# 其顶层可见窗（class/title/rect）逐条落日志——UIA 阶段无进展时，这份基线能直接判定
+# 「是否多建了置顶窗」（如胶囊窗懒建回归）或残留了上一场景的窗。
+function Log-BeaconWindowInventory([string] $stage)
+{
+    $inventoryProcs = @(Get-Process Beacon.App -ErrorAction SilentlyContinue)
+    if ($inventoryProcs.Count -eq 0)
+    {
+        Write-Host "窗口基线[$stage]：Beacon.App 进程不存在"
+        return
+    }
+    foreach ($inventoryProc in $inventoryProcs)
+    {
+        Write-Host "窗口基线[$stage]：Beacon.App pid=$($inventoryProc.Id) 顶层可见窗："
+        foreach ($h in [WinEnum]::VisibleTopLevelHandles())
+        {
+            if ([WinEnum]::PidOf($h) -eq $inventoryProc.Id)
+            {
+                $inventoryRect = [WinEnum]::RectOf($h)
+                Write-Host ("    class={0} title='{1}' rect=({2},{3})-({4},{5})" -f [WinEnum]::ClassOf($h), [WinEnum]::TitleOf($h), $inventoryRect.Left, $inventoryRect.Top, $inventoryRect.Right, $inventoryRect.Bottom)
+            }
+        }
+    }
+}
+Log-BeaconWindowInventory "script-start"
+
 function Stop-Beacon
 {
     Get-Process Beacon.App -ErrorAction SilentlyContinue | Stop-Process -Force
     Start-Sleep -Seconds 2
+    # 收尸后残留取证：进程/窗没死干净立刻落基线（此前「零残留」断言失败只能靠场景报错倒推）
+    if (@(Get-Process Beacon.App -ErrorAction SilentlyContinue).Count -gt 0)
+    {
+        Write-Host "::warning::Stop-Beacon 后 Beacon.App 进程仍残留——窗口基线如下供定位"
+        Log-BeaconWindowInventory "post-stop-residue"
+    }
 }
 
 function Write-ScenarioConfig([bool] $numericFloating, [string] $theme = "dark")
@@ -6139,6 +6186,12 @@ catch
 
 Write-Host "视觉取证完成，产物："
 Get-ChildItem $evidence | ForEach-Object { Write-Host "  - evidence/$($_.Name)" }
+
+# 解除总超时护栏：脚本走到收尾（无论断言成败）都先拆 watchdog，避免对已结束进程的空倒计时
+if ($script:EvidenceWatchdog)
+{
+    Stop-Process -Id $script:EvidenceWatchdog.Id -Force -ErrorAction SilentlyContinue
+}
 
 if ($failures.Count -gt 0)
 {
