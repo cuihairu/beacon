@@ -189,4 +189,6 @@
 
 ## 待派工
 
+- [ ] BUG-1 概览 OpenCode 品牌图标渲染成实心方块：BrandIconFactory.cs:67 强制 FillRule.Nonzero，而 BrandIcons.cs opencode path 是同向双矩形镂空「0」形（nonzero 下内框 winding=2 被填实）——截图实证选中卡显示 ⊡；修复=该字典条目标记 even-odd 或工厂统一 FillRule.EvenOdd（Simple Icons 无自交图形，even-odd 等价），Core 补解析单测断言镂空语义（2026-11-05 用户截图报障）
+- [ ] BUG-2 概览来源卡文字截断：QuickPanelWindow.cs:363（chip 标签）与 :481-482、:548（MaxWidth=260 + CharacterEllipsis）在窄窗三列布局下把来源名截没（用户截图「文字都显示不全」）——修复方向=chip 最小宽/名称换行不省略/Tooltip 全名兜底，窄窗优先保完整名（2026-11-05 用户截图报障）
 - [ ] DOC-GIF：为全部「开启后有效果」的开关/配置项生成 off/on 对比图与切换 GIF，落 docs「配置效果」双语页，流水线可重跑兼作回归（kode todo C-24 同款，2026-11-01 用户令全舰队推广）
