@@ -355,12 +355,14 @@ public sealed partial class QuickPanelWindow : Window
         }
         var cardBody = new StackPanel { Spacing = 2 };
         cardBody.Children.Add(topRow);
+        // BUG-2（2026-11-05 用户截图：窄窗三列下来源名被截没）：标签换行优先、不用省略号——
+        // 卡宽由 UniformGridLayout MinItemWidth 兜底，窄窗挤宽时折行保全名；整卡 Tooltip 挂全名兜底
         cardBody.Children.Add(new TextBlock
         {
             Text = label,
             FontSize = DesignTokens.FontBody,
             Foreground = active ? white : new SolidColorBrush(ThemeColors.TextSecondary()),
-            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.Wrap,
         });
         var accent = ThemeColors.AccentFill();
         var card = new Border
@@ -370,8 +372,10 @@ public sealed partial class QuickPanelWindow : Window
             BorderThickness = new Thickness(1),
             CornerRadius = DesignTokens.RadiusInner,
             Padding = new Thickness(8, 6, 8, 6),
+            MinWidth = 96, // chip 最小宽：极短名不塌卡形，长名走上面的换行
             Child = cardBody,
         };
+        Microsoft.UI.Xaml.Controls.ToolTipService.SetToolTip(card, label); // 全名兜底：换行后仍极窄时悬停可见完整名
         // UIA 取证/CI 点击入口（口径沿 chip：Border 非 Control 无自带 peer，只设 AutomationId 不进 UIA 树——
         // CI 38533804493/38542642112 实证，Name 强制创建 FrameworkElementAutomationPeer；
         // Id/Name 格式不变=改版不破 W3 场景锚 chip-智谱 / 「label count」）。
@@ -478,8 +482,11 @@ public sealed partial class QuickPanelWindow : Window
             Text = record.Title,
             Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
             FontSize = DesignTokens.FontBody,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 260, // 面板加宽 320→380 后同步放开（原 210）
+            // BUG-2（2026-11-05 用户截图）：换行优先不省略；MaxWidth 仅作换行边界
+            // （横向 StackPanel 给子项无限宽 offer，无上界会顶出面板被窗缘裁切）
+            TextWrapping = TextWrapping.Wrap,
+            TextTrimming = TextTrimming.CharacterEllipsis, // 仅换行后仍放不下的超长单词才现省略号
+            MaxWidth = 260,
             VerticalAlignment = VerticalAlignment.Center,
             FontWeight = record.Read ? FontWeights.Normal : FontWeights.SemiBold, // 未读加粗区分
         };
@@ -545,7 +552,8 @@ public sealed partial class QuickPanelWindow : Window
         var dot = ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(state.Severity,
             widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)));
         var time = ComponentText.Caption(timeText, new SolidColorBrush(ThemeColors.TextSecondary()));
-        var label = ComponentText.Body(state.Summary, new SolidColorBrush(ThemeColors.TextPrimary()), maxWidth: 260); // 面板加宽 320→380 后同步放开（原 210）
+        var label = ComponentText.Body(state.Summary, new SolidColorBrush(ThemeColors.TextPrimary()), maxWidth: 260);
+        label.TextWrapping = TextWrapping.Wrap; // BUG-2（2026-11-05 用户截图）：换行优先不省略，260 只是换行边界
         var row = ComponentLayout.Row(DesignTokens.Spacing(7, _runtime.Config.App.Appearance.Density));
         row.Children.Add(dot);
         row.Children.Add(time);
