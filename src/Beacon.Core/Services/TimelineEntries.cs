@@ -53,7 +53,8 @@ public static class TimelineEntries
                 evt.State.Severity,
                 evt.Source,
                 evt.State.Summary,
-                evt.State.WidgetId))
+                evt.State.WidgetId,
+                evt.State))
             .ToList();
 }
 
@@ -63,5 +64,5 @@ public sealed record TimelineEntry(string Time, Severity Severity, string Title,
 /// <summary>看板事件动态一次状态变化（事件时刻 + 当时快照 + 来源键，来源键 QuickPanelFilter 同口径）。</summary>
 public sealed record BoardEvent(DateTimeOffset At, WidgetState State, string Source);
 
-/// <summary>看板事件动态单行（本地化时刻 · 级别 · 来源 · 摘要 · 归属组件）。</summary>
-public sealed record BoardTimelineEntry(string Time, Severity Severity, string Source, string Summary, string WidgetId);
+/// <summary>看板事件动态单行（本地化时刻 · 级别 · 来源 · 摘要 · 归属组件 · 事件时点快照——RECENT 行保留事件时点语义）。</summary>
+public sealed record BoardTimelineEntry(string Time, Severity Severity, string Source, string Summary, string WidgetId, WidgetState State);

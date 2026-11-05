@@ -101,6 +101,7 @@ public class TimelineEntriesTests
         Assert.Equal("智谱", row.Source);
         Assert.Equal("quota 95%", row.Summary);
         Assert.Equal("w-1", row.WidgetId);
+        Assert.Same(evt.State, row.State); // 事件时点快照随行（RECENT 单击进 L3 用）
     }
 
     [Fact]

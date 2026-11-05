@@ -22,6 +22,7 @@ public static class UiStrings
         ["board.needsAttention"] = "NEEDS ATTENTION",
         ["board.running"] = "RUNNING",
         ["board.recentEvents"] = "RECENT EVENTS",
+        ["board.timeline"] = "EVENT TIMELINE",
         ["board.allClear"] = "all clear",
         ["board.warnError"] = "{0} warn · {1} error",
         ["board.all"] = "All",
@@ -49,6 +50,7 @@ public static class UiStrings
         ["board.needsAttention"] = "需要关注",
         ["board.running"] = "运行中",
         ["board.recentEvents"] = "最近事件",
+        ["board.timeline"] = "事件动态",
         ["board.allClear"] = "一切正常",
         ["board.warnError"] = "{0} 警告 · {1} 错误",
         ["board.all"] = "全部",
@@ -118,6 +120,7 @@ public static class UiStrings
     public static string BoardNeedsAttention => Get("board.needsAttention");
     public static string BoardRunning => Get("board.running");
     public static string BoardRecentEvents => Get("board.recentEvents");
+    public static string BoardTimeline => Get("board.timeline");
     public static string BoardAllClear => Get("board.allClear");
     public static string BoardWarnError => Get("board.warnError");
     public static string BoardAll => Get("board.all");

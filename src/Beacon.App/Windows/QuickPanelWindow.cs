@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Graphics;
@@ -22,27 +23,47 @@ namespace Beacon.App.Windows;
 internal sealed record RecentEvent(DateTimeOffset At, WidgetState State);
 
 /// <summary>
-/// L2 Quick Panel（RFC §6.4）：Flyout 语义——失焦自动隐藏、ESC 关闭、Tab 可达、不进任务栏。
+/// L2 看板（RFC §6.4 Flyout 语义保留）：失焦自动隐藏、ESC 关闭、Tab 可达、不进任务栏。
+/// PANEL-UPGRADE-1 看板化：默认 720x560 大板面、可拖拽调尺寸（无边框厚框命中区 + 头部把手拖动），
+/// 尺寸/位置记忆走 shell-state（ShellStateStore.QuickPanelLayout，PinLayoutMath 锚点口径）；
+/// 事件动态（时间线 时刻/级别/来源/摘要）为左主区，通知/概览/状态收 260 DIP 右副栏。
 /// 常驻档（config.keepQuickPanelOpen，托盘菜单 Keep Panel Open 打勾）：失焦不自隐，面板一直在。
 /// 打开零网络等待（B-601/B-602）：内容常驻订阅事件流 + 启动时从缓存水合，打开 &lt;100ms。
-/// Overview 按来源计数，chip 可点击过滤（默认全部 + 再点取消，2026-10-14 用户单①）；
-/// Recent Events 单击进 L3（DetailRequested），右键 Pin to desktop 落 widgets.json。
+/// Overview 按来源计数，卡片可点击过滤（默认全部 + 再点取消，2026-10-14 用户单①）；
+/// 时间线行单击进 L3（DetailRequested），右键 Pin to desktop 落 widgets.json。
 /// 文案经 Core UiStrings 取词（用户单②），语言切换即时重画。
 /// </summary>
 public sealed partial class QuickPanelWindow : Window
 {
-    private const int PanelWidth = 380; // master-plan §3.2 建议宽 360–420，取中（批3-补27 拍板④；原 320）
-    private const int PanelHeight = 540; // 通知中心区加入后加高（未读徽标 + 记录列表 MaxHeight 118）；在建议带 420–560 内
-    private const int MaxRecentEvents = 50;
+    private const int PanelWidth = 720;  // PANEL-UPGRADE-1 看板默认尺寸（master-plan 面板放大拍板 ~720x560，可拖拽调）
+    private const int PanelHeight = 560;
+    private const int MinPanelWidth = 360;  // 拖小下限：概览卡片两列 + 时间线摘要换行仍可读
+    private const int MinPanelHeight = 320;
+    private const int MaxRecentEvents = 50; // 内存事件壳上限（与 Core TimelineEntries.BoardMaxEntries 同口径，滚动承载）
+
+    private const double BoardRowFontSize = 13;    // 看板行正文（用户「面板太小看不清」反馈：比全局 FontBody 12 升半档）
+    private const double BoardRowCaptionSize = 12; // 看板行时刻/来源位（原 Caption 11 升一档）
+
+    private const int GWL_STYLE = -16;          // 看板可调尺寸：无边框 presenter 下补回 WS_THICKFRAME 的样式槽
+    private const long WS_THICKFRAME = 0x00040000L;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpFrameChanged = 0x0020;
 
     private readonly NativeMethods.RECT _fallbackWorkArea = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
 
     private readonly BeaconRuntime _runtime;
     private readonly UiPalette _palette;
     private readonly IUiDispatcher _dispatcher;
+    private readonly ShellStateStore _shellState;
     private readonly Dictionary<string, WidgetState> _states = [];
     private readonly List<RecentEvent> _events = [];
-    private string? _activeSource; // OVERVIEW chip 点击过滤：null=全部（默认），点击同类再点取消（用户单①）
+    private string? _activeSource; // OVERVIEW 卡片点击过滤：null=全部（默认），点击同类再点取消（用户单①）
+
+    private QuickPanelLayout? _boardLayout; // shell-state 记忆位（null=没拖过，回落默认右下 720x560）
+    private DragSession? _drag; // 头部把手拖动会话（PinnedHostWindow 同款记录：光标物理像素锚定）
+    private bool _dragMoved; // 死区判定：区分把手点击与拖动（点击不落库）
 
     private IntPtr _hwnd;
     private AppWindow _appWindow = null!;
@@ -54,7 +75,7 @@ public sealed partial class QuickPanelWindow : Window
     /// <summary>Pin/Unpin 落库后通知（B-702：L0 宿主重建 tile 集）。</summary>
     public event Action? PinsChanged;
 
-    public QuickPanelWindow(BeaconRuntime runtime, IUiDispatcher dispatcher)
+    public QuickPanelWindow(BeaconRuntime runtime, IUiDispatcher dispatcher, ShellStateStore shellState)
     {
         InitializeComponent();
         Title = "Beacon 快速面板"; // 窗口标题仅作取证/自动化锚点（边框已隐，UI 不可见；同 Beacon Tile 口径）
@@ -63,6 +84,7 @@ public sealed partial class QuickPanelWindow : Window
         _runtime = runtime;
         _palette = new UiPalette(runtime.Config); // B-706：渲染时实时读 appearance.SeverityColors
         _dispatcher = dispatcher;
+        _shellState = shellState;
 
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => dispatcher.Post(() => OnStateChanged(evt.State, record: true)));
         runtime.Bus.Subscribe<WidgetsInvalidated>(evt => dispatcher.Post(() => OnWidgetsInvalidated(evt.WidgetIds)));
@@ -92,7 +114,7 @@ public sealed partial class QuickPanelWindow : Window
         if (_appWindow.Presenter is OverlappedPresenter presenter)
         {
             presenter.IsAlwaysOnTop = true;
-            presenter.IsResizable = false;
+            presenter.IsResizable = true; // PANEL-UPGRADE-1：看板可拖拽调尺寸（下限 MinPanel* 由记忆/默认口径约束）
             presenter.IsMinimizable = false;
             presenter.IsMaximizable = false;
             presenter.SetBorderAndTitleBar(false, false);
@@ -100,17 +122,33 @@ public sealed partial class QuickPanelWindow : Window
         _appWindow.IsShownInSwitchers = false;
         NativeMethods.AddWindowExStyle(_hwnd, NativeMethods.WS_EX_TOOLWINDOW);
 
+        // PANEL-UPGRADE-1 可调尺寸：SetBorderAndTitleBar(false,false) 连厚框命中区一并摘除——
+        // 补回 WS_THICKFRAME 让四边出系统 resize 光标与拖拽循环，WS_CAPTION 不回（视觉仍无边框 flyout）
+        var style = NativeMethods.GetWindowLongPtr(_hwnd, GWL_STYLE).ToInt64();
+        NativeMethods.SetWindowLongPtr(_hwnd, GWL_STYLE, new IntPtr(style | WS_THICKFRAME));
+        NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoZOrder | SwpFrameChanged);
+
+        // 头部把手拖动整窗（PinnedHostWindow 同款会话口径）：按住头部空白区拖动、松手落位记忆
+        HeaderDragArea.PointerPressed += OnHeaderPointerPressed;
+        HeaderDragArea.PointerMoved += OnHeaderPointerMoved;
+        HeaderDragArea.PointerReleased += OnHeaderPointerReleased;
+        HeaderDragArea.PointerCanceled += OnHeaderPointerReleased;
+
         // 设计值是 DIP，AppWindow.Resize 收物理像素——只在 Win32 边界经 DpiLayoutMath 换算一次，
         // 否则高缩放下内容被裁（DPI 修复单 2026-10-10）。Resize 收的是窗口外框，客户区需求必须
         // 补回非客户区差值（无边框 presenter 仍保留 ~6px resize 边框），否则底部内容落进不可见区
         // （2026-10-14 进度条缺陷单同型根因：tile 底部 4 DIP 条带整条不可见）
         var dpi = GetDpi();
         var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+        _boardLayout = _shellState.LoadQuickPanelLayout(); // 看板尺寸记忆（shell-state 惯例；损坏/缺失回落默认）
+        var width = Math.Clamp(_boardLayout?.Width ?? PanelWidth, MinPanelWidth, 1600);
+        var height = Math.Clamp(_boardLayout?.Height ?? PanelHeight, MinPanelHeight, 1200);
         _appWindow.Resize(new SizeInt32(
-            DpiLayoutMath.ToPx(PanelWidth, dpi) + chromeWidth,
-            DpiLayoutMath.ToPx(PanelHeight, dpi) + chromeHeight));
+            DpiLayoutMath.ToPx(width, dpi) + chromeWidth,
+            DpiLayoutMath.ToPx(height, dpi) + chromeHeight));
         _appWindow.Hide();
         _visible = false;
+        Closed += (_, _) => PersistLayout(); // 开着看板退应用也补记（Hide 路径另记）
 
         // B-601 验收：ESC 可完整关闭（global:: 限定：Beacon.App.Windows 会遮蔽 Windows 根命名空间）
         var escape = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = global::Windows.System.VirtualKey.Escape };
@@ -154,7 +192,14 @@ public sealed partial class QuickPanelWindow : Window
         {
             return; // Loaded 前无 AppWindow，启动链路不抢跑
         }
-        PositionNearPrimaryCapsule();
+        if (_boardLayout is { } layout)
+        {
+            PositionAtSavedLayout(layout); // 记忆位（显示器 + 锚点角 + DIP 偏移，跨显示器热插拔回收）
+        }
+        else
+        {
+            PositionNearPrimaryCapsule(); // 默认位：主屏右下（胶囊上方）
+        }
         _appWindow.Show();
         Activate(); // L2 需要键盘（ESC 关闭、Tab 导航）
         _visible = true;
@@ -162,9 +207,121 @@ public sealed partial class QuickPanelWindow : Window
 
     public void Hide()
     {
+        PersistLayout(); // 尺寸/位置随手记（看板 hide/save 惯例：拖过/调过即落 shell-state）
         _appWindow.Hide();
         _visible = false;
     }
+
+    /// <summary>当前布局落 shell-state（PANEL-UPGRADE-1）：外框物理像素 → PinLayoutMath.Locate
+    /// 锚点角 + DIP 偏移，尺寸记客户区 DIP（chrome 差值剔除，与 Restore 的加回口径互逆）。</summary>
+    private void PersistLayout()
+    {
+        if (_appWindow is null || _hwnd == IntPtr.Zero)
+        {
+            return; // Loaded 前无可记
+        }
+        var dpi = GetDpi();
+        var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        var monitor = MonitorService.FromPixel(position.X + size.Width / 2, position.Y + size.Height / 2)
+                      ?? MonitorService.Primary();
+        if (monitor is null)
+        {
+            return;
+        }
+        var work = monitor.WorkPx;
+        var rect = PinLayoutMath.ClampInto(
+            ToPinRect(work), new PinRect(position.X, position.Y, size.Width, size.Height), margin: 0);
+        var (anchor, offset) = PinLayoutMath.Locate(ToPinRect(work), rect, dpi);
+        var saved = new QuickPanelLayout
+        {
+            Monitor = monitor.DeviceName,
+            Anchor = anchor,
+            OffsetDips = offset,
+            Width = Math.Max(MinPanelWidth, (size.Width - chromeWidth) / dpi),
+            Height = Math.Max(MinPanelHeight, (size.Height - chromeHeight) / dpi),
+        };
+        _shellState.SaveQuickPanelLayout(saved);
+        _boardLayout = saved; // 记忆位同步内存：下次 Show 走落库锚点（不再回落默认右下）
+    }
+
+    /// <summary>记忆位恢复：显示器按名找回（热插拔回落主屏），PinLayoutMath.Place 锚点放置 + 越界回收；
+    /// 尺寸用窗口现外框像素（Resize 已按记忆/默认客户区 DIP + chrome 落过）。</summary>
+    private void PositionAtSavedLayout(QuickPanelLayout layout)
+    {
+        var monitor = MonitorService.FindByName(layout.Monitor) ?? MonitorService.Primary();
+        var work = monitor?.WorkPx ?? _fallbackWorkArea;
+        var dpi = GetDpi();
+        var size = _appWindow.Size;
+        var rect = PinLayoutMath.Place(
+            ToPinRect(work), layout.Anchor, layout.OffsetDips, dpi, size.Width, size.Height);
+        _appWindow.Move(new PointInt32(rect.X, rect.Y));
+    }
+
+    /// <summary>头部把手拖动会话（左键按住起手）：光标屏幕物理像素锚定，与 AppWindow.Move 同坐标系。</summary>
+    private void OnHeaderPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(HeaderDragArea).Properties.IsLeftButtonPressed || _appWindow is null)
+        {
+            return;
+        }
+        _dragMoved = false;
+        _drag = new DragSession(HeaderDragArea, CursorPx(), _appWindow.Position.X, _appWindow.Position.Y);
+        HeaderDragArea.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void OnHeaderPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_drag is null || !ReferenceEquals(_drag.Element, sender) || _appWindow is null)
+        {
+            return;
+        }
+        var (cursorX, cursorY) = CursorPx();
+        var dx = cursorX - _drag.StartCursor.X;
+        var dy = cursorY - _drag.StartCursor.Y;
+        if (!_dragMoved && Math.Abs(dx) < 3 && Math.Abs(dy) < 3)
+        {
+            return; // 死区，区分点击与拖动
+        }
+        _dragMoved = true;
+        var work = MonitorService.Primary()?.WorkPx ?? _fallbackWorkArea;
+        var width = _appWindow.Size.Width;
+        var height = _appWindow.Size.Height;
+        // 夹回工作区：拖出去的看板收不回来（与 CapsuleWindow RestorePosition 同口径）
+        var x = Math.Clamp(_drag.StartX + dx, work.Left, Math.Max(work.Left, work.Right - width));
+        var y = Math.Clamp(_drag.StartY + dy, work.Top, Math.Max(work.Top, work.Bottom - height));
+        if (x != _appWindow.Position.X || y != _appWindow.Position.Y)
+        {
+            _appWindow.Move(new PointInt32(x, y)); // 目标没变不重发 Move：减少 SetWindowPos 抖动
+        }
+        e.Handled = true;
+    }
+
+    private void OnHeaderPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_drag is null || !ReferenceEquals(_drag.Element, sender))
+        {
+            return;
+        }
+        _drag = null;
+        HeaderDragArea.ReleasePointerCapture(e.Pointer);
+        if (_dragMoved)
+        {
+            PersistLayout(); // 拖动落点记忆；死区内点击不落库
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>光标屏幕物理像素（GetCursorPos；与 AppWindow.Position/Move 同一坐标系）。</summary>
+    private (int X, int Y) CursorPx()
+        => NativeMethods.GetCursorPos(out var point) ? (point.X, point.Y) : (_appWindow.Position.X, _appWindow.Position.Y);
+
+    /// <summary>Win32 RECT（Left/Top/Right/Bottom 物理像素）→ Core 布局矩形（X/Y/Width/Height）：
+    /// PinLayoutMath 是纯 Core 域（CapsuleWindow 同款换算），边界换算留在窗体侧。</summary>
+    private static PinRect ToPinRect(NativeMethods.RECT rect)
+        => new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
 
     /// <summary>
     /// 托盘「通知中心」入口（B-503 语义分化，2026-10-14 用户单④）：确保面板可见后把焦点与滚动落到
@@ -201,16 +358,16 @@ public sealed partial class QuickPanelWindow : Window
         });
     }
 
-    /// <summary>静态文案统一入口（XAML 缺省英文 → 当前语言）；OVERVIEW 头带过滤后缀，chip 标签随 chip 重建。</summary>
+    /// <summary>静态文案统一入口（XAML 缺省英文 → 当前语言）；时间线主区头与 OVERVIEW 头随过滤态更新。</summary>
     private void ApplyStrings()
     {
         NotificationsHeader.Text = UiStrings.BoardNotifications;
         MarkAllReadButton.Content = UiStrings.BoardMarkAllRead;
         AttentionHeader.Text = UiStrings.BoardNeedsAttention;
         RunningHeader.Text = UiStrings.BoardRunning;
-        RecentHeader.Text = UiStrings.BoardRecentEvents;
+        RecentHeader.Text = UiStrings.BoardTimeline; // PANEL-UPGRADE-1：主区头「事件动态」双语
         UpdateHeader(); // OverallSummary 文案（all clear / N warn · N error）
-        UpdateOverview(); // OVERVIEW 头 + chip（含「全部」chip 标签与高亮态）
+        UpdateOverview(); // OVERVIEW 头 + 卡片（含「全部」卡标签与高亮态）
     }
 
     private double GetDpi() => NativeMethods.GetDpiForWindow(_hwnd) / 96.0;
@@ -385,13 +542,75 @@ public sealed partial class QuickPanelWindow : Window
         return card;
     }
 
+    /// <summary>
+    /// 事件动态主区（PANEL-UPGRADE-1）：内存事件壳（新在前）翻 Core BoardTimelineEntry——
+    /// 来源过滤（QuickPanelFilter 同口径）、时刻降序、BoardMaxEntries 条滚动承载（8 条上限已放宽）。
+    /// 行面 时刻/级别/来源/摘要 逐行可读（MakeTimelineRow）。
+    /// </summary>
     private void RebuildRecent()
     {
-        RecentList.Items.Clear();
-        foreach (var evt in _events.Where(evt => QuickPanelFilter.Matches(_activeSource, evt.State.WidgetType)))
+        var events = _events.Select(evt =>
         {
-            RecentList.Items.Add(MakeEventRow(evt));
+            var widget = _runtime.Config.FindWidget(evt.State.WidgetId);
+            var source = widget is null ? "·" : QuickPanelFilter.SourceKey(widget.Type); // 组件已删：来源位占位不挡行
+            return new BoardEvent(evt.At, evt.State, source);
+        }).ToList();
+        RecentList.Items.Clear();
+        foreach (var entry in TimelineEntries.Board(events, _activeSource))
+        {
+            RecentList.Items.Add(MakeTimelineRow(entry));
         }
+    }
+
+    /// <summary>时间线行（看板主区，PANEL-UPGRADE-1）：级别点 + 时刻 + 来源 + 摘要；
+    /// 列宽 Grid（Auto 点/时刻/来源 + * 摘要）——摘要换行不吃横向无限 offer（BUG-2 同根因），
+    /// 星号列兜住换行边界。行字号 13/12 大板面重排。单击进 L3，右键 Pin（B-702 口径）。</summary>
+    private ListViewItem MakeTimelineRow(BoardTimelineEntry entry)
+    {
+        var dot = ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(entry.Severity,
+            widgetOverride: _runtime.Config.FindWidget(entry.WidgetId)?.ColorOverride)), size: 10);
+        var time = new TextBlock
+        {
+            Text = entry.Time,
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+            FontSize = BoardRowCaptionSize,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var source = new TextBlock
+        {
+            Text = entry.Source,
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+            FontSize = BoardRowCaptionSize,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var summary = new TextBlock
+        {
+            Text = entry.Summary,
+            Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
+            FontSize = BoardRowFontSize,
+            TextWrapping = TextWrapping.Wrap, // BUG-2 口径：换行优先不省略
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var row = new Grid { ColumnSpacing = 8 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(dot, 0);
+        Grid.SetColumn(time, 1);
+        Grid.SetColumn(source, 2);
+        Grid.SetColumn(summary, 3);
+        row.Children.Add(dot);
+        row.Children.Add(time);
+        row.Children.Add(source);
+        row.Children.Add(summary);
+
+        var item = new InvokeableListItem { Content = row, Padding = new Thickness(2, 4, 2, 4), Tag = entry.State };
+        item.InvokeRequested += () => OpenDetailFromRow(item); // UIA Invoke 与 ItemClick 同链（行 46 解锁面）
+        var pinned = _runtime.Config.FindWidget(entry.WidgetId)?.Pinned == true;
+        item.ContextFlyout = ComponentAction.Menu(ComponentAction.Item(
+            pinned ? "Unpin from desktop" : "Pin to desktop", () => PinWidget(entry.WidgetId)));
+        return item;
     }
 
     /// <summary>
@@ -512,10 +731,7 @@ public sealed partial class QuickPanelWindow : Window
         RebuildNotifications();
     }
 
-    private ListViewItem MakeEventRow(RecentEvent evt)
-        => MakeStateRow(evt.State, evt.At.ToString("HH:mm:ss"), tag: evt);
-
-    /// <summary>状态行（当前状态区与 RECENT 共用）：级别点 + 时间 + 摘要；单击进 L3，右键 Pin（B-702 口径）。
+    /// <summary>状态行（当前状态区与事件动态回退面共用）：级别点 + 时间 + 摘要；单击进 L3，右键 Pin（B-702 口径）。
     /// Phase 2 起经基础组件组合（ComponentIcon/ComponentText，值与原 inline 构造逐项等价）。
     /// 声明式行面（P3-01）：组件带 row 树时整行内容换渲染器输出，单击/右键/Tag 语义不变。</summary>
     private ListViewItem MakeStateRow(WidgetState state, string timeText, object? tag = null)
@@ -546,14 +762,27 @@ public sealed partial class QuickPanelWindow : Window
                     : _states.TryGetValue(id, out var source) ? source : null),
             _palette);
 
-    /// <summary>传统状态行内容（级别点 + 时间 + 摘要）——原 MakeStateRow 内联段，声明式行的对照回退面。</summary>
+    /// <summary>传统状态行内容（级别点 + 时间 + 摘要）——原 MakeStateRow 内联段，声明式行的对照回退面。
+    /// 看板行字号口径（PANEL-UPGRADE-1）：正文 13、时刻 12，与时间线主区行一致。</summary>
     private UIElement BuildTraditionalStateRow(WidgetState state, string timeText)
     {
         var dot = ComponentIcon.StatusDot(new SolidColorBrush(_palette.SeverityColor(state.Severity,
             widgetOverride: _runtime.Config.FindWidget(state.WidgetId)?.ColorOverride)));
-        var time = ComponentText.Caption(timeText, new SolidColorBrush(ThemeColors.TextSecondary()));
-        var label = ComponentText.Body(state.Summary, new SolidColorBrush(ThemeColors.TextPrimary()), maxWidth: 260);
-        label.TextWrapping = TextWrapping.Wrap; // BUG-2（2026-11-05 用户截图）：换行优先不省略，260 只是换行边界
+        var time = new TextBlock
+        {
+            Text = timeText,
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+            FontSize = BoardRowCaptionSize,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var label = new TextBlock
+        {
+            Text = state.Summary,
+            Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
+            FontSize = BoardRowFontSize,
+            TextWrapping = TextWrapping.Wrap, // BUG-2（2026-11-05 用户截图）：换行优先不省略
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         var row = ComponentLayout.Row(DesignTokens.Spacing(7, _runtime.Config.App.Appearance.Density));
         row.Children.Add(dot);
         row.Children.Add(time);
