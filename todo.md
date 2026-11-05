@@ -187,6 +187,11 @@
 - [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验，1328 全绿，de528f9/75f4a85）
 - [x] 验证现有 Provider、AI 额度显示与通知规则不回归（Connections 662 全绿 + 真机 356 次刷新零失败，de528f9/75f4a85）
 
+## 面板升级看板（2026-11-05 用户令）
+
+- [ ] PANEL-UPGRADE-1 [P1] 快捷面板升级为看板：默认尺寸放大（目标 ~720x560，可调可记忆），事件动态（时间线）成为主区——时间/级别/来源/摘要逐行可读，条数放宽（现 8 条上限重新评估），头部 OverallSummary 与来源过滤保留；悬浮岛/胶囊点击唤起目标同步指向看板；字体与行距按可读性重排；设置项若涉尺寸记忆走 shell-state 惯例。
+  - 验收: Core 侧筛选/聚合逻辑单测；CI windows-latest 出看板截图；真机人工核验可读性。
+
 ## 待派工
 
 - [x] BUG-1 概览 OpenCode 品牌图标渲染成实心方块：BrandIconFactory.cs:67 强制 FillRule.Nonzero，而 BrandIcons.cs opencode path 是同向双矩形镂空「0」形（nonzero 下内框 winding=2 被填实）——修复=工厂统一 FillRule.EvenOdd（Simple Icons 无自交图形，even-odd 等价），Core 补解析单测断言镂空语义（SvgPathParserTests.Parse_OpencodePath_IsNestedDoubleRectangle，948 Core 绿）（2026-11-05 用户截图报障；3443ad3，CI run 41956471135 绿；观感复核=装机后概览选中 opencode 来源卡看「0」形镂空）
