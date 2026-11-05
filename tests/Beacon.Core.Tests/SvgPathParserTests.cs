@@ -83,6 +83,39 @@ public sealed class SvgPathParserTests
     }
 
     [Fact]
+    public void Parse_OpencodePath_IsNestedDoubleRectangle()
+    {
+        // BUG-1（2026-11-05 用户截图：opencode 图标渲染成实心方块）：opencode path 是
+        // 同向双矩形镂空「0」形——外框与内框同方向描绘，内框区域 winding=2。
+        // nonzero 填充规则（SVG 默认，也是本仓工厂旧实现）按 winding≠0 填色，镂空被填实；
+        // even-odd 按射线交叉数奇偶判定，内框区域交叉数=2（偶）→ 空洞。BrandIconFactory
+        // 据此统一改 FillRule.EvenOdd：Simple Icons 全库均为简单闭合子路径、无自交图形，
+        // even-odd 对其余品牌逐点等价，本测试把「嵌套双矩形」这一差异前提锁进解析层。
+        Assert.True(BrandIcons.TryGet("opencode", out var pathData));
+        var figures = SvgPathParser.Parse(pathData);
+
+        Assert.Equal(2, figures.Count);
+        Assert.All(figures, figure => Assert.True(figure.Closed));
+        // 外框：M22 24 H2 V0 h20 z → 右下起笔，三段直线绕出 (2,0)-(22,24)
+        var outer = figures[0];
+        Assert.Equal(new SvgPoint(22, 24), outer.Start);
+        Assert.Collection(outer.Segments,
+            segment => Assert.Equal(new SvgPoint(2, 24), Assert.IsType<SvgLine>(segment).To),
+            segment => Assert.Equal(new SvgPoint(2, 0), Assert.IsType<SvgLine>(segment).To),
+            segment => Assert.Equal(new SvgPoint(22, 0), Assert.IsType<SvgLine>(segment).To));
+        // 内框：M17 4.8 H7 v14.4 h10 z → (7,4.8)-(17,19.2)
+        var inner = figures[1];
+        Assert.Equal(new SvgPoint(17, 4.8), inner.Start);
+        Assert.Collection(inner.Segments,
+            segment => Assert.Equal(new SvgPoint(7, 4.8), Assert.IsType<SvgLine>(segment).To),
+            segment => Assert.Equal(new SvgPoint(7, 19.2), Assert.IsType<SvgLine>(segment).To),
+            segment => Assert.Equal(new SvgPoint(17, 19.2), Assert.IsType<SvgLine>(segment).To));
+        // 嵌套关系成立 = nonzero 下内区 winding 2 被填实的几何前提（实心方块的根因）
+        Assert.True(7 > 2 && 17 < 22 && 4.8 > 0 && 19.2 < 24,
+            "opencode 内框必须完全落在外框内（镂空语义依赖嵌套）");
+    }
+
+    [Fact]
     public void Parse_Arc()
     {
         var segment = Assert.IsType<SvgArc>(SvgPathParser.Parse("M0 0A5 5 0 0 1 10 10").Single().Segments.Single());

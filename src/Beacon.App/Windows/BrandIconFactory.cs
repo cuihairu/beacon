@@ -64,7 +64,12 @@ internal static class BrandIconFactory
     /// 返回具体类型 PathGeometry（基类 Geometry 无 Figures，空几何检查要用）。</summary>
     public static PathGeometry Geometry(string pathData)
     {
-        var geometry = new PathGeometry { FillRule = FillRule.Nonzero }; // SVG 填充默认 nonzero
+        // SVG 填充默认 nonzero，但这里必须 EvenOdd（BUG-1，2026-11-05 用户截图：opencode 图标
+        // 渲染成实心方块）：BrandIcons 的 opencode path 是同向双矩形镂空「0」形，内框区域
+        // winding=2，nonzero 下被填实镂空消失；EvenOdd 下偶数交叉=空洞，镂空恢复。
+        // Simple Icons 全库 path 均为简单闭合子路径、无自交图形（解析层单测断言嵌套结构），
+        // 对其余品牌 even-odd 与 nonzero 逐点等价——统一 EvenOdd 无回归面。
+        var geometry = new PathGeometry { FillRule = FillRule.EvenOdd };
         foreach (var figure in SvgPathParser.Parse(pathData))
         {
             var pathFigure = new PathFigure
