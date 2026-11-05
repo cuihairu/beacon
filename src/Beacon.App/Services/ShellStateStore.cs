@@ -14,6 +14,10 @@ public sealed class ShellStateStore
         /// <summary>悬浮岛布局（display-modes-analysis §7 Phase 2）：与经典胶囊布局分开存——
         /// 两形态各有默认位（岛=顶中、胶囊=右下），互不覆盖，切形态各回各的记忆位。</summary>
         public CapsuleIslandLayout? IslandLayout { get; set; }
+
+        /// <summary>看板窗口布局（PANEL-UPGRADE-1）：显示器 + 锚点角 + DIP 偏移 + 窗口 DIP 尺寸——
+        /// 看板可拖拽调尺寸，尺寸/位置记忆与配置文件（config/widgets/…）分开走 shell-state 惯例。</summary>
+        public QuickPanelLayout? QuickPanelLayout { get; set; }
     }
 
     private static string DirectoryPath
@@ -69,6 +73,38 @@ public sealed class ShellStateStore
     {
         Directory.CreateDirectory(DirectoryPath);
         var state = new ShellStateFile { CapsuleLayout = LoadCapsuleLayout(), IslandLayout = layout };
+        var temporary = FilePath + ".tmp";
+        File.WriteAllText(temporary, BeaconJson.Serialize(state));
+        File.Move(temporary, FilePath, overwrite: true);
+    }
+
+    /// <summary>读取看板窗口布局；损坏/缺失返回 null（看板用默认 720x560 右下位）。</summary>
+    public QuickPanelLayout? LoadQuickPanelLayout()
+    {
+        try
+        {
+            if (!File.Exists(FilePath))
+            {
+                return null;
+            }
+            return BeaconJson.Deserialize<ShellStateFile>(File.ReadAllText(FilePath)).QuickPanelLayout;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>看板窗口布局落盘（原子写同口径），读改写保留 CapsuleLayout/IslandLayout 段互不覆盖。</summary>
+    public void SaveQuickPanelLayout(QuickPanelLayout? layout)
+    {
+        Directory.CreateDirectory(DirectoryPath);
+        var state = new ShellStateFile
+        {
+            CapsuleLayout = LoadCapsuleLayout(),
+            IslandLayout = LoadIslandLayout(),
+            QuickPanelLayout = layout,
+        };
         var temporary = FilePath + ".tmp";
         File.WriteAllText(temporary, BeaconJson.Serialize(state));
         File.Move(temporary, FilePath, overwrite: true);
