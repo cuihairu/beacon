@@ -1,7 +1,7 @@
 [English](README.md) | [中文](README.zh.md)
 
 <p align="center">
-  <img src="docs/img/logo.svg" width="64" alt="Beacon logo">
+  <img src="docs/public/img/logo.svg" width="64" alt="Beacon logo">
 </p>
 
 <h1 align="center">Beacon</h1>
