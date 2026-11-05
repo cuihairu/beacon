@@ -197,9 +197,11 @@ public partial class App : Application
         // 运行时切换即建/关（ApplySettingsEffects），开关即时生效语义保持。悬浮岛（CapsuleIsland）
         // 是胶囊窗的形态开关，不单独建窗——窗存不存在只由 ShowCapsule 决定。
         Windows.CapsuleWindow? capsule = null;
-        // settingsWindow 声明前置：EnsureCapsule（经 OpenSettings 闭包）在下方启动段就被调用，
-        // C# 定赋值分析穿透局部函数链（CS0165 实证）——捕获变量必须先于启动段调用点赋值。
+        // settingsWindow / hotkey 声明前置：EnsureCapsule（经 OpenSettings → ApplySettingsEffects
+        // 闭包链）在下方启动段就被调用，C# 定赋值分析穿透局部函数引用链（CS0165 实证：CI 41972559016
+        // 即 hotkey 在调用点之后声明而红）——捕获变量必须先于启动段调用点赋值。
         Windows.SettingsWindow? settingsWindow = null;
+        var hotkey = Services.GetRequiredService<HotkeyService>();
         var lastStates = new Dictionary<string, WidgetState>(); // 悬停预览喂数（2026-10-29 UI 升级）：widget 级状态留底 → 按来源聚合推胶囊（UI 线程内改字典，无锁）
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.EnqueueGuarded(() =>
         {
@@ -309,7 +311,7 @@ public partial class App : Application
         // B-104：开机自启对齐（config.LaunchOnStartup 为准）
         Services.GetRequiredService<StartupService>().SyncWith(config.LaunchOnStartup);
 
-        var hotkey = Services.GetRequiredService<HotkeyService>();
+        // hotkey 已前置声明（CS0165 捕获链，见启动段注释）；此处只做注册
         hotkey.Triggered += () => quickPanel.Toggle();
         if (!hotkey.Register(string.IsNullOrWhiteSpace(config.Hotkey) ? "Ctrl+Alt+B" : config.Hotkey))
         {
