@@ -158,7 +158,7 @@ public partial class App : Application
         // 界面语言先行（2026-10-14 用户单②）：任何窗口/菜单创建前定语言口径，看板首屏不吃 XAML 英文缺省
         UiStrings.SetLanguage(runtime.Config.App.Language);
         tray.Palette = new UiPalette(runtime.Config); // B-706：托盘圆点按 appearance.SeverityColors 运行时绘制
-        _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher);
+        _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher, Services.GetRequiredService<ShellStateStore>()); // PANEL-UPGRADE-1：看板尺寸/位置记忆走 shell-state
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => quickPanel.Toggle();
         // 面板常驻（2026-10-11 用户令「右键菜单前打勾，显示消息的面板就可以一直在」）：
