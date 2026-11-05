@@ -10,6 +10,10 @@ public sealed class ShellStateStore
     private sealed class ShellStateFile
     {
         public PinLayout? CapsuleLayout { get; set; }
+
+        /// <summary>悬浮岛布局（display-modes-analysis §7 Phase 2）：与经典胶囊布局分开存——
+        /// 两形态各有默认位（岛=顶中、胶囊=右下），互不覆盖，切形态各回各的记忆位。</summary>
+        public CapsuleIslandLayout? IslandLayout { get; set; }
     }
 
     private static string DirectoryPath
@@ -38,6 +42,33 @@ public sealed class ShellStateStore
     {
         Directory.CreateDirectory(DirectoryPath);
         var state = new ShellStateFile { CapsuleLayout = layout };
+        var temporary = FilePath + ".tmp";
+        File.WriteAllText(temporary, BeaconJson.Serialize(state));
+        File.Move(temporary, FilePath, overwrite: true);
+    }
+
+    /// <summary>读取悬浮岛布局；损坏/缺失返回 null（用顶部居中默认位，CapsuleIslandMath.DefaultOffset）。</summary>
+    public CapsuleIslandLayout? LoadIslandLayout()
+    {
+        try
+        {
+            if (!File.Exists(FilePath))
+            {
+                return null;
+            }
+            return BeaconJson.Deserialize<ShellStateFile>(File.ReadAllText(FilePath)).IslandLayout;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>悬浮岛布局落盘（原子写与 SaveCapsuleLayout 同口径），读改写保留 CapsuleLayout 段。</summary>
+    public void SaveIslandLayout(CapsuleIslandLayout? layout)
+    {
+        Directory.CreateDirectory(DirectoryPath);
+        var state = new ShellStateFile { CapsuleLayout = LoadCapsuleLayout(), IslandLayout = layout };
         var temporary = FilePath + ".tmp";
         File.WriteAllText(temporary, BeaconJson.Serialize(state));
         File.Move(temporary, FilePath, overwrite: true);

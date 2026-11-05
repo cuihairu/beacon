@@ -209,6 +209,9 @@ public partial class App : Application
             tray.SetSeverity(status.Overall);
             tray.SetTip(BuildTrayTip(status));
         }));
+        // 悬浮岛未读徽标喂数（§7 Phase 2）：通知引擎出新记录即刷新（UnreadCount 现读，标记已读回放同链生效）
+        runtime.Bus.Subscribe<NotificationRaised>(_ => Dispatcher.EnqueueGuarded(
+            () => capsule.UpdateBadge(runtime.Notifications.UnreadCount)));
         tray.RefreshAllRequested += () => Dispatcher.EnqueueGuarded(runtime.RefreshAll);
 
         // master-plan §9 睡眠唤醒自愈：挂起期间轮询停摆，唤醒（PBT_APMRESUMEAUTOMATIC 必发）立即补一轮刷新，
@@ -229,12 +232,14 @@ public partial class App : Application
         // 初值渲染（空集 = Success 基线），再启动调度（首轮拉取立即 kick）
         var snapshot = runtime.Aggregator.Snapshot();
         capsule.UpdateStatus(snapshot);
+        capsule.UpdateBadge(runtime.Notifications.UnreadCount); // 岛徽标初值：notifications.json 水合的未读随启动带上
         tray.SetSeverity(snapshot.Overall);
         tray.SetTip(BuildTrayTip(snapshot));
         if (!runtime.Config.App.ShowCapsule)
         {
             capsule.StartHidden(); // B-801：showCapsule=false 时注册但不显示（避免先显示后隐藏的闪烁）
         }
+        capsule.SetIslandMode(runtime.Config.App.CapsuleIsland); // 悬浮岛形态（§7 Phase 2）Activate 前定形态，OnLoaded 按岛锚点落位
         capsule.Activate();
         capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
@@ -320,6 +325,7 @@ public partial class App : Application
             }
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
             capsule.SetVisible(appConfig.ShowCapsule);
+            capsule.SetIslandMode(appConfig.CapsuleIsland); // 悬浮岛形态开关即时生效（§7 Phase 2）：切形态重贴锚点
             capsule.ApplyOpacity(appConfig.UiOpacity);
             _pinnedHost?.ApplyEdgeCollapseSetting(); // 贴边收起开关即时生效（2026-10-14 用户单③）：关=已收起的立刻弹回
             // 批8 2026-10-10：透明度实时生效——四类悬浮面统一读 config.uiOpacity（此前只应用胶囊）

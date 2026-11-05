@@ -35,6 +35,7 @@ public static class UiStrings
         ["settings.language"] = "Language (board & tray apply immediately)",
         ["settings.languageAuto"] = "Auto (follow system)",
         ["settings.edgeCollapse"] = "Edge collapse (panel collapses to a strip at screen edge)",
+        ["settings.capsuleIsland"] = "Floating island (capsule resident top-center)",
         ["feedback.offline"] = "Offline",
         ["feedback.error"] = "Error",
         ["feedback.empty"] = "No details",
@@ -61,6 +62,7 @@ public static class UiStrings
         ["settings.language"] = "语言（看板与托盘即时生效）",
         ["settings.languageAuto"] = "自动（跟随系统）",
         ["settings.edgeCollapse"] = "贴边收起（拖到屏幕边缘收成细条）",
+        ["settings.capsuleIsland"] = "悬浮岛形态（胶囊顶部居中常驻）",
         ["feedback.offline"] = "离线",
         ["feedback.error"] = "错误",
         ["feedback.empty"] = "暂无明细",
@@ -129,6 +131,7 @@ public static class UiStrings
     public static string SettingsLanguage => Get("settings.language");
     public static string SettingsLanguageAuto => Get("settings.languageAuto");
     public static string SettingsEdgeCollapse => Get("settings.edgeCollapse");
+    public static string SettingsCapsuleIsland => Get("settings.capsuleIsland");
     public static string FeedbackOffline => Get("feedback.offline");
     public static string FeedbackError => Get("feedback.error");
     public static string FeedbackEmpty => Get("feedback.empty");

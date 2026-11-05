@@ -33,6 +33,32 @@
                         FontSize="12"
                         FontWeight="SemiBold"
                         VerticalAlignment="Center" />
+                    <!-- 悬浮岛徽标（§7 Phase 2）：未读/异常计数（背景色代码侧按所指内容喂：未读=强调色、异常=级别色）；
+                         经典胶囊形态恒隐藏（RefreshBadge 门控），元素常驻以免形态切换重建树 -->
+                    <Border
+                        x:Name="IslandBadge"
+                        CornerRadius="{StaticResource RadiusPill}"
+                        Padding="6,1"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            x:Name="IslandBadgeCount"
+                            Text="0"
+                            FontSize="11"
+                            FontWeight="SemiBold"
+                            Foreground="White"
+                            VerticalAlignment="Center" />
+                    </Border>
+                    <!-- 品牌标：仅悬浮岛收起态显示（岛收起态计数文本让位给徽标，品牌由词标扛；
+                         经典胶囊计数零值时 "Beacon" 文本本就兼任品牌兜底，不动） -->
+                    <TextBlock
+                        x:Name="BrandMark"
+                        Text="Beacon"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed" />
                 </StackPanel>
             </Border>
             <!-- 悬停预览：各数据源一行（级别点 + 来源 + 摘要），PointerEntered 展开/退出收起；

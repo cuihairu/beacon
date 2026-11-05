@@ -45,6 +45,10 @@ public sealed partial class CapsuleWindow : Window
     private Severity _lastOverall = Severity.Success; // 级别抬升判定基线（Flash 触发面）
     private bool _hovered; // 指针在窗内（悬停预览展开条件之一）
     private IReadOnlyList<SourcePreviewRow> _previewRows = Array.Empty<SourcePreviewRow>();
+    private bool _island; // 悬浮岛形态（§7 Phase 2，config.capsuleIsland）：顶中锚定 + 品牌标/徽标收起态
+    private int _unreadCount; // 未读通知数（App 订阅 NotificationRaised 喂数；岛徽标第一优先）
+    private int _abnormalCount; // 异常计数（warn+err，UpdateStatus 随聚合刷新；岛徽标第二优先）
+    private Severity _badgeSeverity = Severity.Success; // 徽标异常态取色用的最近聚合级别
 
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
@@ -331,6 +335,11 @@ public sealed partial class CapsuleWindow : Window
 
     private void RestorePosition()
     {
+        if (_island)
+        {
+            RestoreIslandPosition(); // 岛=顶中锚点独立持久化（与经典四角布局互不覆盖）
+            return;
+        }
         var layout = _shellState.LoadCapsuleLayout();
         var monitor = (layout is null ? null : MonitorService.FindByName(layout.Monitor)) ?? MonitorService.Primary();
         var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
@@ -364,8 +373,29 @@ public sealed partial class CapsuleWindow : Window
         _positioned = true;
     }
 
+    /// <summary>岛形态恢复：显示器 + 顶中锚偏移（CapsuleIslandMath 纯函数，Core.Tests 锁口径）。
+    /// 布局缺失用主屏顶中默认位（DefaultOffset 下移 8 DIP）。</summary>
+    private void RestoreIslandPosition()
+    {
+        var layout = _shellState.LoadIslandLayout();
+        var monitor = (layout is null ? null : MonitorService.FindByName(layout.Monitor)) ?? MonitorService.Primary();
+        var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
+        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
+        var rect = CapsuleIslandMath.Place(
+            work, layout?.OffsetDips ?? CapsuleIslandMath.DefaultOffset, GetDpi(), widthPx, heightPx);
+        _x = rect.X;
+        _y = rect.Y;
+        _appWindow.Move(new PointInt32(_x, _y));
+        _positioned = true;
+    }
+
     private void SavePosition()
     {
+        if (_island)
+        {
+            SaveIslandPosition();
+            return;
+        }
         var dpi = GetDpi();
         var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
         var monitor = MonitorService.FromPixel(_x + widthPx / 2, _y + heightPx / 2)
@@ -391,6 +421,24 @@ public sealed partial class CapsuleWindow : Window
             Anchor = anchor,
             OffsetDips = new PinOffset(offsetX, offsetY),
             Collapsed = false,
+        });
+    }
+
+    /// <summary>岛形态拖动落点持久化：显示器 + 顶中锚偏移（Locate 互逆换算），与经典胶囊布局分存互不覆盖。</summary>
+    private void SaveIslandPosition()
+    {
+        var dpi = GetDpi();
+        var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
+        var monitor = MonitorService.FromPixel(_x + widthPx / 2, _y + heightPx / 2)
+                      ?? MonitorService.Primary();
+        if (monitor is null)
+        {
+            return;
+        }
+        _shellState.SaveIslandLayout(new CapsuleIslandLayout
+        {
+            Monitor = monitor.DeviceName,
+            OffsetDips = CapsuleIslandMath.Locate(monitor.WorkPx, new PinRect(_x, _y, widthPx, heightPx), dpi),
         });
     }
 
@@ -424,6 +472,53 @@ public sealed partial class CapsuleWindow : Window
     /// <summary>config.uiOpacity（B-801 外观透明度）作用于胶囊整体。</summary>
     public void ApplyOpacity(double opacity)
         => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);
+
+    /// <summary>悬浮岛形态开关（display-modes-analysis §7 Phase 2，config.capsuleIsland 默认关=现状）：
+    /// 开=顶部居中锚定，收起态计数文本让位给「品牌标 + 未读/异常徽标」；关=经典胶囊逐字节不动。
+    /// §1 只读契约不变：点击仍走 OpenPanelRequested（App.xaml.cs 接 quickPanel.Toggle，不新增岛内操作）。
+    /// Activate 前调用时 _appWindow 未就绪——只翻标志与元素可见性，位置由 OnLoaded 的 RestorePosition
+    /// 按 _island 分支落；运行中切换则即时重排。</summary>
+    public void SetIslandMode(bool island)
+    {
+        if (_island == island)
+        {
+            return;
+        }
+        _island = island;
+        CountText.Visibility = island ? Visibility.Collapsed : Visibility.Visible;
+        BrandMark.Visibility = island ? Visibility.Visible : Visibility.Collapsed;
+        RefreshBadge();
+        if (_appWindow is not null)
+        {
+            ApplySize(); // 收起态内容宽变了（计数文本 ↔ 徽标+品牌标），重排后按锚点重贴
+            RestorePosition();
+        }
+    }
+
+    /// <summary>未读徽标喂数（App 订阅 NotificationRaised 转发 runtime.Notifications.UnreadCount）：
+    /// 岛收起态徽标=未读优先、异常次之，都为零隐藏。经典形态只存值不渲染。</summary>
+    public void UpdateBadge(int unread)
+    {
+        _unreadCount = Math.Max(0, unread);
+        RefreshBadge();
+    }
+
+    /// <summary>徽标重画：未读=强调色底（有新东西要看）、无未读但异常=聚合级别色底、零=隐藏。
+    /// White 前景是常量非主题资源——徽标底恒为实色，两级底色都按白字对比选的。</summary>
+    private void RefreshBadge()
+    {
+        if (!_island || (_unreadCount == 0 && _abnormalCount == 0))
+        {
+            IslandBadge.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var unreadMode = _unreadCount > 0;
+        IslandBadgeCount.Text = (unreadMode ? _unreadCount : _abnormalCount).ToString();
+        IslandBadge.Background = new SolidColorBrush(unreadMode
+            ? ThemeColors.AccentFill()
+            : _palette.SeverityColor(_badgeSeverity));
+        IslandBadge.Visibility = Visibility.Visible;
+    }
 
     /// <summary>接入真实聚合（B-504）：极简计数（零值组不显示，§6.2.2）+ 健康环/光晕灯（2026-10-29 UI 升级）
     /// + 离线横幅（§6.2.6）。计数文案格式是 Q 场景 UIA 断言锚（「2 ok」「1 ok · 1 err」），不动。</summary>
@@ -459,6 +554,9 @@ public sealed partial class CapsuleWindow : Window
             _motion.Flash(OverallLight);
         }
         _lastOverall = status.Overall;
+        _abnormalCount = warn + error; // 岛徽标异常计数（未读优先级更高，RefreshBadge 裁决）
+        _badgeSeverity = status.Overall;
+        RefreshBadge();
 
         var offline = status.OfflineConnections > 0;
         OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;

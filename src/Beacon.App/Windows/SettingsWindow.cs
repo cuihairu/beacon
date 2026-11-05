@@ -44,6 +44,7 @@ internal sealed class SettingsWindow : Window
     private ComboBox _pinModeBox = null!;
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
+    private ToggleSwitch _islandToggle = null!;
     private ToggleSwitch _numericFloatingToggle = null!;
     private ToggleSwitch _edgeCollapseToggle = null!;
 
@@ -634,6 +635,11 @@ internal sealed class SettingsWindow : Window
         _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
         _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
+        // 悬浮岛形态开关（display-modes-analysis §7 Phase 2，默认关=保持经典胶囊现状）：
+        // 开=胶囊顶部居中常驻（收起态=品牌标+未读/异常徽标），关=右下角经典胶囊；文案走 UiStrings 双语
+        _islandToggle = new ToggleSwitch { Header = UiStrings.SettingsCapsuleIsland, IsOn = _runtime.Config.App.CapsuleIsland };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_islandToggle, "capsule-island-toggle"); // UIA 取证：开关驱动
+        _islandToggle.Toggled += (_, _) => SaveGeneral();
         // 2026-10-11 用户令：数量悬浮窗默认开（推翻 2026-10-08 默认关拍板）；关=桌面零残留，即时生效
         _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认开）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
         _numericFloatingToggle.Toggled += (_, _) => SaveGeneral();
@@ -660,7 +666,7 @@ internal sealed class SettingsWindow : Window
         }
         _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
         _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _opacitySlider, _capsuleToggle, _pinModeBox, _numericFloatingToggle, _edgeCollapseToggle, _pollBox } });
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _opacitySlider, _capsuleToggle, _islandToggle, _pinModeBox, _numericFloatingToggle, _edgeCollapseToggle, _pollBox } });
         page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认开；关闭即刻生效=桌面零残留）。"));
         page.Children.Add(BuildAboutSection());
         return page;
@@ -1252,6 +1258,7 @@ internal sealed class SettingsWindow : Window
         app.PinDisplayMode = TagOf(_pinModeBox) ?? "panel";
         app.UiOpacity = _opacitySlider.Value;
         app.ShowCapsule = _capsuleToggle.IsOn;
+        app.CapsuleIsland = _islandToggle.IsOn;
         app.NumericFloatingEnabled = _numericFloatingToggle.IsOn;
         app.EdgeCollapseEnabled = _edgeCollapseToggle.IsOn;
         app.PollIntervalSeconds = int.TryParse(TagOf(_pollBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pollSeconds) && pollSeconds > 0 ? pollSeconds : 0;
