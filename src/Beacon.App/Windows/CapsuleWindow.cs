@@ -382,12 +382,17 @@ public sealed partial class CapsuleWindow : Window
         var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
         var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
         var rect = CapsuleIslandMath.Place(
-            work, layout?.OffsetDips ?? CapsuleIslandMath.DefaultOffset, GetDpi(), widthPx, heightPx);
+            ToPinRect(work), layout?.OffsetDips ?? CapsuleIslandMath.DefaultOffset, GetDpi(), widthPx, heightPx);
         _x = rect.X;
         _y = rect.Y;
         _appWindow.Move(new PointInt32(_x, _y));
         _positioned = true;
     }
+
+    /// <summary>Win32 RECT（Left/Top/Right/Bottom 物理像素）→ Core 布局矩形（X/Y/Width/Height）：
+    /// CapsuleIslandMath 是纯 Core 域（PinLayoutMath 同口径不依赖 Win32），边界换算留在窗体侧。</summary>
+    private static PinRect ToPinRect(NativeMethods.RECT rect)
+        => new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
 
     private void SavePosition()
     {
@@ -438,7 +443,8 @@ public sealed partial class CapsuleWindow : Window
         _shellState.SaveIslandLayout(new CapsuleIslandLayout
         {
             Monitor = monitor.DeviceName,
-            OffsetDips = CapsuleIslandMath.Locate(monitor.WorkPx, new PinRect(_x, _y, widthPx, heightPx), dpi),
+            OffsetDips = CapsuleIslandMath.Locate(
+                ToPinRect(monitor.WorkPx), new PinRect(_x, _y, widthPx, heightPx), dpi),
         });
     }
 
