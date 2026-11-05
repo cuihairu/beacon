@@ -191,27 +191,31 @@ public partial class App : Application
                 Infrastructure.NativeMethods.NIIF_WARNING);
         }
 
-        // B-504：胶囊/托盘接真实聚合
-        var capsule = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
-        _capsule = capsule; // 退出清理用
-        capsule.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
-        // 悬停预览喂数（2026-10-29 UI 升级）：widget 级状态留底 → 按来源聚合推胶囊（UI 线程内改字典，无锁）
-        var lastStates = new Dictionary<string, WidgetState>();
+        // B-504：胶囊/托盘接真实聚合。胶囊窗懒实例化（回归 41958504066/41963265872 修复）：
+        // 此前无条件 new + Activate——showCapsule=false（CI 各场景缺省口径）也常驻一个置顶工具窗，
+        // UIA 自动化被置顶窗干扰。现改为仅 ShowCapsule=true 才建窗（EnsureCapsule）；设置页开关
+        // 运行时切换即建/关（ApplySettingsEffects），开关即时生效语义保持。悬浮岛（CapsuleIsland）
+        // 是胶囊窗的形态开关，不单独建窗——窗存不存在只由 ShowCapsule 决定。
+        Windows.CapsuleWindow? capsule = null;
+        // settingsWindow 声明前置：EnsureCapsule（经 OpenSettings 闭包）在下方启动段就被调用，
+        // C# 定赋值分析穿透局部函数链（CS0165 实证）——捕获变量必须先于启动段调用点赋值。
+        Windows.SettingsWindow? settingsWindow = null;
+        var lastStates = new Dictionary<string, WidgetState>(); // 悬停预览喂数（2026-10-29 UI 升级）：widget 级状态留底 → 按来源聚合推胶囊（UI 线程内改字典，无锁）
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.EnqueueGuarded(() =>
         {
-            lastStates[evt.State.WidgetId] = evt.State;
-            capsule.NoteFetch(evt.State.FetchedAt);
-            capsule.UpdateSourcePreview(GroupSourcePreviews(lastStates));
+            lastStates[evt.State.WidgetId] = evt.State; // 窗缺席也留底：后建窗首推即带全量来源预览
+            capsule?.NoteFetch(evt.State.FetchedAt);
+            capsule?.UpdateSourcePreview(GroupSourcePreviews(lastStates));
         }));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.EnqueueGuarded(() =>
         {
-            capsule.UpdateStatus(status);
-            tray.SetSeverity(status.Overall);
+            capsule?.UpdateStatus(status);
+            tray.SetSeverity(status.Overall); // 托盘灯/提示不随胶囊窗存废——聚合链恒走
             tray.SetTip(BuildTrayTip(status));
         }));
         // 悬浮岛未读徽标喂数（§7 Phase 2）：通知引擎出新记录即刷新（UnreadCount 现读，标记已读回放同链生效）
         runtime.Bus.Subscribe<NotificationRaised>(_ => Dispatcher.EnqueueGuarded(
-            () => capsule.UpdateBadge(runtime.Notifications.UnreadCount)));
+            () => capsule?.UpdateBadge(runtime.Notifications.UnreadCount)));
         tray.RefreshAllRequested += () => Dispatcher.EnqueueGuarded(runtime.RefreshAll);
 
         // master-plan §9 睡眠唤醒自愈：挂起期间轮询停摆，唤醒（PBT_APMRESUMEAUTOMATIC 必发）立即补一轮刷新，
@@ -229,19 +233,20 @@ public partial class App : Application
             }
         };
 
-        // 初值渲染（空集 = Success 基线），再启动调度（首轮拉取立即 kick）
+        // 初值渲染（空集 = Success 基线），再启动调度（首轮拉取立即 kick）。
+        // 胶囊窗懒建口径：showCapsule=false（CI 缺省）零置顶窗；EnsureCapsule 内已做初值
+        // 渲染（快照+徽标），此处不再重复推。
         var snapshot = runtime.Aggregator.Snapshot();
-        capsule.UpdateStatus(snapshot);
-        capsule.UpdateBadge(runtime.Notifications.UnreadCount); // 岛徽标初值：notifications.json 水合的未读随启动带上
+        if (runtime.Config.App.ShowCapsule)
+        {
+            EnsureCapsule();
+        }
+        else
+        {
+            _logger.LogInformation("showCapsule=false：胶囊窗不实例化（置顶窗零残留，UIA 友好）。");
+        }
         tray.SetSeverity(snapshot.Overall);
         tray.SetTip(BuildTrayTip(snapshot));
-        if (!runtime.Config.App.ShowCapsule)
-        {
-            capsule.StartHidden(); // B-801：showCapsule=false 时注册但不显示（避免先显示后隐藏的闪烁）
-        }
-        capsule.SetIslandMode(runtime.Config.App.CapsuleIsland); // 悬浮岛形态（§7 Phase 2）Activate 前定形态，OnLoaded 按岛锚点落位
-        capsule.Activate();
-        capsule.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
         runtime.Host.Start();
         _activePollInterval = runtime.Config.App.PollIntervalSeconds; // 与调度器在用值对齐（设置改动检测基线）
         ScheduleDebugCrashInjection(); // debug 注入面：BEACON_DEBUG_CRASH=<秒> 延迟抛未处理异常（行 24 崩溃兜底演练），缺省零行为
@@ -287,7 +292,8 @@ public partial class App : Application
         // 置顶哨兵：右键菜单/开始菜单/任意应用抢前台会重排 topmost 带，NOACTIVATE 悬浮窗
         // （胶囊/L0 宿主）会被盖住或挤出——前台与菜单事件后自动钉回（尊重 showCapsule 门控）
         _topmostGuard = new TopmostGuard();
-        _topmostGuard.Watch(() => capsule.Hwnd, () => capsule.IsUserVisible);
+        // 胶囊窗懒建：访问器取现值，窗缺席回 Zero/不放行——哨兵对 Zero 句柄天然跳过（TopmostGuard 契约）
+        _topmostGuard.Watch(() => capsule?.Hwnd ?? IntPtr.Zero, () => capsule is { } cap && cap.IsUserVisible);
         if (_pinnedHost is { } host)
         {
             _topmostGuard.Watch(() => host.Hwnd, () => true);
@@ -324,9 +330,21 @@ public partial class App : Application
                 }
             }
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
-            capsule.SetVisible(appConfig.ShowCapsule);
-            capsule.SetIslandMode(appConfig.CapsuleIsland); // 悬浮岛形态开关即时生效（§7 Phase 2）：切形态重贴锚点
-            capsule.ApplyOpacity(appConfig.UiOpacity);
+            // 胶囊窗懒建开关即时生效（回归修复口径）：开=EnsureCapsule 即建即显；关=彻底 Close 摘除
+            // 置顶窗（再开再建，位置走持久化布局）。悬浮岛仍是形态开关（SetIslandMode），不独立建窗。
+            if (appConfig.ShowCapsule)
+            {
+                var cap = EnsureCapsule();
+                cap.SetVisible(true);
+                cap.SetIslandMode(appConfig.CapsuleIsland); // 悬浮岛形态开关即时生效（§7 Phase 2）：切形态重贴锚点
+            }
+            else if (capsule is { } staleCapsule)
+            {
+                staleCapsule.Close();
+                capsule = null;
+                _capsule = null; // 退出清理引用同步摘除
+            }
+            capsule?.ApplyOpacity(appConfig.UiOpacity);
             _pinnedHost?.ApplyEdgeCollapseSetting(); // 贴边收起开关即时生效（2026-10-14 用户单③）：关=已收起的立刻弹回
             // 批8 2026-10-10：透明度实时生效——四类悬浮面统一读 config.uiOpacity（此前只应用胶囊）
             _pinnedHost?.ApplyOpacity(appConfig.UiOpacity);
@@ -341,7 +359,7 @@ public partial class App : Application
             }
             // B-805：调色即时生效——托盘/胶囊/L0 用最新快照按新色表重渲染（UiPalette 实时读 config）
             var snapshot = runtime.Aggregator.Snapshot();
-            capsule.UpdateStatus(snapshot);
+            capsule?.UpdateStatus(snapshot);
             tray.SetSeverity(snapshot.Overall);
             tray.SetTip(BuildTrayTip(snapshot));
             // L0 重建两宿主各自兜异常：面板重建失败若拖着悬浮窗不重建（或反之），
@@ -364,7 +382,6 @@ public partial class App : Application
             }
         }
 
-        Windows.SettingsWindow? settingsWindow = null;
         void OpenSettings(string? moduleKey = null)
         {
             if (settingsWindow is { } open)
@@ -400,7 +417,36 @@ public partial class App : Application
         // 组件中心（Component Center）：托盘直达设置 → 组件中心模块（勾选显隐，主入口）
         tray.ComponentsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings("components"));
         // master-plan §3.1：胶囊右键直达设置（批3-补28）——须在 OpenSettings/hotkey 声明之后挂（CS0165）
-        capsule.SettingsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings());
+        // 胶囊窗懒实例化工厂（回归 41958504066/41963265872 修复）：构造 + 事件接线 + 定形态 + 显窗一步到位。
+        // Activate 在此显式路径（构造函数不激活/不置顶——置顶窗只在用户开关放行时存在）。
+        Windows.CapsuleWindow EnsureCapsule()
+        {
+            if (capsule is { } existing)
+            {
+                return existing;
+            }
+            var created = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
+            capsule = created;
+            _capsule = created; // 退出清理用
+            created.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
+            created.SettingsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings());
+            created.SetIslandMode(runtime.Config.App.CapsuleIsland); // Activate 前定形态，OnLoaded 按岛锚点落位
+            created.Activate();
+            created.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
+            // 初值恢复（懒建窗不能等下一轮事件）：留底状态回放 → 快照渲染 → 未读徽标。
+            // 设置页中途开胶囊时，新窗必须立即带上当前聚合/来源预览/取数时间/未读数。
+            foreach (var state in lastStates.Values)
+            {
+                created.NoteFetch(state.FetchedAt);
+            }
+            if (lastStates.Count > 0)
+            {
+                created.UpdateSourcePreview(GroupSourcePreviews(lastStates));
+            }
+            created.UpdateStatus(runtime.Aggregator.Snapshot());
+            created.UpdateBadge(runtime.Notifications.UnreadCount);
+            return created;
+        }
 
         // --settings 启动参数：装配完成即开设置页（CI 视觉取证/装机排查入口，与托盘入口同一 OpenSettings 路径）
         if (Environment.GetCommandLineArgs().Any(a => a.Equals("--settings", StringComparison.OrdinalIgnoreCase)))

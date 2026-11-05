@@ -31,8 +31,7 @@ public sealed partial class CapsuleWindow : Window
     private AppWindow _appWindow = null!;
     private (int Width, int Height) _sizePx; // 最近一次应用的外框物理尺寸（客户区需求+非客户区差值，定位与落盘共用，避免读旧值）
     private bool _positioned; // RestorePosition 已跑过（此后 ApplySize 变尺寸需重新贴锚点）
-    private bool _startVisible = true; // config.showCapsule=false 时启动即隐藏（B-801）
-    private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行）
+    private bool _showAllowed = true; // 用户显隐意愿（TopmostGuard 据此放行；懒建后窗存在即用户放行）
     private bool _dragging;
     private bool _dpiChangedDuringDrag; // 拖动中跨了 DPI：落点后补排尺寸（拖动中跳过是为不与 Move 互抢）
     private (int X, int Y) _dragStartCursor; // 按下时光标屏幕物理像素（GetCursorPos，与 AppWindow.Position 同单位）
@@ -96,10 +95,6 @@ public sealed partial class CapsuleWindow : Window
         ApplySize(); // 按内容实测定尺寸（DIP×DPI 转物理像素，宽随内容=§6.2.2）
         RestorePosition();
         _motion.SlideIn(RootBorder); // 入场滑入（full 档专属，其余档瞬时；2026-10-29 UI 升级）
-        if (!_startVisible)
-        {
-            _appWindow.Hide(); // showCapsule=false：注册(hwnd/AppWindow 就绪)但不显示
-        }
     }
 
     /// <summary>子类化挂 WM_DPICHANGED（同单宿主 PinnedHostWindow 口径）：跨缩放屏后立即按新 DPI 重排，
@@ -128,13 +123,6 @@ public sealed partial class CapsuleWindow : Window
         return _prevWndProc == IntPtr.Zero
             ? NativeMethods.DefWindowProc(hWnd, msg, wParam, lParam)
             : NativeMethods.CallWindowProcW(_prevWndProc, hWnd, msg, wParam, lParam);
-    }
-
-    /// <summary>启动前声明「隐藏启动」（B-801 showCapsule=false；避免先显示后隐藏的闪烁）。</summary>
-    public void StartHidden()
-    {
-        _startVisible = false;
-        _showAllowed = false;
     }
 
     /// <summary>TopmostGuard 用：消息窗句柄与用户显隐意愿。</summary>
