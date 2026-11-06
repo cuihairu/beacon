@@ -26,6 +26,16 @@
                 BorderThickness="1"
                 Padding="12,5">
                 <Grid>
+                    <!-- 岛软阴影（技法学自 BrimDeck 源码结构，原生实现）：其观感 = 岛轮廓剪影的模糊黑影（blur14/
+                         depth4/opacity .28/向下）画在与曲面分离的兄弟层上，不参与命中。WinUI 3 没有 WPF 的
+                         DropShadowEffect 位图模糊，这里用「两层同轮廓剪影、逐层加粗描边+下沉+低透明」的阶梯
+                         叠加近似（边缘读作柔和暗晕）；层只在收起态可见（展开即淡出，同其 ShadowHost 口径），
+                         且窗口在收起态给底部预留 8 DIP 阴影带（其 ShadowBounds Margin=-20 的同构需求）。
+                         IslandSurfacePath 测量恒 0，只画不占位，复用为阴影剪影不扰动布局 -->
+                    <Grid x:Name="IslandShadowStack" Visibility="Collapsed" IsHitTestVisible="False">
+                        <local:IslandSurfacePath x:Name="IslandShadowFar" Stretch="None" IsHitTestVisible="False" />
+                        <local:IslandSurfacePath x:Name="IslandShadowNear" Stretch="None" IsHitTestVisible="False" />
+                    </Grid>
                     <!-- 岛曲面（岛形态才可见；代码侧按 ActualWidth/Height 从 IslandSurfaceOutline 生成）。
                          必须用 IslandSurfacePath：普通 Path 的 Data 边界+描边会参与测量，把父 Grid 越撑越大（测量反馈环）；
                          该子类 Measure恒0，曲面只画不占位，也不吃指针事件 -->

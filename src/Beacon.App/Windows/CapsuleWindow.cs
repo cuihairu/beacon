@@ -63,6 +63,7 @@ public sealed partial class CapsuleWindow : Window
     private Severity _badgeSeverity = Severity.Success; // 徽标异常态取色用的最近聚合级别
     private Thickness _classicStackMargin; // SurfaceStack 经典外边距（岛=两侧 NotchInset 30 内缩）
     private HorizontalAlignment _classicPillAlign; // PillRow 经典对齐（岛=居中，刘海内容居中读）
+    private VerticalAlignment _classicStackAlign; // SurfaceStack 经典垂直对齐（岛=Top：窗口含 8 DIP 阴影带，内容行钉顶贴曲面）
     private bool _ruleHidden; // 全屏避让：前台无边框全屏窗盖住岛所在屏 → 岛暂时退场（BrimDeck Borderless/Exclusive→Hide 默认口径）
     private NativeMethods.WinEventProc? _foregroundCallback; // 字段持有防 GC 回收钩子回调（同 _wndProc）
     private IntPtr _foregroundHook;
@@ -75,6 +76,10 @@ public sealed partial class CapsuleWindow : Window
         string.Equals(Environment.GetEnvironmentVariable("BEACON_DEBUG_ISLAND_PREVIEW"), "1", StringComparison.Ordinal);
 
     private bool _previewProbeShown; // 钩子只展开一次（后续行变化不再反复弹）
+
+    /// <summary>收起态窗口底部为软阴影预留的高度（DIP）。岛轮廓恒 32 不含它——
+    /// 阴影带只做剪影层的落影空间，不进轮廓、不进命中语义（多出的 8px 悬停缓冲可接受）。</summary>
+    private const double IslandShadowReserveDips = 8;
 
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
@@ -259,6 +264,10 @@ public sealed partial class CapsuleWindow : Window
 
         RebuildPreview();
         SourcePreview.Visibility = Visibility.Visible;
+        if (_island)
+        {
+            IslandShadowStack.Visibility = Visibility.Collapsed; // 展开=岛变高，阴影随其口径退场（不跟窗底走）
+        }
         ApplySize(); // 高随预览行数（岛=顶缘贴屏顶不动、向下长；经典=锚点角贴位）
         if (_island)
         {
@@ -298,6 +307,10 @@ public sealed partial class CapsuleWindow : Window
 
         SourcePreview.Visibility = Visibility.Collapsed;
         _motion.StopLoops(SourcePreview); // 停掉残留淡出（Opacity/Scale 回基值，下次展开从 0 起）
+        if (_island)
+        {
+            IslandShadowStack.Visibility = Visibility.Visible; // 收回：阴影层回场（与 ApplyIslandChrome 的挂载口径一致）
+        }
         ApplySize();
     }
 
@@ -442,6 +455,10 @@ public sealed partial class CapsuleWindow : Window
                 CapsuleIslandMath.MinWidthDips, IslandMaxWidthDips(dpi));
             _islandWidthDips = widthDips;
             var heightDips = Math.Max(CapsuleIslandMath.HeightDips, Math.Ceiling(desired.Height));
+            if (SourcePreview.Visibility != Visibility.Visible)
+            {
+                heightDips += IslandShadowReserveDips; // 收起态底部预留阴影带（软剪影层的落影空间，展开态不预留）
+            }
             return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
         }
 
@@ -719,6 +736,7 @@ public sealed partial class CapsuleWindow : Window
             _classicPreviewThickness = SourcePreview.BorderThickness;
             _classicStackMargin = SurfaceStack.Margin;      // 经典无内缩（岛 NotchInset 30 才有）
             _classicPillAlign = PillRow.HorizontalAlignment; // 经典 Stretch（岛才居中）——default() 会落 Left，必须快照
+            _classicStackAlign = SurfaceStack.VerticalAlignment;
             _chromeCaptured = true;
         }
         if (_island)
@@ -735,14 +753,22 @@ public sealed partial class CapsuleWindow : Window
             RootBorder.Padding = new Thickness(0);
             SurfaceStack.Margin = new Thickness(CapsuleIslandMath.InsetDips, 0, CapsuleIslandMath.InsetDips, 0); // NotchInset 30
             PillArea.MinHeight = CapsuleIslandMath.HeightDips; // 收起行=曲面高 32，行内容垂直居中（BrimDeck 收起态行高口径）
+            SurfaceStack.VerticalAlignment = VerticalAlignment.Top; // 窗口含底部 8 DIP 阴影带：内容行钉顶，与 y=0 起的曲面对齐
             PillRow.HorizontalAlignment = HorizontalAlignment.Center; // 刘海默认宽 238：内容居中才左右留白对称
             PillRow.Spacing = 8;
             HealthRing.Visibility = Visibility.Collapsed;
             BrandMark.Foreground = new SolidColorBrush(ThemeColors.IslandText());
             IslandSurface.Visibility = Visibility.Visible;
             IslandSurface.Fill = new SolidColorBrush(ThemeColors.IslandPill());
+            // 发丝内缘（BrimDeck 技法）：2px 描边 + UpdateSurfaceOutlineCore 里按曲面矩形裁掉外侧一半
             IslandSurface.Stroke = new SolidColorBrush(ThemeColors.IslandHairline());
-            IslandSurface.StrokeThickness = 1;
+            IslandSurface.StrokeThickness = 2;
+            // 软阴影层：收起态挂上、展开态淡出（展开读作「岛变高」，阴影反而在其口径里退场）
+            IslandShadowStack.Visibility = Visibility.Visible;
+            IslandShadowNear.Fill = IslandShadowFar.Fill = new SolidColorBrush(ThemeColors.IslandPill());
+            IslandShadowNear.Stroke = IslandShadowFar.Stroke = new SolidColorBrush(ThemeColors.IslandPill());
+            IslandShadowNear.Opacity = 0.16;   // 近层：贴缘暗晕
+            IslandShadowFar.Opacity = 0.10;    // 远层：更宽更淡的余晖
             SourcePreview.Background = null; // 预览在曲面内无缝长出（同底色/同描边都多余——展开读作岛变高）
             SourcePreview.BorderThickness = new Thickness(0);
             UpdateSurfaceOutline();
@@ -757,12 +783,15 @@ public sealed partial class CapsuleWindow : Window
             SurfaceStack.Margin = _classicStackMargin;
             PillArea.MinHeight = 0;
             PillRow.HorizontalAlignment = _classicPillAlign;
+            SurfaceStack.VerticalAlignment = _classicStackAlign;
             PillRow.Spacing = _classicRowSpacing;
             HealthRing.Visibility = Visibility.Visible;
             HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, _ringColor); // 岛期间环停画，切回补最近份额
             BrandMark.Foreground = _classicBrandForeground;
             IslandSurface.Visibility = Visibility.Collapsed;
             IslandSurface.Data = null;
+            IslandShadowStack.Visibility = Visibility.Collapsed; // 经典无阴影带，剪影层一并退场
+            IslandShadowNear.Data = IslandShadowFar.Data = null;
             SourcePreview.Background = _classicPreviewBackground;
             SourcePreview.BorderBrush = _classicPreviewBorder;
             SourcePreview.BorderThickness = _classicPreviewThickness;
@@ -792,42 +821,57 @@ public sealed partial class CapsuleWindow : Window
         }
 
         var width = RootBorder.ActualWidth;
-        var height = RootBorder.ActualHeight;
+        // 曲面高：收起态恒 32（窗口比曲面多出的 8 DIP 是阴影带，不进轮廓）；展开态铺满整窗（岛变高）
+        var height = SourcePreview.Visibility == Visibility.Visible
+            ? RootBorder.ActualHeight
+            : CapsuleIslandMath.HeightDips;
         if (!(width > 0) || !(height > 0))
         {
             return;
         }
 
-        var figure = new PathFigure
+        PathGeometry BuildOutlineGeometry()
         {
-            StartPoint = new global::Windows.Foundation.Point(0, 0),
-            IsClosed = true,
-            IsFilled = true,
-        };
-        foreach (var seg in IslandSurfaceOutline.Build(width, height, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips))
-        {
-            switch (seg)
+            // WinUI 3 的同一 Geometry 实例不能挂多个 Path.Data（抛「值不在预期范围」）——
+            // 曲面与两层阴影剪影各自新建一份（控制点序列相同、实例独立）
+            var figure = new PathFigure
             {
-                case IslandSurfaceOutline.Move:
-                    break; // 首点已作 StartPoint
-                case IslandSurfaceOutline.Line line:
-                    figure.Segments.Add(new LineSegment { Point = ToPoint(line.To) });
-                    break;
-                case IslandSurfaceOutline.Cubic cubic:
-                    figure.Segments.Add(new BezierSegment
-                    {
-                        Point1 = ToPoint(cubic.C1),
-                        Point2 = ToPoint(cubic.C2),
-                        Point3 = ToPoint(cubic.To),
-                    });
-                    break;
+                StartPoint = new global::Windows.Foundation.Point(0, 0),
+                IsClosed = true,
+                IsFilled = true,
+            };
+            foreach (var seg in IslandSurfaceOutline.Build(width, height, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips))
+            {
+                switch (seg)
+                {
+                    case IslandSurfaceOutline.Move:
+                        break; // 首点已作 StartPoint
+                    case IslandSurfaceOutline.Line line:
+                        figure.Segments.Add(new LineSegment { Point = ToPoint(line.To) });
+                        break;
+                    case IslandSurfaceOutline.Cubic cubic:
+                        figure.Segments.Add(new BezierSegment
+                        {
+                            Point1 = ToPoint(cubic.C1),
+                            Point2 = ToPoint(cubic.C2),
+                            Point3 = ToPoint(cubic.To),
+                        });
+                        break;
+                }
             }
+
+            var geometry = new PathGeometry();
+            geometry.Figures.Add(figure);
+            return geometry;
         }
 
-        var geometry = new PathGeometry();
-        geometry.Figures.Add(figure);
-        IslandSurface.Data = geometry;
-        IslandTrace($"outline {width}x{height} segs={figure.Segments.Count} " +
+        var outlineGeometry = BuildOutlineGeometry();
+        IslandSurface.Data = outlineGeometry;
+        // 发丝内缘收口：按曲面矩形裁掉 2px 描边的外侧一半（BrimDeck「画大一半、裁半」技法）。
+        // 展开态同样裁——预览长出后轮廓随窗高，描边仍只留内侧
+        IslandSurface.Clip = new RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, width, height) };
+        ApplyShadowGeometry(BuildOutlineGeometry(), BuildOutlineGeometry(), width, height);
+        IslandTrace($"outline {width}x{height} segs={outlineGeometry.Figures[0].Segments.Count} " +
             $"row={PillRow.ActualWidth}x{PillRow.ActualHeight} " +
             $"pill={PillArea.ActualWidth}x{PillArea.ActualHeight} " +
             $"stack={SurfaceStack.ActualWidth} margin={SurfaceStack.Margin} " +
@@ -836,6 +880,24 @@ public sealed partial class CapsuleWindow : Window
             $"align={PillRow.HorizontalAlignment} root={Root.ActualWidth}x{Root.ActualHeight}");
 
         static global::Windows.Foundation.Point ToPoint(IslandSurfaceOutline.Point p) => new(p.X, p.Y);
+    }
+
+    /// <summary>岛软阴影（BrimDeck 技法的原生实现）：两层同轮廓剪影，逐层加粗描边模拟模糊半径、
+    /// 下沉模拟投影深度（其口径 blur14/depth4/向下）；描边向外溢出的部分正好落进收起态底部预留的
+    /// 8 DIP 阴影带，读作岛底缘的柔和暗晕。展开态几何照喂但整层淡出由 MorphOut/IslandShadowStack
+    /// 的可见性接管，避免展开帧上阴影跟着窗口底边走。</summary>
+    private void ApplyShadowGeometry(PathGeometry nearGeometry, PathGeometry farGeometry, double width, double height)
+    {
+        if (IslandShadowStack.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+        IslandShadowNear.Data = nearGeometry;
+        IslandShadowFar.Data = farGeometry;
+        IslandShadowNear.StrokeThickness = 6;
+        IslandShadowFar.StrokeThickness = 14;
+        IslandShadowNear.RenderTransform = new TranslateTransform { Y = 2 };
+        IslandShadowFar.RenderTransform = new TranslateTransform { Y = 3 };
     }
 
     // —— 全屏避让（USER-RPT-4，BrimDeck ScreenContext 全屏规则的最小实现面）——
