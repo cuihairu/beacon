@@ -17,7 +17,7 @@
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 Padding="12,5">
-                <StackPanel Orientation="Horizontal" Spacing="6">
+                <StackPanel x:Name="PillRow" Orientation="Horizontal" Spacing="6">
                     <!-- 健康环：ok 份额弧段，环色=聚合级别色（每次 UpdateStatus 重建） -->
                     <ContentControl x:Name="HealthRing" Width="16" Height="16" VerticalAlignment="Center" IsTabStop="False" />
                     <!-- 状态灯（微光晕）：外层同色低透明晕 + 核心 Ø8 灯；OverallLight 是 G4/G5 像素锚，元素名与取色链不动。
@@ -38,7 +38,8 @@
                     <Border
                         x:Name="IslandBadge"
                         CornerRadius="{StaticResource RadiusPill}"
-                        Padding="6,1"
+                        Padding="7,2"
+                        MinHeight="17"
                         VerticalAlignment="Center"
                         Visibility="Collapsed">
                         <TextBlock

@@ -45,6 +45,16 @@ public sealed partial class CapsuleWindow : Window
     private bool _hovered; // 指针在窗内（悬停预览展开条件之一）
     private IReadOnlyList<SourcePreviewRow> _previewRows = Array.Empty<SourcePreviewRow>();
     private bool _island; // 悬浮岛形态（§7 Phase 2，config.capsuleIsland）：顶中锚定 + 品牌标/徽标收起态
+    private bool _chromeCaptured; // 经典形态的 XAML 视觉快照（首次切岛前抓，切回原样还原）
+    private Brush _classicPillBackground = null!;
+    private Brush _classicPillBorder = null!;
+    private Thickness _classicPadding;
+    private double _classicRowSpacing;
+    private Brush _classicBrandForeground = null!;
+    private Brush _classicPreviewBackground = null!;
+    private Brush _classicPreviewBorder = null!;
+    private double _ringRatio = 1.0; // 最近一次健康环份额（岛↔经典切换后重画环用）
+    private global::Windows.UI.Color _ringColor = ThemeColors.StatusOk(); // 最近一次环色（同上）
     private int _unreadCount; // 未读通知数（App 订阅 NotificationRaised 喂数；岛徽标第一优先）
     private int _abnormalCount; // 异常计数（warn+err，UpdateStatus 随聚合刷新；岛徽标第二优先）
     private Severity _badgeSeverity = Severity.Success; // 徽标异常态取色用的最近聚合级别
@@ -170,6 +180,10 @@ public sealed partial class CapsuleWindow : Window
         RebuildPreview();
         SourcePreview.Visibility = Visibility.Visible;
         ApplySize(); // 高随预览行数（锚点角自动贴位：底锚=向上展开）
+        if (_island)
+        {
+            _motion.MorphIn(SourcePreview); // Dynamic Island 式平滑展开（缩放+淡入，off 档瞬时）；经典形态行为逐字节不动
+        }
     }
 
     private void HidePreview()
@@ -479,6 +493,7 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         _island = island;
+        ApplyIslandChrome();
         CountText.Visibility = island ? Visibility.Collapsed : Visibility.Visible;
         BrandMark.Visibility = island ? Visibility.Visible : Visibility.Collapsed;
         RefreshBadge();
@@ -486,6 +501,48 @@ public sealed partial class CapsuleWindow : Window
         {
             ApplySize(); // 收起态内容宽变了（计数文本 ↔ 徽标+品牌标），重排后按锚点重贴
             RestorePosition();
+        }
+    }
+
+    /// <summary>岛形态视觉重做（Dynamic Island 口径，2026-11-06 实机截图诊断驱动）：近实色黑药丸
+    /// （DesktopAcrylic 在亮壁纸上把灰底稀释成「看不清」，恒黑底对比恒定）、发丝白描边只做形态分层、
+    /// 健康环退场（整环读作 spinner 且与灯点双绿冗余——单灯点+晕扛状态）、字恒近白、间距放宽。
+    /// 经典胶囊逐字节不动：首切岛前快照 XAML 原值，切回即还原。</summary>
+    private void ApplyIslandChrome()
+    {
+        if (!_chromeCaptured)
+        {
+            _classicPillBackground = RootBorder.Background;
+            _classicPillBorder = RootBorder.BorderBrush;
+            _classicPadding = RootBorder.Padding;
+            _classicRowSpacing = PillRow.Spacing;
+            _classicBrandForeground = BrandMark.Foreground;
+            _classicPreviewBackground = SourcePreview.Background;
+            _classicPreviewBorder = SourcePreview.BorderBrush;
+            _chromeCaptured = true;
+        }
+        if (_island)
+        {
+            RootBorder.Background = new SolidColorBrush(ThemeColors.IslandPill());
+            RootBorder.BorderBrush = new SolidColorBrush(ThemeColors.IslandHairline());
+            RootBorder.Padding = new Thickness(14, 6, 14, 6);
+            PillRow.Spacing = 8;
+            HealthRing.Visibility = Visibility.Collapsed;
+            BrandMark.Foreground = new SolidColorBrush(ThemeColors.IslandText());
+            SourcePreview.Background = new SolidColorBrush(ThemeColors.IslandPill());
+            SourcePreview.BorderBrush = new SolidColorBrush(ThemeColors.IslandHairline());
+        }
+        else
+        {
+            RootBorder.Background = _classicPillBackground;
+            RootBorder.BorderBrush = _classicPillBorder;
+            RootBorder.Padding = _classicPadding;
+            PillRow.Spacing = _classicRowSpacing;
+            HealthRing.Visibility = Visibility.Visible;
+            HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, _ringColor); // 岛期间环停画，切回补最近份额
+            BrandMark.Foreground = _classicBrandForeground;
+            SourcePreview.Background = _classicPreviewBackground;
+            SourcePreview.BorderBrush = _classicPreviewBorder;
         }
     }
 
@@ -497,7 +554,8 @@ public sealed partial class CapsuleWindow : Window
         RefreshBadge();
     }
 
-    /// <summary>徽标重画：未读=强调色底（有新东西要看）、无未读但异常=聚合级别色底、零=隐藏。
+    /// <summary>徽标重画：文本未读优先、无未读用异常数；底色异常压过未读（实机诊断：错误态徽标仍
+    /// 强调蓝与红环/红灯同屏互相打架——同一时刻只讲一个颜色的故事），全零隐藏。
     /// White 前景是常量非主题资源——徽标底恒为实色，两级底色都按白字对比选的。</summary>
     private void RefreshBadge()
     {
@@ -508,9 +566,9 @@ public sealed partial class CapsuleWindow : Window
         }
         var unreadMode = _unreadCount > 0;
         IslandBadgeCount.Text = (unreadMode ? _unreadCount : _abnormalCount).ToString();
-        IslandBadge.Background = new SolidColorBrush(unreadMode
-            ? ThemeColors.AccentFill()
-            : _palette.SeverityColor(_badgeSeverity));
+        IslandBadge.Background = new SolidColorBrush(_abnormalCount > 0
+            ? _palette.SeverityColor(_badgeSeverity)
+            : ThemeColors.AccentFill());
         IslandBadge.Visibility = Visibility.Visible;
     }
 
@@ -542,7 +600,13 @@ public sealed partial class CapsuleWindow : Window
         _motion.TransitionFill(OverallLight, lightColor);
         OverallHalo.Fill = new SolidColorBrush(ThemeColors.Halo(lightColor, 64));
         var total = ok + warn + error;
-        HealthRing.Content = StatusRing.Build(16, 2.5, total == 0 ? 1.0 : (double)ok / total, lightColor);
+        _ringRatio = total == 0 ? 1.0 : (double)ok / total; // 缓存恒更新：岛期间状态变化，切回经典环即最新份额
+        _ringColor = lightColor;
+        if (!_island)
+        {
+            // 岛收起态不画环（实机诊断：整环读作 spinner 且与灯点双绿冗余，单灯点+晕扛状态）
+            HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, lightColor);
+        }
         if (status.Overall > _lastOverall)
         {
             _motion.Flash(OverallLight);

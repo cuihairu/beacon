@@ -42,6 +42,16 @@ internal static class ThemeColors
     /// <summary>光晕色：状态色降透明度（微光晕层与核心灯同色异alpha，色相同源不漂移）。</summary>
     public static global::Windows.UI.Color Halo(global::Windows.UI.Color color, byte alpha) => new() { A = alpha, R = color.R, G = color.G, B = color.B };
 
+    /// <summary>悬浮岛收起态药丸底（Dynamic Island 口径）：近实色黑，亮壁纸/悬停下对比恒定，
+    /// 不随主题翻白——岛是恒暗悬浮物，白字对比按黑底选。</summary>
+    public static global::Windows.UI.Color IslandPill() => SeverityPalette.Rgb(242, 12, 12, 15);
+
+    /// <summary>悬浮岛药丸发丝描边：极淡白轮廓，只在深色壁纸前做形态分层，不抢内容。</summary>
+    public static global::Windows.UI.Color IslandHairline() => SeverityPalette.Rgb(36, 255, 255, 255);
+
+    /// <summary>悬浮岛药丸上的文字色：恒近白（岛底恒黑，与主题无关）。</summary>
+    public static global::Windows.UI.Color IslandText() => SeverityPalette.Rgb(255, 241, 245, 249);
+
     /// <summary>设置页模块图标前景：按 tint 亮度选白/黑（亮底必须用黑，白字在橙/绿/青底不足 4.5:1）。</summary>
     public static global::Windows.UI.Color IconOnTint(global::Windows.UI.Color tint)
     {

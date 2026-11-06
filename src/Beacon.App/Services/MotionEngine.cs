@@ -177,6 +177,37 @@ internal sealed class MotionEngine
         }
     }
 
+    /// <summary>⑥ 悬浮岛展开：预览面板缩放 0.94→1 + 淡入（Dynamic Island 式平滑形变；off 档瞬时直显）。
+    /// CenterPoint 锚在顶缘中点——展开从药丸底边「长」出来，观感同 macOS 形变。</summary>
+    public void MorphIn(UIElement element)
+    {
+        if (Mode == MotionMode.Off)
+        {
+            return;
+        }
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.CenterPoint = new System.Numerics.Vector3(visual.Size.X / 2f, 0f, 0);
+            var compositor = visual.Compositor;
+            var easing = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.1f, 0.9f), new System.Numerics.Vector2(0.2f, 1f));
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.InsertKeyFrame(0f, new System.Numerics.Vector3(0.94f, 0.94f, 1f));
+            scale.InsertKeyFrame(1f, new System.Numerics.Vector3(1f), easing);
+            scale.Duration = TimeSpan.FromMilliseconds(200 * Intensity);
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0f, 0f);
+            fade.InsertKeyFrame(1f, 1f, easing);
+            fade.Duration = TimeSpan.FromMilliseconds(180 * Intensity);
+            visual.StartAnimation("Scale", scale);
+            visual.StartAnimation("Opacity", fade);
+        }
+        catch
+        {
+            // 动效不可用：保留瞬时显形结果
+        }
+    }
+
     /// <summary>停掉某元素上的全部循环（收起态暂停/降级复位用）；一次性过渡自然结束。</summary>
     public void StopLoops(UIElement element)
     {
