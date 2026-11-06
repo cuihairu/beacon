@@ -320,7 +320,12 @@ public sealed class SenseNovaUsageProviderTests
     [Fact]
     public async Task GetStateAsync_GrantHealthy_NoWarning()
     {
-        var (provider, _) = Faked(HttpStatusCode.OK, PoolUsageBody);
+        // 夹具里的 nearest_grant_expiry=1794474000 是 2026-11-12 的实抓绝对时间：到期前 7 天
+        // （2026-11-05 起）这条「赠额健康不告警」用例会自己翻 Warning（时间炸弹，本机 2026-11-06 实证
+        // actual "1"）。健康态改用 now+90d 的动态到期时间，解析/展示类断言仍用原夹具值。
+        var healthyBody = PoolUsageBody.Replace("1794474000",
+            DateTimeOffset.UtcNow.AddDays(90).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture));
+        var (provider, _) = Faked(HttpStatusCode.OK, healthyBody);
         var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("jwt"), CancellationToken.None);
 
         Assert.Equal("", state.Payload["grant_expiring_soon"]);
