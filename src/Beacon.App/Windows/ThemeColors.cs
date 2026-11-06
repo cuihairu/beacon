@@ -42,12 +42,13 @@ internal static class ThemeColors
     /// <summary>光晕色：状态色降透明度（微光晕层与核心灯同色异alpha，色相同源不漂移）。</summary>
     public static global::Windows.UI.Color Halo(global::Windows.UI.Color color, byte alpha) => new() { A = alpha, R = color.R, G = color.G, B = color.B };
 
-    /// <summary>悬浮岛收起态药丸底（Dynamic Island 口径）：近实色黑，亮壁纸/悬停下对比恒定，
-    /// 不随主题翻白——岛是恒暗悬浮物，白字对比按黑底选。</summary>
-    public static global::Windows.UI.Color IslandPill() => SeverityPalette.Rgb(242, 12, 12, 15);
+    /// <summary>悬浮岛收起态曲面底（观感技法学自 BrimDeck 结构：分层窗口上的曲面恒为不透明纯黑——
+    /// 半透明底在合成时与壁纸半混合，边缘像素发灰；实底则轮廓像素级干净，白字对比恒定）。</summary>
+    public static global::Windows.UI.Color IslandPill() => SeverityPalette.Rgb(255, 0, 0, 0);
 
-    /// <summary>悬浮岛药丸发丝描边：极淡白轮廓，只在深色壁纸前做形态分层，不抢内容。</summary>
-    public static global::Windows.UI.Color IslandHairline() => SeverityPalette.Rgb(36, 255, 255, 255);
+    /// <summary>悬浮岛发丝内缘（BrimDeck 技法：α≈7% 白、2×宽度描边裁掉外侧一半 → 恒为 1px 的内侧细缘，
+    /// 在同色壁纸上仍读得出轮廓，又不抢内容）。</summary>
+    public static global::Windows.UI.Color IslandHairline() => SeverityPalette.Rgb(18, 255, 255, 255);
 
     /// <summary>悬浮岛药丸上的文字色：恒近白（岛底恒黑，与主题无关）。</summary>
     public static global::Windows.UI.Color IslandText() => SeverityPalette.Rgb(255, 241, 245, 249);
