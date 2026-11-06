@@ -270,7 +270,8 @@ public sealed partial class CapsuleWindow : Window
             var line = new Grid { Margin = i == rows.Count - 1 ? new Thickness(0) : new Thickness(0, 0, 0, 5) };
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
+            // WinUI 3 无 GridLength.Star 静态成员（WPF 才有）：星列显式构造
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             var dot = new Ellipse
             {
