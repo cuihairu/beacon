@@ -61,7 +61,6 @@ internal static class RingProgressBadge
                 RotationAngle = 0,
                 IsLargeArc = fraction > 0.5, // 大弧标志按过半翻转：ArcSegment 恒走劣弧除非显式要优弧
                 SweepDirection = SweepDirection.Counterclockwise,
-                IsStroked = true,
             });
             var geometry = new PathGeometry();
             geometry.Figures.Add(figure);
