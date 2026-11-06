@@ -176,7 +176,9 @@ public partial class App : Application
             }
         };
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
-        quickPanel.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); runtime.Aggregator.Republish(); capsule?.RefreshComponents(); }); // B-702：Pin 入口联动 L0；隐藏集变更重发布聚合（ISLAND-RING-1）
+        // 注：此处理器声明早于 capsule 局部变量（CS0841），不触岛刷新——组件中心显隐走
+        // settingsWindow.PinsChanged（声明在后，带 Republish+RefreshComponents）
+        quickPanel.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); runtime.Aggregator.Republish(); }); // B-702：Pin 入口联动 L0
         // B-503 语义分化（2026-10-14 用户单④）：Notifications 入口 = 打开面板并聚焦通知中心视图
         // （原实现与 Open Beacon 同为 Toggle——两个同义入口正是用户困惑点；设计意图见 mvp-issues B-503
         // 「托盘菜单含常用 Action 与 Notifications 入口」+ App.xaml.cs 原注释「→ L2 通知中心视图」）
