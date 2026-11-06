@@ -171,6 +171,36 @@ public sealed class JenkinsBuildProviderTests
         Assert.Null(JenkinsBuildProvider.ParseJob("not json"));
     }
 
+    // docker jenkins/jenkins:lts-jdk17（Jenkins 2.541.3）真实抓取：JobTree 裁剪后的组件端点响应原样
+    // （2026-11-06 端到端实证：树参键名与真实响应逐一对应，_class 键真实存在且被解析忽略）
+    private const string Lts2541TreeResponse = """
+        {
+          "_class": "hudson.model.FreeStyleProject",
+          "displayName": "beacon-e2e",
+          "name": "beacon-e2e",
+          "url": "http://localhost:18087/job/beacon-e2e/",
+          "color": "blue",
+          "healthReport": [
+            { "description": "Build stability: No recent builds failed.", "score": 100 }
+          ],
+          "lastBuild": { "_class": "hudson.model.FreeStyleBuild", "number": 1, "url": "http://localhost:18087/job/beacon-e2e/1/" }
+        }
+        """;
+
+    [Fact]
+    public void ParseJob_JenkinsLts2541RealTreeResponse()
+    {
+        var job = JenkinsBuildProvider.ParseJob(Lts2541TreeResponse)!;
+
+        Assert.Equal("beacon-e2e", job.Name);
+        Assert.Equal("blue", job.Color);
+        Assert.Equal(1, job.LastBuildNumber);
+        Assert.Equal("http://localhost:18087/job/beacon-e2e/1/", job.LastBuildUrl);
+        Assert.Equal(100, job.HealthScore);
+        Assert.Contains("No recent builds failed", job.HealthDescription);
+        Assert.False(job.Disabled);
+    }
+
     // ---- 端到端 ----
 
     [Fact]
@@ -274,6 +304,19 @@ public sealed class JenkinsBuildProviderTests
             () => provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None));
 
         Assert.Equal(ConnectionHealthState.Degraded, exception.Health); // 地址不对不冒充状态
+    }
+
+    [Fact]
+    public async Task GetStateAsync_UnreachableEndpoint_ThrowsOffline()
+    {
+        // 真实网络错误（端口拒绝）→ Offline 分级；裸 HttpRequestException 会被 WidgetHost 兜成 Degraded（分级错）
+        var provider = new JenkinsBuildProvider();
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), Connection("http://127.0.0.1:1"), Ctx(), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Offline, exception.Health);
+        Assert.Contains("不可达", exception.Message);
     }
 
     // ---- 连接测试 ----
