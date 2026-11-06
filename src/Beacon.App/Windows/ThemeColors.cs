@@ -27,6 +27,10 @@ internal static class ThemeColors
     public static global::Windows.UI.Color AccentFill() => SeverityPalette.Rgb(255, 37, 99, 235);
     public static global::Windows.UI.Color AccentText() => IsDark ? SeverityPalette.Rgb(255, 147, 197, 253) : SeverityPalette.Rgb(255, 37, 99, 235);
 
+    /// <summary>品牌色 #d4234a（docs/public/img/logo.svg 三处 fill 同值；看板重设计方案 A 收编进强调体系——
+    /// 仅用于品牌标识别位，级别语义色仍以 PaletteResolver 为准，两系不混用）。</summary>
+    public static global::Windows.UI.Color Brand() => SeverityPalette.Rgb(255, 212, 35, 74);
+
     /// <summary>文本角色三档（收编散落灰值：胶囊/面板/行内 241,245,249 与 30,41,59 等 hex 字面量统一于此）。</summary>
     public static global::Windows.UI.Color TextPrimary() => IsDark ? SeverityPalette.Rgb(255, 241, 245, 249) : SeverityPalette.Rgb(255, 15, 23, 42);
     public static global::Windows.UI.Color TextSecondary() => IsDark ? SeverityPalette.Rgb(255, 148, 163, 184) : SeverityPalette.Rgb(255, 100, 116, 139);
