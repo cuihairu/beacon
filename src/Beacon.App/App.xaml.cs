@@ -295,7 +295,8 @@ public partial class App : Application
         // （胶囊/L0 宿主）会被盖住或挤出——前台与菜单事件后自动钉回（尊重 showCapsule 门控）
         _topmostGuard = new TopmostGuard();
         // 胶囊窗懒建：访问器取现值，窗缺席回 Zero/不放行——哨兵对 Zero 句柄天然跳过（TopmostGuard 契约）
-        _topmostGuard.Watch(() => capsule?.Hwnd ?? IntPtr.Zero, () => capsule is { } cap && cap.IsUserVisible);
+        // IsGuardVisible = 用户显隐意愿 且 非全屏避让中（岛在全屏前台时退场，哨兵不得把它 Show 回来）
+        _topmostGuard.Watch(() => capsule?.Hwnd ?? IntPtr.Zero, () => capsule is { } cap && cap.IsGuardVisible);
         if (_pinnedHost is { } host)
         {
             _topmostGuard.Watch(() => host.Hwnd, () => true);

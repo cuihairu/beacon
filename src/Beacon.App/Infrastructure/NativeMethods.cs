@@ -22,8 +22,11 @@ internal static class NativeMethods
     public const int PBT_APMRESUMEAUTOMATIC = 0x12; // 唤醒必发（含自动唤醒）；仅在它上面补刷，不叠加 APMRESUMESUSPEND
     public const uint DEVICE_NOTIFY_WINDOW_HANDLE = 0x0; // RegisterSuspendResumeNotification 的接收者形态
 
-    // —— 扩展样式 ——
+    // —— 扩展样式 / 基本样式 ——
     public const int GWL_EXSTYLE = -20;
+    public const int GWL_STYLE = -16;
+    public const long WS_CAPTION = 0x00C00000; // WS_BORDER | WS_DLGFRAME（有标题栏=窗口化/最大化窗；无=无边框全屏）
+    public const long WS_THICKFRAME = 0x00040000;
     public const long WS_EX_TOPMOST = 0x00000008;
     public const long WS_EX_TOOLWINDOW = 0x00000080;
     public const long WS_EX_NOACTIVATE = 0x08000000;
@@ -233,6 +236,12 @@ internal static class NativeMethods
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool IsZoomed(IntPtr hWnd); // 最大化窗（BrimDeck ScreenContext.Maximized 判据面）
+
+    [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
     [DllImport("user32.dll")]
@@ -328,6 +337,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    // 客户区原点(0,0) → 屏幕坐标：岛贴顶要用「可见曲面顶」而不是外框顶（无边框窗仍可能有隐藏非客户区）
+    [DllImport("user32.dll")]
+    public static extern bool ClientToScreen(IntPtr hWnd, out POINT lpPoint);
 
     [DllImport("user32.dll")]
     public static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);

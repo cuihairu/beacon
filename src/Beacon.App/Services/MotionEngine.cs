@@ -1,4 +1,5 @@
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 using Beacon.Storage;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
@@ -177,28 +178,60 @@ internal sealed class MotionEngine
         }
     }
 
-    /// <summary>⑥ 悬浮岛展开：预览面板缩放 0.94→1 + 淡入（Dynamic Island 式平滑形变；off 档瞬时直显）。
-    /// CenterPoint 锚在顶缘中点——展开从药丸底边「长」出来，观感同 macOS 形变。</summary>
+    /// <summary>⑥ 悬浮岛展开（USER-RPT-4，BrimDeck 口径）：时长 <see cref="IslandMotion.OpenMs"/>（360ms），
+    /// full 档走 Bounce 曲线（快攻+微过冲；Composition 无此曲线 → 采样关键帧线性内插），
+    /// reduced 档退化为 IslandMotion.Out 无过冲，off 档瞬时；内容淡入按行程占比
+    /// .12→.80（IslandMotion.ContentInStart/End，先露曲面后出内容）。
+    /// CenterPoint 锚在顶缘中点——展开从岛底边「长」出来。</summary>
     public void MorphIn(UIElement element)
     {
-        if (Mode == MotionMode.Off)
+        var mode = Mode;
+        if (mode == MotionMode.Off)
         {
             return;
         }
+
+        var duration = (int)Math.Round(IslandMotion.OpenMs * Intensity);
+        if (duration <= 0)
+        {
+            return;
+        }
+
         try
         {
             var visual = ElementCompositionPreview.GetElementVisual(element);
             visual.CenterPoint = new System.Numerics.Vector3(visual.Size.X / 2f, 0f, 0);
             var compositor = visual.Compositor;
-            var easing = compositor.CreateCubicBezierEasingFunction(new System.Numerics.Vector2(0.1f, 0.9f), new System.Numerics.Vector2(0.2f, 1f));
+            var ms = TimeSpan.FromMilliseconds(duration);
+            Microsoft.UI.Composition.CubicBezierEasingFunction? ease = mode == MotionMode.Full
+                ? null
+                : compositor.CreateCubicBezierEasingFunction(
+                    new System.Numerics.Vector2(0.22f, 0.8f), new System.Numerics.Vector2(0.28f, 1f)); // IslandMotion.Out
+
             var scale = compositor.CreateVector3KeyFrameAnimation();
-            scale.InsertKeyFrame(0f, new System.Numerics.Vector3(0.94f, 0.94f, 1f));
-            scale.InsertKeyFrame(1f, new System.Numerics.Vector3(1f), easing);
-            scale.Duration = TimeSpan.FromMilliseconds(200 * Intensity);
+            scale.Duration = ms;
+            if (ease is null)
+            {
+                // Bounce 采样（16 段线性内插已平滑到亚像素；峰值过冲 ~0.32% 在 ~2/3 行程）
+                for (var i = 0; i <= 16; i++)
+                {
+                    var t = i / 16d;
+                    var y = (float)IslandMotion.Bounce(t);
+                    scale.InsertKeyFrame((float)t, new System.Numerics.Vector3(
+                        0.94f + 0.06f * y, 0.94f + 0.06f * y, 1f));
+                }
+            }
+            else
+            {
+                scale.InsertKeyFrame(0f, new System.Numerics.Vector3(0.94f, 0.94f, 1f));
+                scale.InsertKeyFrame(1f, new System.Numerics.Vector3(1f), ease);
+            }
+
             var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.Duration = ms;
             fade.InsertKeyFrame(0f, 0f);
-            fade.InsertKeyFrame(1f, 1f, easing);
-            fade.Duration = TimeSpan.FromMilliseconds(180 * Intensity);
+            fade.InsertKeyFrame((float)IslandMotion.ContentInStart, 0f); // 内容滞后 .12 拍进场
+            fade.InsertKeyFrame((float)IslandMotion.ContentInEnd, 1f, ease);
             visual.StartAnimation("Scale", scale);
             visual.StartAnimation("Opacity", fade);
         }
@@ -206,6 +239,43 @@ internal sealed class MotionEngine
         {
             // 动效不可用：保留瞬时显形结果
         }
+    }
+
+    /// <summary>⑦ 悬浮岛收起（BrimDeck PanelMotion 口径）：内容先撤（淡出到行程 .30，IslandMotion.ContentOutEnd），
+    /// 到点回调 collapse 收面（窗高=外框，先撤内容再收面才不会裁切曲面）；off 档立即收。
+    /// 收起时长 <see cref="IslandMotion.CloseMs"/>（展开的 0.75×），曲线走 IslandMotion.Drawer（软着陆无回弹）。</summary>
+    public void MorphOut(UIElement element, Action collapse)
+    {
+        var mode = Mode;
+        var duration = (int)Math.Round(IslandMotion.CloseMs * Intensity);
+        if (mode == MotionMode.Off || duration <= 0)
+        {
+            collapse();
+            return;
+        }
+
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.CenterPoint = new System.Numerics.Vector3(visual.Size.X / 2f, 0f, 0);
+            var compositor = visual.Compositor;
+            var ease = compositor.CreateCubicBezierEasingFunction(
+                new System.Numerics.Vector2(0.32f, 0.72f), new System.Numerics.Vector2(0f, 1f)); // IslandMotion.Drawer
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.Duration = TimeSpan.FromMilliseconds(duration);
+            fade.InsertKeyFrame(0f, 1f);
+            fade.InsertKeyFrame((float)IslandMotion.ContentOutEnd, 0f, ease);
+            visual.StartAnimation("Opacity", fade);
+        }
+        catch
+        {
+            // 动效不可用：直接收面
+        }
+
+        var delay = (int)Math.Round(duration * IslandMotion.ContentOutEnd);
+        _ = Task.Delay(Math.Max(1, delay)).ContinueWith(
+            _ => element.DispatcherQueue.TryEnqueue(() => collapse()),
+            TaskContinuationOptions.None);
     }
 
     /// <summary>停掉某元素上的全部循环（收起态暂停/降级复位用）；一次性过渡自然结束。</summary>

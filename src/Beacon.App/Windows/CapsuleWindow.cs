@@ -53,11 +53,21 @@ public sealed partial class CapsuleWindow : Window
     private Brush _classicBrandForeground = null!;
     private Brush _classicPreviewBackground = null!;
     private Brush _classicPreviewBorder = null!;
+    private Thickness _classicBorderThickness; // RootBorder 描边粗细（岛归 0：描边交给曲面 Path）
+    private CornerRadius _classicCornerRadius; // RootBorder 药丸圆角（岛归 0：曲面自绘顶满宽+底角12）
+    private Thickness _classicPreviewThickness; // 预览描边粗细（岛归 0：预览在曲面内无缝）
     private double _ringRatio = 1.0; // 最近一次健康环份额（岛↔经典切换后重画环用）
     private global::Windows.UI.Color _ringColor = ThemeColors.StatusOk(); // 最近一次环色（同上）
     private int _unreadCount; // 未读通知数（App 订阅 NotificationRaised 喂数；岛徽标第一优先）
     private int _abnormalCount; // 异常计数（warn+err，UpdateStatus 随聚合刷新；岛徽标第二优先）
     private Severity _badgeSeverity = Severity.Success; // 徽标异常态取色用的最近聚合级别
+    private Thickness _classicStackMargin; // SurfaceStack 经典外边距（岛=两侧 NotchInset 30 内缩）
+    private HorizontalAlignment _classicPillAlign; // PillRow 经典对齐（岛=居中，刘海内容居中读）
+    private bool _ruleHidden; // 全屏避让：前台无边框全屏窗盖住岛所在屏 → 岛暂时退场（BrimDeck Borderless/Exclusive→Hide 默认口径）
+    private NativeMethods.WinEventProc? _foregroundCallback; // 字段持有防 GC 回收钩子回调（同 _wndProc）
+    private IntPtr _foregroundHook;
+    private double _islandWidthDips; // 岛曲面宽（DIP）：MeasureSizePx 记账 → 预览 MaxWidth/曲面宽共用
+    private int _morphGeneration; // 收起动效代际：重新悬停/拖动即作废未落定的收面回调（防悬停打断后仍被收掉）
 
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
@@ -81,6 +91,16 @@ public sealed partial class CapsuleWindow : Window
         OverallLight.Fill = new SolidColorBrush(initial);
         OverallHalo.Fill = new SolidColorBrush(ThemeColors.Halo(initial, 64));
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
+        // 曲面轮廓按实际尺寸重绘（岛展开/切形态/换 DPI 都会改 RootBorder 尺寸；经典形态内部早退）
+        RootBorder.SizeChanged += (_, _) => UpdateSurfaceOutline();
+        Closed += (_, _) =>
+        {
+            if (_foregroundHook != IntPtr.Zero)
+            {
+                NativeMethods.UnhookWinEvent(_foregroundHook); // 防原生钩子悬挂在已销毁窗上
+                _foregroundHook = IntPtr.Zero;
+            }
+        };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -105,6 +125,8 @@ public sealed partial class CapsuleWindow : Window
         ApplySize(); // 按内容实测定尺寸（DIP×DPI 转物理像素，宽随内容=§6.2.2）
         RestorePosition();
         _motion.SlideIn(RootBorder); // 入场滑入（full 档专属，其余档瞬时；2026-10-29 UI 升级）
+        HookFullscreenAvoidance(); // 前台事件钩子：无边框全屏窗盖住岛所在屏时岛退场（USER-RPT-4 避让面）
+        EvaluateFullscreenAvoidance(); // 启动即评估（进程可能在全屏应用已前台时才起）
     }
 
     /// <summary>子类化挂 WM_DPICHANGED（同单宿主 PinnedHostWindow 口径）：跨缩放屏后立即按新 DPI 重排，
@@ -140,6 +162,10 @@ public sealed partial class CapsuleWindow : Window
 
     public bool IsUserVisible => _showAllowed;
 
+    /// <summary>哨兵放行面 = 用户显隐意愿 且 非全屏避让中。两者同真才允许 Show/钉顶——
+    /// 避让钩子与哨兵都随同一前台事件触发，无论先后顺序，最终态都是「全屏前台=退场」。</summary>
+    public bool IsGuardVisible => _showAllowed && !_ruleHidden;
+
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
@@ -173,16 +199,24 @@ public sealed partial class CapsuleWindow : Window
 
     private void ShowPreview()
     {
+        _morphGeneration++; // 作废未落定的收面回调（收起动效进行中又悬停回来）
         if (SourcePreview.Visibility == Visibility.Visible)
         {
+            _motion.StopLoops(SourcePreview); // 淡出还没落定：复位后重新展开，否则从半透明继续
+            if (_island)
+            {
+                _motion.MorphIn(SourcePreview);
+            }
+
             return;
         }
+
         RebuildPreview();
         SourcePreview.Visibility = Visibility.Visible;
-        ApplySize(); // 高随预览行数（锚点角自动贴位：底锚=向上展开）
+        ApplySize(); // 高随预览行数（岛=顶缘贴屏顶不动、向下长；经典=锚点角贴位）
         if (_island)
         {
-            _motion.MorphIn(SourcePreview); // Dynamic Island 式平滑展开（缩放+淡入，off 档瞬时）；经典形态行为逐字节不动
+            _motion.MorphIn(SourcePreview); // BrimDeck 口径展开动效（IslandMotion：360ms Bounce，off 档瞬时）；经典形态行为不动
         }
     }
 
@@ -192,43 +226,87 @@ public sealed partial class CapsuleWindow : Window
         {
             return;
         }
+
+        if (!_island || _dragging || _motion.Mode == MotionMode.Off)
+        {
+            CollapsePreview(); // 经典形态/拖动起手/动效关闭：立即收（拖动中收面尺寸与拖拽 Move 互抢必须瞬时）
+            return;
+        }
+
+        var generation = ++_morphGeneration;
+        _motion.MorphOut(SourcePreview, () =>
+        {
+            if (generation == _morphGeneration)
+            {
+                CollapsePreview(); // 内容淡出走完才收面（BrimDeck：内容先撤、曲面随后）
+            }
+        });
+    }
+
+    private void CollapsePreview()
+    {
+        if (SourcePreview.Visibility == Visibility.Collapsed)
+        {
+            return;
+        }
+
         SourcePreview.Visibility = Visibility.Collapsed;
+        _motion.StopLoops(SourcePreview); // 停掉残留淡出（Opacity/Scale 回基值，下次展开从 0 起）
         ApplySize();
     }
 
-    /// <summary>预览行重建：级别点 + 来源名 + 最差态摘要（裁尾），上限 5 行。</summary>
+    /// <summary>预览行重建：级别点 + 来源名 + 最差态摘要（裁尾），上限 5 行。
+    /// 行用 Grid 三列（点/来源 Auto、摘要 Star）：岛形态预览宽被 MaxWidth 钉在曲面内容宽内，
+    /// 摘要列吃剩余宽度并裁尾——文本只会在岛内裁，不越出曲面缘（横向 StackPanel 会量到无限宽而溢出）。
+    /// 经典形态预览宽=内容宽（星列退化为 Auto），摘要仍受 92 上限，观感同旧。</summary>
     private void RebuildPreview()
     {
-        var panel = new StackPanel { Spacing = 5 };
-        foreach (var row in _previewRows.Take(5))
+        var panel = new Grid();
+        var rows = _previewRows.Take(5).ToList();
+        for (var i = 0; i < rows.Count; i++)
         {
-            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            line.Children.Add(new Ellipse
+            var row = rows[i];
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var line = new Grid { Margin = i == rows.Count - 1 ? new Thickness(0) : new Thickness(0, 0, 0, 5) };
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
+
+            var dot = new Ellipse
             {
                 Width = 7,
                 Height = 7,
                 Fill = new SolidColorBrush(_palette.SeverityColor(row.Worst)),
                 VerticalAlignment = VerticalAlignment.Center,
-            });
-            line.Children.Add(new TextBlock
+                Margin = new Thickness(0, 0, 6, 0),
+            };
+            var source = new TextBlock
             {
                 Text = row.Source,
                 FontSize = 12,
                 FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
                 VerticalAlignment = VerticalAlignment.Center,
-            });
-            line.Children.Add(new TextBlock
+            };
+            var summary = new TextBlock
             {
                 Text = row.Summary,
                 FontSize = 11,
                 Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxWidth = 92,
+                MaxWidth = _island ? double.PositiveInfinity : 92, // 岛=由星列按曲面内容宽裁尾；经典=旧 92 上限
                 VerticalAlignment = VerticalAlignment.Center,
-            });
+            };
+            Grid.SetColumn(dot, 0);
+            Grid.SetColumn(source, 1);
+            Grid.SetColumn(summary, 2);
+            line.Children.Add(dot);
+            line.Children.Add(source);
+            line.Children.Add(summary);
+            Grid.SetRow(line, i);
             panel.Children.Add(line);
         }
+
         SourcePreview.Child = panel; // Border 装饰件只有 Child（Content 是 ContentControl 面）
     }
 
@@ -250,7 +328,8 @@ public sealed partial class CapsuleWindow : Window
         // 高频事件下目标没变不重发 Move（SetWindowPos 抖动是跨屏闪烁放大器）
         var (cursorX, cursorY) = CursorPx();
         var x = _dragOrigin.X + cursorX - _dragStartCursor.X;
-        var y = _dragOrigin.Y + cursorY - _dragStartCursor.Y;
+        // 岛=刘海贴顶（BrimDeck Notch 口径）：垂直分量锁死在按下时的屏顶位，只许水平拖（落点 X 由 Locate 只记水平分量）
+        var y = _island ? _dragOrigin.Y : _dragOrigin.Y + cursorY - _dragStartCursor.Y;
         if (x == _x && y == _y)
         {
             return;
@@ -275,6 +354,11 @@ public sealed partial class CapsuleWindow : Window
             OpenPanelRequested?.Invoke();
         }
         SavePosition();
+        if (_island)
+        {
+            RestorePosition(); // 岛落点即贴回屏顶并夹回屏幕内（Y 恒 0、X 夹取都在 CapsuleIslandMath.Place）
+        }
+
         if (_dpiChangedDuringDrag)
         {
             _dpiChangedDuringDrag = false;
@@ -301,9 +385,40 @@ public sealed partial class CapsuleWindow : Window
         Root.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var desired = Root.DesiredSize;
         var dpi = GetDpi();
-        var widthDips = Math.Clamp(Math.Ceiling(desired.Width), 48, 156);
-        var heightDips = Math.Max(32, Math.Ceiling(desired.Height));
-        return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
+        if (_island)
+        {
+            // 岛（BrimDeck Notch 口径）：宽 = max(NotchWidthDefault 238, 收起行 + 2×NotchInset 30)，
+            // 下限 NotchWidthMin 72、上限屏宽 - 16 DIP；展开不改宽（BrimDeck 面板宽随岛宽，只向下长），
+            // 高 = max(BaseHeight 32, 内容实测)——收起恒 32，悬停预览把岛向下拉长。
+            var rowDips = PillArea.DesiredSize.Width + CapsuleIslandMath.InsetDips * 2;
+            var widthDips = Math.Clamp(Math.Ceiling(Math.Max(CapsuleIslandMath.DefaultWidthDips, rowDips)),
+                CapsuleIslandMath.MinWidthDips, IslandMaxWidthDips(dpi));
+            _islandWidthDips = widthDips;
+            var heightDips = Math.Max(CapsuleIslandMath.HeightDips, Math.Ceiling(desired.Height));
+            return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
+        }
+
+        // 经典胶囊：观感口径不动（48–156 DIP 宽随内容、最小 32 高）
+        var classicWidth = Math.Clamp(Math.Ceiling(desired.Width), 48, 156);
+        var classicHeight = Math.Max(32, Math.Ceiling(desired.Height));
+        return (DpiLayoutMath.ToPx(classicWidth, dpi), DpiLayoutMath.ToPx(classicHeight, dpi));
+    }
+
+    /// <summary>岛宽上限 = 所在屏物理宽 - 16 DIP 边距（BrimDeck WidthRange 用屏宽收窄的同口径）；
+    /// 取不到显示器时回退 1024 DIP（Place 的夹取仍会把窗放回屏内）。</summary>
+    private double IslandMaxWidthDips(double dpi)
+    {
+        var monitor = _positioned
+            ? MonitorService.FromPixel(_x + DpiLayoutMath.ToPx((int)_islandWidthDips, dpi) / 2, _y + 1)
+            : MonitorService.Primary();
+        var screen = monitor?.MonitorPx;
+        if (screen is not { } rect || rect.Right - rect.Left <= 0)
+        {
+            return 1024;
+        }
+
+        var marginPx = DpiLayoutMath.ToPx(16, dpi);
+        return Math.Max(CapsuleIslandMath.MinWidthDips, (rect.Right - rect.Left - marginPx) / dpi);
     }
 
     /// <summary>外框物理尺寸 = 客户区需求（内容实测）+ 非客户区差值。AppWindow.Resize 收的是外框，
@@ -324,6 +439,11 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         _sizePx = FrameSizePx();
+        // 岛：预览区钉死在曲面内容宽内（SurfaceStack 已两侧各内缩 30），行文本只在岛内裁尾不越缘；
+        // 经典：恢复无上限（旧口径）。MaxWidth 只影响预览行布局，不影响岛宽（宽只量收起行）。
+        SourcePreview.MaxWidth = _island
+            ? Math.Max(0, _islandWidthDips - CapsuleIslandMath.InsetDips * 2)
+            : double.PositiveInfinity;
         if (_sizePx.Width == _appWindow.Size.Width && _sizePx.Height == _appWindow.Size.Height)
         {
             return;
@@ -376,19 +496,34 @@ public sealed partial class CapsuleWindow : Window
     }
 
     /// <summary>岛形态恢复：显示器 + 顶中锚偏移（CapsuleIslandMath 纯函数，Core.Tests 锁口径）。
-    /// 布局缺失用主屏顶中默认位（DefaultOffset 下移 8 DIP）。</summary>
+    /// 入参是**屏幕矩形**（非工作区——刘海越过任务栏贴屏幕顶，BrimDeck Notch surface.Y=0 同口径）；
+    /// 布局缺失用主屏顶中默认位（DefaultOffset = 居中、Y 恒 0）。
+    /// 外框顶 ≠ 可见曲面顶：无边框窗仍可能带隐藏非客户区，按实测「客户区顶-外框顶」补偿，
+    /// 保证肉眼看到的曲面顶真的压在屏幕顶（真机三态证据里量的就是这条）。</summary>
     private void RestoreIslandPosition()
     {
         var layout = _shellState.LoadIslandLayout();
         var monitor = (layout is null ? null : MonitorService.FindByName(layout.Monitor)) ?? MonitorService.Primary();
-        var work = monitor?.WorkPx ?? _defaultWorkAreaFallback;
+        var screen = monitor is { } found ? found.MonitorPx : _defaultWorkAreaFallback;
         var (widthPx, heightPx) = _sizePx.Width > 0 ? _sizePx : FrameSizePx();
         var rect = CapsuleIslandMath.Place(
-            ToPinRect(work), layout?.OffsetDips ?? CapsuleIslandMath.DefaultOffset, GetDpi(), widthPx, heightPx);
+            ToPinRect(screen), layout?.OffsetDips ?? CapsuleIslandMath.DefaultOffset, GetDpi(), widthPx, heightPx);
         _x = rect.X;
-        _y = rect.Y;
+        _y = rect.Y - ClientTopOffsetPx();
         _appWindow.Move(new PointInt32(_x, _y));
         _positioned = true;
+    }
+
+    /// <summary>可见客户区顶相对窗口外框顶的物理偏移（≥0）：曲面顶贴屏顶时要把窗口上提这一截。</summary>
+    private int ClientTopOffsetPx()
+    {
+        if (!NativeMethods.GetWindowRect(_hwnd, out var window))
+        {
+            return 0;
+        }
+
+        var origin = new NativeMethods.POINT { X = 0, Y = 0 };
+        return NativeMethods.ClientToScreen(_hwnd, out origin) ? Math.Max(0, origin.Y - window.Top) : 0;
     }
 
     /// <summary>Win32 RECT（Left/Top/Right/Bottom 物理像素）→ Core 布局矩形（X/Y/Width/Height）：
@@ -445,8 +580,9 @@ public sealed partial class CapsuleWindow : Window
         _shellState.SaveIslandLayout(new CapsuleIslandLayout
         {
             Monitor = monitor.DeviceName,
+            // 屏幕矩形（非工作区）：贴顶岛的锚在屏顶，工作区会因任务栏把 X 居中算偏
             OffsetDips = CapsuleIslandMath.Locate(
-                ToPinRect(monitor.WorkPx), new PinRect(_x, _y, widthPx, heightPx), dpi),
+                ToPinRect(monitor.MonitorPx), new PinRect(_x, _y, widthPx, heightPx), dpi),
         });
     }
 
@@ -469,7 +605,10 @@ public sealed partial class CapsuleWindow : Window
         }
         if (visible)
         {
-            _appWindow.Show();
+            if (!_ruleHidden)
+            {
+                _appWindow.Show(); // 全屏避让中：保持退场，等前台退出全屏由钩子回场
+            }
         }
         else
         {
@@ -493,6 +632,15 @@ public sealed partial class CapsuleWindow : Window
             return;
         }
         _island = island;
+        if (!island && _ruleHidden)
+        {
+            _ruleHidden = false; // 避让只对岛形态生效：切回经典胶囊立即回场
+            if (_showAllowed && _appWindow is not null)
+            {
+                _appWindow.Show();
+            }
+        }
+
         ApplyIslandChrome();
         CountText.Visibility = island ? Visibility.Collapsed : Visibility.Visible;
         BrandMark.Visibility = island ? Visibility.Visible : Visibility.Collapsed;
@@ -519,31 +667,197 @@ public sealed partial class CapsuleWindow : Window
             _classicBrandForeground = BrandMark.Foreground;
             _classicPreviewBackground = SourcePreview.Background;
             _classicPreviewBorder = SourcePreview.BorderBrush;
+            _classicBorderThickness = RootBorder.BorderThickness;
+            _classicCornerRadius = RootBorder.CornerRadius;
+            _classicPreviewThickness = SourcePreview.BorderThickness;
+            _classicStackMargin = SurfaceStack.Margin;      // 经典无内缩（岛 NotchInset 30 才有）
+            _classicPillAlign = PillRow.HorizontalAlignment; // 经典 Stretch（岛才居中）——default() 会落 Left，必须快照
             _chromeCaptured = true;
         }
         if (_island)
         {
             RootBorder.Background = new SolidColorBrush(ThemeColors.IslandPill());
             RootBorder.BorderBrush = new SolidColorBrush(ThemeColors.IslandHairline());
-            RootBorder.Padding = new Thickness(14, 6, 14, 6);
+            // 药丸画法退场：曲面由 IslandSurface 单路径自绘（顶缘贴屏满宽 + 肩部 + 底角12），
+            // 描边/圆角/内边距全从 Border 移走——Path 是 Border 的子元素，Border 若留圆角会把贴顶两角裁掉，
+            // 若留内边距 Path 就铺不满曲面（肩部必须伸到窗口两角才读得出「刘海」）。
+            RootBorder.BorderThickness = new Thickness(0);
+            RootBorder.CornerRadius = new CornerRadius(0);
+            RootBorder.Padding = new Thickness(0);
+            SurfaceStack.Margin = new Thickness(CapsuleIslandMath.InsetDips, 0, CapsuleIslandMath.InsetDips, 0); // NotchInset 30
+            PillArea.MinHeight = CapsuleIslandMath.HeightDips; // 收起行=曲面高 32，行内容垂直居中（BrimDeck 收起态行高口径）
+            PillRow.HorizontalAlignment = HorizontalAlignment.Center; // 刘海默认宽 238：内容居中才左右留白对称
             PillRow.Spacing = 8;
             HealthRing.Visibility = Visibility.Collapsed;
             BrandMark.Foreground = new SolidColorBrush(ThemeColors.IslandText());
-            SourcePreview.Background = new SolidColorBrush(ThemeColors.IslandPill());
-            SourcePreview.BorderBrush = new SolidColorBrush(ThemeColors.IslandHairline());
+            IslandSurface.Visibility = Visibility.Visible;
+            IslandSurface.Fill = new SolidColorBrush(ThemeColors.IslandPill());
+            IslandSurface.Stroke = new SolidColorBrush(ThemeColors.IslandHairline());
+            IslandSurface.StrokeThickness = 1;
+            SourcePreview.Background = null; // 预览在曲面内无缝长出（同底色/同描边都多余——展开读作岛变高）
+            SourcePreview.BorderThickness = new Thickness(0);
+            UpdateSurfaceOutline();
         }
         else
         {
             RootBorder.Background = _classicPillBackground;
             RootBorder.BorderBrush = _classicPillBorder;
             RootBorder.Padding = _classicPadding;
+            RootBorder.BorderThickness = _classicBorderThickness;
+            RootBorder.CornerRadius = _classicCornerRadius;
+            SurfaceStack.Margin = _classicStackMargin;
+            PillArea.MinHeight = 0;
+            PillRow.HorizontalAlignment = _classicPillAlign;
             PillRow.Spacing = _classicRowSpacing;
             HealthRing.Visibility = Visibility.Visible;
             HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, _ringColor); // 岛期间环停画，切回补最近份额
             BrandMark.Foreground = _classicBrandForeground;
+            IslandSurface.Visibility = Visibility.Collapsed;
+            IslandSurface.Data = null;
             SourcePreview.Background = _classicPreviewBackground;
             SourcePreview.BorderBrush = _classicPreviewBorder;
+            SourcePreview.BorderThickness = _classicPreviewThickness;
         }
+    }
+
+    /// <summary>按曲面实际尺寸重建岛轮廓（IslandSurfaceOutline → PathGeometry，BrimDeck BuildOutline 同式控制点）。
+    /// RootBorder.SizeChanged 每次触发（展开/切形态/换 DPI），经典形态与未就绪早退。</summary>
+    private void UpdateSurfaceOutline()
+    {
+        if (!_island || IslandSurface.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var width = RootBorder.ActualWidth;
+        var height = RootBorder.ActualHeight;
+        if (!(width > 0) || !(height > 0))
+        {
+            return;
+        }
+
+        var figure = new PathFigure
+        {
+            StartPoint = new global::Windows.Foundation.Point(0, 0),
+            IsClosed = true,
+            IsFilled = true,
+        };
+        foreach (var seg in IslandSurfaceOutline.Build(width, height, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips))
+        {
+            switch (seg)
+            {
+                case IslandSurfaceOutline.Move:
+                    break; // 首点已作 StartPoint
+                case IslandSurfaceOutline.Line line:
+                    figure.Segments.Add(new LineSegment { Point = ToPoint(line.To) });
+                    break;
+                case IslandSurfaceOutline.Cubic cubic:
+                    figure.Segments.Add(new BezierSegment
+                    {
+                        Point1 = ToPoint(cubic.C1),
+                        Point2 = ToPoint(cubic.C2),
+                        Point3 = ToPoint(cubic.To),
+                    });
+                    break;
+            }
+        }
+
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        IslandSurface.Data = geometry;
+
+        static global::Windows.Foundation.Point ToPoint(IslandSurfaceOutline.Point p) => new(p.X, p.Y);
+    }
+
+    // —— 全屏避让（USER-RPT-4，BrimDeck ScreenContext 全屏规则的最小实现面）——
+
+    /// <summary>挂前台事件钩子（out-of-context，随本线程消息泵派发，同 TopmostGuard 口径）：
+    /// 避让与哨兵必须同源触发，两边都读 IsGuardVisible 才不会出现「哨兵先 Show、避让后 Hide」的闪现残留。</summary>
+    private void HookFullscreenAvoidance()
+    {
+        if (_foregroundHook != IntPtr.Zero)
+        {
+            return;
+        }
+
+        _foregroundCallback = OnForegroundChanged;
+        _foregroundHook = NativeMethods.SetWinEventHook(
+            NativeMethods.EVENT_SYSTEM_FOREGROUND, NativeMethods.EVENT_SYSTEM_FOREGROUND,
+            IntPtr.Zero, _foregroundCallback, 0, 0, NativeMethods.WINEVENT_OUTOFCONTEXT);
+    }
+
+    private void OnForegroundChanged(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        if (idObject != 0)
+        {
+            return; // 只要 OBJID_WINDOW（0）的窗级事件
+        }
+
+        EvaluateFullscreenAvoidance();
+    }
+
+    /// <summary>评估全屏避让：前台出现「无标题栏且外框盖满岛所在屏」的窗 → 岛退场；退出全屏 → 回场。
+    /// BrimDeck 默认 Borderless/Exclusive → Hide，Maximized → 降级 Line（我方无 Line 形态，差异表记为已知差距，
+    /// 本实现不处理最大化窗）。只对岛形态生效（经典胶囊是历史口径，行为不动）。</summary>
+    private void EvaluateFullscreenAvoidance()
+    {
+        if (_appWindow is null)
+        {
+            return;
+        }
+
+        var hide = _island && _showAllowed && ForegroundCoversIslandMonitor();
+        if (hide == _ruleHidden)
+        {
+            return;
+        }
+
+        _ruleHidden = hide;
+        if (!_showAllowed)
+        {
+            return; // 用户本就关着岛：只记状态，等 SetVisible(true) 时按 _ruleHidden 决定是否 Show
+        }
+
+        if (hide)
+        {
+            _appWindow.Hide();
+        }
+        else
+        {
+            _appWindow.Show();
+        }
+    }
+
+    /// <summary>前台窗是否=盖满岛所在屏的无边框全屏窗（外框含任务栏，2px 容差；
+    /// 有 WS_CAPTION 的是窗口化/最大化窗，不在本避让面）。</summary>
+    private bool ForegroundCoversIslandMonitor()
+    {
+        var foreground = NativeMethods.GetForegroundWindow();
+        if (foreground == IntPtr.Zero || foreground == _hwnd || !NativeMethods.IsWindowVisible(foreground))
+        {
+            return false;
+        }
+
+        var monitor = _positioned
+            ? MonitorService.FromPixel(_x + _sizePx.Width / 2, _y + _sizePx.Height / 2)
+            : MonitorService.Primary();
+        monitor ??= MonitorService.Primary();
+        if (monitor is null || !NativeMethods.GetWindowRect(foreground, out var rect))
+        {
+            return false;
+        }
+
+        const int tolerance = 2;
+        var screen = monitor.MonitorPx;
+        var covers = rect.Left <= screen.Left + tolerance && rect.Top <= screen.Top + tolerance
+                     && rect.Right >= screen.Right - tolerance && rect.Bottom >= screen.Bottom - tolerance;
+        if (!covers)
+        {
+            return false;
+        }
+
+        var style = NativeMethods.GetWindowLongPtr(foreground, NativeMethods.GWL_STYLE).ToInt64();
+        return (style & NativeMethods.WS_CAPTION) == 0;
     }
 
     /// <summary>未读徽标喂数（App 订阅 NotificationRaised 转发 runtime.Notifications.UnreadCount）：
