@@ -52,6 +52,10 @@ public sealed class AppConfig
     /// （widgets.json WidgetId）：L0 两宿主（面板/独立悬浮框）只渲染未隐藏的组件；缺席 = 显示。
     /// 增量可选字段：存量 config.json 零迁移可读（未落键，ConfigVersion 不动）。</summary>
     public List<string> HiddenComponents { get; set; } = [];
+    /// <summary>展示载体「看板」开关（ISLAND-RING-1 扩围②，2026-11-07 用户令）：唤起式面板此前
+    /// 无常驻开关恒可用——增量可选字段缺键=true，存量 config.json 行为不变；false=热键/岛点击
+    /// 不可唤起且已开即收（CarrierCatalog 单源读写，悬浮岛/悬浮框走旧字段不新增）。</summary>
+    public bool BoardEnabled { get; set; } = true;
     /// <summary>外观：级别色覆盖与动效（config.json appearance 段，RFC §4.1/§6.2.8/§9.1）。</summary>
     public AppearanceConfig Appearance { get; set; } = new();
 }

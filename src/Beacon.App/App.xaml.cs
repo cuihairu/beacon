@@ -160,7 +160,7 @@ public partial class App : Application
         tray.Palette = new UiPalette(runtime.Config); // B-706：托盘圆点按 appearance.SeverityColors 运行时绘制
         _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher, Services.GetRequiredService<ShellStateStore>()); // PANEL-UPGRADE-1：看板尺寸/位置记忆走 shell-state
         var quickPanel = _quickPanel;
-        tray.OpenPanelRequested += () => quickPanel.Toggle();
+        tray.OpenPanelRequested += () => ToggleBoard(); // 看板载体开关：关=不可唤起、已开即收（ISLAND-RING-1 扩围②）
         // 面板常驻（2026-10-11 用户令「右键菜单前打勾，显示消息的面板就可以一直在」）：
         // 勾选态实时读 config（菜单每次打开重绘）；点击落盘 + 打勾即刻显示（已显示不动，不翻转）
         tray.IsKeepPanelOn = () => runtime.Config.App.KeepQuickPanelOpen;
@@ -263,7 +263,7 @@ public partial class App : Application
             {
                 // 独立悬浮框：每钉选组件一窗，桌面任意拖放、位置按组件各记
                 _floatingHost = new Windows.FloatingTileHost(runtime, primaryMonitor, toast);
-                _floatingHost.TileActivated += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
+                _floatingHost.TileActivated += () => Dispatcher.EnqueueGuarded(ToggleBoard); // L0 点击下钻 L2（RFC §6.2.7；经看板载体开关）
                 _floatingHost.Initialize();
                 // 产品拍板：数值/额度类不上悬浮窗（信息密度低）——悬浮形态下同时挂宿主面板承载这些钉选（数据不删）；
                 // 信息密集组件（FloatingSupported，趋势图/灯组）上线后悬浮窗与面板混排。
@@ -275,14 +275,14 @@ public partial class App : Application
                         floatingEligible: _floatingHost.IsFloatingEligible(w.Type))))
                 {
                     _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
-                    _pinnedHost.TileActivated += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
+                    _pinnedHost.TileActivated += () => Dispatcher.EnqueueGuarded(ToggleBoard); // 经看板载体开关
                     _pinnedHost.Initialize();
                 }
             }
             else
             {
                 _pinnedHost = new Windows.PinnedHostWindow(runtime, primaryMonitor);
-                _pinnedHost.TileActivated += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle); // L0 点击下钻 L2（RFC §6.2.7）
+                _pinnedHost.TileActivated += () => Dispatcher.EnqueueGuarded(ToggleBoard); // L0 点击下钻 L2（RFC §6.2.7；经看板载体开关）
                 _pinnedHost.Initialize();
             }
         }
@@ -315,7 +315,7 @@ public partial class App : Application
         Services.GetRequiredService<StartupService>().SyncWith(config.LaunchOnStartup);
 
         // hotkey 已前置声明（CS0165 捕获链，见启动段注释）；此处只做注册
-        hotkey.Triggered += () => quickPanel.Toggle();
+        hotkey.Triggered += ToggleBoard; // 看板载体开关：关=不可唤起、已开即收
         if (!hotkey.Register(string.IsNullOrWhiteSpace(config.Hotkey) ? "Ctrl+Alt+B" : config.Hotkey))
         {
             tray.ShowBalloon("Beacon", $"热键 {config.Hotkey} 注册失败（可能被占用），可在设置中更换。", Infrastructure.NativeMethods.NIIF_WARNING);
@@ -352,6 +352,11 @@ public partial class App : Application
                 _capsule = null; // 退出清理引用同步摘除
             }
             capsule?.ApplyOpacity(appConfig.UiOpacity);
+            // 看板载体关闭（ISLAND-RING-1 扩围②）：已开即收（唤起面统一走 ToggleBoard 门）
+            if (!CarrierCatalog.BoardEnabled(appConfig))
+            {
+                quickPanel.Hide();
+            }
             _pinnedHost?.ApplyEdgeCollapseSetting(); // 贴边收起开关即时生效（2026-10-14 用户单③）：关=已收起的立刻弹回
             // 批8 2026-10-10：透明度实时生效——四类悬浮面统一读 config.uiOpacity（此前只应用胶囊）
             _pinnedHost?.ApplyOpacity(appConfig.UiOpacity);
@@ -435,7 +440,7 @@ public partial class App : Application
             var created = new Windows.CapsuleWindow(Services.GetRequiredService<ShellStateStore>(), runtime.Config);
             capsule = created;
             _capsule = created; // 退出清理用
-            created.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(quickPanel.Toggle);
+            created.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(ToggleBoard); // 经看板载体开关（岛点击唤起看板）
             created.SettingsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings());
             created.SetIslandMode(runtime.Config.App.CapsuleIsland); // Activate 前定形态，OnLoaded 按岛锚点落位
             created.Activate();
@@ -572,6 +577,20 @@ public partial class App : Application
         catch (Exception exception)
         {
             _logger.LogError(exception, "打开 Toast 深链失败：{Url}", activation.DetailUrl);
+        }
+        ToggleBoard(); // 经看板载体开关（Toast 回退唤起）
+    }
+
+    /// <summary>看板唤起统一入口（ISLAND-RING-1 扩围②，2026-11-07 用户令「展示载体统一选择」）：
+    /// 载体关=不可唤起且已开即收；开=照常 toggle。全部唤起面（热键/托盘/岛点击/L0 下钻/Toast 回退）
+    /// 走这一个门——勾选变化 → 窗口出现/消失的行为面。</summary>
+    private void ToggleBoard()
+    {
+        var app = Services.GetRequiredService<Beacon.Storage.JsonConfigurationStore>().App;
+        if (!CarrierCatalog.BoardEnabled(app))
+        {
+            _quickPanel?.Hide();
+            return;
         }
         _quickPanel?.Toggle();
     }

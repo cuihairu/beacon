@@ -41,11 +41,9 @@ internal sealed class SettingsWindow : Window
     private ComboBox _themeBox = null!;
     private ComboBox _languageBox = null!;
     private ComboBox _pollBox = null!;
-    private ComboBox _pinModeBox = null!;
+    private ComboBox _pinModeBox = null!; // 悬浮形态档（信息密集组件 panel|floating）：收编到组件中心「展示载体」区
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
-    private ToggleSwitch _islandToggle = null!;
-    private ToggleSwitch _numericFloatingToggle = null!;
     private ToggleSwitch _edgeCollapseToggle = null!;
 
     private StackPanel _connectionList = null!;
@@ -635,14 +633,9 @@ internal sealed class SettingsWindow : Window
         _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
         _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
         _capsuleToggle.Toggled += (_, _) => SaveGeneral();
-        // 悬浮岛形态开关（display-modes-analysis §7 Phase 2，默认关=保持经典胶囊现状）：
-        // 开=胶囊顶部居中常驻（收起态=品牌标+未读/异常徽标），关=右下角经典胶囊；文案走 UiStrings 双语
-        _islandToggle = new ToggleSwitch { Header = UiStrings.SettingsCapsuleIsland, IsOn = _runtime.Config.App.CapsuleIsland };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_islandToggle, "capsule-island-toggle"); // UIA 取证：开关驱动
-        _islandToggle.Toggled += (_, _) => SaveGeneral();
-        // 2026-10-11 用户令：数量悬浮窗默认开（推翻 2026-10-08 默认关拍板）；关=桌面零残留，即时生效
-        _numericFloatingToggle = new ToggleSwitch { Header = "数量悬浮窗（数值/额度类，默认开）", IsOn = _runtime.Config.App.NumericFloatingEnabled };
-        _numericFloatingToggle.Toggled += (_, _) => SaveGeneral();
+        // 展示载体三项（悬浮岛/悬浮框/看板）已收编到 组件中心 → 展示载体（ISLAND-RING-1 扩围②，
+        // 2026-11-07 用户令「一个页面决定显示什么+用什么显示」）：本页只留经典胶囊总开关，岛/悬浮框
+        // 勾选在载体区（旧 config 字段继续用，行为与持久化向后兼容）。
         // 贴边收起开关（2026-10-14 用户单③，默认开=保持已发布行为）：关=拖到屏幕边缘不再收成细条，
         // 已收起的经 ApplySettingsEffects → ApplyEdgeCollapseSetting 立刻弹回
         _edgeCollapseToggle = new ToggleSwitch { Header = UiStrings.SettingsEdgeCollapse, IsOn = _runtime.Config.App.EdgeCollapseEnabled };
@@ -659,28 +652,41 @@ internal sealed class SettingsWindow : Window
         }
         _pollBox.SelectedIndex = IndexOfTag(_pollBox, _runtime.Config.App.PollIntervalSeconds > 0 ? _runtime.Config.App.PollIntervalSeconds.ToString(CultureInfo.InvariantCulture) : "0");
         _pollBox.SelectionChanged += (_, _) => SaveGeneral();
-        _pinModeBox = new ComboBox { Header = "悬浮形态（重启生效）", Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
-        foreach (var item in new[] { ("panel", "宿主面板（单窗多 tile）"), ("floating", "独立悬浮框（每组件一窗，任意拖放）") })
-        {
-            _pinModeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
-        }
-        _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
-        _pinModeBox.SelectionChanged += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _opacitySlider, _capsuleToggle, _islandToggle, _pinModeBox, _numericFloatingToggle, _edgeCollapseToggle, _pollBox } });
-        page.Children.Add(Hint("悬浮形态说明：独立悬浮窗默认只在「悬浮形态」下对信息密集组件（趋势图/灯组）生效；数值/额度类悬浮窗由上方「数量悬浮窗」开关控制（默认开；关闭即刻生效=桌面零残留）。"));
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _opacitySlider, _capsuleToggle, _edgeCollapseToggle, _pollBox } });
+        page.Children.Add(Hint("悬浮岛/悬浮框/看板等展示载体已收编到「组件中心 → 展示载体」（勾选=出现、取消=消失，即时生效）；信息密集组件的悬浮形态（panel|floating）同页可调。"));
         page.Children.Add(BuildAboutSection());
         return page;
     }
 
     /// <summary>组件中心（Component Center）：当前全部可展示组件（widgets.json 实例）按真实注册类型
-    /// 分组（ComponentCenterCatalog 五类别，纯 Core 单源）列出，勾选=显示、取消=隐藏；隐藏集落
+    /// 分组（ComponentCenterCatalog 类别，纯 Core 单源）列出，勾选=显示、取消=隐藏；隐藏集落
     /// config.json hiddenComponents（AppConfig.HiddenComponents），主宿主面板与独立悬浮框只渲染
-    /// 未隐藏组件（两宿主 ReloadTiles 同口径过滤），重启保留。钉选/布局数据不动，重新勾选即恢复。</summary>
+    /// 未隐藏组件（两宿主 ReloadTiles 同口径过滤），重启保留。钉选/布局数据不动，重新勾选即恢复。
+    /// 页首「展示载体」区（ISLAND-RING-1 扩围②，2026-11-07 用户令）：悬浮岛/悬浮框/看板三项勾选
+    /// ——「一个页面决定显示什么 + 用什么显示」；旧开关收编到这一处，本页其它位置零重复入口。</summary>
     private UIElement BuildComponentCenterPage()
     {
         var page = PageShell();
         page.Children.Add(SectionTitle("组件中心"));
         page.Children.Add(Hint("按类型分组的全部可展示组件：勾选=显示到悬浮面板，取消=隐藏（即时生效、重启保留）。钉选与布局数据不受影响，重新勾选即恢复。"));
+
+        // —— 展示载体（收编四处散落开关：岛形态开关/数量悬浮窗开关/悬浮形态下拉/托盘零散入口）——
+        page.Children.Add(SectionTitle("展示载体"));
+        page.Children.Add(Hint("用什么显示：悬浮岛 / 悬浮框 / 看板，勾选=出现、取消=消失（即时生效、重启保留）。共存规则（真实窗口架构）：三者是不同窗口，任意组合共存；唯一互斥面=悬浮岛与经典胶囊是同一胶囊窗的两种形态（岛勾选时经典让位，岛取消按「通用→显示状态胶囊」回经典或整体关闭）。看板是唤起式面板：关闭=热键/岛点击不可唤起且已开即收。"));
+        foreach (var carrier in CarrierCatalog.Carriers)
+        {
+            page.Children.Add(BuildCarrierRow(carrier));
+        }
+
+        // 信息密集组件（趋势图/灯组）的悬浮形态档收编至此（原「通用 → 悬浮形态」下拉，行为与持久化不变）
+        _pinModeBox = new ComboBox { Header = "悬浮形态（信息密集组件：重启生效）", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
+        foreach (var item in new[] { ("panel", "宿主面板（单窗多 tile）"), ("floating", "独立悬浮框（每组件一窗，任意拖放）") })
+        {
+            _pinModeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
+        }
+        _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
+        _pinModeBox.SelectionChanged += (_, _) => SaveCarrierPinMode();
+        page.Children.Add(_pinModeBox);
 
         var groups = ComponentCenterCatalog.Group(_runtime.Config.Widgets);
         if (groups.Count == 0)
@@ -698,6 +704,73 @@ internal sealed class SettingsWindow : Window
             }
         }
         return page;
+    }
+
+    /// <summary>载体行：勾选框 + 载体名/真实能力说明。勾选变化即时落库（CarrierCatalog 单源写旧
+    /// 字段/boardEnabled）并触发 SettingsApplied（建窗/关窗/岛↔经典切换走既有 ApplySettingsEffects）。</summary>
+    private UIElement BuildCarrierRow(CarrierItem carrier)
+    {
+        var enabled = carrier.Id switch
+        {
+            CarrierCatalog.CarrierIslandId => CarrierCatalog.IslandEnabled(_runtime.Config.App),
+            CarrierCatalog.CarrierFloatingId => CarrierCatalog.FloatingEnabled(_runtime.Config.App),
+            _ => CarrierCatalog.BoardEnabled(_runtime.Config.App),
+        };
+        var toggle = new CheckBox
+        {
+            IsChecked = enabled,
+            MinWidth = 0,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"carrier-{carrier.Id}"); // UIA 取证：载体勾选驱动
+
+        var label = new TextBlock
+        {
+            Text = carrier.Label,
+            FontSize = DesignTokens.FontBody,
+            Foreground = new SolidColorBrush(ThemeColors.Label()),
+        };
+        var subtitle = new TextBlock
+        {
+            Text = carrier.Hint,
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        var textColumn = new StackPanel { Spacing = 2 };
+        textColumn.Children.Add(label);
+        textColumn.Children.Add(subtitle);
+
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(toggle, 0);
+        Grid.SetColumn(textColumn, 1);
+        row.Children.Add(toggle);
+        row.Children.Add(textColumn);
+        row.Padding = new Thickness(0, 2, 0, 2);
+
+        // 先取 IsChecked 再挂事件（构造期赋值不触发写路径；用户点击才落库）
+        toggle.Checked += (_, _) => SaveCarrier(carrier.Id, visible: true);
+        toggle.Unchecked += (_, _) => SaveCarrier(carrier.Id, visible: false);
+        return row;
+    }
+
+    /// <summary>载体勾选落库（设置页唯一写入口）：CarrierCatalog 单源改旧字段/boardEnabled → SaveApp
+    /// → SettingsApplied（岛=EnsureCapsule/Close+形态切换、悬浮框=桌面零残留、看板=已开即收）。</summary>
+    private void SaveCarrier(string carrierId, bool visible)
+    {
+        CarrierCatalog.SetEnabled(_runtime.Config.App, carrierId, visible);
+        _runtime.Config.SaveApp();
+        SettingsApplied?.Invoke();
+    }
+
+    /// <summary>悬浮形态档落库（收编自通用页下拉）：PinDisplayMode 旧字段继续用，行为不变。</summary>
+    private void SaveCarrierPinMode()
+    {
+        _runtime.Config.App.PinDisplayMode = TagOf(_pinModeBox) ?? "panel";
+        _runtime.Config.SaveApp();
+        SettingsApplied?.Invoke();
     }
 
     /// <summary>组件中心单行：勾选框 + 显示名/副题（类型键 · 钉选态）。勾选变化即时落库并联动 L0。</summary>
@@ -1255,11 +1328,9 @@ internal sealed class SettingsWindow : Window
         app.Hotkey = _hotkeyBox.Text.Trim();
         app.LaunchOnStartup = _startupToggle.IsOn;
         app.Theme = TagOf(_themeBox) ?? "system";
-        app.PinDisplayMode = TagOf(_pinModeBox) ?? "panel";
+        app.PinDisplayMode = _runtime.Config.App.PinDisplayMode; // 悬浮形态档已收编到载体区（SaveCarrierPinMode 专写），此处保位不覆盖
         app.UiOpacity = _opacitySlider.Value;
         app.ShowCapsule = _capsuleToggle.IsOn;
-        app.CapsuleIsland = _islandToggle.IsOn;
-        app.NumericFloatingEnabled = _numericFloatingToggle.IsOn;
         app.EdgeCollapseEnabled = _edgeCollapseToggle.IsOn;
         app.PollIntervalSeconds = int.TryParse(TagOf(_pollBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pollSeconds) && pollSeconds > 0 ? pollSeconds : 0;
         app.Language = TagOf(_languageBox) ?? "";

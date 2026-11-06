@@ -1820,7 +1820,7 @@ try
     }
     Write-Host "场景 E1 通过：二次启动进程数保持 1，副实例退出日志在案（唤起气泡见 E1b）"
     # E2 托盘菜单 → Settings → 关窗不退进程（托盘驻留语义）；菜单驱动失败降级 warning（分隔条拖拽同款先例）
-    $opened = Invoke-TrayMenu 5 "Settings"
+    $opened = Invoke-TrayMenu 0 "Settings" # 载体收编后托盘菜单=[设置,退出]：设置=首项 0 DOWN（ISLAND-RING-1 扩围③）
     if (!$opened)
     {
         Write-Host "::warning::托盘菜单未弹出（合成右键未生效）——关窗驻留与 Exit 转装机手验（tray-menu 未截图）"
@@ -1846,7 +1846,7 @@ try
         }
         Write-Host "场景 E2 通过：设置窗 WM_CLOSE 关闭、进程驻留（关窗不退进程）"
         # E3 托盘菜单 → Exit → 进程必须退出（Exit 唯一退出路径）
-        $opened2 = Invoke-TrayMenu 6 "Exit"
+        $opened2 = Invoke-TrayMenu 1 "Exit" # 退出=第二项（分隔条键盘导航跳过）1 DOWN
         if (!$opened2)
         {
             Write-Host "::warning::第二次托盘菜单未弹出——Exit 路径转装机手验"

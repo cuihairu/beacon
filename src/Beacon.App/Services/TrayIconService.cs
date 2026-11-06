@@ -263,18 +263,10 @@ internal sealed class TrayIconService : IDisposable
         var menu = NativeMethods.CreatePopupMenu();
         try
         {
-            // 菜单文案经 Core UiStrings 取词（2026-10-14 用户单②④）：菜单每次右键重绘，语言切换下次开菜单即生效
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuOpenPanel, UiStrings.TrayOpenPanel);
-            // 可勾选项（2026-10-11 用户令）：打勾=面板常驻不失焦自隐；勾选态每次开菜单实时读 config
-            var keepPanelOn = IsKeepPanelOn?.Invoke() == true;
-            NativeMethods.AppendMenuW(
-                menu,
-                NativeMethods.MF_STRING | (keepPanelOn ? NativeMethods.MF_CHECKED : 0u),
-                (IntPtr)MenuKeepPanel,
-                UiStrings.TrayKeepPanelOpen);
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuNotifications, UiStrings.TrayNotifications);
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuRefreshAll, UiStrings.TrayRefreshAll);
-            NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuComponents, UiStrings.TrayComponents);
+            // 菜单文案经 Core UiStrings 取词（2026-10-14 用户单②④）：菜单每次右键重绘，语言切换下次开菜单即生效。
+            // 载体/组件入口收编（ISLAND-RING-1 扩围②③，2026-11-07 用户令）：托盘只留「设置」+「退出」——
+            // 显示什么与用什么显示统一在 组件中心 → 展示载体 与组件勾选（此前零散的打开面板/通知/刷新/
+            // 组件中心/常驻勾选全部退场；打开面板由热键/岛点击承担，退出仍是唯一退出路径必须保留）。
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuSettings, UiStrings.TraySettings);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_SEPARATOR, IntPtr.Zero, null);
             NativeMethods.AppendMenuW(menu, NativeMethods.MF_STRING, (IntPtr)MenuExit, UiStrings.TrayExit);
