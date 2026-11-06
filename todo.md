@@ -192,6 +192,7 @@
 
 - [ ] PANEL-UPGRADE-1 [P1] 快捷面板升级为看板：默认尺寸放大（目标 ~720x560，可调可记忆），事件动态（时间线）成为主区——时间/级别/来源/摘要逐行可读，条数放宽（现 8 条上限重新评估），头部 OverallSummary 与来源过滤保留；悬浮岛/胶囊点击唤起目标同步指向看板；字体与行距按可读性重排；设置项若涉尺寸记忆走 shell-state 惯例。
   - 验收: Core 侧筛选/聚合逻辑单测；CI windows-latest 出看板截图；真机人工核验可读性。
+  - 方案 B 重设计落地（2026-11-11 用户拍板主从反转、弃方案 A；原型 ~/beacon-board-redesign/board-redesign.html）：左「现在」296px 固定列（聚合灯+OverallSummary 打头、需要关注告警项列表占最大视觉权重、概览来源卡收底）+ 右时间线主区（rail 时间轴、跨日条目带日期 MM-dd HH:mm）与通知段；通知/状态三处 MaxHeight 硬顶消除改段内滚动；空态文案三处（暂无事件/通知已全部已读/无匹配+清除筛选）；把手点阵 affordance 悬停转品牌色；品牌 #d4234a 进 ThemeColors.Brand（级别色仍走 PaletteResolver）；状态脚条（运行中/正常计数+拖动/调尺寸/ESC 提示）；最小宽 360→520（固定左列）。CI/UIA 锚零迁移：AttentionList/RecentList/NotificationList/chip-*/W1 三文案全部保留，visual-evidence 断言零改动；悬浮岛唤起链（CapsuleWindow.OpenPanelRequested→quickPanel.Toggle）与设置开关即时生效路径未动。
 
 ## 待派工
 
