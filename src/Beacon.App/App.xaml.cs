@@ -158,6 +158,8 @@ public partial class App : Application
         // 界面语言先行（2026-10-14 用户单②）：任何窗口/菜单创建前定语言口径，看板首屏不吃 XAML 英文缺省
         UiStrings.SetLanguage(runtime.Config.App.Language);
         tray.Palette = new UiPalette(runtime.Config); // B-706：托盘圆点按 appearance.SeverityColors 运行时绘制
+        // 组件中心隐藏集注入聚合源头（ISLAND-RING-1 扩围①）：勾掉的组件不进任何聚合消费面
+        runtime.Aggregator.SetHiddenComponentsProvider(() => runtime.Config.App.HiddenComponents);
         _quickPanel = new Windows.QuickPanelWindow(runtime, dispatcher, Services.GetRequiredService<ShellStateStore>()); // PANEL-UPGRADE-1：看板尺寸/位置记忆走 shell-state
         var quickPanel = _quickPanel;
         tray.OpenPanelRequested += () => ToggleBoard(); // 看板载体开关：关=不可唤起、已开即收（ISLAND-RING-1 扩围②）
@@ -174,7 +176,7 @@ public partial class App : Application
             }
         };
         quickPanel.DetailRequested += state => OpenDetail(runtime, state); // B-603：L2 单击进 L3
-        quickPanel.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); }); // B-702：Pin 入口联动 L0
+        quickPanel.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _floatingHost?.ReloadTiles(); runtime.Aggregator.Republish(); capsule?.RefreshComponents(); }); // B-702：Pin 入口联动 L0；隐藏集变更重发布聚合（ISLAND-RING-1）
         // B-503 语义分化（2026-10-14 用户单④）：Notifications 入口 = 打开面板并聚焦通知中心视图
         // （原实现与 Open Beacon 同为 Toggle——两个同义入口正是用户困惑点；设计意图见 mvp-issues B-503
         // 「托盘菜单含常用 Action 与 Notifications 入口」+ App.xaml.cs 原注释「→ L2 通知中心视图」）
@@ -213,7 +215,7 @@ public partial class App : Application
         {
             // 岛/胶囊消费面接组件中心（ISLAND-RING-1 扩围①）：勾掉的组件不进岛的灯/徽标/环/条/横幅
             //（Core CapsuleAggregateFilter 单源；托盘灯不受影响——聚合链恒走全量）
-            capsule?.UpdateStatus(CapsuleAggregateFilter.Filter(runtime.Config.App, status, lastStates.Values));
+            capsule?.UpdateStatus(status); // 隐藏组件已在聚合源头过滤（StatusAggregator 隐藏集，ISLAND-RING-1）
             tray.SetSeverity(status.Overall); // 托盘灯/提示不随胶囊窗存废——聚合链恒走
             tray.SetTip(BuildTrayTip(status));
         }));
@@ -371,7 +373,7 @@ public partial class App : Application
             }
             // B-805：调色即时生效——托盘/胶囊/L0 用最新快照按新色表重渲染（UiPalette 实时读 config）
             var snapshot = runtime.Aggregator.Snapshot();
-            capsule?.UpdateStatus(CapsuleAggregateFilter.Filter(appConfig, snapshot, lastStates.Values));
+            capsule?.UpdateStatus(snapshot); // 隐藏组件已在聚合源头过滤（ISLAND-RING-1）
             tray.SetSeverity(snapshot.Overall);
             tray.SetTip(BuildTrayTip(snapshot));
             // L0 重建两宿主各自兜异常：面板重建失败若拖着悬浮窗不重建（或反之），
@@ -410,7 +412,7 @@ public partial class App : Application
                 settingsWindow = new Windows.SettingsWindow(runtime);
                 settingsWindow.Closed += (_, _) => settingsWindow = null;
                 settingsWindow.SettingsApplied += ApplySettingsEffects;
-                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); capsule?.RefreshComponents(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）；RefreshComponents：岛进度环/条勾选即时生效（ISLAND-RING-1）
+                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); runtime.Aggregator.Republish(); capsule?.RefreshComponents(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）；Republish+RefreshComponents：隐藏组件/岛进度环条勾选即时生效（ISLAND-RING-1）
                 settingsWindow.Activate();
                 if (moduleKey is { } key)
                 {
@@ -455,7 +457,7 @@ public partial class App : Application
             {
                 created.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, lastStates));
             }
-            created.UpdateStatus(CapsuleAggregateFilter.Filter(runtime.Config.App, runtime.Aggregator.Snapshot(), lastStates.Values));
+            created.UpdateStatus(runtime.Aggregator.Snapshot());
             created.UpdateBadge(runtime.Notifications.UnreadCount);
             return created;
         }

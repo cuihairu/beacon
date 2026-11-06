@@ -15,6 +15,7 @@ public sealed class StatusAggregator : IDisposable
     private readonly Dictionary<string, WidgetState> _states = [];
     private readonly HashSet<string> _unhealthyConnections = [];
     private AggregateStatusChanged? _lastPublished;
+    private Func<IReadOnlyCollection<string>>? _hiddenProvider; // 组件中心隐藏集（实时读 config，ISLAND-RING-1）
     private readonly IDisposable _stateSubscription;
     private readonly IDisposable _healthSubscription;
     private readonly IDisposable _invalidationSubscription;
@@ -29,6 +30,23 @@ public sealed class StatusAggregator : IDisposable
 
     /// <summary>当前聚合快照（胶囊启动时取初值用）。</summary>
     public AggregateStatusChanged Snapshot() => Compute();
+
+    /// <summary>组件中心隐藏集读取器（ISLAND-RING-1 扩围①，2026-11-07 用户令）：勾掉的组件不进
+    /// 聚合——在源头过滤而非消费端重投影（消费端用滞后快照重投影会抹掉真实级别，实机取证
+    /// 04:12:39 raw Error:1 → filtered err=0 即此竞态）。App 注入 () => config.HiddenComponents。</summary>
+    public void SetHiddenComponentsProvider(Func<IReadOnlyCollection<string>>? provider) => _hiddenProvider = provider;
+
+    /// <summary>强制重发布（组件中心勾选变化即调）：隐藏集变了但组件状态没变时聚合快照不变、
+    /// 会被去重吞掉——清掉基线让下一 Compute 无条件发布。</summary>
+    public void Republish()
+    {
+        lock (_gate)
+        {
+            _lastPublished = null;
+        }
+
+        PublishIfChanged();
+    }
 
     private void OnWidgetStateChanged(WidgetStateChanged evt)
     {
@@ -85,12 +103,18 @@ public sealed class StatusAggregator : IDisposable
 
     private AggregateStatusChanged Compute()
     {
+        var hidden = _hiddenProvider?.Invoke() ?? [];
         var counts = new Dictionary<Severity, int>();
         var overall = Severity.Success;
         lock (_gate)
         {
             foreach (var state in _states.Values)
             {
+                if (hidden.Contains(state.WidgetId))
+                {
+                    continue; // 组件中心勾掉：不进任何聚合消费面（灯/托盘/岛环徽标同源同口径）
+                }
+
                 counts[state.Severity] = counts.GetValueOrDefault(state.Severity) + 1;
                 overall = overall.Max(state.Severity);
             }
@@ -102,7 +126,11 @@ public sealed class StatusAggregator : IDisposable
         int offline;
         lock (_gate)
         {
-            offline = _unhealthyConnections.Count;
+            // 离线连接只数仍持有可见组件的：有组件状态且全部被勾掉的离线连接不再点亮横幅；
+            // 尚无任何组件状态的连接（冷启动半）保持历史行为照数（ConnectionHealthChanged 原口径）
+            offline = _unhealthyConnections.Count(connection =>
+                !_states.Values.Any(state => state.ConnectionId == connection)
+                || _states.Values.Any(state => state.ConnectionId == connection && !hidden.Contains(state.WidgetId)));
         }
         return new AggregateStatusChanged(overall, counts, offline, DateTimeOffset.UtcNow);
     }

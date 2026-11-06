@@ -148,6 +148,10 @@ public sealed partial class CapsuleWindow : Window
         }
     }
 
+    /// <summary>取证通道（internal）：App 聚合订阅侧复用同一痕迹文件，岛数据链跨层可对账
+    /// （ISLAND-RING-1 取证：聚合→过滤→岛，err 态在哪层丢的一眼定位）。</summary>
+    internal static void IslandTraceShared(string message) => IslandTrace(message);
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         try
@@ -1117,6 +1121,8 @@ public sealed partial class CapsuleWindow : Window
         _lastOverall = status.Overall;
         _abnormalCount = warn + error; // 岛徽标异常计数（未读优先级更高，RefreshBadge 裁决）
         RefreshBadge(); // 岛进度面重建（环色随级别、份额随 ok 占比、计数=未读/异常）
+        IslandTrace($"status ok={ok} warn={warn} err={error} ratio={_ringRatio:F2} unread={_unreadCount} " +
+                    $"ring=#{_ringColor.R:X2}{_ringColor.G:X2}{_ringColor.B:X2} faces={IslandProgress.Visibility}/{IslandProgress.ActualWidth}");
 
         var offline = status.OfflineConnections > 0;
         OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
