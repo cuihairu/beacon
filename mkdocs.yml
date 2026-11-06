@@ -39,6 +39,7 @@ nav:
   - MVP Issues: mvp-issues.md
   - Troubleshooting: troubleshooting.md
   - Configuration Reference: configuration.md
+  - Configuration Effects (off/on): configuration-effects.md
   - Store Submission: store-submission.md
   - Privacy Policy: privacy-policy.md
   - Doc-Consistency Audit: 审计-文档一致性.md
@@ -56,6 +57,7 @@ nav:
     - MVP Issue 列表: zh/mvp-issues.md
     - 故障排查: zh/troubleshooting.md
     - 配置项参考: zh/configuration.md
+    - 配置效果（开/关对照）: zh/configuration-effects.md
     - 商店提交前置清单: zh/store-submission.md
     - 隐私政策: zh/privacy-policy.md
     - 文档一致性审计: zh/审计-文档一致性.md

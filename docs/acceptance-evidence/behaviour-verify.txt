@@ -1,0 +1,10 @@
+﻿[PASS] B1-url :: L3「Open」→ 默认浏览器打开，命中地址线索：title='智谱丨BigModel 平台 和另外 13 个页面 - 个人 - Microsoft​ Edge' texts= | 智谱丨BigModel 平台 - Microsoft Edge |  |  |  | 最小化 | 还原 | 关闭 |  |  | 应用栏 | 返回 | 刷新 |  | 查看站点信息 | 地址和搜索栏 |  |  | 将此页面添加到收藏夹(Ctrl+D) |  | 扩展 |  |  | 收藏夹 | 下载 | 个人 个人资料 | 设置及其他 (Alt+F) | 聊天 | 收藏夹栏 | 保存的选项卡组 | 标签页组 | 分隔符 | services | scm | wk | ops | ai | docs | plan | book | utils | android | dev | chain | Google | cuihairu/kbengine: A MMOG engine of server. | 其他收藏夹 | 分隔符 |  |  |  |  |  |  |  | 标签页栏 |
+[PASS] B2-toast-sent :: 错误态触发后出现新窗：title='Beacon · GLM · 5h 窗口已用 95% · 02-14 00:26 重置 · 周 15% · 月 61%' class=WinUIDesktopWin32WindowClass rect=(208,208)-(744,689)（已 PrintWindow 留证）
+[INFO] B2-toast-route :: 点击后路由观测：browser:智谱丨BigModel 平台 和另外 14 个页面 - 个人 - Microsoft​ Edge ; panel:0 ; detail:1（激活前前台='Windows 默认锁屏界面'，现前台='Windows 默认锁屏界面'）
+[INFO] B2-notification-record :: notifications.json 记录数=1；最新：{"id":"verify.warning-20261106004710702-1","sourceWidgetId":"bigmodel.usage:GLM","widgetType":"bigmodel.usage","severity":"error","title":"GLM · 5h 窗口已用 95% · 02-14 00:26 重置 · 周 15% · 月 61%","detailUrl":"https://open.bigmodel.cn/usage","timestamp":"2026-11-06T00:47:10.702903+00:00","read":false}
+[PASS] B3-runkey :: launchOnStartup=true 后 HKCU Run\Beacon = "C:\beacon-verify\publish\Beacon.App.exe"
+[PASS] B3-explorer-start :: explorer.exe 启动路径拉起进程 pid=14236（父进程=explorer；会话=1）
+[PASS] B3-runkey-off :: launchOnStartup=false 后 Run 值=
+[PASS] B4-no-alt-tab :: 看板/胶囊 WS_EX_APPWINDOW 均未置位（不进任务栏/Alt-Tab）；Beacon Status ex=0x08000188 appWindow=False toolWindow=True
+[PASS] B4-no-focus-steal :: 状态翻转前后前台='Windows 默认锁屏界面' → 'Windows 默认锁屏界面'
+[INFO] B4-drill-down :: ①点击下钻半见 B1（时间线行 → L3）与 PU1-capsule-invokes-board

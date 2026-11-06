@@ -12,7 +12,7 @@
 - 状态灯像素断言阈值：亚像素漂移 10~44px 属正常渲染（非呼吸调光），失效模式 0 与实测底 10 之间定标 8px（38261911354 逐像素实测）。
 - reduced 档同色闪灯缺陷：TransitionFill 只在色变 tick 过渡，同色 tick 直接填充（patrol-20261013-A1 读码发现）。
 
-## MVP 待验/未修项（50 项 = 39 勾 / 11 未勾；未完成项即装机清单）
+## MVP 待验/未修项（50 项 = 40 勾 / 10 未勾；未完成项即装机清单）
 
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（场景 E1 CI 代验 + 2026-10-17 真机双半实证，TrayIconService.cs:99-110）
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2/E3 已代验）
@@ -30,7 +30,7 @@
 - [x] 路由/确认/超时单测（ActionRunnerTests 9 例）
 - [x] 失败在 UI 有可见反馈（场景 U5 已代验：mock 500 后 L3 失败反馈文本硬断言）
 - [x] 模板渲染单测（TemplateRendererTests 11 例）
-- [ ] URL 拼接后端到端打开验证：需 Windows 桌面与用户默认浏览器（拼接已有 TemplateRendererTests 覆盖）
+- [x] URL 拼接后端到端打开验证：拼接已有 TemplateRendererTests 覆盖；真机半 2026-11-06 在 .5 实测——看板时间线行 → L3 详情 → 点「Open」→ 默认 Edge 打开 `open.bigmodel.cn`（窗口标题「智谱丨BigModel 平台」，标签页 13→14），证据 `docs/acceptance-evidence/url-detail-window.png`、`url-browser-opened.png`、`behaviour-verify.txt`（B1-url PASS；构建 2026.11.6+56e4f27…）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] API 封装单测（GitHubApiClientTests 10 例 + GitHubWorkflowExecutorTests 6 例）
 - [x] 真实仓库手动验证运行中到终态全程可见（可造数据桩驱动 provider 渲染翻转替代，GitHubPublicApiLiveTests.Item4，commit ce8a6ca）
@@ -190,9 +190,37 @@
 
 ## 面板升级看板（2026-11-05 用户令）
 
-- [ ] PANEL-UPGRADE-1 [P1] 快捷面板升级为看板：默认尺寸放大（目标 ~720x560，可调可记忆），事件动态（时间线）成为主区——时间/级别/来源/摘要逐行可读，条数放宽（现 8 条上限重新评估），头部 OverallSummary 与来源过滤保留；悬浮岛/胶囊点击唤起目标同步指向看板；字体与行距按可读性重排；设置项若涉尺寸记忆走 shell-state 惯例。
-  - 验收: Core 侧筛选/聚合逻辑单测；CI windows-latest 出看板截图；真机人工核验可读性。
+- [x] PANEL-UPGRADE-1 [P1] 快捷面板升级为看板：默认尺寸放大（目标 ~720x560，可调可记忆），事件动态（时间线）成为主区——时间/级别/来源/摘要逐行可读，条数放宽（现 8 条上限重新评估），头部 OverallSummary 与来源过滤保留；悬浮岛/胶囊点击唤起目标同步指向看板；字体与行距按可读性重排；设置项若涉尺寸记忆走 shell-state 惯例。
+  - 验收: Core 侧筛选/聚合逻辑单测（TimelineEntriesTests 含 `Assert.Same(evt.State,row.State)`，72a99cb）；CI windows-latest 出看板截图（nightly run **41981480531** @`06134d1` 的 visual-evidence 工件 `K-panel-open-offline.png`：720x560 看板 + EVENT TIMELINE 主区 + 右副栏三段）；真机人工核验可读性（2026-11-06 .5 真机 `docs/acceptance-evidence/board-default-720x560.png`：客户区实测 720x560、时间线 7 行时刻/级别/来源/摘要逐行可读、25 条事件在列、头部 `2 警告 · 0 错误` 与概览过滤卡保留；UIA `Transform.Resize` 736x576→856x666、重启后尺寸/位置还原 720x560@(1160,316)）。
+  - 剩余（非验收口径，锁屏会话待复测）：头部把手鼠标拖动、边框鼠标拖拽、胶囊点击唤起看板三小项——合成输入到不了窗口（前台=锁屏），证据与理由见 `docs/acceptance-evidence/2026-11-06-realmachine.md`；另发现右副栏（通知/需要关注）行文本右缘截断，建议后续换行/Tooltip（本轮只记录不改码）。
   - 方案 B 重设计落地（2026-11-11 用户拍板主从反转、弃方案 A；原型 ~/beacon-board-redesign/board-redesign.html）：左「现在」296px 固定列（聚合灯+OverallSummary 打头、需要关注告警项列表占最大视觉权重、概览来源卡收底）+ 右时间线主区（rail 时间轴、跨日条目带日期 MM-dd HH:mm）与通知段；通知/状态三处 MaxHeight 硬顶消除改段内滚动；空态文案三处（暂无事件/通知已全部已读/无匹配+清除筛选）；把手点阵 affordance 悬停转品牌色；品牌 #d4234a 进 ThemeColors.Brand（级别色仍走 PaletteResolver）；状态脚条（运行中/正常计数+拖动/调尺寸/ESC 提示）；最小宽 360→520（固定左列）。CI/UIA 锚零迁移：AttentionList/RecentList/NotificationList/chip-*/W1 三文案全部保留，visual-evidence 断言零改动；悬浮岛唤起链（CapsuleWindow.OpenPanelRequested→quickPanel.Toggle）与设置开关即时生效路径未动。
+
+## 真机验证批 2026-11-06（19 开项逐项处置，证据 docs/acceptance-evidence/2026-11-06-realmachine.md）
+
+> 机器：10.240.0.5（Win11 26H2，1920×1080 @100% 单屏）；构建：`origin/main` `56e4f27` 现场 publish（`2026.11.6+56e4f27…`）。
+> 取证口径：该机控制台**锁屏**（前台=Windows 默认锁屏界面）→ 整屏 `CopyFromScreen` 只得壁纸帧（红标记窗在屏而截图红像素=0）、
+> 合成鼠标键盘到不了窗口；故截图一律 `PrintWindow`、交互一律 UIA/`PostMessage`。需真人解锁会话的项标 `OPEN(锁屏)`，不冒充已验。
+
+| todo 行 | 项 | 结论 |
+|---|---|---|
+| :33 | URL 端到端打开 | ✅ 已勾（见上） |
+| :39 | Toast 发送/点击/激活 | ◐ 发送半 PASS（notifications.json 记录含 detailUrl、AUMID 在案、日志 0 条发送失败）；横幅呈现与点击路由 OPEN(锁屏) |
+| :43 | 托盘图标颜色/刷新周期 | ◐ TrayNotifyWnd 两态差分 189px（15s 轮询 + 40s 窗口内）；簇归属与溢出区展开 OPEN(锁屏)，CI G4/G5/G7a 仍为像素口径证据 |
+| :49 | 跨进程点击穿透/焦点 | ◐ 结构面 PASS（无 WS_EX_APPWINDOW、状态翻转前台不变）；真实点击到下层窗口 OPEN(锁屏) |
+| :62 | tile/胶囊改色→托盘同步 | ◐ 改色半 PASS（docs/img/config-effects/severity-color-warning-*）；托盘半同 :43 |
+| :90 | explorer 登录会话调度 | ◐ 会话内 PASS（Run 键写入/清空、explorer.exe 拉起 pid=14236 父进程 explorer 会话 1）；真实注销/重登 OPEN（2026-10-30 决策 13 不擅自注销用户） |
+| :92 | 长时稳定观察 | ◐ soak-log.csv 60s 采样（09:53 起，计划 8h）：单进程、163MB/1351 句柄平稳、无重复进程；4h 口径未满 |
+| :112 | 模板尺寸裁切复核 | ⬜ 本轮未执行（组件中心 UIA 链 CI 场景 AE 已可复用） |
+| :184 | 重启恢复 + DPI 拖动 | ◐ 重启还原 PASS（看板 720x560@(1160,316) 前后一致）；DPI 切换/拖动 OPEN(锁屏+单屏) |
+| :73 | B-803 干净 Win11 装包 | ⬜ 本轮未执行；本机非干净快照（有 .NET SDK/scoop），干净环境半仍归 B-804 |
+| :56 | 跨 DPI 拖放/降分辨率回收 | ⬜ OPEN(单屏+锁屏) |
+| :60 | RFC §6.2.7 四项铁律 | ◐ ①下钻 PASS（UIA Invoke 时间线行→L3）②不抢焦点 PASS ④不进任务栏/Alt-Tab PASS；③动作面清单待补 |
+| :67 | 视觉观感真人验收 | ⬜ 待用户（真机实拍已给：board-default-720x560.png、capsule.png、config-effects/*） |
+| :71 | 真人全流程录屏 | ⬜ OPEN(锁屏，整屏录制无有效画面) |
+| :19 | 跨 DPI 拖动（MVP 行 19） | ⬜ OPEN(单屏) |
+| :83 | 目标厂商私有 API | ⬜ BLOCKED：缺厂商名/端点/凭据（2026-10-30 决策 12 输入表未收齐） |
+| :95 | 真实 GitHub PAT 全链 | ⬜ BLOCKED：需用户本地录入授权测试仓库的令牌（决策 15：无用户输入保持阻塞，不用 mock 勾选） |
+| 面板剩余 | 面板把手拖动/边框拖拽/胶囊唤起看板 | ⬜ OPEN(锁屏)，见 PANEL-UPGRADE-1 剩余行 |
 
 ## 待派工
 
@@ -200,4 +228,4 @@
 - [x] BUG-2 概览来源卡文字截断：QuickPanelWindow.cs:363（chip 标签）与 :481-482、:548（MaxWidth=260 + CharacterEllipsis）在窄窗三列布局下把来源名截没（用户截图「文字都显示不全」）——修复=来源卡标签换行不省略+卡片 MinWidth=96+整卡 Tooltip 全名，通知标题与状态行摘要改换行优先（260 只作换行边界）（2026-11-05 用户截图报障；e3a8b3a，CI run 41956565696 绿；UI 截断不可单测，人工验收=装机后窄窗拖小面板看来源卡全名换行+悬停 Tooltip）
 - [x] 悬浮岛 CapsuleWindow（display-modes-analysis §7 Phase 2，2026-11-05 用户单）：config.capsuleIsland 展示形态开关默认关保持现状；开=顶部居中锚定（CapsuleIslandMath 纯函数 6 例 Core 锁口径）+ 收起态=状态环+未读/异常徽标+品牌标 + 点击唤起看板（§1 只读契约不变）+ 拖动位置独立持久化（shell-state.json islandLayout，与经典胶囊布局互不覆盖）+ 设置页开关即时生效（capsule-island-toggle，UiStrings 双语）；ace0cdb+9a03daa，1683 测试全绿，CI run 41957917477 绿；岛观感/拖动/徽标不可单测，人工验收=设置开「悬浮岛形态」看胶囊顶部居中+徽标随未读/异常变色、拖动重启还原、点击唤起看板
 - [x] 悬浮岛回归（UIA 挂死）修复：CapsuleWindow 无条件 new+Activate——showCapsule=false（CI 各场景缺省口径）也常驻一个置顶工具窗干扰 UIA，nightly Visual evidence 两次无进展被人肉取消（41958504066/41963265872；日志复核两跑各场景实际持续推进，取消点分别在 AB3 静默窗与 AF→J 过渡的静默间隙，非真挂死，但无护栏则永无出口）——修复=①胶囊窗懒实例化（App.xaml.cs EnsureCapsule 工厂：仅 ShowCapsule=true 建/显窗，设置页开关运行时切换即建/关，建窗即回放 lastStates 来源预览+聚合快照+未读徽标初值；CapsuleIsland 仍为纯形态开关不独立建窗，构造函数本就不激活/置顶，Activate 留在显式路径；WinUI 定赋值穿透局部函数链 CS0165 两轮 CI 实证：settingsWindow/hotkey 前置声明）②visual-evidence.ps1 总超时护栏（分离 watchdog 缺省 4800s=80min 强杀本脚本进程，BEACON_EVIDENCE_TIMEOUT_SEC 可调；脚本含 15min 浸泡全程实测 ~72min，不能按 15min 设）+ 开场 Beacon 窗口基线与 Stop-Beacon 残留取证落日志（a517429/55e5bc8/2a989dd）；验证=CI 41973057764 绿（1683 测试）+ 手动 nightly 41973341778 全绿（Visual evidence 步 success，132 场景断言全过含 AD 浸泡/AF/J，日志见「总超时护栏已武装」「窗口基线[script-start]」，05:22:47→06:34:26 共 71.7min 于护栏内自然完成，run 结论 success 非 canceled）（2026-11-05 悬浮岛 commit 后回归；人工验收=装机开 showCapsule 看胶囊照常右下角、设置关胶囊后置顶窗彻底消失）
-- [ ] DOC-GIF：为全部「开启后有效果」的开关/配置项生成 off/on 对比图与切换 GIF，落 docs「配置效果」双语页，流水线可重跑兼作回归（kode todo C-24 同款，2026-11-01 用户令全舰队推广）
+- [x] DOC-GIF：为全部「开启后有效果」的开关/配置项生成 off/on 对比图与切换 GIF，落 docs「配置效果」双语页，流水线可重跑兼作回归（kode todo C-24 同款，2026-11-01 用户令全舰队推广）——2026-11-06 落地：9 组有画面效果的开关成对静帧 + 9 张 GIF（theme / pinDisplayMode / progressStyle / motion.mode / density / severityColors.warning / uiOpacity / capsuleIsland / colorOverride），页 `docs/configuration-effects.md` + `docs/zh/configuration-effects.md`（mkdocs 双导航），原帧 `docs/img/config-effects-src/`（25 文件 + manifest）；流水线 `tools/doc-gif/capture-config-effects.ps1`（Windows 抓帧，PrintWindow 窗口级）→ `tools/doc-gif/assemble.py`（任意机器合成），本轮两段各跑通一次（含 -Only 补跑与基线还原）。图外说明：`launchOnStartup`/`hotkey`/`pollIntervalSeconds` 效果是注册表值/热键/节奏（已在页内指向验收证据）；`keepQuickPanelOpen`/`edgeCollapseEnabled` 为行为类且 edgeCollapse 需真实拖拽，待解锁会话补图。

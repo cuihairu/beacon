@@ -1,0 +1,4 @@
+﻿[INFO] ENV-cursor-api :: SetCursorPos: 1919,0 -> 400,700
+[PASS] ENV-input-injection :: SendInput 绝对坐标移动: 400,700 -> 0,0 (delta=1100)
+[PASS] CAP-transform-resize :: UIA Transform.Resize 736x576 -> 856x666
+[PASS] CAP-uia-row-invoke :: UIA Invoke 时间线行 → 新开「Beacon ·*」窗数=1（原=0）

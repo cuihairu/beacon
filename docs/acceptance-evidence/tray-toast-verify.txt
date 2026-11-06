@@ -1,0 +1,5 @@
+﻿[PASS] T2-tray-diff :: TrayNotifyWnd 两态像素差：changed=189 box=552,11-902,30
+[PASS] T2-tray-xaml-diff :: XAML 托盘桥两态像素差：changed=189 box=1550,11-1900,30
+[INFO] T3-new-windows :: error 态后新增顶层窗：（无）
+[FAIL] T3-toast-window :: 50s 内未见通知窗；新增窗：
+[PASS] T3-app-side :: 日志「Toast 发送失败」条数=0；AUMID 注册在案=True；notifications.json=True
