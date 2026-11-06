@@ -133,21 +133,37 @@ public sealed class JenkinsBuildProvider : IWidgetProvider
                     "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(secret)));
             }
         }
-        using var response = await (client ?? HttpEndpoint.Shared).SendAsync(request, cancellationToken).ConfigureAwait(false);
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        HttpResponseMessage response;
+        try
         {
-            var status = (int)response.StatusCode;
-            throw status switch
-            {
-                401 or 403 => new ConnectionException($"Jenkins 认证失败 ({status})：填 user:apiToken（Manage Jenkins → Users → API Token）。",
-                    ConnectionHealthState.Unauthorized),
-                404 => new ConnectionException("Jenkins Job 不存在 (404)：检查 job_path（Folder 路径用 / 分隔）。",
-                    ConnectionHealthState.Offline),
-                _ => new ConnectionException($"Jenkins 接口异常 ({status})。", ConnectionHealthState.Offline),
-            };
+            response = await (client ?? HttpEndpoint.Shared).SendAsync(request, cancellationToken).ConfigureAwait(false);
         }
-        return body;
+        catch (HttpRequestException exception)
+        {
+            // 网络不可达/拒绝 → Offline（同 HttpEndpoint 语义；裸 HttpRequestException 会被 WidgetHost 兜成 Degraded，分级错）
+            throw new ConnectionException($"Jenkins 不可达：{exception.Message}", ConnectionHealthState.Offline, exception);
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ConnectionException("Jenkins 请求超时（15s）。", ConnectionHealthState.Offline, exception);
+        }
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                var status = (int)response.StatusCode;
+                throw status switch
+                {
+                    401 or 403 => new ConnectionException($"Jenkins 认证失败 ({status})：填 user:apiToken（Manage Jenkins → Users → API Token）。",
+                        ConnectionHealthState.Unauthorized),
+                    404 => new ConnectionException("Jenkins Job 不存在 (404)：检查 job_path（Folder 路径用 / 分隔）。",
+                        ConnectionHealthState.Offline),
+                    _ => new ConnectionException($"Jenkins 接口异常 ({status})。", ConnectionHealthState.Offline),
+                };
+            }
+            return body;
+        }
     }
 
     /// <summary>job JSON（真实夹具形状）：name/displayName/color/url + lastBuild{number,url} + healthReport[0]。</summary>
