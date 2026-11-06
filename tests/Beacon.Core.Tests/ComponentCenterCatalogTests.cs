@@ -64,18 +64,23 @@ public sealed class ComponentCenterCatalogTests
             Widget("w-unknown", "mystery.widget"),
         ]);
 
-        Assert.Equal(5, groups.Count);
+        Assert.Equal(6, groups.Count); // 五个真实类别 + 悬浮岛虚拟组
         Assert.Equal(ComponentCenterCatalog.CategoryStatus, groups[0].Key);
         Assert.Equal(new[] { "w-gh2", "w-gh1" }, groups[0].Items.Select(i => i.WidgetId).ToArray()); // 组内保配置序
         Assert.Equal(ComponentCenterCatalog.CategoryMachine, groups[1].Key);
         Assert.Equal(ComponentCenterCatalog.CategoryEvents, groups[2].Key);
         Assert.Equal(ComponentCenterCatalog.CategoryQuota, groups[3].Key);
         Assert.Equal(ComponentCenterCatalog.CategoryOther, groups[4].Key); // 兜底殿后
+        Assert.Equal(ComponentCenterCatalog.CategoryIsland, groups[5].Key); // 岛虚拟组件组恒殿后
     }
 
     [Fact]
-    public void Group_EmptyInput_NoGroups()
-        => Assert.Empty(ComponentCenterCatalog.Group([]));
+    public void Group_EmptyInput_IslandGroupStillPresent()
+    {
+        var groups = ComponentCenterCatalog.Group([]); // 岛进度组件不依赖 widgets.json：零组件也出岛组
+        var island = Assert.Single(groups);
+        Assert.Equal(ComponentCenterCatalog.CategoryIsland, island.Key);
+    }
 
     [Fact]
     public void Group_ItemProjectsLabelAndPinState()

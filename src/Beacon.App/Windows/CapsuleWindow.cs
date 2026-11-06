@@ -23,6 +23,7 @@ namespace Beacon.App.Windows;
 public sealed partial class CapsuleWindow : Window
 {
     private readonly ShellStateStore _shellState;
+    private readonly Beacon.Storage.JsonConfigurationStore _config; // 岛进度组件勾选态实时读（组件中心单源）
     private readonly UiPalette _palette;
     private readonly MotionEngine _motion;
     private readonly NativeMethods.RECT _defaultWorkAreaFallback = new() { Left = 0, Top = 0, Right = 1920, Bottom = 1040 };
@@ -60,7 +61,6 @@ public sealed partial class CapsuleWindow : Window
     private global::Windows.UI.Color _ringColor = ThemeColors.StatusOk(); // 最近一次环色（同上）
     private int _unreadCount; // 未读通知数（App 订阅 NotificationRaised 喂数；岛徽标第一优先）
     private int _abnormalCount; // 异常计数（warn+err，UpdateStatus 随聚合刷新；岛徽标第二优先）
-    private Severity _badgeSeverity = Severity.Success; // 徽标异常态取色用的最近聚合级别
     private Thickness _classicStackMargin; // SurfaceStack 经典外边距（岛=两侧 NotchInset 30 内缩）
     private HorizontalAlignment _classicPillAlign; // PillRow 经典对齐（岛=居中，刘海内容居中读）
     private VerticalAlignment _classicStackAlign; // SurfaceStack 经典垂直对齐（岛=Top：窗口含 8 DIP 阴影带，内容行钉顶贴曲面）
@@ -84,6 +84,13 @@ public sealed partial class CapsuleWindow : Window
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
 
+    /// <summary>岛进度组件规格（ISLAND-RING-1）：环 Ø22/弦 2.5（32 高行内的 BrimDeck 徽标环口径）、
+    /// 条宽 56×5（环+条并置时行内不拥挤，238 下限宽装得下）。</summary>
+    private const double IslandRingSize = 22;
+    private const double IslandRingThickness = 2.5;
+    private const double IslandBarWidth = 56;
+    private const double IslandBarThickness = 5;
+
     /// <summary>右键 → 直达设置（master-plan §3.1「右键打开…常用设置」；批3-补28）。</summary>
     public event Action? SettingsRequested;
 
@@ -96,6 +103,7 @@ public sealed partial class CapsuleWindow : Window
         // RFC §6.2.2：亚克力/半透明背景（桌面悬浮物贴壁纸，Mica 会失去悬浮感，故用系统亚克力）
         SystemBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
         _shellState = shellState;
+        _config = config; // 岛进度组件勾选态实时读（ISLAND-RING-1：组件中心勾选 → 岛渲染面，Core 单源）
         _palette = new UiPalette(config); // B-706：聚合灯随 appearance.SeverityColors
         _motion = new MotionEngine(config); // 入场/抬升动效（档位实时读，off 档全瞬时）
         // 初始灯/晕色（XAML 无 x:Static 不落 hex，语义色板单源 ThemeColors）
@@ -757,6 +765,7 @@ public sealed partial class CapsuleWindow : Window
             PillRow.HorizontalAlignment = HorizontalAlignment.Center; // 刘海默认宽 238：内容居中才左右留白对称
             PillRow.Spacing = 8;
             HealthRing.Visibility = Visibility.Collapsed;
+            OverallLightHost.Visibility = Visibility.Collapsed; // 岛收起态：环/条组件扛级别色，灯点双显冗余（ISLAND-RING-1）
             BrandMark.Foreground = new SolidColorBrush(ThemeColors.IslandText());
             IslandSurface.Visibility = Visibility.Visible;
             IslandSurface.Fill = new SolidColorBrush(ThemeColors.IslandPill());
@@ -786,7 +795,9 @@ public sealed partial class CapsuleWindow : Window
             SurfaceStack.VerticalAlignment = _classicStackAlign;
             PillRow.Spacing = _classicRowSpacing;
             HealthRing.Visibility = Visibility.Visible;
+            OverallLightHost.Visibility = Visibility.Visible; // 经典胶囊灯点照旧（G4/G5 像素锚不动）
             HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, _ringColor); // 岛期间环停画，切回补最近份额
+            RefreshBadge(); // 岛进度面随形态退场（经典无环/条徽标，Content 清空）
             BrandMark.Foreground = _classicBrandForeground;
             IslandSurface.Visibility = Visibility.Collapsed;
             IslandSurface.Data = null;
@@ -876,7 +887,7 @@ public sealed partial class CapsuleWindow : Window
             $"pill={PillArea.ActualWidth}x{PillArea.ActualHeight} " +
             $"stack={SurfaceStack.ActualWidth} margin={SurfaceStack.Margin} " +
             $"brand={BrandMark.Visibility}/{BrandMark.ActualWidth} " +
-            $"count={CountText.Visibility} badge={IslandBadge.Visibility}/{IslandBadge.ActualWidth} " +
+            $"count={CountText.Visibility} progress={IslandProgress.Visibility}/{IslandProgress.ActualWidth} " +
             $"align={PillRow.HorizontalAlignment} root={Root.ActualWidth}x{Root.ActualHeight}");
 
         static global::Windows.Foundation.Point ToPoint(IslandSurfaceOutline.Point p) => new(p.X, p.Y);
@@ -999,23 +1010,70 @@ public sealed partial class CapsuleWindow : Window
         RefreshBadge();
     }
 
-    /// <summary>徽标重画：文本未读优先、无未读用异常数；底色异常压过未读（实机诊断：错误态徽标仍
-    /// 强调蓝与红环/红灯同屏互相打架——同一时刻只讲一个颜色的故事），全零隐藏。
-    /// White 前景是常量非主题资源——徽标底恒为实色，两级底色都按白字对比选的。</summary>
+    /// <summary>岛进度徽标重画（ISLAND-RING-1，2026-11-07 用户令）：进度环/进度条是组件中心里的两个
+    /// 组件，岛显示什么完全由勾选状态决定——勾环显环、勾条显条、都勾都显、都不勾不显（无「默认样式」
+    /// 概念）。环=底环+进度弧+中心数字（数字=未读优先、异常次之，全零空中心——环本身扛进度/级别色）；
+    /// 条=轨道+左锚填充（仅条在场时计数跟条走）。经典形态恒隐藏。每次重画整树重建（同 StatusRing 口径）。</summary>
     private void RefreshBadge()
     {
-        if (!_island || (_unreadCount == 0 && _abnormalCount == 0))
+        if (!_island)
         {
-            IslandBadge.Visibility = Visibility.Collapsed;
+            IslandProgress.Visibility = Visibility.Collapsed;
+            IslandProgress.Content = null;
             return;
         }
-        var unreadMode = _unreadCount > 0;
-        IslandBadgeCount.Text = (unreadMode ? _unreadCount : _abnormalCount).ToString();
-        IslandBadge.Background = new SolidColorBrush(_abnormalCount > 0
-            ? _palette.SeverityColor(_badgeSeverity)
-            : ThemeColors.AccentFill());
-        IslandBadge.Visibility = Visibility.Visible;
+        var ring = Beacon.Core.Services.ComponentCenterCatalog.IslandRingVisible(_config.App);
+        var bar = Beacon.Core.Services.ComponentCenterCatalog.IslandBarVisible(_config.App);
+        var arcColor = _ringColor;
+        var trackColor = ThemeColors.Halo(arcColor, 80); // 底环=进度色低透明（StatusRing 35% 同族，暗底更含蓄）
+        var countText = _unreadCount > 0 ? _unreadCount.ToString()
+            : _abnormalCount > 0 ? _abnormalCount.ToString()
+            : string.Empty; // 全零：中心不落字，环/条自己讲进度
+        FrameworkElement? content = (ring, bar) switch
+        {
+            (true, true) => BothProgressFaces(_ringRatio, arcColor, trackColor, countText),
+            (true, false) => Components.RingProgressBadge.Build(IslandRingSize, IslandRingThickness, _ringRatio,
+                arcColor, trackColor, countText, ThemeColors.IslandText()),
+            (false, true) => BarOnlyFace(_ringRatio, arcColor, trackColor, countText),
+            (false, false) => null, // 都不勾：岛收起态只剩品牌标（组件中心说了算，无兜底无默认）
+        };
+        IslandProgress.Content = content;
+        IslandProgress.Visibility = content is null ? Visibility.Collapsed : Visibility.Visible;
+        ApplySize(); // 勾选/计数变化改变收起行宽（238 下限内通常不动，低于下限的窄岛需要重排）
     }
+
+    /// <summary>环+条都勾：横向并置（布局由岛的空间管理决定——PillRow 居中，宽超 238 下限时岛自动加宽）。</summary>
+    private static FrameworkElement BothProgressFaces(double fraction, global::Windows.UI.Color arcColor, global::Windows.UI.Color trackColor, string countText)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(Components.RingProgressBadge.Build(IslandRingSize, IslandRingThickness, fraction,
+            arcColor, trackColor, countText, ThemeColors.IslandText()));
+        row.Children.Add(Components.BarProgressBadge.Build(IslandBarWidth, IslandBarThickness, fraction, arcColor, trackColor));
+        return row;
+    }
+
+    /// <summary>仅条在场：条 + 计数文本（环不在场，数字跟条走）。</summary>
+    private static FrameworkElement BarOnlyFace(double fraction, global::Windows.UI.Color arcColor, global::Windows.UI.Color trackColor, string countText)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(Components.BarProgressBadge.Build(IslandBarWidth, IslandBarThickness, fraction, arcColor, trackColor));
+        if (countText.Length > 0)
+        {
+            row.Children.Add(new TextBlock
+            {
+                Text = countText,
+                FontSize = 11,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(ThemeColors.IslandText()),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
+
+        return row;
+    }
+
+    /// <summary>岛进度组件勾选变化即时生效（设置页组件中心 → PinsChanged → App 转发）：按最新勾选重建进度面。</summary>
+    public void RefreshComponents() => RefreshBadge();
 
     /// <summary>接入真实聚合（B-504）：极简计数（零值组不显示，§6.2.2）+ 健康环/光晕灯（2026-10-29 UI 升级）
     /// + 离线横幅（§6.2.6）。计数文案格式是 Q 场景 UIA 断言锚（「2 ok」「1 ok · 1 err」），不动。</summary>
@@ -1049,7 +1107,7 @@ public sealed partial class CapsuleWindow : Window
         _ringColor = lightColor;
         if (!_island)
         {
-            // 岛收起态不画环（实机诊断：整环读作 spinner 且与灯点双绿冗余，单灯点+晕扛状态）
+            // 经典形态健康环照旧（岛收起态由进度环/条组件扛状态，ISLAND-RING-1）
             HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, lightColor);
         }
         if (status.Overall > _lastOverall)
@@ -1058,8 +1116,7 @@ public sealed partial class CapsuleWindow : Window
         }
         _lastOverall = status.Overall;
         _abnormalCount = warn + error; // 岛徽标异常计数（未读优先级更高，RefreshBadge 裁决）
-        _badgeSeverity = status.Overall;
-        RefreshBadge();
+        RefreshBadge(); // 岛进度面重建（环色随级别、份额随 ok 占比、计数=未读/异常）
 
         var offline = status.OfflineConnections > 0;
         OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;

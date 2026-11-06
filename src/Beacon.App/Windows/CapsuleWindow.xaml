@@ -47,8 +47,9 @@
                                 <!-- 健康环：ok 份额弧段，环色=聚合级别色（每次 UpdateStatus 重建） -->
                                 <ContentControl x:Name="HealthRing" Width="16" Height="16" VerticalAlignment="Center" IsTabStop="False" />
                                 <!-- 状态灯（微光晕）：外层同色低透明晕 + 核心 Ø8 灯；OverallLight 是 G4/G5 像素锚，元素名与取色链不动。
-                                     初始色由 ctor 代码侧喂 ThemeColors（WinUI 3 无 x:Static，XAML 不落 hex） -->
-                                <Grid Width="16" Height="16" VerticalAlignment="Center">
+                                     初始色由 ctor 代码侧喂 ThemeColors（WinUI 3 无 x:Static，XAML 不落 hex）。
+                                     岛形态整格隐藏（ISLAND-RING-1：环/条组件扛级别色，灯点双显冗余；经典形态照旧） -->
+                                <Grid x:Name="OverallLightHost" Width="16" Height="16" VerticalAlignment="Center">
                                     <Ellipse x:Name="OverallHalo" Width="15" Height="15" />
                                     <Ellipse x:Name="OverallLight" Width="8" Height="8" />
                                 </Grid>
@@ -59,23 +60,15 @@
                                     FontSize="12"
                                     FontWeight="SemiBold"
                                     VerticalAlignment="Center" />
-                                <!-- 悬浮岛徽标（§7 Phase 2）：未读/异常计数（背景色代码侧按所指内容喂：未读=强调色、异常=级别色）；
-                                     经典胶囊形态恒隐藏（RefreshBadge 门控），元素常驻以免形态切换重建树 -->
-                                <Border
-                                    x:Name="IslandBadge"
-                                    CornerRadius="{StaticResource RadiusPill}"
-                                    Padding="7,2"
-                                    MinHeight="17"
+                                <!-- 悬浮岛进度组件（ISLAND-RING-1，2026-11-07 用户令）：进度环/进度条是组件中心里的
+                                     两个组件（island.progressring / island.progressbar，Core 单源），岛显示什么完全由
+                                     勾选状态决定——勾环显环、勾条显条、都勾都显（本控件内容由代码侧按勾选重建）、
+                                     都不勾不显（岛只剩品牌标）。经典胶囊恒隐藏（RefreshBadge 门控） -->
+                                <ContentControl
+                                    x:Name="IslandProgress"
                                     VerticalAlignment="Center"
-                                    Visibility="Collapsed">
-                                    <TextBlock
-                                        x:Name="IslandBadgeCount"
-                                        Text="0"
-                                        FontSize="11"
-                                        FontWeight="SemiBold"
-                                        Foreground="White"
-                                        VerticalAlignment="Center" />
-                                </Border>
+                                    IsTabStop="False"
+                                    Visibility="Collapsed" />
                                 <!-- 品牌标：仅悬浮岛收起态显示（岛收起态计数文本让位给徽标，品牌由词标扛；
                                      经典胶囊计数零值时 "Beacon" 文本本就兼任品牌兜底，不动） -->
                                 <TextBlock

@@ -207,11 +207,13 @@ public partial class App : Application
         {
             lastStates[evt.State.WidgetId] = evt.State; // 窗缺席也留底：后建窗首推即带全量来源预览
             capsule?.NoteFetch(evt.State.FetchedAt);
-            capsule?.UpdateSourcePreview(GroupSourcePreviews(lastStates));
+            capsule?.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, lastStates)); // 勾掉的组件不进岛预览（ISLAND-RING-1）
         }));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.EnqueueGuarded(() =>
         {
-            capsule?.UpdateStatus(status);
+            // 岛/胶囊消费面接组件中心（ISLAND-RING-1 扩围①）：勾掉的组件不进岛的灯/徽标/环/条/横幅
+            //（Core CapsuleAggregateFilter 单源；托盘灯不受影响——聚合链恒走全量）
+            capsule?.UpdateStatus(CapsuleAggregateFilter.Filter(runtime.Config.App, status, lastStates.Values));
             tray.SetSeverity(status.Overall); // 托盘灯/提示不随胶囊窗存废——聚合链恒走
             tray.SetTip(BuildTrayTip(status));
         }));
@@ -364,7 +366,7 @@ public partial class App : Application
             }
             // B-805：调色即时生效——托盘/胶囊/L0 用最新快照按新色表重渲染（UiPalette 实时读 config）
             var snapshot = runtime.Aggregator.Snapshot();
-            capsule?.UpdateStatus(snapshot);
+            capsule?.UpdateStatus(CapsuleAggregateFilter.Filter(appConfig, snapshot, lastStates.Values));
             tray.SetSeverity(snapshot.Overall);
             tray.SetTip(BuildTrayTip(snapshot));
             // L0 重建两宿主各自兜异常：面板重建失败若拖着悬浮窗不重建（或反之），
@@ -403,7 +405,7 @@ public partial class App : Application
                 settingsWindow = new Windows.SettingsWindow(runtime);
                 settingsWindow.Closed += (_, _) => settingsWindow = null;
                 settingsWindow.SettingsApplied += ApplySettingsEffects;
-                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）
+                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); capsule?.RefreshComponents(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）；RefreshComponents：岛进度环/条勾选即时生效（ISLAND-RING-1）
                 settingsWindow.Activate();
                 if (moduleKey is { } key)
                 {
@@ -446,9 +448,9 @@ public partial class App : Application
             }
             if (lastStates.Count > 0)
             {
-                created.UpdateSourcePreview(GroupSourcePreviews(lastStates));
+                created.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, lastStates));
             }
-            created.UpdateStatus(runtime.Aggregator.Snapshot());
+            created.UpdateStatus(CapsuleAggregateFilter.Filter(runtime.Config.App, runtime.Aggregator.Snapshot(), lastStates.Values));
             created.UpdateBadge(runtime.Notifications.UnreadCount);
             return created;
         }
@@ -540,10 +542,12 @@ public partial class App : Application
     }
 
     /// <summary>胶囊悬停预览聚合（2026-10-29 UI 升级）：按来源（QuickPanelFilter 同口径）分组，
-    /// 组内取最差级别及其摘要；排序=最差在前、同档按名序。</summary>
+    /// 组内取最差级别及其摘要；排序=最差在前、同档按名序。组件中心勾掉的组件不进预览（ISLAND-RING-1）。</summary>
     private static List<Windows.CapsuleWindow.SourcePreviewRow> GroupSourcePreviews(
+        AppConfig app,
         IReadOnlyDictionary<string, WidgetState> states)
         => states.Values
+            .Where(state => !ComponentCenterCatalog.IsHidden(app, state.WidgetId))
             .GroupBy(state => QuickPanelFilter.SourceKey(state.WidgetType))
             .Select(group =>
             {

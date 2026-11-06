@@ -24,8 +24,13 @@ public static class ComponentCenterCatalog
     public const string CategoryEvents = "events";
     public const string CategoryQuota = "quota";
     public const string CategoryOther = "other";
+    /// <summary>悬浮岛（ISLAND-RING-1，2026-11-07 用户令）：进度环/进度条是组件中心里的两个组件——
+    /// 岛显示什么完全由勾选状态决定（勾环显环、勾条显条、都勾都显、都不勾不显），无「默认样式」概念。</summary>
+    public const string CategoryIsland = "island";
+    public const string IslandRingId = "island.progressring";
+    public const string IslandBarId = "island.progressbar";
 
-    /// <summary>分组展示序（非空组按此序排，other 恒殿后）；文案与 WidgetTypeNames 同款 Core 中文直配。</summary>
+    /// <summary>分组展示序（非空组按此序排，other 兜底、island 虚拟组殿后——不抢真实组件的列表位置）；文案与 WidgetTypeNames 同款 Core 中文直配。</summary>
     private static readonly (string Key, string DisplayName)[] CategoryOrder =
     [
         (CategoryStatus, "状态监控"),
@@ -33,6 +38,7 @@ public static class ComponentCenterCatalog
         (CategoryEvents, "事件与订阅"),
         (CategoryQuota, "额度与用量"),
         (CategoryOther, "其他"),
+        (CategoryIsland, "悬浮岛"),
     ];
 
     /// <summary>额度/用量类前缀（usage/balance/coding/tokenplan 家族）。</summary>
@@ -51,6 +57,7 @@ public static class ComponentCenterCatalog
             "github" or "jenkins" => CategoryStatus,
             "machine" => CategoryMachine,
             "herald" => CategoryEvents,
+            "island" => CategoryIsland,
             "http" => widgetType.EndsWith(".quota", StringComparison.OrdinalIgnoreCase)
                 ? CategoryQuota
                 : CategoryStatus,
@@ -62,6 +69,8 @@ public static class ComponentCenterCatalog
     public static IReadOnlyList<ComponentCenterGroup> Group(IEnumerable<WidgetConfig> widgets)
     {
         var buckets = new Dictionary<string, List<ComponentCenterItem>>(StringComparer.Ordinal);
+        // 悬浮岛进度组件（虚拟组件）恒在册：零 widget 也出岛组，组件中心里随时可勾
+        buckets[CategoryIsland] = [.. IslandItems];
         foreach (var widget in widgets)
         {
             var category = CategoryOf(widget.Type);
@@ -82,6 +91,20 @@ public static class ComponentCenterCatalog
         }
         return groups;
     }
+
+    /// <summary>悬浮岛进度组件在册条目（虚拟组件：不来自 widgets.json，恒在册不依赖任何连接；
+    /// 勾选显隐与落库走与真实组件同一套 IsHidden/SetVisible → HiddenComponents）。</summary>
+    public static IReadOnlyList<ComponentCenterItem> IslandItems { get; } =
+    [
+        new(IslandRingId, "进度环", IslandRingId, Pinned: false),
+        new(IslandBarId, "进度条", IslandBarId, Pinned: false),
+    ];
+
+    /// <summary>岛进度环组件是否被勾选显示（缺省=显示；勾掉即岛撤环）。</summary>
+    public static bool IslandRingVisible(AppConfig app) => !IsHidden(app, IslandRingId);
+
+    /// <summary>岛进度条组件是否被勾选显示（缺省=显示；勾掉即岛撤条）。</summary>
+    public static bool IslandBarVisible(AppConfig app) => !IsHidden(app, IslandBarId);
 
     /// <summary>组件条目显示名：与 PinTile 标签同源口径——优先用户配置 label/repo/owner，否则类型短名。</summary>
     public static string ItemLabel(WidgetConfig widget)
