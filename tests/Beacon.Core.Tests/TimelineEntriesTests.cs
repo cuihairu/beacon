@@ -93,7 +93,7 @@ public class TimelineEntriesTests
         var at = new DateTimeOffset(2026, 11, 5, 10, 30, 45, TimeSpan.Zero);
         var evt = new BoardEvent(at, State("w-1", "bigmodel.usage", Severity.Error, "quota 95%"), "智谱");
 
-        var row = Assert.Single(TimelineEntries.Board([evt]));
+        var row = Assert.Single(TimelineEntries.Board([evt], now: at));
 
         Assert.Matches(@"^\d{2}:\d{2}:\d{2}$", row.Time);
         Assert.Equal(at.ToLocalTime().ToString("HH:mm:ss"), row.Time);
@@ -102,6 +102,32 @@ public class TimelineEntriesTests
         Assert.Equal("quota 95%", row.Summary);
         Assert.Equal("w-1", row.WidgetId);
         Assert.Same(evt.State, row.State); // 事件时点快照随行（RECENT 单击进 L3 用）
+    }
+
+    [Fact]
+    public void Board_SameDayEvents_ShowTimeOnly()
+    {
+        // 方案 A/B 拍板②：同日条目只显时刻（HH:mm:ss）。now 与事件同一时刻——「同日」判定与宿主时区
+        // 完全无关（两轮评审修复：固定 UTC 时刻在任意 ±offset 宿主都可能跨午夜，同刻构造是唯一可移植面）
+        var at = new DateTimeOffset(2026, 11, 5, 4, 30, 45, TimeSpan.Zero);
+        var evt = new BoardEvent(at, State("w-1", "bigmodel.usage", Severity.Error, "quota"), "智谱");
+
+        var row = Assert.Single(TimelineEntries.Board([evt], now: at));
+
+        Assert.Equal(at.ToLocalTime().ToString("HH:mm:ss"), row.Time);
+    }
+
+    [Fact]
+    public void Board_CrossDayEvents_CarryDate()
+    {
+        // 方案 A 拍板②：跨日条目带日期（「11-06 07:29」口径）——隔天事件读不出日期的缺陷修复
+        var at = new DateTimeOffset(2026, 11, 5, 10, 30, 0, TimeSpan.Zero);
+        var evt = new BoardEvent(at, State("w-1", "bigmodel.usage", Severity.Warning, "quota"), "智谱");
+
+        var row = Assert.Single(TimelineEntries.Board([evt], now: at.AddDays(1)));
+
+        Assert.Equal(at.ToLocalTime().ToString("MM-dd HH:mm"), row.Time);
+        Assert.Matches(@"^\d{2}-\d{2} \d{2}:\d{2}$", row.Time);
     }
 
     [Fact]

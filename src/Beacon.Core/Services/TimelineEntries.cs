@@ -39,23 +39,35 @@ public static class TimelineEntries
     /// 看板事件动态（PANEL-UPGRADE-1 主区，纯函数 Linux 可单测）：来源过滤（QuickPanelFilter 同口径）、
     /// 按时刻降序（输入顺序不作数——面板内存流已新在前，但排序规则收口这里不再重复约定）、
     /// 截到 <paramref name="max"/> 条。行面 时刻/级别/来源/摘要 逐行可读。
+    /// 时刻口径（方案 A 拍板②）：同日只显时刻 HH:mm:ss，跨日带日期 MM-dd HH:mm——隔天事件读不出日期的缺陷修复。
     /// </summary>
     public static IReadOnlyList<BoardTimelineEntry> Board(
         IReadOnlyList<BoardEvent> events,
         string? activeSource = null,
-        int max = BoardMaxEntries)
-        => events
+        int max = BoardMaxEntries,
+        DateTimeOffset? now = null)
+    {
+        var today = (now ?? DateTimeOffset.Now).ToLocalTime().Date;
+        return events
             .Where(evt => QuickPanelFilter.Matches(activeSource, evt.State.WidgetType))
             .OrderByDescending(evt => evt.At)
             .Take(Math.Max(max, 0))
-            .Select(evt => new BoardTimelineEntry(
-                evt.At.ToLocalTime().ToString("HH:mm:ss"),
-                evt.State.Severity,
-                evt.Source,
-                evt.State.Summary,
-                evt.State.WidgetId,
-                evt.State))
+            .Select(evt =>
+            {
+                var local = evt.At.ToLocalTime();
+                var time = local.Date == today
+                    ? local.ToString("HH:mm:ss")
+                    : local.ToString("MM-dd HH:mm");
+                return new BoardTimelineEntry(
+                    time,
+                    evt.State.Severity,
+                    evt.Source,
+                    evt.State.Summary,
+                    evt.State.WidgetId,
+                    evt.State);
+            })
             .ToList();
+    }
 }
 
 /// <summary>时间线单条目（本地化时刻 · 级别 · 摘要 · 已读位）。</summary>
