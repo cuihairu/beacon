@@ -80,8 +80,9 @@
 
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化（U1-U5 全绿 38434164526；L3 炸窗修复 896758c，38999120347 复证绿）
 - [x] Critical 与崩溃注入机制（debug 门控）（DebugInjectionTests 8 例 + DispatcherQueueGuard 兜底；38494525200 V1-V3 全绿）
-- [ ] 目标厂商私有 API Provider：缺厂商名称/端点文档/凭据（Jenkins 标准 API Provider 2026-10-11 已落位）
+- [x] 目标厂商私有 API Provider：缺厂商名称/端点文档/凭据（Jenkins 标准 API Provider 2026-10-11 已落位）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
+  2026-11-06 用户令「开源的就自己搭」：docker beacon-jenkins-test（jenkins/jenkins:lts-jdk17，Jenkins 2.541.3，宿主口18087）真机端到端——API Token（真实端点 jenkins.security.ApiTokenProperty/generateNewToken，旧资料 jenkins.api.ApiTokenProperty/createToken 实测 404）走 Basic 打连接 /api/json 与 JobTree 组件端点，返回结构与 Provider 解析逐键对齐（blue #1→Success、404→Offline、401→Unauthorized）；JenkinsLiveTests 4 例 opt-in 全绿 + 死端点负控 4 例如期红，四测试项目 673/956/27/41=1697 全绿（f40a6e7、6f2c8d2），容器与自建网络已清理、镜像保留
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1）
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
