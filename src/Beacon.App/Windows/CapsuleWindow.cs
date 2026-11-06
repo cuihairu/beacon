@@ -68,6 +68,13 @@ public sealed partial class CapsuleWindow : Window
     private IntPtr _foregroundHook;
     private double _islandWidthDips; // 岛曲面宽（DIP）：MeasureSizePx 记账 → 预览 MaxWidth/曲面宽共用
     private int _morphGeneration; // 收起动效代际：重新悬停/拖动即作废未落定的收面回调（防悬停打断后仍被收掉）
+    /// <summary>取证钩子（BEACON_DEBUG_ISLAND_PREVIEW=1，与 App 的 BEACON_DEBUG_CRASH 同族）：
+    /// 锁屏/无头装机演练注入不了真实指针，置此变量后首次拿到预览行即自动展开一次，
+    /// 供三态截图取证；不设变量时行为逐字节不动，不进设置 UI。</summary>
+    private static readonly bool IslandPreviewProbe =
+        string.Equals(Environment.GetEnvironmentVariable("BEACON_DEBUG_ISLAND_PREVIEW"), "1", StringComparison.Ordinal);
+
+    private bool _previewProbeShown; // 钩子只展开一次（后续行变化不再反复弹）
 
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
@@ -103,7 +110,46 @@ public sealed partial class CapsuleWindow : Window
         };
     }
 
+    /// <summary>启动期定位痕迹（USER-RPT-4 取证用）：把关键步骤与异常栈写进
+    /// %APPDATA%\Beacon\logs\island-trace.txt——WinUI UnhandledException 拿到的
+    /// InvalidCastException 常无栈，在抛出点就地捕获才能留下托管栈。</summary>
+    private static void IslandTrace(string message)
+    {
+        try
+        {
+            // System.IO.Path 与 Microsoft.UI.Xaml.Shapes.Path 同名（本文件 using Shapes）→ 显式限定
+            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Beacon", "logs");
+            Directory.CreateDirectory(dir);
+            var file = System.IO.Path.Combine(dir, "island-trace.txt");
+            // 轮转：悬停开合每次都落一行，超 64KB 从头截断，痕迹文件永不撑盘
+            if (File.Exists(file) && new FileInfo(file).Length > 64 * 1024)
+            {
+                File.Delete(file);
+            }
+
+            File.AppendAllText(file, $"{DateTimeOffset.Now:HH:mm:ss.fff} {message}\n");
+        }
+        catch
+        {
+            // 痕迹写失败绝不反噬常驻应用
+        }
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            OnLoadedCore(e);
+            IslandTrace("OnLoaded OK");
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"OnLoaded FAILED\n{ex}");
+            throw;
+        }
+    }
+
+    private void OnLoadedCore(RoutedEventArgs e)
     {
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd);
@@ -677,7 +723,9 @@ public sealed partial class CapsuleWindow : Window
         }
         if (_island)
         {
-            RootBorder.Background = new SolidColorBrush(ThemeColors.IslandPill());
+            // 底色交给曲面 Path（否则 Border 的矩形底会把肩部/底角的轮廓填平，岛退化成方块——
+            // 真机实测：矩形底 + 同色曲面叠加后四边全直，肩部完全看不见）
+            RootBorder.Background = null; // 无底色：曲面填充只由 IslandSurface 画（Background 可空，切回经典由快照还原）
             RootBorder.BorderBrush = new SolidColorBrush(ThemeColors.IslandHairline());
             // 药丸画法退场：曲面由 IslandSurface 单路径自绘（顶缘贴屏满宽 + 肩部 + 底角12），
             // 描边/圆角/内边距全从 Border 移走——Path 是 Border 的子元素，Border 若留圆角会把贴顶两角裁掉，
@@ -725,6 +773,19 @@ public sealed partial class CapsuleWindow : Window
     /// RootBorder.SizeChanged 每次触发（展开/切形态/换 DPI），经典形态与未就绪早退。</summary>
     private void UpdateSurfaceOutline()
     {
+        try
+        {
+            UpdateSurfaceOutlineCore();
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"UpdateSurfaceOutline FAILED\n{ex}");
+            throw;
+        }
+    }
+
+    private void UpdateSurfaceOutlineCore()
+    {
         if (!_island || IslandSurface.Visibility != Visibility.Visible)
         {
             return;
@@ -766,6 +827,13 @@ public sealed partial class CapsuleWindow : Window
         var geometry = new PathGeometry();
         geometry.Figures.Add(figure);
         IslandSurface.Data = geometry;
+        IslandTrace($"outline {width}x{height} segs={figure.Segments.Count} " +
+            $"row={PillRow.ActualWidth}x{PillRow.ActualHeight} " +
+            $"pill={PillArea.ActualWidth}x{PillArea.ActualHeight} " +
+            $"stack={SurfaceStack.ActualWidth} margin={SurfaceStack.Margin} " +
+            $"brand={BrandMark.Visibility}/{BrandMark.ActualWidth} " +
+            $"count={CountText.Visibility} badge={IslandBadge.Visibility}/{IslandBadge.ActualWidth} " +
+            $"align={PillRow.HorizontalAlignment} root={Root.ActualWidth}x{Root.ActualHeight}");
 
         static global::Windows.Foundation.Point ToPoint(IslandSurfaceOutline.Point p) => new(p.X, p.Y);
     }
@@ -951,6 +1019,12 @@ public sealed partial class CapsuleWindow : Window
         {
             RebuildPreview();
             ApplySize(); // 行数变化窗高随之（贴锚点）
+        }
+
+        if (IslandPreviewProbe && !_previewProbeShown && _island && _previewRows.Count > 0 && !_dragging)
+        {
+            _previewProbeShown = true;
+            ShowPreview(); // 取证钩子：锁屏会话注入不了指针，展开态只能程序触发（见字段注释）
         }
     }
 }

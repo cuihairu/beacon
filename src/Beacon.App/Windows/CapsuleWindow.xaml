@@ -3,6 +3,7 @@
     x:Class="Beacon.App.Windows.CapsuleWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Beacon.App.Windows"
     Title="Beacon Status">
     <!-- RFC §6.2.2 形态规范：高 32 DIP、宽随内容、圆角胶囊、亚克力/半透明、随主题；
          构成 = 健康环 + 状态灯（微光晕）+ 极简计数（无正文文字）；离线降级见 §6.2.6（灰空心灯 + Last update）。
@@ -25,8 +26,10 @@
                 BorderThickness="1"
                 Padding="12,5">
                 <Grid>
-                    <!-- 岛曲面（岛形态才可见；代码侧按 ActualWidth/Height 从 IslandSurfaceOutline 生成） -->
-                    <Path x:Name="IslandSurface" Visibility="Collapsed" Stretch="None" />
+                    <!-- 岛曲面（岛形态才可见；代码侧按 ActualWidth/Height 从 IslandSurfaceOutline 生成）。
+                         必须用 IslandSurfacePath：普通 Path 的 Data 边界+描边会参与测量，把父 Grid 越撑越大（测量反馈环）；
+                         该子类 Measure恒0，曲面只画不占位，也不吃指针事件 -->
+                    <local:IslandSurfacePath x:Name="IslandSurface" Visibility="Collapsed" Stretch="None" IsHitTestVisible="False" />
                     <StackPanel x:Name="SurfaceStack" Spacing="4">
                         <!-- 收起态行（高 32 的行容器）：经典 = 透明 0 边距（观感同旧） -->
                         <Border x:Name="PillArea" Padding="0">
@@ -81,7 +84,7 @@
                              宽上限由代码侧按曲面宽-两侧内缩喂（行在曲面内裁尾，不越出岛缘） -->
                         <Border
                             x:Name="SourcePreview"
-                            CornerRadius="{ThemeResource RadiusInner}"
+                            CornerRadius="{StaticResource RadiusInner}"
                             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
@@ -93,7 +96,7 @@
             <!-- 离线横幅：灰空心灯 + Last update（§4.1 Offline 灰空心），主题化半透明底 -->
             <Border
                 x:Name="OfflineBanner"
-                CornerRadius="{ThemeResource RadiusInner}"
+                CornerRadius="{StaticResource RadiusInner}"
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
