@@ -53,16 +53,20 @@ internal static class RingProgressBadge
                 StartPoint = new global::Windows.Foundation.Point(center, center - radius),
                 IsClosed = false,
             };
-            figure.Segments.Add(new ArcSegment(
-                new global::Windows.Foundation.Point(center - radius * Math.Sin(angle), center - radius * Math.Cos(angle)),
-                new global::Windows.Foundation.Size(radius, radius),
-                0,
-                fraction > 0.5, // 大弧标志按过半翻转：ArcSegment 恒走劣弧除非显式要优弧
-                SweepDirection.Counterclockwise,
-                true));
+            // WinUI 的 ArcSegment 没有 WPF 的 6 参构造（CS1729，CI 42281360170 实证）——属性初始化器逐项设
+            figure.Segments.Add(new ArcSegment
+            {
+                Point = new global::Windows.Foundation.Point(center - radius * Math.Sin(angle), center - radius * Math.Cos(angle)),
+                Size = new global::Windows.Foundation.Size(radius, radius),
+                RotationAngle = 0,
+                IsLargeArc = fraction > 0.5, // 大弧标志按过半翻转：ArcSegment 恒走劣弧除非显式要优弧
+                SweepDirection = SweepDirection.Counterclockwise,
+                IsStroked = true,
+            });
             var geometry = new PathGeometry();
             geometry.Figures.Add(figure);
-            host.Children.Add(new Path
+            // System.IO.Path 与 XAML Shapes.Path 同名（CS0104）——本文件只用形状 Path，显式限定
+            host.Children.Add(new Microsoft.UI.Xaml.Shapes.Path
             {
                 Data = geometry,
                 Stroke = new SolidColorBrush(arcColor),
