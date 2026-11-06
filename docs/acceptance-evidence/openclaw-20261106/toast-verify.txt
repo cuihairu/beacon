@@ -1,0 +1,16 @@
+﻿start 2026-11-06T13:12:45
+shot taken 2026-11-06T13:12:55
+balloon lines:
+
+C:\Users\Administrator\AppData\Roaming\Beacon\logs\beacon-20261106.log:1:12:38:37.251 [Information] Beacon.App.Services
+.TrayIconService: Balloon dispatched: Beacon - 已启动并常驻托盘——状态胶囊在屏幕右下角，点胶囊或托盘图标打开面板。
+C:\Users\Administrator\AppData\Roaming\Beacon\logs\beacon-20261106.log:4:12:57:01.552 [Information] Beacon.App.Services
+.TrayIconService: Balloon dispatched: Beacon - 已启动并常驻托盘——状态胶囊在屏幕右下角，点胶囊或托盘图标打开面板。
+C:\Users\Administrator\AppData\Roaming\Beacon\logs\beacon-20261106.log:8:13:12:47.339 [Information] Beacon.App.App: Sec
+ondary instance exit.
+C:\Users\Administrator\AppData\Roaming\Beacon\logs\beacon-20261106.log:9:13:12:47.343 [Information] Beacon.App.Services
+.TrayIconService: Balloon dispatched: Beacon - Beacon 已在运行。
+
+
+
+done 2026-11-06T13:12:55

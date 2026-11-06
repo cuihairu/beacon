@@ -1,0 +1,15 @@
+﻿   at Beacon.Core.Services.WidgetHost.TryRefreshOneAsync(String widgetId, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 218
+13:40:45.006 [Warning] Beacon.App.App: Refresh group gh-test/default failed (streak 2).
+Beacon.Core.Models.ConnectionException: All 1 widget(s) in group gh-test/default failed to refresh.
+   at Beacon.Core.Services.WidgetHost.OnGroupRefreshAsync(RefreshRequest request, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 190
+   at Beacon.Core.Services.RefreshScheduler.RunLoopAsync(GroupState group, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\RefreshScheduler.cs:line 190
+13:42:23.944 [Warning] Beacon.App.App: Widget w-gh-1 refresh failed: Offline.
+Beacon.Core.Models.ConnectionException: GitHub rate limit 鑰楀敖 (403)銆?
+   at Beacon.Connections.GitHubApiClient.HandleStatusAsync(HttpResponseMessage response, String resource, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubApiClient.cs:line 163
+   at Beacon.Connections.GitHubApiClient.GetAsync(String path, String query, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubApiClient.cs:line 81
+   at Beacon.Connections.GitHubActionsProvider.GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubActionsProvider.cs:line 31
+   at Beacon.Core.Services.WidgetHost.TryRefreshOneAsync(String widgetId, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 218
+13:42:23.947 [Warning] Beacon.App.App: Refresh group gh-test/default failed (streak 3).
+Beacon.Core.Models.ConnectionException: All 1 widget(s) in group gh-test/default failed to refresh.
+   at Beacon.Core.Services.WidgetHost.OnGroupRefreshAsync(RefreshRequest request, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 190
+   at Beacon.Core.Services.RefreshScheduler.RunLoopAsync(GroupState group, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\RefreshScheduler.cs:line 190

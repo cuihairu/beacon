@@ -1,0 +1,3 @@
+﻿2026-11-06T12:56:50 beacon=none parent= session= explorer=
+2026-11-06T13:01:24 beacon=208 parent=explorer(9392) session=2 explorer=
+shot saved window=174x38

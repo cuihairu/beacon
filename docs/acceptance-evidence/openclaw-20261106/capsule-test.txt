@@ -1,0 +1,5 @@
+﻿start 2026-11-06T13:51:36
+fg after ESC: '管理员: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.EXE'
+fg before capsule click: 'C:\Windows\System32\wsl.exe'
+fg after capsule click: 'C:\Windows\System32\wsl.exe'
+done 2026-11-06T13:51:44

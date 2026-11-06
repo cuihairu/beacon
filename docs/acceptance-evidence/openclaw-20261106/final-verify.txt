@@ -1,0 +1,6 @@
+﻿start 2026-11-06T13:47:15
+palette reset
+fg before click: 'Beacon 快速面板'
+fg after click: 'Beacon 快速面板'
+tile click fg: 'Beacon 快速面板' -> 'Beacon 快速面板'
+done 2026-11-06T13:48:36

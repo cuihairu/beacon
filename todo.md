@@ -36,17 +36,17 @@
 - [x] 真实仓库手动验证运行中到终态全程可见（可造数据桩驱动 provider 渲染翻转替代，GitHubPublicApiLiveTests.Item4，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 2 例）
 - [x] 确认弹窗可关（场景 U3/U4 已代验）
-- [ ] Toast 发送、点击、激活路由实机验证：需 Windows 通知中心与真人点击（AUMID 自愈已有场景 F5t 证据 38494525200）
+- [ ] Toast 发送、点击、激活路由实机验证：发送+呈现半 2026-11-06 openclaw 实测 PASS——二次启动→Balloon dispatched（beacon-20261106.log 13:12:47）→横幅实拍 `openclaw-20261106/banner-t2.png`「Beacon 已在运行。」+通知中心两条 Beacon 通知 `notification-center.png`；AUMID 自愈已有场景 F5t 证据 38494525200；**仍 OPEN：带 detailUrl 状态 Toast 的真人点击→激活路由**（匿名 GitHub 恒 403 无法稳定复现 Failed 态）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 规则引擎表驱动单测含冷却（NotificationEngineTests 17 例）
 - [x] 注入 Failed 状态收到且仅收到一条 Toast（NotificationEngineTests 17 例 + 场景 F5 恰 1 条硬断言）
-- [ ] 托盘图标颜色/状态像素与刷新周期实机验证：需 Windows 通知区截图（tile 更新已有场景 G7a 证据）
+- [x] 托盘图标颜色/状态像素与刷新周期实机验证：2026-11-06 openclaw 实测——同位两态像素差分 Success 绿 RGB(62,185,80)↔Warning 琥珀 RGB(209,152,33)（其余托盘图标逐像素不变，`openclaw-20261106/tray-green.png` vs `tray-e2.png`）；刷新周期 30s 档实测（state-logtail.txt 两次刷新间隔+Last update 随刷新走）；图标在托盘可见区直接显示不进溢出；tile 更新已有场景 G7a 证据
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 断网显示 Offline+时间；计数与实际 Widget 状态一致（场景 F2/O/Q 三面已代验）
 - [x] 打开 <100ms（缓存优先无网络等待）；键盘可完整操作关闭（BeaconRuntime.cs:27,113 + QuickPanelWindow.cs:116-118，run 38743014862）
 - [x] 计数/事件与状态一致；右键 Pin 落库（场景 O/S/X1 已代验，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 + U1-U5 已代验）
-- [ ] 跨进程点击穿透/焦点行为实测：需真实 Windows 桌面（行 69 已裁定不自加整窗穿透）
+- [ ] 跨进程点击穿透/焦点行为实测：焦点面 2026-11-06 openclaw 真实点击实测 PASS——点胶囊唤起看板前台不变（fg 保持 wsl.exe，`capsule-test.txt`+`board-opened.png`）、ESC 关面板（RFC §6.2.7 ②真机复证）；结构面 PASS（无 WS_EX_APPWINDOW、状态翻转前台不变，.5 批）；**仍 OPEN：tile 收起态点击穿透到下层窗口场景**（行 69 已裁定不自加整窗穿透）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a + H WS_EX_TOOLWINDOW 已代验）
 - [x] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（悬浮形态为主 2026-10-18 裁定；场景 H/H6 已代验，38750239155）
@@ -57,9 +57,9 @@
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 自愈已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（场景 V1/V2/V4 已代验，38459944253/38661655290）
-- [ ] RFC §6.2.7 四项真人操作与真实网络环境验收：缺可交互 Windows 装机会话
+- [ ] RFC §6.2.7 四项真人操作与真实网络环境验收：②不抢焦点 2026-11-06 openclaw 真实点击复证（点胶囊唤起看板前台不变，`openclaw-20261106/` 批）；①下钻 PASS（UIA Invoke 时间线行→L3）④不进任务栏/Alt-Tab PASS（.5 批）；③动作面清单待补、真人操作仍待装机
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
-- [ ] tile 与胶囊改色/重置托盘图标同步：需 Windows 通知区像素实测（改色/重置已有 G4/G5、38953986133 证据）
+- [x] tile 与胶囊改色/重置托盘图标同步：2026-11-06 openclaw 实测——`severityColors.warning=#ff00ff` 重启后 warning 态托盘圆点渲染品红 RGB(206,0,206)（`openclaw-20261106/mag-tray-8.png` 16 帧稳定），删键重置后默认色表恢复（`tray-after-reset.png`）；B-706 运行时绘制链真机复证；改色/重置已有 G4/G5、38953986133 证据
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验）
 - [x] 非法颜色值回退默认色不崩溃；重启后保持（场景 G2 已代验）
@@ -88,7 +88,7 @@
 
 ## MVP 验收标准（master-plan §14，8 项 = 5 勾 / 3 未勾，需真实装机验证）
 
-- [ ] explorer 登录会话调度实机验证：需 Windows 注销/登录实机（Run 注册表值已有 M3 证据 38761946476）
+- [x] explorer 登录会话调度实机验证：Run 键已有 M3 证据 38761946476；登录循环 2026-11-06 openclaw 实测——注销（4647 @12:39:31）→交互登录（4624 type=2 @12:56:37）→explorer 9392 拉起 Beacon pid 208（logon-probe.txt：`beacon=208 parent=explorer(9392) session=2`，命令行即 Run 键值）；证据 `docs/acceptance-evidence/openclaw-20261106/logon-probe.txt`、`2026-11-06-openclaw-realmachine.md` §1（首条探测 beacon=none 系 ONLOGON 探测早于 Run 键发射，如实记录）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [ ] 更长时稳定与胶囊视觉观感实机观察：需 Windows 实机持续运行（托盘驻留与 15min 浸泡已有 E2/E3、AD 证据 39057049259）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
@@ -192,23 +192,24 @@
 
 - [x] PANEL-UPGRADE-1 [P1] 快捷面板升级为看板：默认尺寸放大（目标 ~720x560，可调可记忆），事件动态（时间线）成为主区——时间/级别/来源/摘要逐行可读，条数放宽（现 8 条上限重新评估），头部 OverallSummary 与来源过滤保留；悬浮岛/胶囊点击唤起目标同步指向看板；字体与行距按可读性重排；设置项若涉尺寸记忆走 shell-state 惯例。
   - 验收: Core 侧筛选/聚合逻辑单测（TimelineEntriesTests 含 `Assert.Same(evt.State,row.State)`，72a99cb）；CI windows-latest 出看板截图（nightly run **41981480531** @`06134d1` 的 visual-evidence 工件 `K-panel-open-offline.png`：720x560 看板 + EVENT TIMELINE 主区 + 右副栏三段）；真机人工核验可读性（2026-11-06 .5 真机 `docs/acceptance-evidence/board-default-720x560.png`：客户区实测 720x560、时间线 7 行时刻/级别/来源/摘要逐行可读、25 条事件在列、头部 `2 警告 · 0 错误` 与概览过滤卡保留；UIA `Transform.Resize` 736x576→856x666、重启后尺寸/位置还原 720x560@(1160,316)）。
-  - 剩余（非验收口径，锁屏会话待复测）：头部把手鼠标拖动、边框鼠标拖拽、胶囊点击唤起看板三小项——合成输入到不了窗口（前台=锁屏），证据与理由见 `docs/acceptance-evidence/2026-11-06-realmachine.md`；另发现右副栏（通知/需要关注）行文本右缘截断，建议后续换行/Tooltip（本轮只记录不改码）。
+  - 剩余（非验收口径）：胶囊点击唤起看板 2026-11-06 openclaw 解锁会话实测 PASS（ESC 关→点胶囊→看板重开且前台不变，`openclaw-20261106/board-closed.png`/`board-opened.png`+`capsule-test.txt`）；头部把手鼠标拖动、边框鼠标拖拽两小项仍 OPEN（合成拖拽未做）；另发现右副栏（通知/需要关注）行文本右缘截断，建议后续换行/Tooltip（前轮记录不改码）。
   - 方案 B 重设计落地（2026-11-11 用户拍板主从反转、弃方案 A；原型 ~/beacon-board-redesign/board-redesign.html）：左「现在」296px 固定列（聚合灯+OverallSummary 打头、需要关注告警项列表占最大视觉权重、概览来源卡收底）+ 右时间线主区（rail 时间轴、跨日条目带日期 MM-dd HH:mm）与通知段；通知/状态三处 MaxHeight 硬顶消除改段内滚动；空态文案三处（暂无事件/通知已全部已读/无匹配+清除筛选）；把手点阵 affordance 悬停转品牌色；品牌 #d4234a 进 ThemeColors.Brand（级别色仍走 PaletteResolver）；状态脚条（运行中/正常计数+拖动/调尺寸/ESC 提示）；最小宽 360→520（固定左列）。CI/UIA 锚零迁移：AttentionList/RecentList/NotificationList/chip-*/W1 三文案全部保留，visual-evidence 断言零改动；悬浮岛唤起链（CapsuleWindow.OpenPanelRequested→quickPanel.Toggle）与设置开关即时生效路径未动。
 
 ## 真机验证批 2026-11-06（19 开项逐项处置，证据 docs/acceptance-evidence/2026-11-06-realmachine.md）
 
 > 机器：10.240.0.5（Win11 26H2，1920×1080 @100% 单屏）；构建：`origin/main` `56e4f27` 现场 publish（`2026.11.6+56e4f27…`）。
+> 续批（同日）：openclaw（10.240.0.3，Server 2022，解锁交互会话）完成 explorer 登录循环与 Toast/托盘/改色/唤起真机收尾，证据 `docs/acceptance-evidence/openclaw-20261106/` 与 `2026-11-06-openclaw-realmachine.md`；下表 :39/:43/:49/:62/:90/面板剩余 行已按续批更新。
 > 取证口径：该机控制台**锁屏**（前台=Windows 默认锁屏界面）→ 整屏 `CopyFromScreen` 只得壁纸帧（红标记窗在屏而截图红像素=0）、
 > 合成鼠标键盘到不了窗口；故截图一律 `PrintWindow`、交互一律 UIA/`PostMessage`。需真人解锁会话的项标 `OPEN(锁屏)`，不冒充已验。
 
 | todo 行 | 项 | 结论 |
 |---|---|---|
 | :33 | URL 端到端打开 | ✅ 已勾（见上） |
-| :39 | Toast 发送/点击/激活 | ◐ 发送半 PASS（notifications.json 记录含 detailUrl、AUMID 在案、日志 0 条发送失败）；横幅呈现与点击路由 OPEN(锁屏) |
-| :43 | 托盘图标颜色/刷新周期 | ◐ TrayNotifyWnd 两态差分 189px（15s 轮询 + 40s 窗口内）；簇归属与溢出区展开 OPEN(锁屏)，CI G4/G5/G7a 仍为像素口径证据 |
-| :49 | 跨进程点击穿透/焦点 | ◐ 结构面 PASS（无 WS_EX_APPWINDOW、状态翻转前台不变）；真实点击到下层窗口 OPEN(锁屏) |
-| :62 | tile/胶囊改色→托盘同步 | ◐ 改色半 PASS（docs/img/config-effects/severity-color-warning-*）；托盘半同 :43 |
-| :90 | explorer 登录会话调度 | ◐ 会话内 PASS（Run 键写入/清空、explorer.exe 拉起 pid=14236 父进程 explorer 会话 1）；真实注销/重登 OPEN（2026-10-30 决策 13 不擅自注销用户） |
+| :39 | Toast 发送/点击/激活 | ◐→发送+呈现半 PASS 补强（openclaw 批：Balloon dispatched + 横幅实拍 banner-t2.png + 通知中心两条 Beacon 通知）；点击激活路由 OPEN（缺 Failed 态凭据面） |
+| :43 | 托盘图标颜色/刷新周期 | ✅ 已勾（openclaw 批：同位两态像素差分绿↔琥珀、30s 档刷新实测、图标不进溢出） |
+| :49 | 跨进程点击穿透/焦点 | ◐→焦点面真机 PASS 补强（openclaw 批：点胶囊唤起看板前台不变、ESC 关面板）；收起态穿透到下层窗口 OPEN |
+| :62 | tile/胶囊改色→托盘同步 | ✅ 已勾（openclaw 批：warning=#ff00ff → 托盘圆点品红 RGB(206,0,206)，重置复原） |
+| :90 | explorer 登录会话调度 | ✅ 已勾（2026-11-06 openclaw 真实注销→登录循环，4624 type=2 → explorer 拉起 Beacon pid 208，见 openclaw-20261106/ 批） |
 | :92 | 长时稳定观察 | ◐ soak-log.csv 60s 采样（09:53 起，计划 8h）：单进程、163MB/1351 句柄平稳、无重复进程；4h 口径未满 |
 | :112 | 模板尺寸裁切复核 | ⬜ 本轮未执行（组件中心 UIA 链 CI 场景 AE 已可复用） |
 | :184 | 重启恢复 + DPI 拖动 | ◐ 重启还原 PASS（看板 720x560@(1160,316) 前后一致）；DPI 切换/拖动 OPEN(锁屏+单屏) |
@@ -220,7 +221,7 @@
 | :19 | 跨 DPI 拖动（MVP 行 19） | ⬜ OPEN(单屏) |
 | :83 | 目标厂商私有 API | ⬜ BLOCKED：缺厂商名/端点/凭据（2026-10-30 决策 12 输入表未收齐） |
 | :95 | 真实 GitHub PAT 全链 | ⬜ BLOCKED：需用户本地录入授权测试仓库的令牌（决策 15：无用户输入保持阻塞，不用 mock 勾选） |
-| 面板剩余 | 面板把手拖动/边框拖拽/胶囊唤起看板 | ⬜ OPEN(锁屏)，见 PANEL-UPGRADE-1 剩余行 |
+| 面板剩余 | 面板把手拖动/边框拖拽/胶囊唤起看板 | ◐ 胶囊唤起看板 PASS（openclaw 批解锁会话）；把手拖动/边框拖拽 OPEN，见 PANEL-UPGRADE-1 剩余行 |
 
 ## 待派工
 

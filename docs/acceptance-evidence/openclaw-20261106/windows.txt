@@ -1,0 +1,4 @@
+﻿Beacon.App pid=208 hwnd=197950 class='WinUIDesktopWin32WindowClass' title='Beacon Pinned' rect=(2362,96,174,38)
+Beacon.App pid=208 hwnd=66948 class='WinUIDesktopWin32WindowClass' title='Beacon Status' rect=(2420,1266,116,38)
+explorer pid=9392 hwnd=65870 class='Shell_TrayWnd' title='' rect=(0,1400,2560,40)
+explorer pid=9392 hwnd=65966 class='Progman' title='Program Manager' rect=(0,0,2560,1440)

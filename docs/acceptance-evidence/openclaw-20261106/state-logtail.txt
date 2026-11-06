@@ -1,0 +1,30 @@
+﻿13:12:47.339 [Information] Beacon.App.App: Secondary instance exit.
+13:12:47.343 [Information] Beacon.App.Services.TrayIconService: Balloon dispatched: Beacon - Beacon 宸插湪杩愯銆?
+13:17:42.655 [Information] Beacon.App.Services.TrayIconService: Balloon dispatched: Beacon - Beacon 宸插湪杩愯銆?
+13:17:42.658 [Information] Beacon.App.App: Secondary instance exit.
+13:20:18.153 [Information] Beacon.App.Services.TrayIconService: Balloon dispatched: Beacon - 宸插惎鍔ㄥ苟甯搁┗鎵樼洏鈥斺€旂姸鎬佽兌鍥婂湪灞忓箷鍙充笅瑙掞紝鐐硅兌鍥婃垨鎵樼洏鍥炬爣鎵撳紑闈㈡澘銆?
+13:20:18.319 [Information] Beacon.App.App: 璋冨害鍚姩锛氬叏灞€妫€鏌ラ鐜?0s锛?=鎸夋。浣嶏級锛岀粍浠?0 涓€?
+13:20:18.392 [Information] Beacon.App.App: Beacon started (tray resident, no main window).
+13:20:38.933 [Warning] Beacon.App.App: 妫€鏌ユ洿鏂板け璐ワ細HTTP 403锛堥檺娴佹垨缃戠粶闂锛夛紝body 鍓?200 瀛楋細{"message":"API rate limit exceeded for 47.129.36.95. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)","documentation_url":"ht
+13:25:27.957 [Information] Beacon.App.Services.TrayIconService: Balloon dispatched: Beacon - 宸插惎鍔ㄥ苟甯搁┗鎵樼洏鈥斺€旂姸鎬佽兌鍥婂湪灞忓箷鍙充笅瑙掞紝鐐硅兌鍥婃垨鎵樼洏鍥炬爣鎵撳紑闈㈡澘銆?
+13:25:28.131 [Information] Beacon.App.App: 璋冨害鍚姩锛氬叏灞€妫€鏌ラ鐜?0s锛?=鎸夋。浣嶏級锛岀粍浠?1 涓€?
+13:25:28.179 [Warning] Beacon.App.App: Widget w-gh-1 refresh failed: Degraded.
+Beacon.Core.Models.ConnectionException: Widget w-gh-1 缂哄皯閰嶇疆椤?workflow銆?
+   at Beacon.Connections.GitHubPullRequestsProvider.RequireConfig(WidgetConfig widget, String key) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubPullRequestsProvider.cs:line 147
+   at Beacon.Connections.GitHubActionsProvider.GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubActionsProvider.cs:line 26
+   at Beacon.Core.Services.WidgetHost.TryRefreshOneAsync(String widgetId, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 218
+13:25:28.295 [Information] Beacon.App.App: Beacon started (tray resident, no main window).
+13:25:28.332 [Warning] Beacon.App.App: Refresh group gh-test/default failed (streak 1).
+Beacon.Core.Models.ConnectionException: All 1 widget(s) in group gh-test/default failed to refresh.
+   at Beacon.Core.Services.WidgetHost.OnGroupRefreshAsync(RefreshRequest request, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 190
+   at Beacon.Core.Services.RefreshScheduler.RunLoopAsync(GroupState group, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\RefreshScheduler.cs:line 190
+13:25:48.888 [Warning] Beacon.App.App: 妫€鏌ユ洿鏂板け璐ワ細HTTP 403锛堥檺娴佹垨缃戠粶闂锛夛紝body 鍓?200 瀛楋細{"message":"API rate limit exceeded for 18.142.239.149. (But here's the good news: Authenticated requests get a higher rate limit. Check out the documentation for more details.)","documentation_url":"
+13:26:28.659 [Warning] Beacon.App.App: Widget w-gh-1 refresh failed: Degraded.
+Beacon.Core.Models.ConnectionException: Widget w-gh-1 缂哄皯閰嶇疆椤?workflow銆?
+   at Beacon.Connections.GitHubPullRequestsProvider.RequireConfig(WidgetConfig widget, String key) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubPullRequestsProvider.cs:line 147
+   at Beacon.Connections.GitHubActionsProvider.GetStateAsync(WidgetConfig widget, ConnectionConfig connection, ConnectionContext context, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Connections\GitHubActionsProvider.cs:line 26
+   at Beacon.Core.Services.WidgetHost.TryRefreshOneAsync(String widgetId, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 218
+13:26:28.660 [Warning] Beacon.App.App: Refresh group gh-test/default failed (streak 2).
+Beacon.Core.Models.ConnectionException: All 1 widget(s) in group gh-test/default failed to refresh.
+   at Beacon.Core.Services.WidgetHost.OnGroupRefreshAsync(RefreshRequest request, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\WidgetHost.cs:line 190
+   at Beacon.Core.Services.RefreshScheduler.RunLoopAsync(GroupState group, CancellationToken cancellationToken) in D:\a\beacon\beacon\src\Beacon.Core\Services\RefreshScheduler.cs:line 190

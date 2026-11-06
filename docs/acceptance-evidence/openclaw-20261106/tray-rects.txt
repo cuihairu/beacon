@@ -1,0 +1,1 @@
+﻿TrayNotifyWnd rect=(2112,1400,448,40)
