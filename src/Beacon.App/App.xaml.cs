@@ -239,9 +239,9 @@ public partial class App : Application
         // 胶囊窗懒建口径：showCapsule=false（CI 缺省）零置顶窗；EnsureCapsule 内已做初值
         // 渲染（快照+徽标），此处不再重复推。
         var snapshot = runtime.Aggregator.Snapshot();
-        if (runtime.Config.App.ShowCapsule)
+        if (runtime.Config.App.ShowCapsule || runtime.Config.App.CapsuleIsland)
         {
-            EnsureCapsule();
+            EnsureCapsule(); // 岛开也建窗（悬浮岛是胶囊窗形态，独立于 showCapsule）
         }
         else
         {
@@ -333,8 +333,10 @@ public partial class App : Application
             }
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
             // 胶囊窗懒建开关即时生效（回归修复口径）：开=EnsureCapsule 即建即显；关=彻底 Close 摘除
-            // 置顶窗（再开再建，位置走持久化布局）。悬浮岛仍是形态开关（SetIslandMode），不独立建窗。
-            if (appConfig.ShowCapsule)
+            // 置顶窗（再开再建，位置走持久化布局）。悬浮岛是胶囊窗的形态开关（SetIslandMode），
+            // 但岛有自己的展示意图——岛开时即使经典胶囊关着也要建窗显岛（2026-11-06 用户实测：
+            // 只开悬浮岛看不到岛，根因=此处仅 showCapsule 门控建窗）。
+            if (appConfig.ShowCapsule || appConfig.CapsuleIsland)
             {
                 var cap = EnsureCapsule();
                 cap.SetVisible(true);
