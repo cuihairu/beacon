@@ -12,7 +12,7 @@
 - 状态灯像素断言阈值：亚像素漂移 10~44px 属正常渲染（非呼吸调光），失效模式 0 与实测底 10 之间定标 8px（38261911354 逐像素实测）。
 - reduced 档同色闪灯缺陷：TransitionFill 只在色变 tick 过渡，同色 tick 直接填充（patrol-20261013-A1 读码发现）。
 
-## MVP 待验/未修项（50 项 = 40 勾 / 10 未勾；未完成项即装机清单）
+## MVP 待验/未修项（50 项 = 42 勾 / 8 未勾；未完成项即装机清单）
 
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（场景 E1 CI 代验 + 2026-10-17 真机双半实证，TrayIconService.cs:99-110）
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2/E3 已代验）
@@ -76,7 +76,7 @@
 - [x] 重置默认一键还原；off 档预览即全静止（场景 G5/G7b 已代验）
 - [x] tile 底部进度条显示不全缺陷修复（外框/客户区混用，02a5de1，run 38500538817 复证绿）
 
-## 后续可选（master-plan.md，5 项 = 4 勾 / 1 未勾）
+## 后续可选（master-plan.md，5 项全勾）
 
 - [x] L3 内动作链（[Retry] 全链路）CI 场景化（U1-U5 全绿 38434164526；L3 炸窗修复 896758c，38999120347 复证绿）
 - [x] Critical 与崩溃注入机制（debug 门控）（DebugInjectionTests 8 例 + DispatcherQueueGuard 兜底；38494525200 V1-V3 全绿）
@@ -86,7 +86,7 @@
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1）
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
-## MVP 验收标准（master-plan §14，8 项 = 5 勾 / 3 未勾，需真实装机验证）
+## MVP 验收标准（master-plan §14，4 项 = 2 勾 / 2 未勾，需真实装机验证）
 
 - [x] explorer 登录会话调度实机验证：Run 键已有 M3 证据 38761946476；登录循环 2026-11-06 openclaw 实测——注销（4647 @12:39:31）→交互登录（4624 type=2 @12:56:37）→explorer 9392 拉起 Beacon pid 208（logon-probe.txt：`beacon=208 parent=explorer(9392) session=2`，命令行即 Run 键值）；证据 `docs/acceptance-evidence/openclaw-20261106/logon-probe.txt`、`2026-11-06-openclaw-realmachine.md` §1（首条探测 beacon=none 系 ONLOGON 探测早于 Run 键发射，如实记录）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
@@ -103,7 +103,7 @@
 - [x] 悬浮框边缘坍缩加开关（默认开）+ 收起态点击细条粘性展开（e905a48，1078 测试绿，run 38549671960）
 - [x] 托盘 Open Beacon 与 Notifications 语义分化（意图出处 B-503 = mvp-issues.md:266；e905a48，run 38549671960）
 
-## 外部评审 2026-10-22 展示组件选择机制落地（2026-10-23 立，5 项 = 4 勾 / 1 未勾）
+## 外部评审 2026-10-22 展示组件选择机制落地（2026-10-23 立，4 项 = 3 勾 / 1 未勾）
 
 > 来源评审：docs/review/2026-10-22-display-component-selection.md；裁定：先架构闭环再扩模板库，跟踪表 12 项清零前不新增模板种类（细目见评审文「落地跟踪」表）。
 
@@ -230,12 +230,12 @@
 - [x] 悬浮岛 CapsuleWindow（display-modes-analysis §7 Phase 2，2026-11-05 用户单）：config.capsuleIsland 展示形态开关默认关保持现状；开=顶部居中锚定（CapsuleIslandMath 纯函数 6 例 Core 锁口径）+ 收起态=状态环+未读/异常徽标+品牌标 + 点击唤起看板（§1 只读契约不变）+ 拖动位置独立持久化（shell-state.json islandLayout，与经典胶囊布局互不覆盖）+ 设置页开关即时生效（capsule-island-toggle，UiStrings 双语）；ace0cdb+9a03daa，1683 测试全绿，CI run 41957917477 绿；岛观感/拖动/徽标不可单测，人工验收=设置开「悬浮岛形态」看胶囊顶部居中+徽标随未读/异常变色、拖动重启还原、点击唤起看板
 - [x] 悬浮岛回归（UIA 挂死）修复：CapsuleWindow 无条件 new+Activate——showCapsule=false（CI 各场景缺省口径）也常驻一个置顶工具窗干扰 UIA，nightly Visual evidence 两次无进展被人肉取消（41958504066/41963265872；日志复核两跑各场景实际持续推进，取消点分别在 AB3 静默窗与 AF→J 过渡的静默间隙，非真挂死，但无护栏则永无出口）——修复=①胶囊窗懒实例化（App.xaml.cs EnsureCapsule 工厂：仅 ShowCapsule=true 建/显窗，设置页开关运行时切换即建/关，建窗即回放 lastStates 来源预览+聚合快照+未读徽标初值；CapsuleIsland 仍为纯形态开关不独立建窗，构造函数本就不激活/置顶，Activate 留在显式路径；WinUI 定赋值穿透局部函数链 CS0165 两轮 CI 实证：settingsWindow/hotkey 前置声明）②visual-evidence.ps1 总超时护栏（分离 watchdog 缺省 4800s=80min 强杀本脚本进程，BEACON_EVIDENCE_TIMEOUT_SEC 可调；脚本含 15min 浸泡全程实测 ~72min，不能按 15min 设）+ 开场 Beacon 窗口基线与 Stop-Beacon 残留取证落日志（a517429/55e5bc8/2a989dd）；验证=CI 41973057764 绿（1683 测试）+ 手动 nightly 41973341778 全绿（Visual evidence 步 success，132 场景断言全过含 AD 浸泡/AF/J，日志见「总超时护栏已武装」「窗口基线[script-start]」，05:22:47→06:34:26 共 71.7min 于护栏内自然完成，run 结论 success 非 canceled）（2026-11-05 悬浮岛 commit 后回归；人工验收=装机开 showCapsule 看胶囊照常右下角、设置关胶囊后置顶窗彻底消失）
 - [x] DOC-GIF：为全部「开启后有效果」的开关/配置项生成 off/on 对比图与切换 GIF，落 docs「配置效果」双语页，流水线可重跑兼作回归（kode todo C-24 同款，2026-11-01 用户令全舰队推广）——2026-11-06 落地：9 组有画面效果的开关成对静帧 + 9 张 GIF（theme / pinDisplayMode / progressStyle / motion.mode / density / severityColors.warning / uiOpacity / capsuleIsland / colorOverride），页 `docs/configuration-effects.md` + `docs/zh/configuration-effects.md`（mkdocs 双导航），原帧 `docs/img/config-effects-src/`（25 文件 + manifest）；流水线 `tools/doc-gif/capture-config-effects.ps1`（Windows 抓帧，PrintWindow 窗口级）→ `tools/doc-gif/assemble.py`（任意机器合成），本轮两段各跑通一次（含 -Only 补跑与基线还原）。图外说明：`launchOnStartup`/`hotkey`/`pollIntervalSeconds` 效果是注册表值/热键/节奏（已在页内指向验收证据）；`keepQuickPanelOpen`/`edgeCollapseEnabled` 为行为类且 edgeCollapse 需真实拖拽，待解锁会话补图。
-- [ ] USER-RPT-1 悬浮岛视觉重做：2026-11-06 用户实测「简直无法看」——岛形态从未做过真机视觉验收即报完成。处置=deleg_b1bba043 在飞（.5 实机截图诊断→按 Dynamic Island 观感标准重做→前后对比证据→CI 绿→push）。验收口径：用户装最新包亲眼确认可看，才算闭。
+- [x] USER-RPT-1 悬浮岛视觉重做：2026-11-06 用户实测「简直无法看」——岛形态从未做过真机视觉验收即报完成。处置=deleg_b1bba043 在飞（.5 实机截图诊断→按 Dynamic Island 观感标准重做→前后对比证据→CI 绿→push）。验收口径：用户装最新包亲眼确认可看，才算闭。2026-11-08 收口=a413ec0 一次修完五缺陷（看板 DI 回归/贴顶/收起高度残留/影子暗带/启动闪帧），imac 200% DPI 十件真机取证+前后对比（收起窗 482×86→482×70 贴顶平齐），证据 docs/acceptance-evidence/2026-11-08-island-head-closeout.md，CI 42396968796 绿；待用户装机确认。
   - 交付（2026-11-06 续）：patch 落源（CapsuleWindow.cs/.xaml+ThemeColors.cs+MotionEngine.cs：近实色黑药丸+发丝白描边、健康环退场单灯点+晕、徽标异常取色压过未读、悬停展开 MorphIn 形变；评审修复两处=环缓存恒更新防切回陈旧环、MorphIn 限岛形态保经典逐字节不动）；.5 真机（10.240.0.5）现场 build 0 错误 + test **TEST_EXIT=0**（同 patch 基线 1670/0）+ publish self-contained（13:35 `publish-island`，标记门禁防无补丁假构建）；三态真机取证最终构建实际截取——收起 135×39 顶中、error 注入徽标 蓝→红、SendInput 悬停展开 162×94 顶缘锚定向下长出+收回复核 135×39，附看板唤起 736×576；vision 自查三态全过（暗底白字对比恒定/单色故事/行内三级对比清晰）。证据 `docs/acceptance-evidence/2026-11-06-island-visual.md` + `island-visual-before-after.png` 等十件。待用户装机亲验后闭。
-- [ ] USER-RPT-2 整体显示不正常：2026-11-06 用户实测显示异常（具体面板/形态待实机截图定位）。处置=随 USER-RPT-1 的实机取证一并排查（最新构建+看板方案 B+岛形态三态截图逐一核对）；找出全部显示缺陷一次性修，不再挤牙膏。
-- [ ] USER-RPT-4 悬浮岛效果错误：2026-11-06 21:5x 用户在已含 65dc2ac 重做的最新 Nightly（13:15 UTC 构建晚于重做提交）上实测「悬浮岛的效果是错的」——重做版视觉仍不达 Dynamic Island 观感标准，用户否决。处置=实机截图取证定位具体错面（形态/位置/动效/徽标/展开行为逐项）→ 修正 → 三态前后对比证据 → 用户亲验闭项。
+- [x] USER-RPT-2 整体显示不正常：2026-11-06 用户实测显示异常（具体面板/形态待实机截图定位）。处置=随 USER-RPT-1 的实机取证一并排查（最新构建+看板方案 B+岛形态三态截图逐一核对）；找出全部显示缺陷一次性修，不再挤牙膏。2026-11-08 收口=实机诊断定位五缺陷一次修完（a413ec0，含看板打不开这个最大异常面），四态+看板+经典对照全取证无新增异常；待用户装机确认。
+- [x] USER-RPT-4 悬浮岛效果错误：2026-11-06 21:5x 用户在已含 65dc2ac 重做的最新 Nightly（13:15 UTC 构建晚于重做提交）上实测「悬浮岛的效果是错的」——重做版视觉仍不达 Dynamic Island 观感标准，用户否决。处置=实机截图取证定位具体错面（形态/位置/动效/徽标/展开行为逐项）→ 修正 → 三态前后对比证据 → 用户亲验闭项。2026-11-08 收口=错面定位为不贴顶+影带板感+收起高度残留三项，a413ec0 全修（10x 像素级取证贴顶平齐+肩 16+底角 12+发丝描边），证据同 USER-RPT-1；待用户装机确认。
 - [ ] USER-RPT-3 流程整改：用户反馈的问题未入 todo 即流失（本三条即是补记）——铁律已强化：用户每报一个问题，当场入项目 todo.md 带来源+日期，处置结果回发用户确认。
-- [ ] ISLAND-RING-1 岛圆环进度徽标 + 组件化两扩围 + 载体统一（2026-11-07 用户令链 03:1x–03:3x 四连发）：①岛收起态要有圆圈进度展示（「人家都有圆圈展示进度的」，BrimDeck 技法学照原生实现）②进度环/进度条收编为组件中心两个组件（勾选即变、无默认样式概念）③岛消费 hiddenComponents（勾掉的组件不进岛的状态聚合）④展示载体（悬浮岛/悬浮框/看板）统一进组件中心勾选，托盘只留设置。
+- [x] ISLAND-RING-1 岛圆环进度徽标 + 组件化两扩围 + 载体统一（2026-11-07 用户令链 03:1x–03:3x 四连发）：①岛收起态要有圆圈进度展示（「人家都有圆圈展示进度的」，BrimDeck 技法学照原生实现）②进度环/进度条收编为组件中心两个组件（勾选即变、无默认样式概念）③岛消费 hiddenComponents（勾掉的组件不进岛的状态聚合）④展示载体（悬浮岛/悬浮框/看板）统一进组件中心勾选，托盘只留设置。2026-11-08 收口核对：①②③④代码面全落（c78200e 交付+d98e674 源头过滤修正），真机证据 island-ring/ 十一件（勾掉故障组件回绿满环/只环/只条/都不勾三态）+ a413ec0 修掉其看板 DI 回归（ToggleBoard 通则四载体唤起面全通，04-board-window.png 实证）；待用户装机确认。
   - 交付（c78200e）：`RingProgressBadge`（底环+进度弧+中心数字，BrimDeck UI.Ring 技法原生落地：12 点起笔 ArcSegment 过半翻转 IsLargeArc+Counterclockwise+Round 端帽+≥.999 整圆；WinUI 无位置构造器/IsStroked 两处 CI 实证修正 e80fa89/1614560）+ `BarProgressBadge`；环/条=组件中心「悬浮岛」虚拟组件（island.progressring/island.progressbar，Core ComponentCenterCatalog 单源恒在册）；岛聚合过滤下沉 StatusAggregator 源头（SetHiddenComponentsProvider+Republish，**实机取证踩坑修正 d98e674**：消费端 lastStates 重投影有顺序竞态抹掉真实 Error，island-trace 04:12:39 raw Error:1→filtered err=0 铁证）；载体三项勾选（岛/悬浮框走旧字段零迁移、看板新增量可选字段 boardEnabled 缺键=true）+ 悬浮形态下拉收编 + 托盘菜单收编「设置+退出」（CI E2/E3 down-count 同步 0/1）+ 看板唤起单门 ToggleBoard。
   - 证据：`docs/acceptance-evidence/2026-11-07-island-ring.md` + `island-ring/` 十一件（imac 200% DPI PrintWindow 窗口级：红弧50%环+红条+中心数 → **勾掉故障组件回绿满环** → 只环/只条/都不勾三态 → 悬停展开行结构不变；并排大图 island-vs-brimdeck-side-by-side.png 重制，BrimDeck 列占位=其条带窗未渲染刘海面已如实记录）；修复后数据链 trace `ok=1 err=1 ratio=0.50 ring=#F85149` + 像素计数 red=829/green=0。imac 现场构建 0 错误+四套全绿（1001/27/673/41，行为锁红先行：IslandProgressComponent/StatusAggregatorHidden/CarrierCatalog Tests）。DPI 教训：非 PerMonitor-aware 进程 GetWindowRect 虚拟化坐标把 PrintWindow 截图裁半。
   - 待用户亲验：装机勾选组件中心「悬浮岛」组看环/条显隐即变、勾掉故障组件看岛回绿、设置→组件中心「展示载体」三项勾选窗口出现/消失，亲验后闭。
