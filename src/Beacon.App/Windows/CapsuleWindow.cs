@@ -77,10 +77,6 @@ public sealed partial class CapsuleWindow : Window
 
     private bool _previewProbeShown; // 钩子只展开一次（后续行变化不再反复弹）
 
-    /// <summary>收起态窗口底部为软阴影预留的高度（DIP）。岛轮廓恒 32 不含它——
-    /// 阴影带只做剪影层的落影空间，不进轮廓、不进命中语义（多出的 8px 悬停缓冲可接受）。</summary>
-    private const double IslandShadowReserveDips = 8;
-
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
 
@@ -111,6 +107,19 @@ public sealed partial class CapsuleWindow : Window
         OverallLight.Fill = new SolidColorBrush(initial);
         OverallHalo.Fill = new SolidColorBrush(ThemeColors.Halo(initial, 64));
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
+        // 启动期抢先把 AppWindow 句柄取到（WinUI 3 Window 构造即建原生窗）：EnsureCapsule 在 Activate
+        // 前调用 SetIslandMode 时，其既有 ApplySize/RestorePosition 路径就能按岛/胶囊口径预排尺寸，
+        // 避免窗口先以系统默认尺寸（近全屏）闪一帧再被 OnLoaded 收窄——真机 trace outline 1907x32/
+        // root=1907x990 实证。HWND 未就绪（平台时序差异）则交给 OnLoaded 的既有初始化，绝不因此崩溃。
+        try
+        {
+            _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            _appWindow = AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hwnd));
+        }
+        catch
+        {
+            // 取不到不改状态：OnLoadedCore 兜底（构造期拿句柄失败的窗口照常由既有路径初始化）
+        }
         // 曲面轮廓按实际尺寸重绘（岛展开/切形态/换 DPI 都会改 RootBorder 尺寸；经典形态内部早退）
         RootBorder.SizeChanged += (_, _) => UpdateSurfaceOutline();
         Closed += (_, _) =>
@@ -319,10 +328,8 @@ public sealed partial class CapsuleWindow : Window
 
         SourcePreview.Visibility = Visibility.Collapsed;
         _motion.StopLoops(SourcePreview); // 停掉残留淡出（Opacity/Scale 回基值，下次展开从 0 起）
-        if (_island)
-        {
-            IslandShadowStack.Visibility = Visibility.Visible; // 收回：阴影层回场（与 ApplyIslandChrome 的挂载口径一致）
-        }
+        // 阴影层恒退场（2026-11-08 实机诊断：刘海贴顶平齐无落影带，见 ApplyIslandChrome 同口径）——
+        // 不再随收回重新挂上（旧逻辑曾在此回场 Visible，与 ApplyIslandChrome 的挂载口径一致）。
         ApplySize();
     }
 
@@ -467,9 +474,16 @@ public sealed partial class CapsuleWindow : Window
                 CapsuleIslandMath.MinWidthDips, IslandMaxWidthDips(dpi));
             _islandWidthDips = widthDips;
             var heightDips = Math.Max(CapsuleIslandMath.HeightDips, Math.Ceiling(desired.Height));
-            if (SourcePreview.Visibility != Visibility.Visible)
+            if (SourcePreview.Visibility != Visibility.Visible && OfflineBanner.Visibility != Visibility.Visible)
             {
-                heightDips += IslandShadowReserveDips; // 收起态底部预留阴影带（软剪影层的落影空间，展开态不预留）
+                // 收起态：岛=贴顶平齐刘海（Dynamic Island 口径），窗高=曲面高 32 恒——无底部阴影带。
+                // ① 刘海是贴顶的平齐黑药丸，不是带落影的浮块：底部阴影带把窗口读成矩形板
+                //    （真机截图 slab：面下 8 DIP 全宽暗带 + 桌面剪影随高度变宽的实证）。
+                // ② 确定性高度还消除「展开→收起后窗高卡在 69 而非 40」的实测残留（真机 trace
+                //    root=238x69：刚收面的那一帧 Root.DesiredSize 仍是展开态残留，实测值不可信）。
+                // 收起内容恒 ≤ 曲面高（PillArea.MinHeight=32 行容器内环/条/徽标都 ≤32），不会裁切；
+                // 离线横幅在面下独立成块时随内容（横幅可见走上方实测分支）。
+                heightDips = CapsuleIslandMath.HeightDips;
             }
             return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));
         }
@@ -776,12 +790,10 @@ public sealed partial class CapsuleWindow : Window
             // 发丝内缘（BrimDeck 技法）：2px 描边 + UpdateSurfaceOutlineCore 里按曲面矩形裁掉外侧一半
             IslandSurface.Stroke = new SolidColorBrush(ThemeColors.IslandHairline());
             IslandSurface.StrokeThickness = 2;
-            // 软阴影层：收起态挂上、展开态淡出（展开读作「岛变高」，阴影反而在其口径里退场）
-            IslandShadowStack.Visibility = Visibility.Visible;
-            IslandShadowNear.Fill = IslandShadowFar.Fill = new SolidColorBrush(ThemeColors.IslandPill());
-            IslandShadowNear.Stroke = IslandShadowFar.Stroke = new SolidColorBrush(ThemeColors.IslandPill());
-            IslandShadowNear.Opacity = 0.16;   // 近层：贴缘暗晕
-            IslandShadowFar.Opacity = 0.10;    // 远层：更宽更淡的余晖
+            // 软阴影层退场（2026-11-08 实机诊断）：刘海=贴顶平齐（Dynamic Island 口径），窗高恒曲面高，
+            // 无底部阴影带——旧的两层不透明剪影（Fill=IslandPill + 粗描边 6/14 + 下沉 2/3）在面下叠出
+            // 全宽暗带，把岛读成矩形板（真机截图 slab + 桌面剪影随高度变宽实证）。剪影层随窗口一并裁掉，
+            // 保留 XAML 节点与 ApplyShadowGeometry 骨架（经典形态切回仍走既有 Collapsed 早退口径）。
             SourcePreview.Background = null; // 预览在曲面内无缝长出（同底色/同描边都多余——展开读作岛变高）
             SourcePreview.BorderThickness = new Thickness(0);
             UpdateSurfaceOutline();
@@ -898,9 +910,9 @@ public sealed partial class CapsuleWindow : Window
     }
 
     /// <summary>岛软阴影（BrimDeck 技法的原生实现）：两层同轮廓剪影，逐层加粗描边模拟模糊半径、
-    /// 下沉模拟投影深度（其口径 blur14/depth4/向下）；描边向外溢出的部分正好落进收起态底部预留的
-    /// 8 DIP 阴影带，读作岛底缘的柔和暗晕。展开态几何照喂但整层淡出由 MorphOut/IslandShadowStack
-    /// 的可见性接管，避免展开帧上阴影跟着窗口底边走。</summary>
+    /// 下沉模拟投影深度。2026-11-08 实机诊断后退休：不透明剪影 + 下沉在面下叠出全宽暗带（slab），
+    /// 且收起态窗高改恒 32（无落影带）后剪影层被窗口裁掉——整层恒 Collapsed，此处早退不画。
+    /// 保留骨架供经典形态/未来换用真模糊时挂回，现态不参与渲染。</summary>
     private void ApplyShadowGeometry(PathGeometry nearGeometry, PathGeometry farGeometry, double width, double height)
     {
         if (IslandShadowStack.Visibility != Visibility.Visible)

@@ -27,11 +27,11 @@
                 Padding="12,5">
                 <Grid>
                     <!-- 岛软阴影（技法学自 BrimDeck 源码结构，原生实现）：其观感 = 岛轮廓剪影的模糊黑影（blur14/
-                         depth4/opacity .28/向下）画在与曲面分离的兄弟层上，不参与命中。WinUI 3 没有 WPF 的
-                         DropShadowEffect 位图模糊，这里用「两层同轮廓剪影、逐层加粗描边+下沉+低透明」的阶梯
-                         叠加近似（边缘读作柔和暗晕）；层只在收起态可见（展开即淡出，同其 ShadowHost 口径），
-                         且窗口在收起态给底部预留 8 DIP 阴影带（其 ShadowBounds Margin=-20 的同构需求）。
-                         IslandSurfacePath 测量恒 0，只画不占位，复用为阴影剪影不扰动布局 -->
+                         depth4/opacity .28/向下）画在与曲面分离的兄弟层上，不参与命中。2026-11-08 实机诊断后
+                         退休：两层不透明剪影（Fill=IslandPill + 粗描边 + 下沉）在面下叠出全宽暗带，把岛读成
+                         矩形板；收起态窗高已改恒曲面高 32（贴顶平齐刘海，无落影带），剪影层随窗口裁掉。
+                         整层恒 Collapsed（ApplyIslandChrome 不再挂 Visible），保留节点供未来换真模糊挂回。
+                         IslandSurfacePath 测量恒 0，只画不占位，不扰动布局 -->
                     <Grid x:Name="IslandShadowStack" Visibility="Collapsed" IsHitTestVisible="False">
                         <local:IslandSurfacePath x:Name="IslandShadowFar" Stretch="None" IsHitTestVisible="False" />
                         <local:IslandSurfacePath x:Name="IslandShadowNear" Stretch="None" IsHitTestVisible="False" />

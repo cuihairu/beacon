@@ -29,6 +29,7 @@ public partial class App : Application
     private TopmostGuard? _topmostGuard;
     private IntPtr _suspendResumeRegistration; // 睡眠唤醒通知句柄（master-plan §9；ShutdownApp 反注册）
     private int _activePollInterval; // 当前调度在用的全局检查频率（设置改动检测，变化才重建调度）
+    private BeaconRuntime? _runtime; // 运行时单例（Config 即 JsonConfigurationStore——看板载体开关读实时配置）
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
 
     public App()
@@ -146,6 +147,7 @@ public partial class App : Application
 
         // B-504/B-602：运行时先行装配，L2 Quick Panel 直接消费事件流（缓存优先，打开零等待）
         var runtime = BeaconRuntime.Start(toast, _logger);
+        _runtime = runtime; // 退出/载体开关等实例方法读实时配置（Config 即 JsonConfigurationStore）
         // 配置读取诊断（用户令：读取失败不静默清——恢复尝试 + 提示）：损坏原件已留档 *.corrupt，
         // .bak 可恢复时已生效；逐条落错误日志，托盘气泡在 tray.Initialize() 之后统一发（气泡服务未
         // 初始化时发了也白发，且 tray 变量此刻还没声明——CI CS0841 实证）
@@ -590,8 +592,15 @@ public partial class App : Application
     /// 走这一个门——勾选变化 → 窗口出现/消失的行为面。</summary>
     private void ToggleBoard()
     {
-        var app = Services.GetRequiredService<Beacon.Storage.JsonConfigurationStore>().App;
-        if (!CarrierCatalog.BoardEnabled(app))
+        // 看板载体开关读运行时实时配置（BeaconRuntime.Config 即 JsonConfigurationStore——此前经 DI
+        // 解析该服务，但 BuildServices 从未注册它，任何唤起面（热键/托盘/岛点击/L0 下钻/Toast 回退）
+        // 都抛 InvalidOperationException「No service for type 'Beacon.Storage.JsonConfigurationStore'」——
+        // 回归源自 ad7043f ISLAND-RING-1 扩围②）。
+        if (_runtime is not { } runtime)
+        {
+            return; // 启动段尚未装配（理论不可达：所有唤起面都在 runtime 装配后挂接）
+        }
+        if (!CarrierCatalog.BoardEnabled(runtime.Config.App))
         {
             _quickPanel?.Hide();
             return;
