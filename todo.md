@@ -258,10 +258,10 @@
 
 ### 超大文件候选
 
-- [ ] LAY-001 [P1] 拆分 `src/Beacon.App/Windows/SettingsWindow.cs`（3124 行）——设置页同时承担导航、外观、连接 CRUD、组件 CRUD、动作库、导入导出和树编辑器，可用页控制器拆掉单类字段网（`src/Beacon.App/Windows/SettingsWindow.cs:30`）。
+- [x] LAY-001 [P1] 拆分 `src/Beacon.App/Windows/SettingsWindow.cs`（3124 行）——设置页同时承担导航、外观、连接 CRUD、组件 CRUD、动作库、导入导出和树编辑器，可用页控制器拆掉单类字段网（`src/Beacon.App/Windows/SettingsWindow.cs:30`）。（类加 partial、字段网留主文件 312 行；Navigation/Pages/Actions/Appearance/Connections/Widgets/ComponentTree/ComponentStyles 八个 partial 按职责分文件、峰值 478 行，commit 618a662，CI 42402811747 绿）
 - [x] LAY-002 [P1] 拆分 `src/Beacon.App/Windows/PinnedHostWindow.cs`（1354 行）——窗体布局、PinTile 控件、拖拽会话与位置持久化四块可分别成组件/服务（`src/Beacon.App/Windows/PinnedHostWindow.cs:684`、`src/Beacon.App/Windows/PinnedHostWindow.cs:27`、`src/Beacon.App/Windows/PinnedHostWindow.cs:670`）。（PinTile.cs 668 行 + DragSession.cs 29 行独立成文件、宿主窗留 700 行，commit a6d297e，CI 42401372255 绿）
-- [ ] LAY-003 [P2] 拆分 `src/Beacon.App/Windows/CapsuleWindow.cs`（1155 行）——胶囊/悬浮岛渲染、悬停展开、来源预览、拖动和窗口位置恢复耦合在同一 partial 类（`src/Beacon.App/Windows/CapsuleWindow.cs:23`）。
-- [ ] LAY-004 [P2] 拆分 `src/Beacon.App/Windows/QuickPanelWindow.cs`（1058 行）——看板窗口协议、三个分区渲染、通知、拖动/尺寸记忆可按职责控制器拆分（`src/Beacon.App/Windows/QuickPanelWindow.cs:40`）。
+- [x] LAY-003 [P2] 拆分 `src/Beacon.App/Windows/CapsuleWindow.cs`（1155 行）——胶囊/悬浮岛渲染、悬停展开、来源预览、拖动和窗口位置恢复耦合在同一 partial 类（`src/Beacon.App/Windows/CapsuleWindow.cs:23`）。（主文件留字段/构造/生命周期 276 行；Drag/Positioning/IslandChrome/FullscreenAvoidance/StatusFaces 五个 partial 按方法组分文件，commit 32c8433，CI 42402811747 绿）
+- [x] LAY-004 [P2] 拆分 `src/Beacon.App/Windows/QuickPanelWindow.cs`（1058 行）——看板窗口协议、三个分区渲染、通知、拖动/尺寸记忆可按职责控制器拆分（`src/Beacon.App/Windows/QuickPanelWindow.cs:40`）。（主文件留协议/门面 400 行；Drag/Sections/Notifications/InvokeableRow 四个 partial 分文件 + SeverityPalette 独立成文件，commit 9415c7f，CI 42402811747 绿）
 
 ### 目录/分类问题
 
