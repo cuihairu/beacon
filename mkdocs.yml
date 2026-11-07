@@ -34,6 +34,8 @@ nav:
   - Mission: mission.md
   - Positioning: positioning.md
   - RFC-001 Technical Design: rfc/RFC-001-technical-design.md
+  - Source Layer Architecture: source-layer-architecture.md
+  - Source Layer Glossary: glossary.md
   - Master Plan: master-plan.md
   - Solution Structure: solution-structure.md
   - MVP Issues: mvp-issues.md
@@ -52,6 +54,8 @@ nav:
     - 任务书: zh/mission.md
     - 定位与首批场景: zh/positioning.md
     - RFC-001 技术方案: zh/rfc/RFC-001-technical-design.md
+    - 源码分层架构: source-layer-architecture.md
+    - 源码分层术语表: glossary.md
     - 产品与技术实施总方案: zh/master-plan.md
     - Solution 与项目目录: zh/solution-structure.md
     - MVP Issue 列表: zh/mvp-issues.md

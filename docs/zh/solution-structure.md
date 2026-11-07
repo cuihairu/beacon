@@ -253,6 +253,47 @@ Beacon.App/Components/                 # 19 文件
 
 注：无 `Controls/`、`ViewModels/`、`Themes/`、`Notifications/` 目录——但 `Components/`（组件库渲染层）存在，见 §3.5b；状态灯/PinTile 等以代码类组合（`PinTile` 在 `PinnedHostWindow.cs` 内），无 XAML 资源字典；Toast 在 `Services/`。
 
+### 3.5c 抽象层职责
+
+目录是装配和测试边界；下面按运行时职责归纳源码层。英文完整版见 [Source Layer Architecture](../source-layer-architecture.md)，术语表见 [Source Layer Glossary](../glossary.md)。
+
+### 应用生命周期与装配
+
+`App` 负责进程启动、服务注册、单实例、托盘、热键、窗口创建、睡眠唤醒和退出清理；`BeaconRuntime.Start` 先读盘再装配事件总线、存储、Provider、刷新管线、聚合、通知和动作。实现：`src/Beacon.App/App.xaml.cs:122`、`src/Beacon.App/Services/BeaconRuntime.cs:104`。配置 schema 在 `src/Beacon.Core/Models/AppConfig.cs:4`；进程级诊断输入 `BEACON_DEBUG_CRASH` / `BEACON_DEBUG_SEVERITY` 分别见 `src/Beacon.App/App.xaml.cs:102` 和 `src/Beacon.Core/Services/DebugInjection.cs`；看板与托盘文案挂在 `src/Beacon.Core/Services/UiStrings.cs:12`。
+
+### 配置、密钥、缓存与 Shell 状态
+
+用户配置、通知历史、最近状态、凭据和窗口几何是五类不同存储，不可合并。五份配置走原子写与 `.bak` 恢复（`src/Beacon.Storage/JsonConfigurationStore.cs:9`）；`secrets.bin` 走 DPAPI CurrentUser，JSON 只留 `credentialRef`（`src/Beacon.Storage/DpapiSecretStore.cs:12`）；`cache/{connectionId}/states.json` 是可丢失的 Last-Known-State（`src/Beacon.Storage/JsonCacheStore.cs:9`）；通知记录有独立备份恢复（`src/Beacon.Storage/JsonNotificationRecordStore.cs:12`）；窗口/布局在 `shell-state.json`（`src/Beacon.App/Services/ShellStateStore.cs:8`）。对应 schema 主要在 `src/Beacon.Core/Models`，五文件名在 `src/Beacon.Storage/JsonConfigurationStore.cs:160`。
+
+### 采集与归一化
+
+`RefreshScheduler` 按“连接 + 刷新档 + 间隔覆盖”分组并处理抖动/退避（`src/Beacon.Core/Services/RefreshScheduler.cs:41`）；`WidgetHost` 负责缓存水合、晚到结果丢弃、Provider 调用、缓存写回、健康/状态发布和陈旧重发布（`src/Beacon.Core/Services/WidgetHost.cs:196`）。`IConnectionProvider` 只测连通性，`IWidgetProvider` 归一化输出（`src/Beacon.Core/Abstractions/IConnectionProvider.cs:12`）。17 类连接与 20 类组件 Provider 在启动时注册（`src/Beacon.App/Services/BeaconRuntime.cs:116`、`:183`）。通用 HTTP / 厂商 REST / 本地文件与进程是各自通道；可选 DSL 声明 `mapping` 与 `actions`，入口和 schema 在 `src/Beacon.Connections/ProviderDsl.cs:15`。
+
+### 进程内状态与通知
+
+同步进程内事件总线是唯一状态广播通道，UI 订阅方负责回线程（`src/Beacon.Core/Services/EventBus.cs:6`）。`StateStore` 做内容去重、快照和失效（`src/Beacon.Core/Services/StateStore.cs:14`）；`StatusAggregator` 把状态与连接健康折算为总状态（`src/Beacon.Core/Services/StatusAggregator.cs:11`）；`NotificationEngine` 评估规则、去重并保留记录（`src/Beacon.Core/Services/NotificationEngine.cs:14`）。Toast 是 `INotificationSink` 的 App 实现（`src/Beacon.App/Services/ToastNotificationService.cs:20`），记录持久化在 `notifications.json`（`src/Beacon.Storage/JsonNotificationRecordStore.cs:12`）。事件 schema 在 `src/Beacon.Core/Events/Events.cs:5`。
+
+### 意图与副作用
+
+L3 详情窗汇总内置动作与 DSL 动作（`src/Beacon.App/Windows/DetailWindow.cs:285`），确认后统一交给 `ActionRunner`（`src/Beacon.App/Windows/DetailWindow.cs:373`）。Runner 处理路由、确认、超时、可选重试和 `ActionExecuted` 事件（`src/Beacon.Core/Services/ActionRunner.cs:18`）；`WidgetHost.OnActionExecuted` 再刷新来源组件（`src/Beacon.Core/Services/WidgetHost.cs:67`）。执行器分属 `src/Beacon.Actions` 与 GitHub 动作适配；动作 schema 在 `src/Beacon.Core/Models/ActionModels.cs:6`，DSL 动作词表在 `src/Beacon.Connections/ProviderDsl.cs:29`。
+
+### 原生 Shell 与展示
+
+L0 有单宿主面板和独立悬浮窗两形态，L1 有经典胶囊/悬浮岛，L2 是看板，L3 是详情窗；托盘是常驻聚合入口。所有窗先取快照/缓存再订阅事件，不直接轮询 Provider。实现与装配见 `src/Beacon.App/Windows/PinnedHostWindow.cs:684`、`src/Beacon.App/Windows/FloatingTileWindow.cs:26`、`src/Beacon.App/Windows/CapsuleWindow.cs:23`、`src/Beacon.App/Windows/QuickPanelWindow.cs:40`、`src/Beacon.App/Windows/DetailWindow.cs:20` 和 `src/Beacon.App/Services/TrayIconService.cs:13`。声明式组件树 schema 与校验在 `src/Beacon.Core/Models/ComponentDescriptor.cs:9`，闭合注册表渲染在 `src/Beacon.App/Components/ComponentSurfaceRenderer.cs:109`；Win32/P/Invoke 集中在 `src/Beacon.App/Infrastructure/NativeMethods.cs:6`。
+
+### 3.5d 拆分理由
+
+1. **Core 无 UI/Provider/Storage 依赖。** 项目描述明确服务为 UI/provider free（`src/Beacon.Core/Beacon.Core.csproj:7`），方案规则禁止项目引用（`docs/solution-structure.md:44`）。这样调度、状态、聚合、通知求值和动作编排可以在没有 WinUI 的环境锁定行为。
+2. **采集面按连通性与取数两个接口拆开。** 连接测试返回健康态，Widget Provider 归一化 `WidgetState`（`src/Beacon.Core/Abstractions/IConnectionProvider.cs:12`、`:29`）；启动注册表分别容纳 17 和 20 个类型（`src/Beacon.App/Services/BeaconRuntime.cs:183`、`:116`）。新增来源不需要向调度、聚合或展示分支注入类型逻辑。
+3. **持久化按风险和用途拆分。** 配置可恢复、缓存可丢、凭据必须 DPAPI、通知历史要跨重启、Shell 几何与用户意图无关（分别见 `src/Beacon.Storage/JsonConfigurationStore.cs:9`、`src/Beacon.Storage/JsonCacheStore.cs:44`、`src/Beacon.Storage/DpapiSecretStore.cs:9`、`src/Beacon.Storage/JsonNotificationRecordStore.cs:7`、`src/Beacon.App/Services/ShellStateStore.cs:6`）。合并会让过期策略、安全边界和用户配置互相污染。
+4. **调度与归一化管线分离。** Scheduler 只管节奏（`src/Beacon.Core/Services/RefreshScheduler.cs:41`），Host 只管缓存水合、晚到保护、Provider 调用和发布（`src/Beacon.Core/Services/WidgetHost.cs:93`、`:75`）。Provider 无法绕过缓存、健康、失效和陈旧语义。
+5. **状态广播是进程内契约。** EventBus 明确同步且线程安全（`src/Beacon.Core/Services/EventBus.cs:6`），StateStore 按内容去重（`src/Beacon.Core/Services/StateStore.cs:8`），聚合器只折算该流（`src/Beacon.Core/Services/StatusAggregator.cs:7`）。托盘、胶囊、L0、L2、L3 因此共享同一快照源，不会各自拉取。
+6. **通知拆成求值、出口、持久化。** Core 求值规则（`src/Beacon.Core/Services/NotificationEngine.cs:14`），App 只实现 Toast 出口（`src/Beacon.App/Services/ToastNotificationService.cs:20`），Storage 只恢复/写入记录（`src/Beacon.Storage/JsonNotificationRecordStore.cs:12`）；装配在 `src/Beacon.App/Services/BeaconRuntime.cs:148`。平台通知与历史策略可分别变化。
+7. **动作集中编排、执行器窄隔离。** Runner 统一确认、超时、重试、结果事件和来源刷新（`src/Beacon.Core/Services/ActionRunner.cs:18`、`:59`），`IActionExecutor` 只暴露单动作契约（`src/Beacon.Core/Abstractions/IActionExecutor.cs:6`）；webhook 取不到签名密钥时 fail closed（`src/Beacon.Actions/WebhookExecutor.cs:61`、`:68`）。副作用不会绕过安全编排。
+8. **展示只消费状态，不制造采集。** 看板缓存优先并订阅状态、失效、聚合、通知事件（`src/Beacon.App/Windows/QuickPanelWindow.cs:93`、`:100`）；L0 两条渲染路径走同一事件路由（`src/Beacon.App/Windows/PinnedHostWindow.cs:737`、`src/Beacon.App/Windows/FloatingTileWindow.cs:80`）；详情动作只调 Runner（`src/Beacon.App/Windows/DetailWindow.cs:387`）。窗体可从快照重建，也不会成为第二套轮询器。
+9. **声明式 UI 是原生组件树，不是网页。** `ComponentDescriptor` 是纯数据（`src/Beacon.Core/Models/ComponentDescriptor.cs:9`），校验显式限深/限节点/限子节点（`src/Beacon.Core/Models/ComponentDescriptor.cs:36`），渲染侧是闭合注册表和诊断占位（`src/Beacon.App/Components/ComponentSurfaceRenderer.cs:109`、`:201`）。用户可裁剪界面，同时保持原生渲染边界。
+10. **App 是唯一组合根。** `BuildServices` 注册平台服务（`src/Beacon.App/App.xaml.cs:602`），`BeaconRuntime.Start` 装配运行时（`src/Beacon.App/Services/BeaconRuntime.cs:104`）。组合逻辑不散落到静态单例，测试可以用真实构造边界替换适配器。
+
 ### 3.6 tests/
 
 xUnit；`Beacon.Core.Tests`（聚合/调度/退避/规则/通知引擎/ActionRunner，时钟注入；SvgPathParser、BrandIcons 字典全量可解析与别名、WidgetValueHint 数值映射）、`Beacon.Connections.Tests`（Fake HttpMessageHandler + API 夹具 + ETag 分支，程序集串行化避免共享客户端缓存竞态）、`Beacon.Storage.Tests`（往返/原子写/DPAPI，需 Windows 环境）、`Beacon.Actions.Tests`（open.url/local.command/http/webhook 执行器，Windows 专属用例 OS 门控）。全部接入 coverlet.collector（CI 上报 Codecov）。当前 4 个项目共 1674 个测试（Core 939 / Connections 667 / Actions 27 / Storage 41），即本地门禁（2026-11-05 重数）。Core 侧另覆盖 QuickPanelSections 三分区判定、ContrastMath/HighContrastPalette 对比度配对、WidgetTypeNames 短名映射、PinLayoutMath/DpiLayoutMath 换算与钳位、UpdateCheck 版本解析与 SemVer 比较（v 前缀/构建元数据/预发布规则/限流降级体）。

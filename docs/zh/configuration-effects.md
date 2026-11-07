@@ -30,7 +30,7 @@ python tools/doc-gif/assemble.py <frames-dir> docs/img/config-effects
 
 > `launchOnStartup`、`hotkey`、`pollIntervalSeconds`、`keepQuickPanelOpen`、`edgeCollapseEnabled`
 > 这几项没有「值得拍照」的画面——它们的效果是注册表值、注册的热键、刷新节奏或运行期行为，
-> 证据见 [`docs/acceptance-evidence/`](acceptance-evidence/2026-11-06-realmachine.md)。
+> 证据见 [`docs/acceptance-evidence/`](../acceptance-evidence/2026-11-06-realmachine.md)。
 
 ## theme —— 浅色 / 深色
 

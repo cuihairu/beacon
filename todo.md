@@ -239,3 +239,33 @@
   - 交付（c78200e）：`RingProgressBadge`（底环+进度弧+中心数字，BrimDeck UI.Ring 技法原生落地：12 点起笔 ArcSegment 过半翻转 IsLargeArc+Counterclockwise+Round 端帽+≥.999 整圆；WinUI 无位置构造器/IsStroked 两处 CI 实证修正 e80fa89/1614560）+ `BarProgressBadge`；环/条=组件中心「悬浮岛」虚拟组件（island.progressring/island.progressbar，Core ComponentCenterCatalog 单源恒在册）；岛聚合过滤下沉 StatusAggregator 源头（SetHiddenComponentsProvider+Republish，**实机取证踩坑修正 d98e674**：消费端 lastStates 重投影有顺序竞态抹掉真实 Error，island-trace 04:12:39 raw Error:1→filtered err=0 铁证）；载体三项勾选（岛/悬浮框走旧字段零迁移、看板新增量可选字段 boardEnabled 缺键=true）+ 悬浮形态下拉收编 + 托盘菜单收编「设置+退出」（CI E2/E3 down-count 同步 0/1）+ 看板唤起单门 ToggleBoard。
   - 证据：`docs/acceptance-evidence/2026-11-07-island-ring.md` + `island-ring/` 十一件（imac 200% DPI PrintWindow 窗口级：红弧50%环+红条+中心数 → **勾掉故障组件回绿满环** → 只环/只条/都不勾三态 → 悬停展开行结构不变；并排大图 island-vs-brimdeck-side-by-side.png 重制，BrimDeck 列占位=其条带窗未渲染刘海面已如实记录）；修复后数据链 trace `ok=1 err=1 ratio=0.50 ring=#F85149` + 像素计数 red=829/green=0。imac 现场构建 0 错误+四套全绿（1001/27/673/41，行为锁红先行：IslandProgressComponent/StatusAggregatorHidden/CarrierCatalog Tests）。DPI 教训：非 PerMonitor-aware 进程 GetWindowRect 虚拟化坐标把 PrintWindow 截图裁半。
   - 待用户亲验：装机勾选组件中心「悬浮岛」组看环/条显隐即变、勾掉故障组件看岛回绿、设置→组件中心「展示载体」三项勾选窗口出现/消失，亲验后闭。
+
+## 源码分层分析 2026-11-07
+
+当前 HEAD：`7194f640b175afa0849785e30396408746eb63fc`。完整归纳见 `docs/source-layer-architecture.md` 与 `docs/glossary.md`。
+
+### 抽象层清单
+
+- 生命周期装配层：先读盘再组合进程与运行时，统一平台入口和退出清理——`src/Beacon.App/App.xaml.cs:122`、`src/Beacon.App/Services/BeaconRuntime.cs:104`。
+- 持久化层：配置可恢复、凭据加密、缓存可丢、通知历史跨重启、Shell 布局独立——`src/Beacon.Storage/JsonConfigurationStore.cs:13`、`src/Beacon.Storage/DpapiSecretStore.cs:12`、`src/Beacon.Storage/JsonCacheStore.cs:9`、`src/Beacon.Storage/JsonNotificationRecordStore.cs:12`、`src/Beacon.App/Services/ShellStateStore.cs:8`。
+- 采集归一层：调度节奏、Provider 调用、晚到保护、缓存写回和状态发布分离——`src/Beacon.Core/Services/RefreshScheduler.cs:17`、`src/Beacon.Core/Services/WidgetHost.cs:196`。
+- Provider 适配层：连通性测试与组件状态归一化分成两个契约，新增来源不侵入管线——`src/Beacon.Core/Abstractions/IConnectionProvider.cs:12`、`src/Beacon.Core/Abstractions/IConnectionProvider.cs:29`、`src/Beacon.App/Services/BeaconRuntime.cs:116`。
+- 进程状态层：事件总线、内容去重快照和聚合状态构成共享真相源——`src/Beacon.Core/Services/EventBus.cs:6`、`src/Beacon.Core/Services/StateStore.cs:14`、`src/Beacon.Core/Services/StatusAggregator.cs:11`。
+- 通知层：规则求值、平台出口、记录持久化三者分开装配——`src/Beacon.Core/Services/NotificationEngine.cs:14`、`src/Beacon.App/Services/ToastNotificationService.cs:20`、`src/Beacon.Storage/JsonNotificationRecordStore.cs:12`。
+- 动作编排层：确认、超时、重试、结果事件和来源刷新集中，具体副作用执行器窄接口隔离——`src/Beacon.Core/Services/ActionRunner.cs:18`、`src/Beacon.Core/Abstractions/IActionExecutor.cs:6`。
+- 展示 Shell 层：L0/L1/L2/L3 与托盘只消费状态快照加事件，意图统一回运行时——`src/Beacon.App/Windows/PinnedHostWindow.cs:684`、`src/Beacon.App/Windows/CapsuleWindow.cs:23`、`src/Beacon.App/Windows/QuickPanelWindow.cs:40`、`src/Beacon.App/Windows/DetailWindow.cs:20`。
+- 声明式渲染层：受校验的组件树经闭合原生注册表渲染，替代网页宿主——`src/Beacon.Core/Models/ComponentDescriptor.cs:9`、`src/Beacon.App/Components/ComponentSurfaceRenderer.cs:109`。
+
+### 超大文件候选
+
+- [ ] LAY-001 [P1] 拆分 `src/Beacon.App/Windows/SettingsWindow.cs`（3124 行）——设置页同时承担导航、外观、连接 CRUD、组件 CRUD、动作库、导入导出和树编辑器，可用页控制器拆掉单类字段网（`src/Beacon.App/Windows/SettingsWindow.cs:30`）。
+- [ ] LAY-002 [P1] 拆分 `src/Beacon.App/Windows/PinnedHostWindow.cs`（1354 行）——窗体布局、PinTile 控件、拖拽会话与位置持久化四块可分别成组件/服务（`src/Beacon.App/Windows/PinnedHostWindow.cs:684`、`src/Beacon.App/Windows/PinnedHostWindow.cs:27`、`src/Beacon.App/Windows/PinnedHostWindow.cs:670`）。
+- [ ] LAY-003 [P2] 拆分 `src/Beacon.App/Windows/CapsuleWindow.cs`（1155 行）——胶囊/悬浮岛渲染、悬停展开、来源预览、拖动和窗口位置恢复耦合在同一 partial 类（`src/Beacon.App/Windows/CapsuleWindow.cs:23`）。
+- [ ] LAY-004 [P2] 拆分 `src/Beacon.App/Windows/QuickPanelWindow.cs`（1058 行）——看板窗口协议、三个分区渲染、通知、拖动/尺寸记忆可按职责控制器拆分（`src/Beacon.App/Windows/QuickPanelWindow.cs:40`）。
+
+### 目录/分类问题
+
+- `src/Beacon.App/Windows/PinnedHostWindow.cs` 把 `PinTile` 和 `DragSession` 放在宿主窗文件里，但二者是控件/交互模型，能被独立测试和复用（`src/Beacon.App/Windows/PinnedHostWindow.cs:27`、`src/Beacon.App/Windows/PinnedHostWindow.cs:670`）。
+- `src/Beacon.App/Windows/FloatingTileWindow.cs` 同时定义 `FloatingTileHost`、`FloatingTileWindow` 和位置持久化；host/window/布局落库三层混在一个文件（`src/Beacon.App/Windows/FloatingTileWindow.cs:26`、`src/Beacon.App/Windows/FloatingTileWindow.cs:262`、`src/Beacon.App/Windows/FloatingTileWindow.cs:218`）。
+- `src/Beacon.Connections` 平铺了通用 HTTP、GitHub、Jenkins、本机、Herald 和 12 家厂商适配；当前 34 个源文件仍可检索，但协议客户端、Descriptor、Widget Provider、Connection Provider 混层，后续扩展建议按协议家族子目录收敛（`src/Beacon.Connections/ProviderDsl.cs:15`、`src/Beacon.Connections/GitHubApiClient.cs:12`、`src/Beacon.Connections/BigModelUsageProvider.cs:48`）。
+- `AppConfigFile` 与 `JsonConfigurationStore` 都指向 `config.json` 且恢复策略不同：前者损坏即回默认，后者有诊断/备份；这是启动早期读写的历史薄封装，应作为后续收敛点，不宜新增调用方（`src/Beacon.Storage/AppConfigFile.cs:8`、`src/Beacon.Storage/JsonConfigurationStore.cs:276`）。
