@@ -57,7 +57,7 @@
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 自愈已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（场景 V1/V2/V4 已代验，38459944253/38661655290）
-- [ ] RFC §6.2.7 四项真人操作与真实网络环境验收：②不抢焦点 2026-11-06 openclaw 真实点击复证（点胶囊唤起看板前台不变，`openclaw-20261106/` 批）；①下钻 PASS（UIA Invoke 时间线行→L3）④不进任务栏/Alt-Tab PASS（.5 批）；③动作面清单待补、真人操作仍待装机
+- [ ] RFC §6.2.7 四项真人操作与真实网络环境验收：②不抢焦点 2026-11-06 openclaw 真实点击复证（点胶囊唤起看板前台不变，`openclaw-20261106/` 批）；①下钻 PASS（UIA Invoke 时间线行→L3）④不进任务栏/Alt-Tab PASS（.5 批）；③动作面清单已补（14 面逐条动作定义+铁律对照+缺口，`docs/acceptance-evidence/2026-11-08-l0-action-surfaces.md`）；真人操作仍待装机（6 面清单见该文档）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] tile 与胶囊改色/重置托盘图标同步：2026-11-06 openclaw 实测——`severityColors.warning=#ff00ff` 重启后 warning 态托盘圆点渲染品红 RGB(206,0,206)（`openclaw-20261106/mag-tray-8.png` 16 帧稳定），删键重置后默认色表恢复（`tray-after-reset.png`）；B-706 运行时绘制链真机复证；改色/重置已有 G4/G5、38953986133 证据
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
@@ -215,7 +215,7 @@
 | :184 | 重启恢复 + DPI 拖动 | ◐ 重启还原 PASS（看板 720x560@(1160,316) 前后一致）；DPI 切换/拖动 OPEN(锁屏+单屏) |
 | :73 | B-803 干净 Win11 装包 | ⬜ 本轮未执行；本机非干净快照（有 .NET SDK/scoop），干净环境半仍归 B-804 |
 | :56 | 跨 DPI 拖放/降分辨率回收 | ⬜ OPEN(单屏+锁屏) |
-| :60 | RFC §6.2.7 四项铁律 | ◐ ①下钻 PASS（UIA Invoke 时间线行→L3）②不抢焦点 PASS ④不进任务栏/Alt-Tab PASS；③动作面清单待补 |
+| :60 | RFC §6.2.7 四项铁律 | ◐ ①下钻 PASS（UIA Invoke 时间线行→L3）②不抢焦点 PASS ④不进任务栏/Alt-Tab PASS；③动作面清单已补（14 面，`2026-11-08-l0-action-surfaces.md`）；剩真人操作 6 面待装机 |
 | :67 | 视觉观感真人验收 | ⬜ 待用户（真机实拍已给：board-default-720x560.png、capsule.png、config-effects/*） |
 | :71 | 真人全流程录屏 | ⬜ OPEN(锁屏，整屏录制无有效画面) |
 | :19 | 跨 DPI 拖动（MVP 行 19） | ⬜ OPEN(单屏) |
