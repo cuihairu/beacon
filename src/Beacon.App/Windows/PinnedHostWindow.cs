@@ -251,8 +251,11 @@ internal sealed class PinTile
                 Foreground = new SolidColorBrush(ThemeColors.Label()),
             };
         _declarativeHost = new Grid();
+        // 四列 = 灯/图标/标签/数据槽位（Auto×3 + Star）。2026-11-08 真机探针（数字卡模板 tile）实证：
+        // 此前只给三列定义（Auto/Auto/Star）却 SetColumn(3)——WinUI Grid 列序超出定义数时钳到最后一列，
+        // 数据槽位与标签同格叠印（大数字直接压在标签字上）；传统面六列定义齐全无此错。
         var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, _palette.Density), GridLength.Auto, GridLength.Auto,
-            new GridLength(1, GridUnitType.Star));
+            GridLength.Auto, new GridLength(1, GridUnitType.Star));
         Grid.SetColumn(_light, 0);
         Grid.SetColumn(icon, 1);
         Grid.SetColumn(_label, 2);
