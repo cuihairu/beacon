@@ -12,13 +12,15 @@ namespace Beacon.App.Components;
 /// </summary>
 internal static class ComponentText
 {
-    /// <summary>次要文案（时间戳/子标签）：FontCaption，垂直居中。</summary>
+    /// <summary>次要文案（时间戳/子标签）：FontCaption，垂直居中；字符省略截断（2026-11-08 真机探针实证：
+    /// 钉选声明式 tile 的 caption 行在 Star 列收窄后无截断属性即被窗缘硬裁半字，Body 同款兜底补齐）。</summary>
     public static TextBlock Caption(string text, Brush foreground) => new()
     {
         Text = text,
         FontSize = DesignTokens.FontCaption,
         Foreground = foreground,
         VerticalAlignment = VerticalAlignment.Center,
+        TextTrimming = TextTrimming.CharacterEllipsis,
     };
 
     /// <summary>正文（标签/值位）：FontBody + 字符省略截断；maxWidth 限宽（null = 不限）。</summary>
