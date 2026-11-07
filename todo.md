@@ -36,7 +36,7 @@
 - [x] 真实仓库手动验证运行中到终态全程可见（可造数据桩驱动 provider 渲染翻转替代，GitHubPublicApiLiveTests.Item4，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 2 例）
 - [x] 确认弹窗可关（场景 U3/U4 已代验）
-- [ ] Toast 发送、点击、激活路由实机验证：发送+呈现半 2026-11-06 openclaw 实测 PASS——二次启动→Balloon dispatched（beacon-20261106.log 13:12:47）→横幅实拍 `openclaw-20261106/banner-t2.png`「Beacon 已在运行。」+通知中心两条 Beacon 通知 `notification-center.png`；AUMID 自愈已有场景 F5t 证据 38494525200；本机补强批（GLM Failed 态 OS 横幅 PRESENT 12:04→MISS 12:05 相邻帧 + 通知中心两条在栏 + 详情窗 Open→浏览器落 bigmodel.cn/usage，裁剪版归档 `bm2-toast-tray/`，台账 2026-11-08-bm2-toast-tray.md）；**仍 OPEN：带 detailUrl 状态 Toast 的真人点击→激活路由**（匿名 GitHub 恒 403 无法稳定复现 Failed 态）
+- [ ] Toast 发送、点击、激活路由实机验证：发送+呈现半 2026-11-06 openclaw 实测 PASS——二次启动→Balloon dispatched（beacon-20261106.log 13:12:47）→横幅实拍 `openclaw-20261106/banner-t2.png`「Beacon 已在运行。」+通知中心两条 Beacon 通知 `notification-center.png`；AUMID 自愈已有场景 F5t 证据 38494525200；本机补强批（GLM Failed 态 OS 横幅 PRESENT 12:04→MISS 12:05 相邻帧 + 通知中心两条在栏 + 详情窗 Open→浏览器落 bigmodel.cn/usage，裁剪版归档 `bm2-toast-tray/`，台账 2026-11-08-bm2-toast-tray.md）；**点击→激活路由本轮复现：Failed+无效 detailUrl 状态已本地 mock 稳定触发并投递 OS（无 403 依赖），imac 系统侧压制横幅显示（直发注册 AUMID toast 亦无横幅）→点击步 BLOCKED，原因与所需动作见 docs/acceptance-evidence/2026-11-08-toast-activation.md（真人点击在能显示横幅的机器上验，装机清单面 12）**
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 规则引擎表驱动单测含冷却（NotificationEngineTests 17 例）
 - [x] 注入 Failed 状态收到且仅收到一条 Toast（NotificationEngineTests 17 例 + 场景 F5 恰 1 条硬断言）
@@ -205,7 +205,7 @@
 | todo 行 | 项 | 结论 |
 |---|---|---|
 | :33 | URL 端到端打开 | ✅ 已勾（见上） |
-| :39 | Toast 发送/点击/激活 | ◐→发送+呈现半 PASS 补强（openclaw 批：Balloon dispatched + 横幅实拍 banner-t2.png + 通知中心两条 Beacon 通知；本机补强批 `bm2-toast-tray/`：GLM Failed OS 横幅 12:04 帧实拍→12:05 MISS 相邻帧 + 通知中心两条在栏 + 详情窗 Open→浏览器落 usage 页）；点击激活路由 OPEN（缺 Failed 态凭据面） |
+| :39 | Toast 发送/点击/激活 | ◐→发送+呈现半 PASS 补强（openclaw 批：Balloon dispatched + 横幅实拍 banner-t2.png + 通知中心两条 Beacon 通知；本机补强批 `bm2-toast-tray/`：GLM Failed OS 横幅 12:04 帧实拍→12:05 MISS 相邻帧 + 通知中心两条在栏 + 详情窗 Open→浏览器落 usage 页）；点击激活路由 OPEN——Failed+无效 detailUrl 已本地 mock 稳定触发+投递 OS（无 403 依赖），imac 横幅显示被系统压制→点击 BLOCKED（docs/acceptance-evidence/2026-11-08-toast-activation.md；真人点击在横幅可显示机器上验，面 12 装机清单） |
 | :43 | 托盘图标颜色/刷新周期 | ✅ 已勾（openclaw 批：同位两态像素差分绿↔琥珀、30s 档刷新实测、图标不进溢出；本机补强批 `bm2-toast-tray/` 红绿两态放大 + 任务栏/溢出区对照） |
 | :49 | 跨进程点击穿透/焦点 | ◐→焦点面真机 PASS 补强（openclaw 批：点胶囊唤起看板前台不变、ESC 关面板）；收起态穿透到下层窗口 OPEN |
 | :62 | tile/胶囊改色→托盘同步 | ✅ 已勾（openclaw 批：warning=#ff00ff → 托盘圆点品红 RGB(206,0,206)，重置复原） |

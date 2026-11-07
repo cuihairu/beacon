@@ -19,7 +19,7 @@
 | 9 | 悬浮岛 | 徽标显示 | 未读/异常计数被动显示（UpdateBadge） | rule 2 ✓（只变色不弹窗不发声） | imac 08-island-critical.png 红态徽标实拍 | — |
 | 10 | 托盘（TrayIconService，shell 相邻面） | 左键 | `OpenPanelRequested`→`ToggleBoard`（TrayIconService.cs:240、App.xaml.cs:167） | 托盘非 L0 窗体（rule 4 不适用）；动作=下钻（rule 1 ✓） | openclaw 托盘批（两态像素差分/30s 刷新/不进溢出） | 菜单逐项真人点击截图（部分待装机） |
 | 11 | 托盘 | 右键菜单 | 看板/设置/通知中心/全部刷新/组件中心/Keep panel open/退出七项（Menu ID :17-:99） | 全部直接执行无确认弹窗（rule 3 ✓；退出亦无二次确认=shell 惯例） | tray-e2.png / t78.png 菜单在场帧 | 逐项真人点击（待装机） |
-| 12 | OS toast 横幅（NotificationEngine） | 点击横幅 | detailUrl 激活路由（浏览器 open-link） | rule 3 明文允许的零风险 open-link | 呈现面 PASS（本机横幅实拍 bm2-toast-tray/ + openclaw banner-t2.png）；**点击→激活 OPEN**（复现台账另文 2026-11-08-toast-activation.md） | 真人点击横幅→浏览器落点（待装机/复现） |
+| 12 | OS toast 横幅（NotificationEngine） | 点击横幅 | detailUrl 激活路由（浏览器 open-link） | rule 3 明文允许的零风险 open-link | 呈现面 PASS（本机横幅实拍 bm2-toast-tray/ + openclaw banner-t2.png）；**点击→激活 BLOCKED**：Failed+无效 detailUrl 已本地 mock 稳定触发+投递 OS（无 403 依赖），imac 系统侧压制横幅显示（直发注册 AUMID toast 亦无横幅）→点击步无横幅可点（2026-11-08-toast-activation.md） | 真人点击横幅→浏览器落点（待装机/复现） |
 | 13 | L2 看板行（对照面，非 L0） | 单击/Invoke | `DetailRequested`→L3（App.xaml.cs:180） | L2/L3 允许业务动作 | **①下钻 PASS**（UIA Invoke 时间线行→L3） | — |
 | 14 | L2 看板行（对照面） | 右键 | Pin to desktop→widgets.json（PinWidget） | L2 允许 | 右键钉选链 CI 场景有覆盖 | — |
 
