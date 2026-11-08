@@ -11,6 +11,7 @@
 - moonshot.balance 数值位补映射：`¥{value}` 固定 CNY；同轮 qwen 用尽补「已用尽」、machine.git 补 value_text（批3-补49）。
 - 状态灯像素断言阈值：亚像素漂移 10~44px 属正常渲染（非呼吸调光），失效模式 0 与实测底 10 之间定标 8px（38261911354 逐像素实测）。
 - reduced 档同色闪灯缺陷：TransitionFill 只在色变 tick 过渡，同色 tick 直接填充（patrol-20261013-A1 读码发现）。
+- 覆盖率巡检收口：全仓 7504/7636 = 98.27%（coverlet cobertura 四测试项目合并口径，Beacon.App 不在任何测试工程引用内故不计），达标 98%；本批 bb389ea/e7dfc1c/a06c345/c4b2822/d9cefc0，并行批 2992bc0/5d4c315/b9a45fe/3924840；残余未覆盖 = Windows 专属 P/Invoke（DpapiSecretStore 39 行、MachineLocalProvider 9 行）与时序竞态/防御分支（RefreshScheduler、WidgetHost 晚到闸门等 130 行总计）（2026-11-08）。
 
 ## MVP 待验/未修项（50 项 = 42 勾 / 8 未勾；未完成项即装机清单）
 
