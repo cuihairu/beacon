@@ -42,6 +42,7 @@ internal sealed partial class SettingsWindow : Window
     private ComboBox _languageBox = null!;
     private ComboBox _pollBox = null!;
     private ComboBox _pinModeBox = null!; // 悬浮形态档（信息密集组件 panel|floating）：收编到组件中心「展示载体」区
+    private ComboBox _islandModeBox = null!; // 岛收起态展示方式档（ISLAND-D1 single|stack|carousel）：岛组内
     private Slider _opacitySlider = null!;
     private ToggleSwitch _capsuleToggle = null!;
     private ToggleSwitch _edgeCollapseToggle = null!;

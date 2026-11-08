@@ -80,6 +80,14 @@ public sealed partial class CapsuleWindow : Window
     /// <summary>无拖动的单击 → 打开 L2 Quick Panel（B-504）。</summary>
     public event Action? OpenPanelRequested;
 
+    /// <summary>岛真实组件面单击（ISLAND-D4，2026-11-09 用户令）：携带真实 WidgetId（虚拟环/条面
+    /// 不走此事件——保持整岛开板口径）。App 侧做看板定位/处置直达。</summary>
+    public event Action<string>? IslandWidgetActivated;
+
+    /// <summary>岛收起态展示计划（ISLAND-D1..D3）：App 按 IslandDisplayPlan.Compute 推送，本窗消费
+    /// 渲染；null=未喂数（启动段/经典形态），RefreshBadge 回退既有环/条双面逻辑兜底。</summary>
+    private IslandPlan? _islandPlan;
+
     /// <summary>岛进度组件规格（ISLAND-RING-1）：环 Ø22/弦 2.5（32 高行内的 BrimDeck 徽标环口径）、
     /// 条宽 56×5（环+条并置时行内不拥挤，238 下限宽装得下）。</summary>
     private const double IslandRingSize = 22;

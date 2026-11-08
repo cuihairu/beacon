@@ -26,10 +26,11 @@ public sealed partial class CapsuleWindow
         RefreshBadge();
     }
 
-    /// <summary>岛进度徽标重画（ISLAND-RING-1，2026-11-07 用户令）：进度环/进度条是组件中心里的两个
-    /// 组件，岛显示什么完全由勾选状态决定——勾环显环、勾条显条、都勾都显、都不勾不显（无「默认样式」
-    /// 概念）。环=底环+进度弧+中心数字（数字=未读优先、异常次之，全零空中心——环本身扛进度/级别色）；
-    /// 条=轨道+左锚填充（仅条在场时计数跟条走）。经典形态恒隐藏。每次重画整树重建（同 StatusRing 口径）。</summary>
+    /// <summary>岛收起态重画（ISLAND-D1..D3，2026-11-09 用户令）：App 已推展示计划时计划驱动——
+    /// 展示方式/上岛白名单/真实数据面全部 Core 决策，本窗按计划渲染；计划未喂数（启动段首帧/经典
+    /// 形态）回退既有环/条双面逻辑兜底（App 首推即覆盖，双路径视觉同形）。环/条口径不变：
+    /// 环=底环+进度弧+中心数字（数字=未读优先、异常次之，全零空中心）；条=轨道+左锚填充。
+    /// 经典形态恒隐藏。每次重画整树重建（同 StatusRing 口径）。</summary>
     private void RefreshBadge()
     {
         if (!_island)
@@ -38,6 +39,15 @@ public sealed partial class CapsuleWindow
             IslandProgress.Content = null;
             return;
         }
+        var content = _islandPlan is not null ? BuildIslandContent() : LegacyBadgeContent();
+        IslandProgress.Content = content;
+        IslandProgress.Visibility = content is null ? Visibility.Collapsed : Visibility.Visible;
+        ApplySize(); // 勾选/计划/计数变化改变收起行宽（238 下限内通常不动，低于下限的窄岛需要重排）
+    }
+
+    /// <summary>未喂数兜底：环/条二选勾（ISLAND-RING-1 原逻辑，_islandPlan 推送前的首帧口径）。</summary>
+    private FrameworkElement? LegacyBadgeContent()
+    {
         var ring = Beacon.Core.Services.ComponentCenterCatalog.IslandRingVisible(_config.App);
         var bar = Beacon.Core.Services.ComponentCenterCatalog.IslandBarVisible(_config.App);
         var arcColor = _ringColor;
@@ -45,7 +55,7 @@ public sealed partial class CapsuleWindow
         var countText = _unreadCount > 0 ? _unreadCount.ToString()
             : _abnormalCount > 0 ? _abnormalCount.ToString()
             : string.Empty; // 全零：中心不落字，环/条自己讲进度
-        FrameworkElement? content = (ring, bar) switch
+        return (ring, bar) switch
         {
             (true, true) => BothProgressFaces(_ringRatio, arcColor, trackColor, countText),
             (true, false) => Components.RingProgressBadge.Build(IslandRingSize, IslandRingThickness, _ringRatio,
@@ -53,9 +63,6 @@ public sealed partial class CapsuleWindow
             (false, true) => BarOnlyFace(_ringRatio, arcColor, trackColor, countText),
             (false, false) => null, // 都不勾：岛收起态只剩品牌标（组件中心说了算，无兜底无默认）
         };
-        IslandProgress.Content = content;
-        IslandProgress.Visibility = content is null ? Visibility.Collapsed : Visibility.Visible;
-        ApplySize(); // 勾选/计数变化改变收起行宽（238 下限内通常不动，低于下限的窄岛需要重排）
     }
 
     /// <summary>环+条都勾：横向并置（布局由岛的空间管理决定——PillRow 居中，宽超 238 下限时岛自动加宽）。</summary>

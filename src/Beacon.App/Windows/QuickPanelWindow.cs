@@ -310,6 +310,19 @@ public sealed partial class QuickPanelWindow : Window
         NotificationList.Focus(FocusState.Programmatic); // 焦点框落在通知列表 = 可见落在通知视图
     }
 
+    /// <summary>岛组件点击下钻（ISLAND-D4，2026-11-09 用户令）：确保面板可见后把时间线过滤到该组件
+    /// 所属来源——与 OpenNotifications 同范式（已显示时不反向关闭，仅重过滤+聚焦）。空来源键回退
+    /// 普通 Show（不虚构过滤目标）。</summary>
+    public void RevealSource(string sourceKey)
+    {
+        Show();
+        Activate(); // Show 对已可见面板是空操作不再 Activate——补一次取焦点
+        if (!string.IsNullOrEmpty(sourceKey))
+        {
+            ApplySourceFilter(sourceKey);
+        }
+    }
+
     /// <summary>config.uiOpacity（B-801 界面透明度）：挂面板内容层（批8 2026-10-10：与胶囊/宿主面板/独立悬浮框统一同一来源）。</summary>
     public void ApplyOpacity(double opacity)
         => ((FrameworkElement)Content).Opacity = Math.Clamp(opacity, 0.2, 1.0);

@@ -206,11 +206,13 @@ public sealed partial class CapsuleWindow
         }
         _dragging = false;
         Root.ReleasePointerCapture(e.Pointer);
-        // 净位移 < 6 dip 视为单击（不是拖动）→ 打开 L2（B-504）；按住抖动由净位移抵消
+        // 净位移 < 6 dip 视为单击（不是拖动）→ 打开 L2（B-504）；按住抖动由净位移抵消。
+        // ISLAND-D4：岛形态下先按命中面路由——真实组件面单击走组件级下钻，虚拟环/条面与整岛其余
+        // 区域照旧开板（口径不变）。
         var dragDips = (Math.Abs(_x - _dragOrigin.X) + Math.Abs(_y - _dragOrigin.Y)) / GetDpi();
         if (dragDips < 6)
         {
-            OpenPanelRequested?.Invoke();
+            RouteIslandClick(e);
         }
         SavePosition();
         if (_island)

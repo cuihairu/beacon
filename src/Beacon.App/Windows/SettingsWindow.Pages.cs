@@ -130,9 +130,16 @@ internal sealed partial class SettingsWindow
         foreach (var group in groups)
         {
             page.Children.Add(SectionTitle($"{group.DisplayName}（{group.Items.Count}）"));
-            foreach (var item in group.Items)
+            if (group.Key == ComponentCenterCatalog.CategoryIsland)
             {
-                page.Children.Add(BuildComponentCenterRow(item));
+                page.Children.Add(BuildIslandSection(group)); // ISLAND-D1/D2：展示方式 + 上岛勾选
+            }
+            else
+            {
+                foreach (var item in group.Items)
+                {
+                    page.Children.Add(BuildComponentCenterRow(item));
+                }
             }
         }
         return page;
@@ -255,6 +262,111 @@ internal sealed partial class SettingsWindow
     private void SaveComponentVisibility(string widgetId, bool visible)
     {
         ComponentCenterCatalog.SetVisible(_runtime.Config.App, widgetId, visible);
+        _runtime.Config.SaveApp();
+        PinsChanged?.Invoke();
+    }
+
+    /// <summary>岛区（ISLAND-D1..D2，2026-11-09 用户令）：岛收起态展示方式三档（单组件常驻/多组件堆叠/
+    /// 徽标+轮播，落 AppConfig.IslandDisplayMode）+ 虚拟环/条显隐（既有行，勾选口径不变）+
+    /// 全部真实组件的「上岛」勾选（AppConfig.IslandComponents 白名单，缺席=不上岛，列表序=上岛序）。</summary>
+    private UIElement BuildIslandSection(ComponentCenterGroup group)
+    {
+        var panel = new StackPanel { Spacing = 4 };
+
+        _islandModeBox = new ComboBox
+        {
+            Header = "岛收起态展示方式",
+            Width = 260,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        foreach (var (mode, label) in new[]
+        {
+            (IslandDisplayPlan.ModeSingle, "单组件常驻"),
+            (IslandDisplayPlan.ModeStack, "多组件堆叠"),
+            (IslandDisplayPlan.ModeCarousel, "徽标+轮播"),
+        })
+        {
+            _islandModeBox.Items.Add(new ComboBoxItem { Content = label, Tag = mode });
+        }
+        var modeIndex = IndexOfTag(_islandModeBox, _runtime.Config.App.IslandDisplayMode);
+        _islandModeBox.SelectedIndex = modeIndex >= 0 ? modeIndex : 1; // 非法/缺键回堆叠（计划侧 Normalize 同口径）
+        _islandModeBox.SelectionChanged += (_, _) => SaveIslandDisplayMode();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_islandModeBox, "island-display-mode");
+        panel.Children.Add(_islandModeBox);
+
+        // 虚拟环/条显隐（既有行：组件中心勾选口径不变）
+        foreach (var item in group.Items)
+        {
+            panel.Children.Add(BuildComponentCenterRow(item));
+        }
+
+        panel.Children.Add(Hint("真实组件上岛：勾选=岛收起态按勾选序渲染（虚拟环/条在前、此列表序续后）；" +
+            "取消=不上岛。组件中心勾掉的组件即使上岛也不渲染（全载体消失口径）。"));
+        foreach (var item in ComponentCenterCatalog.OnboardCandidates(_runtime.Config.Widgets))
+        {
+            panel.Children.Add(BuildIslandOnboardRow(item));
+        }
+        return panel;
+    }
+
+    /// <summary>上岛勾选行（ISLAND-D2）：勾选框 + 显示名/副题（类型键 · 上岛态）。勾选变化即时落库并联动岛面。</summary>
+    private UIElement BuildIslandOnboardRow(ComponentCenterItem item)
+    {
+        var onboarded = ComponentCenterCatalog.IslandOnboarded(_runtime.Config.App, item.WidgetId);
+        var toggle = new CheckBox
+        {
+            IsChecked = onboarded,
+            MinWidth = 0,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"island-onboard-{item.WidgetId}");
+
+        var label = new TextBlock
+        {
+            Text = item.Label,
+            FontSize = DesignTokens.FontBody,
+            Foreground = new SolidColorBrush(ThemeColors.Label()),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var subtitle = new TextBlock
+        {
+            Text = $"{item.TypeName} · {(onboarded ? "已上岛" : "未上岛")}",
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var textColumn = new StackPanel { Spacing = 2 };
+        textColumn.Children.Add(label);
+        textColumn.Children.Add(subtitle);
+
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(toggle, 0);
+        Grid.SetColumn(textColumn, 1);
+        row.Children.Add(toggle);
+        row.Children.Add(textColumn);
+        row.Padding = new Thickness(0, 2, 0, 2);
+
+        toggle.Checked += (_, _) => SaveIslandOnboard(item.WidgetId, onboarded: true);
+        toggle.Unchecked += (_, _) => SaveIslandOnboard(item.WidgetId, onboarded: false);
+        return row;
+    }
+
+    /// <summary>岛展示方式落库（ISLAND-D1）：IslandDisplayMode 单源 → SaveApp → PinsChanged
+    /// （App → capsule.RefreshComponents → 计划重算，即时生效）。</summary>
+    private void SaveIslandDisplayMode()
+    {
+        _runtime.Config.App.IslandDisplayMode = TagOf(_islandModeBox) ?? IslandDisplayPlan.ModeStack;
+        _runtime.Config.SaveApp();
+        PinsChanged?.Invoke();
+    }
+
+    /// <summary>上岛勾选落库（ISLAND-D2）：Core SetIslandOnboarded 单源 → SaveApp → PinsChanged
+    /// （同上即时生效；列表序=上岛序）。</summary>
+    private void SaveIslandOnboard(string widgetId, bool onboarded)
+    {
+        ComponentCenterCatalog.SetIslandOnboarded(_runtime.Config.App, widgetId, onboarded);
         _runtime.Config.SaveApp();
         PinsChanged?.Invoke();
     }

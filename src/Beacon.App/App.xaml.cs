@@ -31,6 +31,13 @@ public partial class App : Application
     private int _activePollInterval; // 当前调度在用的全局检查频率（设置改动检测，变化才重建调度）
     private BeaconRuntime? _runtime; // 运行时单例（Config 即 JsonConfigurationStore——看板载体开关读实时配置）
     private readonly Dictionary<string, Windows.DetailWindow> _detailWindows = [];
+    private readonly Dictionary<string, WidgetState> _lastStates = []; // 悬停预览/岛计划共用留底（UI 线程内改字典，无锁）
+    private int _islandUnread; // 岛徽标未读（NotificationRaised 采样，未读优先、异常次之）
+    private int _islandAbnormal; // 岛徽标异常计数（warn+err，AggregateStatusChanged 采样）
+    private double _islandOkShare = 1.0; // 岛环/条健康份额（ok 占比，UpdateStatus 同口径缓存）
+    private Severity _islandOverall = Severity.Success; // 岛总体级别（聚合链实时）
+    private int _islandCarouselTick; // 轮播轮转下标（每 4s +1，计划 i mod n 回卷）
+    private Microsoft.UI.Xaml.DispatcherTimer? _islandCarouselTimer; // 轮播节拍（仅 carousel 档且池>1 激活）
 
     public App()
     {
@@ -208,12 +215,12 @@ public partial class App : Application
         // 即 hotkey 在调用点之后声明而红）——捕获变量必须先于启动段调用点赋值。
         Windows.SettingsWindow? settingsWindow = null;
         var hotkey = Services.GetRequiredService<HotkeyService>();
-        var lastStates = new Dictionary<string, WidgetState>(); // 悬停预览喂数（2026-10-29 UI 升级）：widget 级状态留底 → 按来源聚合推胶囊（UI 线程内改字典，无锁）
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => Dispatcher.EnqueueGuarded(() =>
         {
-            lastStates[evt.State.WidgetId] = evt.State; // 窗缺席也留底：后建窗首推即带全量来源预览
+            _lastStates[evt.State.WidgetId] = evt.State; // 窗缺席也留底：后建窗首推即带全量来源预览
             capsule?.NoteFetch(evt.State.FetchedAt);
-            capsule?.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, lastStates)); // 勾掉的组件不进岛预览（ISLAND-RING-1）
+            capsule?.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, _lastStates)); // 勾掉的组件不进岛预览（ISLAND-RING-1）
+            RecomputeIsland(); // ISLAND-D3：岛真实组件面吃实时数据流（状态表留底 → 计划重算）
         }));
         runtime.Bus.Subscribe<AggregateStatusChanged>(status => Dispatcher.EnqueueGuarded(() =>
         {
@@ -222,10 +229,23 @@ public partial class App : Application
             capsule?.UpdateStatus(status); // 隐藏组件已在聚合源头过滤（StatusAggregator 隐藏集，ISLAND-RING-1）
             tray.SetSeverity(status.Overall); // 托盘灯/提示不随胶囊窗存废——聚合链恒走
             tray.SetTip(BuildTrayTip(status));
+            // ISLAND-D3 岛上下文采样（同 BuildTrayTip 计数口径）：环/条份额=ok 占比、徽标=warn+err
+            var ok = status.Counts.GetValueOrDefault(Severity.Success) + status.Counts.GetValueOrDefault(Severity.Info);
+            var warn = status.Counts.GetValueOrDefault(Severity.Warning);
+            var error = status.Counts.GetValueOrDefault(Severity.Error) + status.Counts.GetValueOrDefault(Severity.Critical);
+            var total = ok + warn + error;
+            _islandOkShare = total == 0 ? 1.0 : (double)ok / total;
+            _islandAbnormal = warn + error;
+            _islandOverall = status.Overall;
+            RecomputeIsland();
         }));
         // 悬浮岛未读徽标喂数（§7 Phase 2）：通知引擎出新记录即刷新（UnreadCount 现读，标记已读回放同链生效）
-        runtime.Bus.Subscribe<NotificationRaised>(_ => Dispatcher.EnqueueGuarded(
-            () => capsule?.UpdateBadge(runtime.Notifications.UnreadCount)));
+        runtime.Bus.Subscribe<NotificationRaised>(_ => Dispatcher.EnqueueGuarded(() =>
+        {
+            _islandUnread = runtime.Notifications.UnreadCount;
+            capsule?.UpdateBadge(runtime.Notifications.UnreadCount);
+            RecomputeIsland();
+        }));
         tray.RefreshAllRequested += () => Dispatcher.EnqueueGuarded(runtime.RefreshAll);
 
         // master-plan §9 睡眠唤醒自愈：挂起期间轮询停摆，唤醒（PBT_APMRESUMEAUTOMATIC 必发）立即补一轮刷新，
@@ -416,7 +436,7 @@ public partial class App : Application
                 settingsWindow = new Windows.SettingsWindow(runtime);
                 settingsWindow.Closed += (_, _) => settingsWindow = null;
                 settingsWindow.SettingsApplied += ApplySettingsEffects;
-                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); runtime.Aggregator.Republish(); capsule?.RefreshComponents(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）；Republish+RefreshComponents：隐藏组件/岛进度环条勾选即时生效（ISLAND-RING-1）
+                settingsWindow.PinsChanged += () => Dispatcher.EnqueueGuarded(() => { _pinnedHost?.ReloadTiles(); _pinnedHost?.ReloadLayout(); _floatingHost?.ReloadTiles(); runtime.Aggregator.Republish(); capsule?.RefreshComponents(); RecomputeIsland(); }); // ReloadLayout：设置页桌面布局区改共享布局即时重排（组件中心显隐同路径联动）；Republish+RefreshComponents：隐藏组件/岛进度环条勾选即时生效（ISLAND-RING-1）；RecomputeIsland：岛展示方式/上岛勾选落库即重算（ISLAND-D1..D2）
                 settingsWindow.Activate();
                 if (moduleKey is { } key)
                 {
@@ -448,21 +468,24 @@ public partial class App : Application
             _capsule = created; // 退出清理用
             created.OpenPanelRequested += () => Dispatcher.EnqueueGuarded(ToggleBoard); // 经看板载体开关（岛点击唤起看板）
             created.SettingsRequested += () => Dispatcher.EnqueueGuarded(() => OpenSettings());
+            created.IslandWidgetActivated += widgetId => Dispatcher.EnqueueGuarded(() => OpenIslandTarget(widgetId)); // ISLAND-D4：岛真实组件面单击下钻
             created.SetIslandMode(runtime.Config.App.CapsuleIsland); // Activate 前定形态，OnLoaded 按岛锚点落位
             created.Activate();
             created.ApplyOpacity(runtime.Config.App.UiOpacity); // B-801：界面透明度启动即生效
-            // 初值恢复（懒建窗不能等下一轮事件）：留底状态回放 → 快照渲染 → 未读徽标。
+            // 初值恢复（懒建窗不能等下一轮事件）：留底状态回放 → 快照渲染 → 未读徽标 → 岛计划。
             // 设置页中途开胶囊时，新窗必须立即带上当前聚合/来源预览/取数时间/未读数。
-            foreach (var state in lastStates.Values)
+            foreach (var state in _lastStates.Values)
             {
                 created.NoteFetch(state.FetchedAt);
             }
-            if (lastStates.Count > 0)
+            if (_lastStates.Count > 0)
             {
-                created.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, lastStates));
+                created.UpdateSourcePreview(GroupSourcePreviews(runtime.Config.App, _lastStates));
             }
             created.UpdateStatus(runtime.Aggregator.Snapshot());
             created.UpdateBadge(runtime.Notifications.UnreadCount);
+            _islandUnread = runtime.Notifications.UnreadCount;
+            RecomputeIsland(); // 岛计划初推（虚拟环/条 + 上岛白名单真实面，首帧即带全量）
             return created;
         }
 
@@ -606,6 +629,83 @@ public partial class App : Application
             return;
         }
         _quickPanel?.Toggle();
+    }
+
+    /// <summary>岛计划重算并推送（ISLAND-D1..D3，2026-11-09 用户令）：聚合岛上下文（未读/异常/份额/
+    /// 总体级别）+ 实时配置（展示方式/上岛白名单/隐藏集）+ 状态表 → IslandDisplayPlan.Compute →
+    /// capsule.UpdateIslandPlan。全部决策 Core（红先行可测），App 只采样与派发；
+    /// 轮播档且候选池>1 时维持节拍，否则停表（单面/堆叠档无轮转）。</summary>
+    private void RecomputeIsland()
+    {
+        if (_runtime is not { } runtime || _capsule is not { } capsule)
+        {
+            return; // 启动段未装配 / 无胶囊窗（经典形态懒建，岛开才建）
+        }
+        var plan = IslandDisplayPlan.Compute(
+            runtime.Config.App,
+            runtime.Config.Widgets,
+            _lastStates,
+            new IslandContext(_islandUnread, _islandAbnormal, _islandOkShare, _islandOverall),
+            _islandCarouselTick);
+        capsule.UpdateIslandPlan(plan);
+        UpdateCarouselTimer(plan.Mode == IslandDisplayPlan.ModeCarousel && plan.Faces.Count + plan.OverflowCount > 1);
+    }
+
+    /// <summary>轮播节拍启停（ISLAND-D1 徽标+轮播）：active 且未挂表 → 4 秒一拍轮转下标并重算；
+    /// 停用/单面池 → 停表清引用（模式切换即时生效，节拍零残留）。</summary>
+    private void UpdateCarouselTimer(bool active)
+    {
+        if (active)
+        {
+            if (_islandCarouselTimer is null)
+            {
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+                timer.Tick += (_, _) =>
+                {
+                    _islandCarouselTick++;
+                    RecomputeIsland();
+                };
+                timer.Start();
+                _islandCarouselTimer = timer;
+            }
+        }
+        else if (_islandCarouselTimer is not null)
+        {
+            _islandCarouselTimer.Stop();
+            _islandCarouselTimer = null;
+        }
+    }
+
+    /// <summary>岛真实组件面单击路由（ISLAND-D4，2026-11-09 用户令）：critical 且有深链 → 直达处置
+    /// 入口（上游处置页，Toast 深链同口径）；否则看板定位到该组件所属来源（来源过滤=组件级定位的
+    /// 最小粒度）；看板载体关=已开即收（ToggleBoard 门同口径）。</summary>
+    private void OpenIslandTarget(string widgetId)
+    {
+        if (_runtime is not { } runtime)
+        {
+            return;
+        }
+        var state = _lastStates.GetValueOrDefault(widgetId);
+        if (state is { Severity: Severity.Critical } && !string.IsNullOrEmpty(state.DetailUrl))
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(state.DetailUrl) { UseShellExecute = true });
+                return;
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "打开岛组件深链失败：{Url}", state.DetailUrl);
+            }
+        }
+        if (!CarrierCatalog.BoardEnabled(runtime.Config.App))
+        {
+            _quickPanel?.Hide();
+            return;
+        }
+        var widget = runtime.Config.FindWidget(widgetId);
+        var sourceKey = QuickPanelFilter.SourceKey(state?.WidgetType ?? widget?.Type ?? widgetId);
+        _quickPanel?.RevealSource(sourceKey);
     }
 
     private static IServiceProvider BuildServices()
