@@ -295,6 +295,19 @@ public sealed class ArkUsageProviderTests
         Assert.Contains("AK/SK", result.Detail);
     }
 
+    [Fact]
+    public async Task GetStateAsync_HappyPath_ReturnsRenderedState()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, Body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal(ArkWidgetDescriptors.UsageType, state!.WidgetType);
+        Assert.Equal("ark-main", state.ConnectionId);
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal("monthly", state.Payload["worst_window"]);
+    }
+
     // ---- 响应解析 ----
 
     [Fact]
@@ -693,6 +706,64 @@ public sealed class ArkUsageProviderTests
             () => provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None));
 
         Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429SessionQuotaExceeded_ReturnsExhaustedSession()
+    {
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"Error":{"Code":"QuotaExceeded","Message":"session quota exhausted","ResetTimestamp":1771900000}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal(100, usage.Session!.Percent);
+        Assert.Equal(1771900000, usage.Session.ResetSeconds);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429EmptyBody_ThrowsDegraded()
+    {
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests, "");
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+    }
+
+    [Fact]
+    public void ParseUsage_StringPercentInvalid_SkipsWindow()
+    {
+        var usage = ArkUsageProvider.ParseUsage(
+            """{"Result":{"QuotaUsage":[{"Level":"session","Percent":"not-a-percent"}]}}""");
+
+        Assert.NotNull(usage);
+        Assert.Null(usage.Session);
+        Assert.Null(usage.Weekly);
+        Assert.Null(usage.Monthly);
+    }
+
+    [Fact]
+    public void NearestReset_PrefersEarliestWindow()
+    {
+        var usage = ArkUsageProvider.ParseUsage("""
+            {"Result":{"QuotaUsage":[
+              {"Level":"monthly","Percent":3,"ResetTimestamp":1773000000},
+              {"Level":"session","Percent":1,"ResetTimestamp":1771000000},
+              {"Level":"weekly","Percent":2,"ResetTimestamp":1772000000}
+            ]}}
+            """)!;
+
+        Assert.Equal(1771000000, ArkUsageProvider.NearestReset(usage));
+    }
+
+    [Fact]
+    public void NearestReset_NoTimestamps_ReturnsNull()
+    {
+        var usage = ArkUsageProvider.ParseUsage(
+            """{"Result":{"QuotaUsage":[{"Level":"weekly","Percent":2}]}}""");
+
+        Assert.Null(ArkUsageProvider.NearestReset(usage!));
     }
 
     private static string ResetDisplay

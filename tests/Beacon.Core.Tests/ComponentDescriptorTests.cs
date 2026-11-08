@@ -195,4 +195,37 @@ public sealed class ComponentDescriptorTests
         Assert.False(result.Ok);
         Assert.Contains(result.Errors, error => error.Contains("first/second"));
     }
+
+    [Fact]
+    public void Validate_ReportsAllBindingAndChildProblems()
+    {
+        var tree = new ComponentDescriptor
+        {
+            Id = "root",
+            Type = "card",
+            Children = [null!],
+            Bindings =
+            [
+                null!,
+                new ComponentBinding { Field = "   ", Source = new ComponentBindingSource { Kind = "state", Ref = "summary" } },
+                new ComponentBinding { Field = "text", Source = null },
+                new ComponentBinding { Field = "status", Source = new ComponentBindingSource { Kind = "unknown", Ref = "summary" } },
+                new ComponentBinding { Field = "title", Source = new ComponentBindingSource { Kind = "state", Ref = "unsupported" } },
+                new ComponentBinding { Field = "payload", Source = new ComponentBindingSource { Kind = "state", Ref = "payload:" } },
+                new ComponentBinding { Field = "nested", Source = new ComponentBindingSource { Kind = "state", Ref = "payload:a:b" } },
+                new ComponentBinding { Field = "valid", Source = new ComponentBindingSource { Kind = "state", Ref = "payload:key" } },
+            ],
+        };
+
+        var result = ComponentTreeValidator.Validate(tree);
+
+        Assert.False(result.Ok);
+        Assert.Contains(result.Errors, error => error.Contains("null binding"));
+        Assert.Contains(result.Errors, error => error.Contains("binding field is empty"));
+        Assert.Contains(result.Errors, error => error.Contains("source is null"));
+        Assert.Contains(result.Errors, error => error.Contains("kind 'unknown'"));
+        Assert.Contains(result.Errors, error => error.Contains("unsupported state path 'unsupported'"));
+        Assert.Contains(result.Errors, error => error.Contains("unsupported state path 'payload:'"));
+        Assert.Contains(result.Errors, error => error.Contains("unsupported state path 'payload:a:b'"));
+    }
 }

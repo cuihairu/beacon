@@ -71,4 +71,18 @@ public sealed class DpapiSecretStoreTests
 
         Assert.Null(await store.GetAsync("never-set"));
     }
+
+    [Fact]
+    public async Task Constructor_UsesDefaultApplicationDataRoot()
+    {
+        var store = new DpapiSecretStore();
+
+        if (OperatingSystem.IsWindows())
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => store.GetAsync("beacon-constructor-test"));
+            return;
+        }
+
+        await Assert.ThrowsAsync<PlatformNotSupportedException>(() => store.GetAsync("beacon-constructor-test"));
+    }
 }

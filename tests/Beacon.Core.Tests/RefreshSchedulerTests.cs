@@ -87,6 +87,28 @@ public sealed class RefreshSchedulerTests
         Assert.Equal(Timeout.InfiniteTimeSpan, scheduler.NextDelay(RefreshTiers.Static, 5));
     }
 
+    [Theory]
+    [InlineData(RefreshTiers.Pr)]
+    [InlineData(RefreshTiers.Ci)]
+    [InlineData(RefreshTiers.Machine)]
+    [InlineData(RefreshTiers.Agent)]
+    [InlineData(RefreshTiers.Workflow)]
+    [InlineData(RefreshTiers.Default)]
+    public void DefaultTierPolicyTable_CoversAllRefreshTiers(string tier)
+    {
+        var policy = RefreshTiers.Defaults[tier];
+
+        Assert.NotEqual(Timeout.InfiniteTimeSpan, policy.Interval);
+        Assert.Equal(0.2, policy.JitterFraction);
+        Assert.Equal(10, policy.MaxBackoffMultiplier);
+    }
+
+    [Fact]
+    public void DefaultTierPolicyTable_StaticIsManual()
+    {
+        Assert.Equal(Timeout.InfiniteTimeSpan, RefreshTiers.Defaults[RefreshTiers.Static].Interval);
+    }
+
     // ---- 行为（FakeDelayer 模拟时钟）----
 
     [Fact]

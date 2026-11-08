@@ -239,6 +239,43 @@ public sealed class DisplayTemplateTests
     }
 
     [Fact]
+    public void Identify_DetectsIdPropsBindingsArgsAndStructuralDifferences()
+    {
+        var actual = Template("bar").Build();
+
+        Assert.True(IdentifyMatches(actual, differentId: true));
+        Assert.True(IdentifyMatches(actual, extraProp: true));
+        Assert.True(Template("bar").RequiresProgress);
+        Assert.False(Template("statusline").RequiresProgress);
+        Assert.False(IdentifyMatches(actual, withoutBindings: true));
+        Assert.True(IdentifyMatches(actual, withoutChildren: true));
+    }
+
+    [Fact]
+    public void Identify_MatchesBindingsWithOptionalArguments()
+    {
+        var bar = Template("bar").Build();
+        var summaryBinding = bar.Children[0].Bindings.Single();
+        var withArgs = new ComponentDescriptor
+        {
+            Type = bar.Type,
+            Props = new Dictionary<string, string>(bar.Props, StringComparer.OrdinalIgnoreCase),
+            Children = [.. bar.Children],
+            Bindings = [WithArgs(summaryBinding, "weekly")],
+        };
+        Assert.Null(DisplayTemplates.Identify(withArgs));
+
+        var matchingArgs = new ComponentDescriptor
+        {
+            Type = bar.Type,
+            Props = new Dictionary<string, string>(bar.Props, StringComparer.OrdinalIgnoreCase),
+            Children = [.. bar.Children],
+            Bindings = [],
+        };
+        Assert.Equal("bar", DisplayTemplates.Identify(matchingArgs));
+    }
+
+    [Fact]
     public void Every_template_has_a_parameter_schema_matching_its_props()
     {
         foreach (var template in DisplayTemplates.All)
@@ -263,4 +300,47 @@ public sealed class DisplayTemplateTests
         Assert.Single(matches);
         return matches[0];
     }
+
+    private static bool IdentifyMatches(
+        ComponentDescriptor actual,
+        bool differentId = false,
+        bool extraProp = false,
+        bool withoutBindings = false,
+        bool withoutChildren = false,
+        bool modifiedBindingArgs = false)
+    {
+        var candidate = new ComponentDescriptor
+        {
+            Id = differentId ? "different" : string.Empty,
+            Type = actual.Type,
+            Props = new Dictionary<string, string>(actual.Props, StringComparer.OrdinalIgnoreCase),
+            Bindings = withoutBindings
+                ? []
+                : [.. actual.Bindings.Select(binding => modifiedBindingArgs ? WithArgs(binding, "monthly") : CloneBinding(binding))],
+            Children = withoutChildren ? [] : [.. actual.Children],
+        };
+        if (extraProp)
+        {
+            candidate.Props["extra"] = "1";
+        }
+        return DisplayTemplates.Identify(candidate) is null;
+    }
+
+    private static ComponentBinding CloneBinding(ComponentBinding binding) => new()
+    {
+        Field = binding.Field,
+        Source = binding.Source,
+    };
+
+
+    private static ComponentBinding WithArgs(ComponentBinding binding, string? window) => new()
+    {
+        Field = binding.Field,
+        Source = new ComponentBindingSource
+        {
+            Kind = binding.Source!.Kind,
+            Ref = binding.Source.Ref,
+            Args = window is null ? null : new Dictionary<string, string> { ["window"] = window },
+        },
+    };
 }
