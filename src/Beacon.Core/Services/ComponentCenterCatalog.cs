@@ -106,6 +106,33 @@ public static class ComponentCenterCatalog
     /// <summary>岛进度条组件是否被勾选显示（缺省=显示；勾掉即岛撤条）。</summary>
     public static bool IslandBarVisible(AppConfig app) => !IsHidden(app, IslandBarId);
 
+    /// <summary>该组件是否已「上岛」（ISLAND-D2，2026-11-09 用户令）：读 AppConfig.IslandComponents
+    /// 白名单，缺席=不上岛（opt-in：存量配置升级后岛上零真实组件，行为不变）。</summary>
+    public static bool IslandOnboarded(AppConfig app, string widgetId)
+        => app.IslandComponents.Contains(widgetId);
+
+    /// <summary>上岛勾选落库写入（设置页唯一写入口）：onboarded=true 追加进白名单尾（列表序=上岛序）、
+    /// false 移出；幂等。与 SetVisible 同一套纪律：只改集不落盘，SaveApp 由调用方收口。</summary>
+    public static void SetIslandOnboarded(AppConfig app, string widgetId, bool onboarded)
+    {
+        if (onboarded)
+        {
+            if (!app.IslandComponents.Contains(widgetId))
+            {
+                app.IslandComponents.Add(widgetId);
+            }
+        }
+        else
+        {
+            app.IslandComponents.RemoveAll(id => string.Equals(id, widgetId, StringComparison.Ordinal));
+        }
+    }
+
+    /// <summary>上岛候选清单（ISLAND-D2）：全部真实组件按 widgets.json 配置序列出，供岛组「上岛」
+    /// 勾选区渲染（与 Group() 分离——通用分组页的岛组只放虚拟环/条，托盘/设置页消费口径不变）。</summary>
+    public static IReadOnlyList<ComponentCenterItem> OnboardCandidates(IReadOnlyList<WidgetConfig> widgets)
+        => [.. widgets.Select(widget => new ComponentCenterItem(widget.Id, ItemLabel(widget), widget.Type, widget.Pinned))];
+
     /// <summary>组件条目显示名：与 PinTile 标签同源口径——优先用户配置 label/repo/owner，否则类型短名。</summary>
     public static string ItemLabel(WidgetConfig widget)
     {

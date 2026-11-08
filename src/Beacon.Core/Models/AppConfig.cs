@@ -56,6 +56,13 @@ public sealed class AppConfig
     /// 无常驻开关恒可用——增量可选字段缺键=true，存量 config.json 行为不变；false=热键/岛点击
     /// 不可唤起且已开即收（CarrierCatalog 单源读写，悬浮岛/悬浮框走旧字段不新增）。</summary>
     public bool BoardEnabled { get; set; } = true;
+    /// <summary>岛收起态展示方式（ISLAND-D1，2026-11-09 用户令）：single=单组件常驻 /
+    /// stack=多组件堆叠（默认，与既有环/条并置同形）/ carousel=徽标+轮播。非法值 fail-open 回 stack。</summary>
+    public string IslandDisplayMode { get; set; } = "stack";
+    /// <summary>上岛组件白名单（ISLAND-D2，2026-11-09 用户令，widgets.json WidgetId）：
+    /// 列表序=上岛序；缺席=不上岛（opt-in，存量配置升级后岛上仍只有环/条，零行为变更）。
+    /// 岛面渲染序=虚拟环/条在前、白名单序续后。</summary>
+    public List<string> IslandComponents { get; set; } = [];
     /// <summary>外观：级别色覆盖与动效（config.json appearance 段，RFC §4.1/§6.2.8/§9.1）。</summary>
     public AppearanceConfig Appearance { get; set; } = new();
 }
