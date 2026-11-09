@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
 
@@ -261,5 +263,177 @@ public sealed class CopilotUsageProviderTests
         var health = (await provider.TestAsync(Connection(), Ctx("ghp-test"), CancellationToken.None)).Health;
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
+    }
+
+    // ---- 分支补齐：共享客户端 / 缺省标量解析 / 阈值容错 / 计量槽缺字段 / 缺省凭据 / 长文截断 ----
+
+    [Fact]
+    public async Task FetchUsageAsync_ParameterlessProvider_FetchesViaSharedClient()
+    {
+        // 参数less 构造（无注入 handler）→ L86 `_client ?? HttpEndpoint.Shared` 走共享客户端；
+        // 回环 HTTP 桩做一次真实交换，验证共享客户端上整链路（Bearer + 官方扩展两头）仍成立。
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var provider = new CopilotUsageProvider();
+
+        var fetchTask = provider.FetchUsageAsync(Connection($"http://127.0.0.1:{port}"), Ctx("ghp-test"), CancellationToken.None);
+        using var tcpClient = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        using var stream = tcpClient.GetStream();
+        var buffer = new byte[4096];
+        var head = new StringBuilder();
+        while (!head.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            var read = await stream.ReadAsync(buffer, 0, buffer.Length);
+            if (read == 0)
+            {
+                break;
+            }
+            head.Append(Encoding.ASCII.GetString(buffer, 0, read));
+        }
+        var requestText = head.ToString();
+        Assert.Contains("Bearer ghp-test", requestText, StringComparison.Ordinal); // 共享客户端上 Bearer 照发
+        Assert.Contains("Editor-Version", requestText, StringComparison.Ordinal);  // 官方扩展两头必带
+
+        var responseBytes = Encoding.UTF8.GetBytes(
+            $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {Encoding.UTF8.GetByteCount(UsageBody)}\r\nConnection: close\r\n\r\n{UsageBody}");
+        await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+
+        var usage = await fetchTask;
+        Assert.Equal("individual", usage.PlanRaw); // 共享客户端完成取数并解析
+        listener.Stop();
+    }
+
+    [Fact]
+    public void ParseUsage_OptionalScalarsMissing_FallBackToDefaults()
+    {
+        // copilot_plan / access_type_sku / quota_reset_date 全缺：不炸，落空串/空重置（L114/L117/L120 缺属性臂）
+        var usage = CopilotUsageProvider.ParseUsage("""{"quota_snapshots":{"chat":{"unlimited":true}}}""");
+
+        Assert.Equal("", usage.PlanRaw);
+        Assert.Equal("", usage.AccessTypeSku);
+        Assert.Null(usage.ResetDate);
+    }
+
+    [Fact]
+    public void ParseUsage_NullOrNonStringScalars_TreatedAsAbsent()
+    {
+        // 类型不对（copilot_plan=null、access_type_sku=数字、quota_reset_date=数字）：不炸不编造，落缺省
+        var usage = CopilotUsageProvider.ParseUsage("""
+            {
+              "copilot_plan": null,
+              "access_type_sku": 42,
+              "quota_reset_date": 20261101,
+              "quota_snapshots": {"chat": {"unlimited": true}}
+            }
+            """);
+
+        Assert.Equal("", usage.PlanRaw);
+        Assert.Equal("", usage.AccessTypeSku);
+        Assert.Null(usage.ResetDate);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ThresholdParseFailures_FallBackToDefaults()
+    {
+        // warn/error 填了非数字：不炸也不按 0 判级——回退默认 80/95（已用 75% < 80 → Success；若按 0 判必 Error）
+        var body = """
+            {
+              "copilot_plan": "individual",
+              "quota_snapshots": {
+                "premium_interactions": {"unlimited": false, "percent_remaining": 25.0, "entitlement": 300, "remaining": 225}
+              }
+            }
+            """;
+        var config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["warn_percent"] = "abc",
+            ["error_percent"] = "",
+        };
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(config), Connection(), Ctx("ghp-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Success, state!.Severity);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ConfiguredThresholds_OverrideDefaults()
+    {
+        // 已用 55%（percent_remaining 45）：默认 80/95 会显 Success；显式 warn=50 → Warning 证明阈值被读取
+        var body = """
+            {
+              "copilot_plan": "individual",
+              "quota_snapshots": {
+                "premium_interactions": {"unlimited": false, "percent_remaining": 45.0, "entitlement": 300, "remaining": 135}
+              }
+            }
+            """;
+        var config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["warn_percent"] = "50",
+            ["error_percent"] = "60",
+        };
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(config), Connection(), Ctx("ghp-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Warning, state!.Severity); // 55 ≥ warn 50、< error 60
+    }
+
+    [Fact]
+    public async Task GetStateAsync_MeteredSlotWithoutEntitlement_ShowsRemainingPercent()
+    {
+        // 计量槽缺 entitlement/remaining：不造 0/x 数字，改显「剩 X%」；无 unlimited 键的槽同样按计量槽处理（L138/L176 缺省臂）
+        var body = """
+            {
+              "copilot_plan": "individual",
+              "quota_snapshots": {
+                "chat": {"percent_remaining": 100.0},
+                "premium_interactions": {"unlimited": false, "percent_remaining": 42.0}
+              }
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("ghp-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Contains("高级 剩 42%", state!.Summary);
+        Assert.Contains("聊天 剩 100%", state.Summary); // chat 无 unlimited 键 → 按非无限槽渲染
+        Assert.Equal(Severity.Success, state.Severity); // 最差已用 58% < 80
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_NullCredentialRef_FallsBackToDefaultSecretKey()
+    {
+        // CredentialRef 缺省 → 回退默认键 "copilot:default"（L271 右臂）；从该键取到 PAT 才能成功
+        var (provider, _) = Faked(HttpStatusCode.OK, UsageBody);
+        var secrets = new SecretStoreStub();
+        secrets.Secrets["copilot:default"] = "ghp-from-default-slot";
+
+        var usage = await provider.FetchUsageAsync(
+            Connection(credentialRef: null), new ConnectionContext { Secrets = secrets }, CancellationToken.None);
+
+        Assert.Equal("individual", usage.PlanRaw);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LongErrorBody_TruncatesTo120Chars()
+    {
+        // 超长错误体截到 120（L281 右臂），错误卡/详情不被上游长文淹没
+        var tail = "TAIL-BEYOND-120";
+        var body = new string('a', 120) + tail;
+        var (provider, _) = Faked(HttpStatusCode.Unauthorized, body);
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), Connection(), Ctx("ghp-test"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("401", exception.Message);
+        Assert.Contains(new string('a', 120), exception.Message);
+        Assert.DoesNotContain(tail, exception.Message);
     }
 }

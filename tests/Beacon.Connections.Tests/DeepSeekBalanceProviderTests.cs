@@ -218,4 +218,64 @@ public sealed class DeepSeekBalanceProviderTests
     [InlineData("https://proxy.example.com/v1/user/balance", "https://proxy.example.com/v1/user/balance")] // 已带路径原样
     public void ResolveEndpoint_BaseConfigured_AppendsBalancePath(string? configured, string? expected)
         => Assert.Equal(expected, DeepSeekBalanceProvider.ResolveEndpoint(configured));
+
+    // ---- 分支覆盖收口（部分分支 → 全覆盖）：金额不可解析跳过 / 币种缺省 / ReadAmount 边界 / 阈值解析 ----
+
+    [Fact]
+    public void ParseBalance_UnparseableAmounts_SkipsToValidEntry()
+    {
+        // total_balance 不可解析（非数字字符串）跳过，直到可解析条目。
+        // 注：1e400 溢出 double 时 .NET TryGetDouble 返回 +∞（非 false），「Number+TryGetDouble false」臂实为死码，不作输入。
+        var balance = DeepSeekBalanceProvider.ParseBalance(
+            """
+            {"balance_infos":[
+              {"currency":"CNY","total_balance":"abc"},
+              {"currency":"EUR","total_balance":"7"}
+            ]}
+            """)!;
+
+        Assert.Equal("EUR", balance.Currency);
+        Assert.Equal(7, balance.Total);
+    }
+
+    [Fact]
+    public void ParseBalance_MissingOrNonStringCurrency_DefaultsCny()
+    {
+        var missing = DeepSeekBalanceProvider.ParseBalance("""{"balance_infos":[{"total_balance":"5"}]}""")!;
+        Assert.Equal("CNY", missing.Currency); // 无 currency → 默认 CNY
+
+        var nonString = DeepSeekBalanceProvider.ParseBalance("""{"balance_infos":[{"currency":123,"total_balance":"5"}]}""")!;
+        Assert.Equal("CNY", nonString.Currency); // currency 非字符串 → 默认 CNY
+    }
+
+    [Fact]
+    public void ParseBalance_ReadAmount_NumberOverflowAndUnparseableString()
+    {
+        var balance = DeepSeekBalanceProvider.ParseBalance(
+            """{"balance_infos":[{"currency":"CNY","total_balance":"10","granted_balance":5.5,"topped_up_balance":"abc"}]}""")!;
+        Assert.Equal(5.5, balance.Granted); // granted 数字 → 直接读
+        Assert.Null(balance.ToppedUp);      // topped_up "abc" 解析不动 → null（字符串 TryParse false 臂）
+    }
+
+    [Fact]
+    public async Task GetStateAsync_WarnErrorThresholds_ParsedFromConfig()
+    {
+        var (warningProvider, _) = Faked(HttpStatusCode.OK, """{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"22.00"}]}""");
+        var warning = await warningProvider.GetStateAsync(
+            Widget(new Dictionary<string, string> { ["warn_below"] = "25", ["error_below"] = "1" }),
+            Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal(Severity.Warning, warning!.Severity); // warn_below=25 生效：22 ≤ 25（默认 20 会是 Success）
+
+        var (errorProvider, _) = Faked(HttpStatusCode.OK, """{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"25.00"}]}""");
+        var error = await errorProvider.GetStateAsync(
+            Widget(new Dictionary<string, string> { ["warn_below"] = "40", ["error_below"] = "30" }),
+            Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal(Severity.Error, error!.Severity); // error_below=30 生效：25 ≤ 30（默认 5 会是 Success）
+
+        var (fallbackProvider, _) = Faked(HttpStatusCode.OK, """{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"22.00"}]}""");
+        var fallback = await fallbackProvider.GetStateAsync(
+            Widget(new Dictionary<string, string> { ["warn_below"] = "abc", ["error_below"] = "xyz" }),
+            Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal(Severity.Success, fallback!.Severity); // 两阈值解析不动 → 落默认 20/5：22 > 20 → Success
+    }
 }

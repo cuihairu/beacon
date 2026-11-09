@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using Beacon.Core.Abstractions;
@@ -764,6 +765,152 @@ public sealed class ArkUsageProviderTests
             """{"Result":{"QuotaUsage":[{"Level":"weekly","Percent":2}]}}""");
 
         Assert.Null(ArkUsageProvider.NearestReset(usage!));
+    }
+
+    // ---- 分支补齐：共享客户端 / 缺省凭据 / 429 数组与深度封顶 / 哨兵时间戳 / 5h 窗已尽 / 长文截断 ----
+
+    [Fact]
+    public async Task FetchUsageAsync_ParameterlessProvider_FetchesViaSharedClient()
+    {
+        // 参数less 构造（无注入 handler）→ L100 `_client ?? HttpEndpoint.Shared` 走共享客户端；
+        // 回环 HTTP 桩做一次真实交换，验证共享客户端上整条签名请求链仍成立。
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var provider = new ArkUsageProvider();
+
+        var fetchTask = provider.FetchUsageAsync(Connection(endpoint: $"http://127.0.0.1:{port}"), Ctx($"{AK}:{SK}"), CancellationToken.None);
+        using var tcpClient = await listener.AcceptTcpClientAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        using var stream = tcpClient.GetStream();
+        var buffer = new byte[4096];
+        var head = new StringBuilder();
+        while (!head.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+        {
+            var read = await stream.ReadAsync(buffer, 0, buffer.Length);
+            if (read == 0)
+            {
+                break;
+            }
+            head.Append(Encoding.ASCII.GetString(buffer, 0, read));
+        }
+        var requestText = head.ToString();
+        Assert.Contains("POST", requestText, StringComparison.Ordinal); // 管控面固定 POST
+        Assert.Contains("x-date:", requestText, StringComparison.OrdinalIgnoreCase); // 签名头照带
+
+        var responseBytes = Encoding.UTF8.GetBytes(
+            $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {Encoding.UTF8.GetByteCount(Body)}\r\nConnection: close\r\n\r\n{Body}");
+        await stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+
+        var usage = await fetchTask;
+        Assert.Equal(42.5, usage.Session!.Percent); // 共享客户端完成签名取数并解析
+        listener.Stop();
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_NullCredentialRef_FallsBackToDefaultSecretKey()
+    {
+        // CredentialRef 缺省 → 回退默认键 "ark:default"（L277 右臂）；从该键取到 AK:SK 才能成功
+        var (provider, _) = Faked(HttpStatusCode.OK, Body);
+        var secrets = new SecretStoreStub();
+        secrets.Secrets["ark:default"] = $"{AK}:{SK}";
+
+        var usage = await provider.FetchUsageAsync(
+            Connection(credentialRef: null), new ConnectionContext { Secrets = secrets }, CancellationToken.None);
+
+        Assert.True(usage.HasPlan);
+        Assert.Equal(42.5, usage.Session!.Percent);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429ResetInsideArrayItem_IsFound()
+    {
+        // 429 耗尽体里重置键在数组元素内（非顶层对象）：数组仍被递归扫描并命中（L530/L532 非空臂）
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"Error":{"Code":"QuotaExceeded","Message":"session quota exhausted","Attempts":[{"ResetTimestamp":1771900000}]}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.NotNull(usage.Session);
+        Assert.Equal(100, usage.Session!.Percent);
+        Assert.Equal(1771900000, usage.Session.ResetSeconds);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429ResetBeyondDepthCap_IsIgnored()
+    {
+        // 重置键藏在深度 4 封顶之外：不取深层数字凑数（L532 空迭代臂）——窗口仍按 100% 判尽但重置留空
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"Error":{"Code":"QuotaExceeded","Message":"weekly quota exhausted","Trace":{"Log":{"Attempts":[{"ResetTimestamp":1771900000}]}}}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.NotNull(usage.Weekly);
+        Assert.Equal(100, usage.Weekly!.Percent);
+        Assert.Null(usage.Weekly.ResetSeconds);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429EmptyArrayField_StillDetectsExhaustion()
+    {
+        // 429 体里空数组字段：不炸、不误判，耗尽识别照常（L530 空集合臂）
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"Error":{"Code":"AccountQuotaExceeded","Message":"plan quota exhausted","Tags":[]}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.Equal("AccountQuotaExceeded", usage.ExhaustedNote);
+        Assert.Null(usage.Session);
+        Assert.Null(usage.Weekly);
+        Assert.Null(usage.Monthly);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_429ResetTimestampSentinel_NotTreatedAsEpoch()
+    {
+        // ResetTimestamp=0（哨兵/非时间戳数字）：NormalizeEpoch 返回 null（L542 null 臂），不拿来当重置时刻
+        var (provider, _) = Faked(HttpStatusCode.TooManyRequests,
+            """{"Error":{"Code":"QuotaExceeded","Message":"session quota exhausted","ResetTimestamp":0}}""");
+
+        var usage = await provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None);
+
+        Assert.NotNull(usage.Session);
+        Assert.Equal(100, usage.Session!.Percent);
+        Assert.Null(usage.Session.ResetSeconds);
+    }
+
+    [Fact]
+    public void ToState_SessionExhausted_NamesSessionWindow()
+    {
+        // 5h 窗自身尽（月/周均缺）：ExhaustedWindows 的 session 非空且已尽臂（L585）→ 标「5h 窗」并满格
+        var usage = ArkUsageProvider.ParseUsage(
+            """{"Result":{"QuotaUsage":[{"Level":"session","Percent":100,"ResetTimestamp":1771000000}]}}""")!;
+
+        var state = ArkUsageProvider.ToState(Widget(), Connection(), usage);
+
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal(1.0, state.Progress!.Value, 5);
+        Assert.Equal("5h 窗", state.Payload["exhausted_window"]);
+        Assert.Equal("100", state.Payload["percent"]);
+        Assert.Contains("5 小时", state.Payload["exhausted_reason"]);
+        Assert.Equal($"方舟 · 额度用尽（5h 窗，{ResetDisplay} 重置）", state.Summary);
+    }
+
+    [Fact]
+    public async Task FetchUsageAsync_LongErrorBody_TruncatesTo180Chars()
+    {
+        // 超长错误体截到 180（L612 右臂），连接错误消息不被上游长文淹没
+        var tail = "TAIL-BEYOND-180";
+        var body = new string('a', 180) + tail;
+        var (provider, _) = Faked(HttpStatusCode.BadRequest, body);
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.FetchUsageAsync(Connection(), Ctx($"{AK}:{SK}"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains("400", exception.Message);
+        Assert.Contains(new string('a', 180), exception.Message);
+        Assert.DoesNotContain(tail, exception.Message);
     }
 
     private static string ResetDisplay

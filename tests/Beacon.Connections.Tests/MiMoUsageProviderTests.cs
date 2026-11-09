@@ -797,4 +797,67 @@ public sealed class MiMoUsageProviderTests
 
         Assert.Equal(2, catalog.Models); // 缺省 credentialRef → "mimo:default"
     }
+
+    // ---- 2026-11-09 覆盖率批②（ToLocalCountState / ToCustomPercentState 状态初始化未命中臂） ----
+
+    [Fact]
+    public void ToLocalCountState_WindowMinutesAbsent_OmitsWindowAndEmptyPayload()
+    {
+        // WindowMinutes 缺失而 WindowCalls 有值 → `WindowMinutes is {}` 假臂（417 左操作数短路），
+        // 且 payload window_minutes 走 `?.ToString() ?? ""` 的 null 臂——补 417/433 两未命中臂
+        var state = MiMoUsageProvider.ToLocalCountState(
+            Widget(), Connection(), "http://local/count", new MiMoUsageProvider.MiMoLocalCount(5, WindowCalls: 3, WindowMinutes: null));
+
+        Assert.DoesNotContain("近", state.Summary); // 窗口文本省略（任一窗口字段缺失即不出）
+        Assert.Equal("3", state.Payload["window_calls"]); // 有值的窗口仍如实出数
+        Assert.Equal("", state.Payload["window_minutes"]); // 缺失窗口字段给空串（null 臂）
+    }
+
+    [Fact]
+    public void ToCustomPercentState_OverLimit_ErrorAndFailed()
+    {
+        // Percent ≥ 100 → PlanSeverity Error 臂 + Lifecycle=Failed 臂（severity == Error 真臂）
+        var state = MiMoUsageProvider.ToCustomPercentState(
+            Widget(), Connection(), "http://custom/usage", new MiMoUsageProvider.MiMoPlanUsage(Used: 120, Total: 100, Percent: 120));
+
+        Assert.Equal(Severity.Error, state.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        Assert.Equal("120", state.Payload["percent"]); // 0.# 格式无小数点
+        Assert.Contains("已用 120 / 100", state.Summary);
+    }
+
+    [Fact]
+    public void ToCustomPercentState_NearLimit_Warning()
+    {
+        // 90 ≤ Percent < 100 → PlanSeverity Warning 臂（未超限不 Error）
+        var state = MiMoUsageProvider.ToCustomPercentState(
+            Widget(), Connection(), "http://custom/usage", new MiMoUsageProvider.MiMoPlanUsage(Used: 95, Total: 100, Percent: 95));
+
+        Assert.Equal(Severity.Warning, state.Severity);
+        Assert.Equal(LifecycleState.Success, state.Lifecycle);
+    }
+
+    [Fact]
+    public void ToCustomPercentState_UsedNull_OmitsAmountText()
+    {
+        // Used 缺失 → AmountText `Used is {}` 假臂（短路 → 空串文案）+ payload used 的 null 臂
+        var state = MiMoUsageProvider.ToCustomPercentState(
+            Widget(), Connection(), "http://custom/usage", new MiMoUsageProvider.MiMoPlanUsage(Used: null, Total: 100, Percent: 50));
+
+        Assert.DoesNotContain("已用", state.Summary); // 缺绝对数不摆「已用 X / Y」
+        Assert.Equal("", state.Payload["used"]);
+        Assert.Equal("100", state.Payload["total"]); // 有值的总量仍如实出数
+    }
+
+    [Fact]
+    public void ToCustomPercentState_TotalNull_OmitsAmountText()
+    {
+        // Total 缺失（Used 有值）→ AmountText `Total is {}` 假臂 → 空串文案 + payload total 的 null 臂
+        var state = MiMoUsageProvider.ToCustomPercentState(
+            Widget(), Connection(), "http://custom/usage", new MiMoUsageProvider.MiMoPlanUsage(Used: 50, Total: null, Percent: 50));
+
+        Assert.DoesNotContain("已用", state.Summary);
+        Assert.Equal("50", state.Payload["used"]);
+        Assert.Equal("", state.Payload["total"]);
+    }
 }

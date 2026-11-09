@@ -330,4 +330,139 @@ public sealed class BigModelUsageProviderTests
         Assert.Equal(ConnectionHealthState.Healthy, healthy);
         Assert.Equal(ConnectionHealthState.Unauthorized, unauthorized);
     }
+
+    // ---- 阈值配置解析（error_percent 三态：有效值 / 非法值回退 90） ----
+
+    [Fact]
+    public async Task GetStateAsync_ErrorPercentConfig_TakesEffect()
+    {
+        // error_percent=95 生效：92 < 95 → Warning（若回退默认 90 则 92 ≥ 90 会成 Error，可区分）
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":92}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+        var widget = Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "95" });
+
+        var state = await provider.GetStateAsync(widget, Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Warning, state!.Severity);
+        Assert.Equal(LifecycleState.Running, state.Lifecycle);
+        Assert.Equal("92", state.Payload["percent"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_InvalidErrorPercent_FallsBackTo90()
+    {
+        // error_percent 非数字 → 回退默认 90：92 ≥ 90 → Error（与有效值 95 的 Warning 区分）
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":92}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+        var widget = Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "abc" });
+
+        var state = await provider.GetStateAsync(widget, Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity);
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+    }
+
+    // ---- 无选择窗口兜底（窗口存在但占比缺失 → 展示窗为 null，不画条） ----
+
+    [Fact]
+    public async Task GetStateAsync_NoSelectableWindow_NoDataFallback()
+    {
+        // 5h 窗存在但缺 percentage：Select 三窗全 null → Display null（displayKey/resetText 的 false 臂）、不画进度条
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Warning, state!.Severity); // 无数据兜底：宁报勿漏
+        Assert.Null(state.Progress); // 无数据 → 不画条
+        Assert.Equal("", state.Payload["percent"]);
+        Assert.Equal("", state.Payload["percent_window"]);
+        Assert.Equal("", state.Payload["reset_iso"]);
+        Assert.Contains("窗口数据", state.Summary);
+    }
+
+    // ---- 响应解析：字段形态容错 ----
+
+    [Theory]
+    [InlineData("""{"data":{"limits":[{"percentage":10}]}}""")] // 缺 type
+    [InlineData("""{"data":{"limits":[{"type":42,"percentage":10}]}}""")] // type 非字符串
+    public void ParseUsage_UnrecognizedType_IgnoresItem(string json)
+    {
+        var usage = BigModelUsageProvider.ParseUsage(json)!;
+
+        Assert.Null(usage.Rolling);
+        Assert.Null(usage.Weekly);
+        Assert.Null(usage.Monthly);
+    }
+
+    [Theory]
+    [InlineData("""{"data":{"limits":[{"type":"TIME_LIMIT"}]}}""")] // 缺 percentage
+    [InlineData("""{"data":{"limits":[{"type":"TIME_LIMIT","percentage":"42"}]}}""")] // percentage 非数字
+    public void ParseUsage_InvalidPercentage_WindowWithoutPercent(string json)
+    {
+        var usage = BigModelUsageProvider.ParseUsage(json)!;
+
+        Assert.NotNull(usage.Monthly);
+        Assert.Null(usage.Monthly!.Percent);
+        Assert.Null(usage.Monthly.ResetMs);
+    }
+
+    [Theory]
+    // unit 三态：缺字段 / 非数字 / 超 Int32 → 默认 0 → 5h 窗不归类
+    [InlineData("""{"data":{"limits":[{"type":"TOKENS_LIMIT","number":5,"percentage":10}]}}""")]
+    [InlineData("""{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":"x","number":5,"percentage":10}]}}""")]
+    [InlineData("""{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3000000000,"number":5,"percentage":10}]}}""")]
+    // number 三态：缺字段 / 非数字 / 超 Int32 → 默认 0 → 5h 窗不归类
+    [InlineData("""{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":10}]}}""")]
+    [InlineData("""{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":"y","percentage":10}]}}""")]
+    [InlineData("""{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5000000000,"percentage":10}]}}""")]
+    public void ParseUsage_BadUnitOrNumber_TokenWindowIgnored(string json)
+    {
+        var usage = BigModelUsageProvider.ParseUsage(json)!;
+
+        Assert.Null(usage.Rolling);
+        Assert.Null(usage.Weekly);
+    }
+
+    // ---- 展示窗重置时间：ResetOf 每窗 × 有无 nextResetTime ----
+
+    [Fact]
+    public async Task GetStateAsync_MonthlyDisplay_ResetIsoFormatted()
+    {
+        var body = """{"data":{"limits":[{"type":"TIME_LIMIT","percentage":30,"nextResetTime":1771000000000}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        var expectedReset = DateTimeOffset.FromUnixTimeMilliseconds(1771000000000).ToLocalTime()
+            .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal("monthly", state!.Payload["percent_window"]);
+        Assert.Equal(expectedReset, state.Payload["reset_iso"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_WeeklyDisplay_ResetIsoFormatted()
+    {
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":20,"nextResetTime":1770100000000}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        var expectedReset = DateTimeOffset.FromUnixTimeMilliseconds(1770100000000).ToLocalTime()
+            .ToString("MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal("weekly", state!.Payload["percent_window"]);
+        Assert.Equal(expectedReset, state.Payload["reset_iso"]);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_FiveHourDisplay_NoReset_ResetIsoEmpty()
+    {
+        var body = """{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":42}]}}""";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal("5h", state!.Payload["percent_window"]);
+        Assert.Equal("", state.Payload["reset_iso"]);
+    }
 }

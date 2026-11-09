@@ -248,4 +248,133 @@ public sealed class OpenCodeUsageProviderTests
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
     }
+
+    // ---- 分支补强：解析边界 / 阈值回退 / 共享客户端 / 默认凭据 / 错误截断 ----
+
+    [Fact]
+    public void ParseBudgets_MissingOrNonStringEmail_NullEmail()
+    {
+        const string body = """
+            [
+              { "user_id": "u1", "limit_micro_cents": "10000000000", "spent_micro_cents": "0", "exceeded": false, "resets_at": "2026-11-01T00:00:00.000Z" },
+              { "user_id": "u2", "email": 123, "limit_micro_cents": "10000000000", "spent_micro_cents": "0", "exceeded": false, "resets_at": "2026-11-01T00:00:00.000Z" }
+            ]
+            """;
+
+        var budgets = OpenCodeUsageProvider.ParseBudgets(body);
+
+        Assert.Equal(2, budgets.Count);
+        Assert.Null(budgets[0].Email); // email 属性缺失 → null
+        Assert.Null(budgets[1].Email); // email 非字符串（数字）→ null
+    }
+
+    [Fact]
+    public void ParseBudgets_MissingMicrocentProperties_NullLimitZeroSpent()
+    {
+        const string body = """
+            [ { "user_id": "u1", "email": "dev@example.com", "exceeded": false, "resets_at": "2026-11-01T00:00:00.000Z" } ]
+            """;
+
+        var budget = Assert.Single(OpenCodeUsageProvider.ParseBudgets(body));
+
+        Assert.Null(budget.LimitMicroCents);   // limit 属性缺失 → null（无上限）
+        Assert.Equal(0, budget.SpentMicroCents); // spent 缺失 → null ?? 0
+    }
+
+    [Fact]
+    public void ParseBudgets_NumericLimitAndUnparseableSpent_Normalized()
+    {
+        const string body = """
+            [ { "user_id": "u1", "email": "dev@example.com", "limit_micro_cents": 10000000000, "spent_micro_cents": "abc", "exceeded": false, "resets_at": "2026-11-01T00:00:00.000Z" } ]
+            """;
+
+        var budget = Assert.Single(OpenCodeUsageProvider.ParseBudgets(body));
+
+        Assert.Equal(HundredDollars, budget.LimitMicroCents); // 数字形态兼容 → TryGetInt64
+        Assert.Equal(0, budget.SpentMicroCents);              // "abc" 非数字 → null ?? 0
+    }
+
+    [Fact]
+    public async Task GetStateAsync_WarnPercentConfigured_OverridesDefault()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, MemberBody(HundredDollars, spentMicroCents: 9_000_000_000)); // $90/$100 = 90%
+
+        var state = await provider.GetStateAsync(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "95" }),
+            Connection(), Ctx("oc_sk-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Success, state!.Severity); // 90 < 95（自定义 warn）→ 不升 Warning
+    }
+
+    [Fact]
+    public async Task GetStateAsync_WarnPercentInvalid_FallsBackTo80()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, MemberBody(HundredDollars, spentMicroCents: 9_000_000_000)); // 90%
+
+        var state = await provider.GetStateAsync(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["warn_percent"] = "notnum" }),
+            Connection(), Ctx("oc_sk-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Warning, state!.Severity); // 回退 80：90 ≥ 80 → Warning
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ErrorPercentInvalid_FallsBackTo95()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, MemberBody(HundredDollars, spentMicroCents: 9_000_000_000)); // 90%
+
+        var state = await provider.GetStateAsync(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "notnum" }),
+            Connection(), Ctx("oc_sk-test"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Warning, state!.Severity); // 回退 95：90 < 95 → 非 Error
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ParameterlessProvider_UsesSharedClient()
+    {
+        // 参数less 构造 → _client 为 null → HttpEndpoint.Shared（真实 HttpClient）；
+        // 端点指向本机无监听端口（127.0.0.1:1）→ 连接拒绝，走共享客户端路径。
+        // 抛原始 HttpRequestException（非 ConnectionException 包装）即证明走的是共享客户端而非注入 handler。
+        var provider = new OpenCodeUsageProvider();
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => provider.GetStateAsync(Widget(), Connection(endpoint: "http://127.0.0.1:1/"), Ctx("oc_sk-test"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetStateAsync_NullCredentialRef_ReadsOpenCodeDefault()
+    {
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, BudgetsBody);
+        });
+        var secrets = new SecretStoreStub();
+        secrets.Secrets["opencode:default"] = "oc_sk-default";
+        var context = new ConnectionContext { Secrets = secrets };
+
+        var state = await provider.GetStateAsync(Widget(), Connection(credentialRef: null), context, CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("oc_sk-default", captured!.Headers.Authorization?.Parameter); // 默认凭据 ref 生效
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LongErrorBody_TruncatesMessage()
+    {
+        var longBody = new string('x', 200); // > 120 → 截断到 120
+        var (provider, _) = Faked(HttpStatusCode.InternalServerError, longBody);
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), Connection(), Ctx("oc_sk-test"), CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Offline, exception.Health);
+        Assert.Contains(longBody[..120], exception.Message); // 正文保留前 120 字符
+        Assert.DoesNotContain(longBody, exception.Message);  // 全长 200 字已被裁掉（不止 120）
+    }
 }

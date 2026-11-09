@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
 
@@ -427,5 +428,144 @@ public sealed class HeraldProviderTests
         Assert.False(HeraldFeedProvider.IsFeedSlug("bad cat"));
         Assert.False(HeraldFeedProvider.IsFeedSlug("a/b"));
         Assert.False(HeraldFeedProvider.IsFeedSlug(new string('x', 65)));
+    }
+
+    // —— 分支覆盖收口（部分分支 → 全覆盖）：label 头覆盖 / id·level·provider·error 兜底 / 私密 label / 空 title / Shared 兜底 ——
+
+    private static WidgetConfig IncidentsLabeledWidget(string label) => new()
+    {
+        Id = "w-incidents",
+        Type = HeraldWidgetDescriptors.IncidentsType,
+        ConnectionId = "herald-main",
+        Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["label"] = label },
+    };
+
+    private static WidgetConfig DeliveriesLabeledWidget(string label) => new()
+    {
+        Id = "w-deliveries",
+        Type = HeraldWidgetDescriptors.DeliveriesType,
+        ConnectionId = "herald-main",
+        Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["label"] = label },
+    };
+
+    [Fact]
+    public async Task Fetch_NoClient_FallsBackToSharedClient()
+    {
+        // client 缺省（null）走 HttpEndpoint.Shared：真实套接字打 1 端口必被拒 → 传输层异常直抛（HeraldFetch 不包 ConnectionException）
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => HeraldFetch.GetAsync("http://127.0.0.1:1/api/v1/status", Connection(), Ctx(), CancellationToken.None));
+
+        Assert.NotEmpty(exception.Message);
+    }
+
+    [Fact]
+    public async Task Incidents_LabelOverridesHead()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, IncidentsBody) };
+        var provider = new HeraldIncidentsProvider(http);
+
+        var labelled = await provider.GetStateAsync(IncidentsLabeledWidget("事件台"), Connection(), Ctx(), CancellationToken.None);
+        Assert.StartsWith("事件台 · ", labelled!.Summary); // label 长度 > 0 → 覆盖默认头
+
+        var blank = await provider.GetStateAsync(IncidentsLabeledWidget(""), Connection(), Ctx(), CancellationToken.None);
+        Assert.StartsWith("Herald 事件 · ", blank!.Summary); // 空 label → 落默认
+    }
+
+    [Fact]
+    public void ParseIncidents_MissingAndNullIdLevel_Fallbacks()
+    {
+        const string json = """{"data":{"incidents":[{"title":"no id","level":null},{"id":null,"title":"null id","level":"info"},{"id":"ok-1","level":"warning"},{"id":"x"}]}}""";
+
+        var incidents = HeraldIncidentsProvider.ParseIncidents(json);
+
+        Assert.Equal("", incidents[0].Id);        // 缺 id → 空串
+        Assert.Equal("", incidents[0].Level);     // level:null → 空串
+        Assert.Equal("", incidents[1].Id);        // id:null → 空串
+        Assert.Equal("info", incidents[1].Level);
+        Assert.Equal("ok-1", incidents[2].Id);
+        Assert.Equal("warning", incidents[2].Level);
+        Assert.Equal("x", incidents[3].Id);       // 无 title 以 id 兜底
+        Assert.Equal("", incidents[3].Level);     // 缺 level → 空串
+    }
+
+    [Fact]
+    public async Task Feed_PrivateLabelOverridesHead()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, RssTwoItems) };
+        var provider = new HeraldFeedProvider(http);
+
+        var labelled = await provider.GetStateAsync(
+            FeedWidget(tokenRef: "herald:feed", label: "私密订阅"), Connection(), Ctx(feedToken: "tok-abc"), CancellationToken.None);
+        Assert.StartsWith("私密订阅 · ", labelled!.Summary); // 私密口 label 长度 > 0 → 覆盖默认
+
+        var blankWidget = new WidgetConfig
+        {
+            Id = "w-feed",
+            Type = HeraldWidgetDescriptors.FeedType,
+            ConnectionId = "herald-main",
+            Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["feed_token_ref"] = "herald:feed",
+                ["label"] = "",
+            },
+        };
+        var blank = await provider.GetStateAsync(blankWidget, Connection(), Ctx(feedToken: "tok-abc"), CancellationToken.None);
+        Assert.StartsWith("Herald 订阅 · ", blank!.Summary); // 空 label → 落默认
+    }
+
+    [Fact]
+    public void ParseRss_MissingAndEmptyTitle_FallsBackEmpty()
+    {
+        const string xml = """<rss version="2.0"><channel><item><guid>g-1</guid><description>d</description></item><item><guid>g-2</guid><title /></item></channel></rss>""";
+
+        var items = HeraldFeedProvider.ParseRss(xml);
+
+        Assert.Equal("", items[0].Title); // 无 title 元素 → 空串
+        Assert.Equal("", items[1].Title); // <title /> 空值 → 空串
+        Assert.Equal("g-1", items[0].Id);
+    }
+
+    [Fact]
+    public async Task Deliveries_LabelOverridesHead()
+    {
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, DeliveriesBody) };
+        var provider = new HeraldDeliveriesProvider(http);
+
+        var labelled = await provider.GetStateAsync(DeliveriesLabeledWidget("送信"), Connection(), Ctx(), CancellationToken.None);
+        Assert.StartsWith("送信 · ", labelled!.Summary); // label 长度 > 0 → 覆盖默认
+
+        var blank = await provider.GetStateAsync(DeliveriesLabeledWidget(""), Connection(), Ctx(), CancellationToken.None);
+        Assert.StartsWith("Herald 投递 · ", blank!.Summary); // 空 label → 落默认
+    }
+
+    [Fact]
+    public void ParseDeliveries_MissingAndNullFields_Fallbacks()
+    {
+        const string json = """{"data":{"total":1,"logs":[{"provider":null,"error":null,"created_at":"2026-10-11T08:00:00Z"},{"id":null,"provider":"smtp","error":"boom","created_at":"2026-10-11T07:00:00Z"},{"id":"log-3","created_at":"2026-10-11T06:00:00Z"}]}}""";
+
+        var (total, logs) = HeraldDeliveriesProvider.ParseDeliveries(json);
+
+        Assert.Equal(1, total);
+        Assert.Equal("", logs[0].Id);        // 缺 id → 空串
+        Assert.Equal("", logs[0].Provider);  // provider:null → 空串
+        Assert.Equal("", logs[0].Error);     // error:null → 空串
+        Assert.Equal("", logs[1].Id);        // id:null → 空串
+        Assert.Equal("smtp", logs[1].Provider);
+        Assert.Equal("boom", logs[1].Error);
+        Assert.Equal("log-3", logs[2].Id);
+        Assert.Equal("", logs[2].Provider);  // 缺 provider → 空串
+        Assert.Equal("", logs[2].Error);     // 缺 error → 空串
+    }
+
+    [Fact]
+    public async Task Deliveries_LatestMissingCreatedAt_EmptyPayloadTimestamp()
+    {
+        const string json = """{"code":0,"data":{"total":1,"logs":[{"id":"log-1","provider":"webhook","error":"nope"}]}}""";
+        var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, json) };
+        var state = await new HeraldDeliveriesProvider(http).GetStateAsync(DeliveriesWidget(), Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal("webhook", state!.Payload["latest_provider"]);
+        Assert.Equal("nope", state.Payload["latest_error"]);
+        Assert.Equal("", state.Payload["latest_created_at"]); // created_at 缺失 → 空串（非 null 串）
     }
 }

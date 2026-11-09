@@ -260,4 +260,180 @@ public sealed class ClaudeUsageProviderTests
 
         Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
     }
+
+    // ---- 配置归一化（days / warn_percent / error_percent 分支补全）----
+
+    /// <summary>写临时目录放一条「今天」会话行（真 UTC 时间戳；costUsd 为原始 JSON 数字字面量）。</summary>
+    private static string FreshDirWithLine(string costUsd)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "beacon-claude-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var stamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+        File.WriteAllText(Path.Combine(dir, "s.jsonl"),
+            $"{{\"type\":\"assistant\",\"message\":{{\"id\":\"m1\",\"usage\":{{\"input_tokens\":1}}}},\"costUSD\":{costUsd},\"timestamp\":\"{stamp}\"}}");
+        return dir;
+    }
+
+    private static string YesterdayStamp()
+        => DateTimeOffset.UtcNow.AddDays(-1).ToString("yyyy-MM-dd'T'HH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+
+    [Theory]
+    [InlineData("abc")]  // 非数字 → TryParse 失败
+    [InlineData("0")]    // 非正 → d > 0 失败
+    [InlineData("-3")]   // 负数 → d > 0 失败
+    public async Task GetStateAsync_InvalidDaysConfig_DefaultsToOneDayWindow(string daysRaw)
+    {
+        var dir = FreshDirWithLine("0.25");
+        try
+        {
+            // 昨日行：窗口若被错误放宽会误入账；默认 1 天窗口必须只计今天
+            await File.WriteAllTextAsync(Path.Combine(dir, "y.jsonl"),
+                $"{{\"type\":\"assistant\",\"message\":{{\"id\":\"m2\",\"usage\":{{\"input_tokens\":1}}}},\"costUSD\":0.75,\"timestamp\":\"{YesterdayStamp()}\"}}");
+
+            var state = await new ClaudeUsageProvider().GetStateAsync(
+                Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["days"] = daysRaw }),
+                Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.NotNull(state);
+            Assert.Contains("今日", state.Summary); // 无效 days → 回退 1 天窗口措辞
+            Assert.EndsWith("1 条", state.Summary); // 昨日被排除
+            Assert.Equal("1", state.Payload["sessions"]);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ValidMultiDayWindow_CountsYesterdayAndLabels()
+    {
+        var dir = FreshDirWithLine("0.25");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(dir, "y.jsonl"),
+                $"{{\"type\":\"assistant\",\"message\":{{\"id\":\"m2\",\"usage\":{{\"input_tokens\":1}}}},\"costUSD\":0.75,\"timestamp\":\"{YesterdayStamp()}\"}}");
+
+            var state = await new ClaudeUsageProvider().GetStateAsync(
+                Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["days"] = "2" }),
+                Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Contains("2天", state!.Summary); // days != 1 → N 天措辞
+            Assert.EndsWith("2 条", state.Summary); // 昨日入账
+            Assert.Equal("2", state.Payload["sessions"]);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ValidWarnPercent_LowersWarningThreshold()
+    {
+        var dir = FreshDirWithLine("0.5");
+        try
+        {
+            // 用量 50%：默认 warn 60 → Success，配 warn 45 → Warning
+            var state = await new ClaudeUsageProvider().GetStateAsync(
+                Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["daily_cost_limit"] = "1", ["warn_percent"] = "45" }),
+                Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Equal(Severity.Warning, state!.Severity);
+            Assert.Equal(LifecycleState.Running, state.Lifecycle);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ValidErrorPercent_LowersErrorThreshold()
+    {
+        var dir = FreshDirWithLine("0.5");
+        try
+        {
+            // 用量 50%：默认 error 90 → Success，配 error 40 → Error
+            var state = await new ClaudeUsageProvider().GetStateAsync(
+                Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["daily_cost_limit"] = "1", ["error_percent"] = "40" }),
+                Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Equal(Severity.Error, state!.Severity);
+            Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GetStateAsync_InvalidWarnAndErrorPercent_FallBackToDefaultThresholds()
+    {
+        var dir = FreshDirWithLine("0.7");
+        try
+        {
+            // 用量 70%：warn/error 均无效 → 回退默认 60/90 → Warning（70 ≥ 60，< 90）
+            var state = await new ClaudeUsageProvider().GetStateAsync(
+                Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["daily_cost_limit"] = "1", ["warn_percent"] = "abc", ["error_percent"] = "xyz" }),
+                Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Equal(Severity.Warning, state!.Severity);
+            Assert.Equal(LifecycleState.Running, state.Lifecycle);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // ---- 端点归一化（Endpoint null / 空白 分支补全）----
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ResolveDir_NullOrEmptyEndpoint_ReturnsDefaultDir(string? endpoint)
+    {
+        var resolved = ClaudeUsageProvider.ResolveDir(new ConnectionConfig { Id = "c", Type = "claude", Endpoint = endpoint });
+
+        var expected = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".claude", "projects");
+        Assert.Equal(expected, resolved);
+    }
+
+    // ---- costUSD 非数字形状（L165 分支补全）----
+
+    [Fact]
+    public void ParseLine_NonNumericStringCostUSD_CostIsNull()
+    {
+        var entry = ClaudeUsageProvider.ParseLine("""{"type":"assistant","message":{"id":"m","usage":{"input_tokens":5}},"costUSD":"abc","timestamp":"2026-10-08T10:00:00Z"}""")!;
+
+        Assert.NotNull(entry);
+        Assert.Null(entry.Cost); // 字符串数字解析失败 → 不估价
+        Assert.Equal("m", entry.MessageId);
+    }
+
+    [Fact]
+    public void ParseLine_NonScalarCostUSD_CostIsNull()
+    {
+        var entry = ClaudeUsageProvider.ParseLine("""{"type":"assistant","message":{"id":"m","usage":{"input_tokens":5}},"costUSD":{"amount":1},"timestamp":"2026-10-08T10:00:00Z"}""")!;
+
+        Assert.NotNull(entry);
+        Assert.Null(entry.Cost); // 非数字非字符串 → 不估价
+    }
+
+    // ---- 大数 token 格式化（FormatTokens M 臂补全）----
+
+    [Fact]
+    public void Summarize_MillionTokens_FormatsCompactM()
+    {
+        var summary = new ClaudeUsageProvider.UsageSummary { InputTokens = 1_500_000, OutputTokens = 0, Sessions = 1 };
+
+        var text = ClaudeUsageProvider.Summarize("Claude", "今日", summary);
+
+        Assert.Contains("1.5M tok", text);
+    }
 }

@@ -651,4 +651,212 @@ public sealed class KimiCodingUsageProviderTests
         Assert.Equal(ConnectionHealthState.Healthy, healthy);
         Assert.Equal(ConnectionHealthState.Unauthorized, unauthorized);
     }
+
+    // ---- error_percent 配置分支（L88 补全）----
+
+    [Fact]
+    public async Task GetStateAsync_ValidErrorPercent_LowersErrorThreshold()
+    {
+        // 最差剩 35%：默认 error 10 → Warning，配 error 40 → Error
+        var body = """
+            {
+              "usage": { "limit": 1000, "remaining": 350 },
+              "limits": [
+                { "window": { "duration": 5, "timeUnit": "TIME_UNIT_HOUR" },
+                  "detail": { "limit": 200, "remaining": 70 } }
+              ]
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "40" }),
+            Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity); // 剩 35 ≤ 40
+        Assert.Equal(LifecycleState.Failed, state.Lifecycle);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_InvalidErrorPercent_FallsBackToDefault()
+    {
+        // 最差剩 5%：无效 error_percent → 回退默认 10 → 仍 Error（证明回退而非解析成 0）
+        var body = """
+            {
+              "usage": { "limit": 1000, "remaining": 50 },
+              "limits": [
+                { "window": { "duration": 5, "timeUnit": "TIME_UNIT_HOUR" },
+                  "detail": { "limit": 200, "remaining": 10 } }
+              ]
+            }
+            """;
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var state = await provider.GetStateAsync(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "abc" }),
+            Connection(), Ctx(), CancellationToken.None);
+
+        Assert.Equal(Severity.Error, state!.Severity); // 剩 5 ≤ 默认 10
+    }
+
+    // ---- Plan 套餐窗换算分支（L140 补全）----
+
+    [Fact]
+    public void Plan_ZeroOrNullLimit_ReturnsNull()
+    {
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro", null, null, new KimiCodingUsageProvider.TotalQuota(0, 100, 50, null));
+
+        Assert.Null(usage.Plan); // 无正额度 → 无套餐窗
+    }
+
+    [Fact]
+    public void Plan_NullRemaining_ReturnsNull()
+    {
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro", null, null, new KimiCodingUsageProvider.TotalQuota(100, 100, null, null));
+
+        Assert.Null(usage.Plan); // 缺 remaining → 无法换算剩余%
+    }
+
+    // ---- WorstRemainingPercent 窗口缺失分支（L150 补全）----
+
+    [Fact]
+    public void WorstRemainingPercent_AllNull_ReturnsNull()
+    {
+        var usage = new KimiCodingUsageProvider.KimiUsage("pro", null, null, null);
+
+        Assert.Null(usage.WorstRemainingPercent);
+    }
+
+    [Fact]
+    public void WorstRemainingPercent_RollingNull_WeeklyWins()
+    {
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro", null,
+            new KimiCodingUsageProvider.QuotaWindow(40, 1000, 400, null),
+            new KimiCodingUsageProvider.TotalQuota(1000, 500, 500, null));
+
+        Assert.Equal(40, usage.WorstRemainingPercent!.Value, 5); // rolling 缺失 → 周窗胜出
+    }
+
+    [Fact]
+    public void WorstRemainingPercent_NullPercentWindow_Skipped()
+    {
+        // 5h 窗存在但无剩余% 数据 → 不参与最差判定
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro",
+            new KimiCodingUsageProvider.QuotaWindow(null, 200, null, null),
+            new KimiCodingUsageProvider.QuotaWindow(40, 1000, 400, null),
+            null);
+
+        Assert.Equal(40, usage.WorstRemainingPercent!.Value, 5);
+    }
+
+    // ---- MergeWindow 数值源回退分支（L310 补全）----
+
+    [Fact]
+    public void ParseUsages_CommunityShape_DetailOnlyFillsResetTime_FallsBackToRatioNulls()
+    {
+        // detail 无 limit/remaining → 回退 ratio（null）；ratio 无 reset_time → 回退 detail 的 reset
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 1000, "used": 620, "remaining": 380 },
+              "limits": [
+                { "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },
+                  "detail": { "resetTime": "2026-10-13T09:38:30Z" } }
+              ],
+              "usages": { "limit_5h": { "used_ratio": 0.5 } }
+            }
+            """)!;
+
+        Assert.Equal(50, usage.Rolling!.RemainingPercent!.Value, 5); // ratio 权威剩余
+        Assert.Null(usage.Rolling.Limit);     // detail 无 limit → 回退 ratio 的 null
+        Assert.Null(usage.Rolling.Remaining); // detail 无 remaining → 回退 ratio 的 null
+        Assert.Equal("2026-10-13T09:38:30Z", usage.Rolling.ResetTime); // ratio 无 reset → 回退 detail 的 reset
+    }
+
+    // ---- WindowLabel 时间单位归一化分支（L386/L387/L388 补全）----
+
+    [Fact]
+    public void ParseUsages_DayWindowNotSevenDays_Ignored()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 1000, "remaining": 900 },
+              "limits": [
+                { "window": { "duration": 30, "timeUnit": "TIME_UNIT_DAY" },
+                  "detail": { "limit": 1000, "remaining": 100 } }
+              ]
+            }
+            """)!;
+
+        Assert.Null(usage.Rolling); // 30d 窗不识别（非 7 天）
+        Assert.Equal(90, usage.Weekly!.RemainingPercent!.Value, 5); // 顶层 usage 兜底周窗
+    }
+
+    [Fact]
+    public void ParseUsages_MinuteWindowNotWholeHour_Ignored()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 1000, "remaining": 900 },
+              "limits": [
+                { "window": { "duration": 90, "timeUnit": "TIME_UNIT_MINUTE" },
+                  "detail": { "limit": 1000, "remaining": 100 } }
+              ]
+            }
+            """)!;
+
+        Assert.Null(usage.Rolling); // 90min 不识别（非整小时）
+        Assert.Equal(90, usage.Weekly!.RemainingPercent!.Value, 5);
+    }
+
+    [Fact]
+    public void ParseUsages_SecondWindowAWeek_IsWeekly()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 1000, "remaining": 800 },
+              "limits": [
+                { "window": { "duration": 604800, "timeUnit": "TIME_UNIT_SECOND" },
+                  "detail": { "limit": 1000, "remaining": 800 } }
+              ]
+            }
+            """)!;
+
+        Assert.Null(usage.Rolling); // 604800s → weekly 非 5h
+        Assert.Equal(80, usage.Weekly!.RemainingPercent!.Value, 5);
+    }
+
+    [Fact]
+    public void ParseUsages_SecondWindowUnknown_Ignored()
+    {
+        var usage = KimiCodingUsageProvider.ParseUsages("""
+            {
+              "usage": { "limit": 1000, "remaining": 900 },
+              "limits": [
+                { "window": { "duration": 3600, "timeUnit": "TIME_UNIT_SECOND" },
+                  "detail": { "limit": 1000, "remaining": 100 } }
+              ]
+            }
+            """)!;
+
+        Assert.Null(usage.Rolling); // 3600s 不识别
+        Assert.Equal(90, usage.Weekly!.RemainingPercent!.Value, 5);
+    }
+
+    // ---- Summarize 无剩余数据窗口（佐证 L470 防御分支路径）----
+
+    [Fact]
+    public void Summarize_NullRemainingWindow_OmittedFromParts()
+    {
+        var usage = new KimiCodingUsageProvider.KimiUsage(
+            "pro",
+            new KimiCodingUsageProvider.QuotaWindow(null, 200, null, null), // 5h 无剩余数据 → 摘要省略
+            new KimiCodingUsageProvider.QuotaWindow(40, 1000, 400, null),
+            null);
+
+        Assert.Equal(" · 周 窗口已用60%", KimiCodingUsageProvider.Summarize(usage));
+    }
 }

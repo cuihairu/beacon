@@ -24,12 +24,12 @@ public sealed class CodexUsageProviderTests
         Endpoint = endpoint,
     };
 
-    private static WidgetConfig Widget() => new()
+    private static WidgetConfig Widget(Dictionary<string, string>? config = null) => new()
     {
         Id = "w-codex",
         Type = CodexWidgetDescriptors.UsageType,
         ConnectionId = "codex-local",
-        Config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+        Config = config ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
     };
 
     private static ConnectionContext Ctx() => new() { Secrets = new SecretStoreStub() };
@@ -185,5 +185,119 @@ public sealed class CodexUsageProviderTests
         {
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    // ---- 统计窗口天数解析（days 三态：有效 / 非数字回退 7 / 非正回退 7） ----
+
+    [Fact]
+    public async Task GetStateAsync_DaysConfig_AppliesWindow()
+    {
+        var dir = NewSessionDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "rollout-a.jsonl"), TokenLine + "\n");
+            var provider = new CodexUsageProvider();
+            var widget = Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["days"] = "3" });
+
+            var state = await provider.GetStateAsync(widget, Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Contains("3天", state!.Summary);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("abc")] // 非数字 → 回退 7
+    [InlineData("0")] // d > 0 不成立 → 回退 7
+    [InlineData("-5")]
+    public async Task GetStateAsync_InvalidDays_FallsBackToSeven(string daysRaw)
+    {
+        var dir = NewSessionDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "rollout-a.jsonl"), TokenLine + "\n");
+            var provider = new CodexUsageProvider();
+            var widget = Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["days"] = daysRaw });
+
+            var state = await provider.GetStateAsync(widget, Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Contains("7天", state!.Summary);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task GetStateAsync_DaysOne_UsesToday()
+    {
+        var dir = NewSessionDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "rollout-a.jsonl"), TokenLine + "\n");
+            var provider = new CodexUsageProvider();
+            var widget = Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["days"] = "1" });
+
+            var state = await provider.GetStateAsync(widget, Connection(dir), Ctx(), CancellationToken.None);
+
+            Assert.Contains("今日", state!.Summary);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // ---- 会话目录解析：null / 空白 Endpoint 回退默认，~ 展开家目录 ----
+
+    [Fact]
+    public void ResolveDir_NullOrBlankEndpoint_FallsBackToDefault()
+    {
+        var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions");
+
+        Assert.Equal(expected, CodexUsageProvider.ResolveDir(new ConnectionConfig { Id = "codex-local", Type = "codex", Endpoint = null }));
+        Assert.Equal(expected, CodexUsageProvider.ResolveDir(new ConnectionConfig { Id = "codex-local", Type = "codex", Endpoint = "   " }));
+    }
+
+    [Fact]
+    public void ResolveDir_TildeExpandsHome()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        Assert.Equal(Path.Combine(home, "foo", "bar"), CodexUsageProvider.ResolveDir(new ConnectionConfig { Id = "codex-local", Type = "codex", Endpoint = "~/foo/bar" }));
+        Assert.Equal(Path.Combine(home, "foo", "bar"), CodexUsageProvider.ResolveDir(new ConnectionConfig { Id = "codex-local", Type = "codex", Endpoint = "~\\foo\\bar" }));
+    }
+
+    // ---- token 字段容错：缺字段 / 非数字 / 非整数 → 0 ----
+
+    [Theory]
+    [InlineData("""{"payload":{"type":"token_count","info":{"total_token_usage":{"cached_input_tokens":400,"output_tokens":2.5}}}}""", 0, 400, 0, 0)] // 缺 input/reasoning，output 非整数 → 0
+    [InlineData("""{"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1.5,"cached_input_tokens":3.5,"output_tokens":200,"reasoning_tokens":7}}}}""", 0, 0, 200, 7)] // input/cached 非整数 → 0
+    [InlineData("""{"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"reasoning_tokens":4.5}}}}""", 10, 0, 0, 0)] // 缺 cached/output，reasoning 非整数 → 0
+    public void ParseLine_PartialTotalUsage_DefaultsZero(string line, long input, long cached, long output, long reasoning)
+    {
+        var total = CodexUsageProvider.ParseLine(line);
+
+        Assert.NotNull(total);
+        Assert.Equal(input, total!.Input);
+        Assert.Equal(cached, total.Cached);
+        Assert.Equal(output, total.Output);
+        Assert.Equal(reasoning, total.Reasoning);
+    }
+
+    // ---- token 缩放文案：M / K / 原值 ----
+
+    [Fact]
+    public void Summarize_FormatsTokenScale()
+    {
+        var million = new CodexUsageProvider.UsageSummary { InputTokens = 1_200_000, OutputTokens = 300_000 };
+        Assert.Equal("Codex · 7天 · 0 会话 · 1.5M tok · 本地统计", CodexUsageProvider.Summarize("Codex", "7天", million));
+
+        var hundreds = new CodexUsageProvider.UsageSummary { InputTokens = 400, OutputTokens = 500 };
+        Assert.Equal("Codex · 7天 · 0 会话 · 900 tok · 本地统计", CodexUsageProvider.Summarize("Codex", "7天", hundreds));
     }
 }

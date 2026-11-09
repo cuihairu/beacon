@@ -46,6 +46,13 @@ public sealed class QwenUsageProviderTests
         return new ConnectionContext { Secrets = secrets };
     }
 
+    private static ConnectionContext CtxFor(string credentialRef, string secret)
+    {
+        var secrets = new SecretStoreStub();
+        secrets.Secrets[credentialRef] = secret;
+        return new ConnectionContext { Secrets = secrets };
+    }
+
     private static (QwenUsageProvider Provider, FakeHttpMessageHandler Http) Faked(HttpStatusCode status, string body) => Faked(_ => new FakeHttpResponse(status, body));
 
     private static (QwenUsageProvider Provider, FakeHttpMessageHandler Http) Faked(Func<HttpRequestMessage, FakeHttpResponse> respond)
@@ -395,5 +402,128 @@ public sealed class QwenUsageProviderTests
         var parsed = QwenUsageProvider.ParseQuotaResetUtc(message);
         var expected = new DateTimeOffset(future.Year, future.Month, future.Day, future.Hour, future.Minute, future.Second, TimeSpan.Zero);
         Assert.Equal(expected, parsed);
+    }
+
+    // ---- 分支覆盖：非空 Endpoint 走 Trim + TrimEnd（档③探针与模型目录共用 baseEndpoint 三元） ----
+
+    [Fact]
+    public async Task GetStateAsync_NonEmptyEndpoint_TrimsAndAppendsPaths()
+    {
+        var (provider, http) = Faked(request =>
+            request.RequestUri!.ToString().EndsWith("/models")
+                ? new FakeHttpResponse(HttpStatusCode.OK, ModelsBody)
+                : new FakeHttpResponse(HttpStatusCode.NotFound, """{"error":{"message":"not found"}}"""));
+
+        var state = await provider.GetStateAsync(Widget(), Connection(endpoint: "https://api.example.com/v1/"), Ctx("sk-sp-test"), CancellationToken.None);
+
+        Assert.Equal(Severity.Info, state!.Severity); // 非耗尽探针 → 目录卡
+        var models = Assert.Single(http.Requests, r => r.RequestUri!.ToString().EndsWith("/models"));
+        Assert.Equal("https://api.example.com/v1/models", models.RequestUri!.ToString());
+        var probe = Assert.Single(http.Requests, r => !r.RequestUri!.ToString().EndsWith("/models"));
+        Assert.Equal("https://api.example.com/v1/usage", probe.RequestUri!.ToString());
+    }
+
+    // ---- 分支覆盖：429 判别（ParseQuotaExhausted）code / message 任一缺省 ----
+
+    [Fact]
+    public void ParseQuotaExhausted_MessageOnly_DetectsExhaustedWithReset()
+    {
+        var result = QwenUsageProvider.ParseQuotaExhausted(
+            """{"message":"Your token-plan quota has been exhausted. The quota will reset at 10-19 16:00:00 UTC."}""");
+
+        Assert.NotNull(result); // code 缺省，message 含 exhausted 即判耗尽
+        Assert.NotNull(result!.ResetUtc);
+    }
+
+    [Fact]
+    public void ParseQuotaExhausted_CodeOnlyAllocationQuota_DetectsExhausted()
+    {
+        var result = QwenUsageProvider.ParseQuotaExhausted("""{"code":"Throttling.AllocationQuota"}""");
+
+        Assert.NotNull(result);
+        Assert.Null(result!.ResetUtc); // 无 message → 无重置时间
+    }
+
+    [Fact]
+    public void ParseQuotaExhausted_CodeOnlyNonMatching_NoMessage_ReturnsNull()
+        => Assert.Null(QwenUsageProvider.ParseQuotaExhausted("""{"code":"Throttling.RateQuota"}"""));
+
+    // ---- 分支覆盖：ParseQuotaResetUtc 各 int.TryParse 失败臂（regex 的 \d 匹配非 ASCII 数字，TryParse 拒绝） ----
+
+    [Theory]
+    [InlineData("reset at ١٢-31 23:59 UTC")] // 月份组
+    [InlineData("reset at 12-٣١ 23:59 UTC")] // 日组
+    [InlineData("reset at 12-31 ٢٣:59 UTC")] // 小时组
+    [InlineData("reset at 12-31 23:٥٩ UTC")] // 分钟组
+    public void ParseQuotaResetUtc_NonAsciiDigits_IntParseFails_ReturnsNull(string message)
+        => Assert.Null(QwenUsageProvider.ParseQuotaResetUtc(message));
+
+    // ---- 分支覆盖：_client ?? HttpEndpoint.Shared 的 Shared 臂（无参构造走真实客户端，连接被拒） ----
+
+    [Fact]
+    public async Task FetchModelsAsync_SharedClient_UnreachableEndpoint_ThrowsNetwork()
+    {
+        var provider = new QwenUsageProvider(); // _client 为 null → HttpEndpoint.Shared 真实客户端
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => provider.FetchModelsAsync(Connection(endpoint: "http://127.0.0.1:1"), Ctx("sk-sp-test"), CancellationToken.None));
+    }
+
+    // ---- 分支覆盖：error_percent 三元 TryGetValue + TryParse 全臂 ----
+
+    [Fact]
+    public void ToUsageState_ExplicitErrorPercent_TriggersError()
+    {
+        var state = QwenUsageProvider.ToUsageState(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "80" }),
+            Connection(),
+            new QwenUsageProvider.QwenPlanUsage(90, null, null, null));
+
+        Assert.Equal(Severity.Error, state.Severity); // 90 ≥ 显式 80
+    }
+
+    [Fact]
+    public void ToUsageState_InvalidErrorPercent_FallsBackTo90()
+    {
+        var state = QwenUsageProvider.ToUsageState(
+            Widget(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["error_percent"] = "abc" }),
+            Connection(),
+            new QwenUsageProvider.QwenPlanUsage(85, null, null, null));
+
+        Assert.Equal(Severity.Warning, state.Severity); // 85 < 默认 90 不 Error；≥ 默认 warn 60
+    }
+
+    // ---- 分支覆盖：Truncate 超 120 字符截断（长 body 的 Degraded 消息） ----
+
+    [Fact]
+    public async Task FetchCustomUsageAsync_LongUnrecognizedBody_TruncatesMessage()
+    {
+        var body = "{\"unexpected\":\"" + new string('a', 130) + "TAILMARK\"}";
+        var (provider, _) = Faked(HttpStatusCode.OK, body);
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.FetchCustomUsageAsync(Connection(), Ctx("sk-sp-test"), "http://x/usage", CancellationToken.None));
+
+        Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+        Assert.Contains(body[..120], exception.Message);
+        Assert.DoesNotContain("TAILMARK", exception.Message); // 尾部已被截掉
+    }
+
+    // ---- 分支覆盖：CredentialRef 缺省回退 "qwen:default" ----
+
+    [Fact]
+    public async Task FetchModelsAsync_NullCredentialRef_UsesQwenDefaultSecret()
+    {
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, ModelsBody);
+        });
+
+        await provider.FetchModelsAsync(Connection(credentialRef: null), CtxFor("qwen:default", "sk-sp-default"), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Equal("Bearer sk-sp-default", captured!.Headers.Authorization!.ToString()); // 命中缺省引用
     }
 }

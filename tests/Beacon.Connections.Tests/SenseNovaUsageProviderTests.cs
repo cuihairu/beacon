@@ -432,4 +432,95 @@ public sealed class SenseNovaUsageProviderTests
 
         Assert.Equal("https://proxy.example.com/pool", Assert.Single(http.Requests).RequestUri?.ToString());
     }
+
+    // ---- 分支补强：赠额无到期 / 窗口无数据段 / 短名回退与截断 / 过期到期日 ----
+
+    [Fact]
+    public async Task GetStateAsync_GrantWithoutExpiry_OmitsExpiryTail()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, """
+            { "pools": [ { "id": "p1", "name": "通用积分池",
+                "window_5h": { "limit": "100", "used": "10" },
+                "grant_balance": "1000" } ] }
+            """);
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("jwt"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Contains("剩余 1000", state.Summary);           // 赠额尾注在
+        Assert.DoesNotContain("到期", state.Summary);           // 无 nearest_grant_expiry → 不接到期段
+        Assert.Equal("", state.Payload["grant_expiring_soon"]); // 无到期 → 不预警
+    }
+
+    [Fact]
+    public async Task GetStateAsync_LimitOnlyWindow_SkipsNoDataSegment()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, """
+            { "pools": [ { "id": "p1", "name": "通用积分池",
+                "window_5h": { "limit": "100" },
+                "window_7d": { "limit": "100", "used": "50" } } ] }
+            """);
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("jwt"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("7d", state.Payload["worst_window"]); // 5h 无已用% → 7d 主导
+        Assert.Equal(0.5, state.Progress!.Value, 5);
+        Assert.Contains("7d 50%", state.Summary);           // 有数据的窗进摘要
+        Assert.DoesNotContain("5h", state.Summary);         // 无已用% 的 5h 段被跳过
+    }
+
+    [Fact]
+    public async Task GetStateAsync_SevenDayOnlyPool_SkipsMissing5hSegment()
+    {
+        var (provider, _) = Faked(HttpStatusCode.OK, """
+            { "pools": [ { "id": "p1", "name": "通用积分池",
+                "window_7d": { "limit": "100", "used": "60" } } ] }
+            """);
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("jwt"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal("7d", state.Payload["worst_window"]);
+        Assert.Contains("7d 60%", state.Summary);       // 有 7d → 段进摘要
+        Assert.DoesNotContain("5h", state.Summary);     // window_5h 缺失 → 5h 段跳过
+    }
+
+    [Fact]
+    public void ShortName_IdOnly_FallsBackToId()
+    {
+        var usage = SenseNovaUsageProvider.ParseUsage("""{ "pools": [ { "id": "p_abc" } ] }""")!;
+
+        Assert.Equal("p_abc", usage.Pools[0].ShortName); // 无 name → 用 id
+    }
+
+    [Fact]
+    public void ShortName_NoNameNoId_DefaultsToPool()
+    {
+        var pool = new PoolUsage(null, null, null, null, null, null, null, null);
+
+        Assert.Equal("池", pool.ShortName); // 双缺 → 兜底「池」
+    }
+
+    [Fact]
+    public void ShortName_LongName_TruncatedTo14WithEllipsis()
+    {
+        var usage = SenseNovaUsageProvider.ParseUsage(
+            """{ "pools": [ { "id": "p1", "name": "abcdefghijklmnopqrstuvwxyz" } ] }""")!;
+
+        Assert.Equal("abcdefghijklm…", usage.Pools[0].ShortName); // 26 字 → 13 字 + …
+    }
+
+    [Fact]
+    public async Task GetStateAsync_PastGrantExpiry_NoWarning()
+    {
+        var past = DateTimeOffset.UtcNow.AddDays(-2).ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        var (provider, _) = Faked(HttpStatusCode.OK, $$"""
+            { "pools": [ { "id": "p1", "name": "通用积分池",
+                "window_5h": { "limit": "100", "used": "10" },
+                "grant_balance": "1000", "nearest_grant_expiry": "{{past}}", "nearest_grant_expiring_balance": "900" } ] }
+            """);
+        var state = await provider.GetStateAsync(Widget(), Connection(), Ctx("jwt"), CancellationToken.None);
+
+        Assert.NotNull(state);
+        Assert.Equal(Severity.Success, state.Severity);      // 已过期的到期日不升 Warning
+        Assert.Equal("", state.Payload["grant_expiring_soon"]);
+    }
 }
