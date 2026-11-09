@@ -623,4 +623,178 @@ public sealed class MiMoUsageProviderTests
 
         Assert.Equal(ConnectionHealthState.Degraded, health);
     }
+
+    // ---- 2026-11-09 覆盖率批（codecov partial 分支补测）：各设置/解析分支的未命中臂 ----
+
+    [Fact]
+    public void ParseLitellmSpend_ArrayWithoutSpend_ReturnsNull()
+    {
+        // 数组含对象但无数字 spend → found 恒 false → `found ? sum : null` 的 null 臂
+        Assert.Null(MiMoUsageProvider.ParseLitellmSpend("""[{"note":"no-spend-value"}]"""));
+    }
+
+    [Fact]
+    public void ParseConsoleUsage_PercentOnly_FallsBackToRatio()
+    {
+        // 无 used/total 块 → percent 回退臂（0-1 比例 ×100）
+        var usage = MiMoUsageProvider.ParseConsoleUsage("""{"data":{"percent":0.25}}""");
+        Assert.NotNull(usage);
+        Assert.Equal(0.25, usage!.Percent, precision: 6); // 该回退臂原样透传 0-1 比例
+    }
+
+    [Fact]
+    public void ParseConsoleUsage_NoKnownFields_ReturnsNull()
+    {
+        // 无任何可识别字段 → percent 恒 null → `percent is {} ? ... : null` 的 null 臂
+        Assert.Null(MiMoUsageProvider.ParseConsoleUsage("""{"data":{"unrelated":1}}"""));
+    }
+
+    [Fact]
+    public void ToLocalCountState_WindowPresent_AppendsWindowText()
+    {
+        var state = MiMoUsageProvider.ToLocalCountState(
+            Widget(), Connection(), "http://local/count", new MiMoUsageProvider.MiMoLocalCount(9, WindowCalls: 3, WindowMinutes: 60));
+        Assert.Contains("近60分 3 次", state.Summary);
+    }
+
+    [Fact]
+    public void ToLocalCountState_WindowAbsent_OmitsWindowText()
+    {
+        // WindowCalls 或 WindowMinutes 任一缺失 → 窗口文本省略（417 的 `is {} && is {}` 假臂）
+        var state = MiMoUsageProvider.ToLocalCountState(
+            Widget(), Connection(), "http://local/count", new MiMoUsageProvider.MiMoLocalCount(5, WindowCalls: null, WindowMinutes: 60));
+        Assert.DoesNotContain("近", state.Summary);
+        Assert.DoesNotContain("次}", state.Summary);
+    }
+
+    [Fact]
+    public void ParseConsoleUsage_BlockItemPercent_FallsBackToItemRatio()
+    {
+        // 条目无 used/limit 但带 percent → 块内条目 percent 回退（×100）
+        var usage = MiMoUsageProvider.ParseConsoleUsage(
+            """{"data":{"monthUsage":{"items":[{"name":"month_total_token","percent":0.5}]}}}""");
+        Assert.NotNull(usage);
+        Assert.Equal(50.0, usage!.Percent, precision: 6);
+    }
+
+    [Fact]
+    public void ParseConsoleUsage_BlockLevelPercent_FallsBackToBlockRatio()
+    {
+        // 条目与条目级 percent 皆缺 → 块级 percent 回退（×100）
+        var usage = MiMoUsageProvider.ParseConsoleUsage(
+            """{"data":{"monthUsage":{"percent":0.25,"items":[{"name":"month_total_token"}]}}}""");
+        Assert.NotNull(usage);
+        Assert.Equal(25.0, usage!.Percent, precision: 6);
+    }
+
+    [Fact]
+    public void ParseConsoleUsage_BlockWithNoUsableFields_ReturnsNull()
+    {
+        // 块与条目均无可识别字段 → percent 恒 null → `percent is {} ? ... : null` 的 null 臂
+        Assert.Null(MiMoUsageProvider.ParseConsoleUsage(
+            """{"data":{"monthUsage":{"items":[{"name":"month_total_token","note":"x"}]}}}"""));
+    }
+
+    [Fact]
+    public async Task GetStateAsync_CustomConsoleCredentialRef_UsesCustomSecret()
+    {
+        var (provider, _) = Faked(_ => new FakeHttpResponse(HttpStatusCode.OK, RealConsoleBody));
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["console_credential_ref"] = "my:console",
+        });
+        var secrets = new SecretStoreStub { Secrets = { ["my:console"] = "custom-ph" } };
+        var ctx = new ConnectionContext { Secrets = secrets };
+
+        var state = await provider.GetStateAsync(Widget(), connection, ctx, CancellationToken.None);
+
+        Assert.Equal("console_api", state!.Payload["usage_source"]); // 自定义 ref 命中 → 档① 控制台口径
+    }
+
+    [Fact]
+    public async Task FetchModelsAsync_CustomEndpoint_UsesCustomBase()
+    {
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, ModelsBody);
+        });
+        var connection = new ConnectionConfig
+        {
+            Id = "mimo-main",
+            Type = "mimo",
+            CredentialRef = "conn:mimo",
+            Endpoint = "https://custom-mimo.example/v1",
+            Settings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+        };
+
+        var catalog = await provider.FetchModelsAsync(connection, Ctx("sk-test"), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Contains("custom-mimo.example", captured!.RequestUri!.ToString());
+        Assert.Equal(2, catalog.Models);
+    }
+
+    [Fact]
+    public async Task GetStateAsync_CustomConsoleUsageUrl_UsesCustomUrl()
+    {
+        HttpRequestMessage? captured = null;
+        var (provider, _) = Faked(request =>
+        {
+            captured = request;
+            return new FakeHttpResponse(HttpStatusCode.OK, RealConsoleBody);
+        });
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["console_usage_url"] = "https://platform.example/api/custom/usage",
+        });
+
+        await provider.GetStateAsync(Widget(), connection, Ctx("sk-test", consoleCookie: "ph"), CancellationToken.None);
+
+        Assert.NotNull(captured);
+        Assert.Contains("custom/usage", captured!.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task GetStateAsync_CustomLitellmKeyRef_UsesCustomSecret()
+    {
+        var (provider, _) = Faked(_ => new FakeHttpResponse(HttpStatusCode.OK, """{"response":[{"spend":1.5}]}"""));
+        var connection = Connection(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["litellm_spend_url"] = "http://127.0.0.1:4000/spend/logs",
+            ["litellm_key_ref"] = "my:litellm",
+        });
+        var secrets = new SecretStoreStub { Secrets = { ["my:litellm"] = "sk-gw" } };
+        var ctx = new ConnectionContext { Secrets = secrets };
+
+        var state = await provider.GetStateAsync(Widget(), connection, ctx, CancellationToken.None);
+
+        Assert.Equal(Severity.Success, state!.Severity); // 自定义 ref 命中 → 档② 网关记账
+    }
+
+    [Fact]
+    public async Task GetStateAsync_ConsoleLongBody_TruncatedMessage()
+    {
+        var longBody = "\"" + new string('x', 300) + "\"";
+        var (provider, _) = Faked(_ => new FakeHttpResponse(HttpStatusCode.OK, longBody));
+
+        var exception = await Assert.ThrowsAsync<ConnectionException>(
+            () => provider.GetStateAsync(Widget(), Connection(), Ctx("sk-test", consoleCookie: "ph"), CancellationToken.None));
+
+        Assert.Contains("MiMo 控制台响应不含套餐用量字段", exception.Message);
+        Assert.True(exception.Message.Length <= 200); // 截断后的消息未超长（Truncate 长值臂）
+    }
+
+    [Fact]
+    public async Task FetchModelsAsync_NullCredentialRef_UsesDefaultRef()
+    {
+        var (provider, _) = Faked(_ => new FakeHttpResponse(HttpStatusCode.OK, ModelsBody));
+        var secrets = new SecretStoreStub { Secrets = { ["mimo:default"] = "sk-default" } };
+        var ctx = new ConnectionContext { Secrets = secrets };
+
+        var catalog = await provider.FetchModelsAsync(Connection(credentialRef: null), ctx, CancellationToken.None);
+
+        Assert.Equal(2, catalog.Models); // 缺省 credentialRef → "mimo:default"
+    }
 }
