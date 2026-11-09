@@ -154,6 +154,19 @@ public sealed class ProviderDslTests
         Assert.Contains(expectedFragment, exception.Message);
     }
 
+    [Fact]
+    public void Load_TopLevelSequence_RootNotAMap_FailsLoud()
+    {
+        // L36 root 非 map 真臂：顶层以 `- ` 开头是列表（IsMap=false），不是 provider/mapping/actions 映射。
+        // 现有套件只喂过映射顶层（映射校验走「未知顶层键」臂），从未喂列表顶层。
+        var exception = Assert.Throws<YamlLiteException>(() => ProviderDsl.Load("- id: a"));
+        Assert.Contains("顶层必须是映射", exception.Message);
+    }
+
+    // 注：L93「列表项必须是映射」臂经分析为死码——YamlLite 序列只产出 map 项，
+    // 标量/流式/嵌套 dash 均在解析期 fail-loud（见 Parse_UnsupportedSyntax 与 Load_InvalidDocument
+    // 的「列表项必须」用例），无任何输入能把非 map 项送达 ParseAction。
+
     [Theory]
     [InlineData("webhook", true)]
     [InlineData("http", true)]

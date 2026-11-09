@@ -267,4 +267,136 @@ public sealed class GitWorkspaceProviderTests
         Assert.Equal(RefreshTiers.Default, descriptor.SuggestedTier);
         Assert.Contains(descriptor.Fields, field => field.Key == "repo_path");
     }
+
+    // —— CLI 错误/边界分支（真实子进程：有上游差量 / git 缺失 / 超时） ——
+
+    [Fact]
+    public async Task GitCliSource_RealRepo_WithUpstream_CountsAheadBehind()
+    {
+        // 有上游才走 rev-list 差量分支：push -u 设 upstream → status 出 `## main...origin/main`，
+        // 本地再提交 → ahead 1；第二克隆推一提交 → 工作区 fetch 后分叉 ↑1↓1 → 亮黄
+        var root = Path.Combine(Path.GetTempPath(), $"beacon-git-up-{Guid.NewGuid():N}");
+        var bare = Path.Combine(Path.GetTempPath(), $"beacon-git-up-origin-{Guid.NewGuid():N}");
+        var clone = Path.Combine(Path.GetTempPath(), $"beacon-git-up-clone-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var source = new GitCliSource();
+            static void RunGit(string repo, string args)
+            {
+                using var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "git",
+                        Arguments = $"-C \"{repo}\" {args}",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true,
+                    },
+                };
+                process.Start();
+                process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+                process.WaitForExit(30_000);
+                if (process.ExitCode != 0)
+                {
+                    throw new InvalidOperationException($"git {args} 失败");
+                }
+            }
+
+            const string Identity = "-c user.name=test -c user.email=test@example.com";
+            RunGit(root, "init -b main");
+            RunGit(root, $"{Identity} commit --allow-empty -m init");
+            RunGit(root, $"init --bare -b main \"{bare}\"");
+            RunGit(root, $"remote add origin \"{bare}\"");
+            RunGit(root, "push -u origin main");
+            RunGit(root, $"{Identity} commit --allow-empty -m second"); // 本地领先 → ahead 1
+
+            var snapshot = source.Read(root);
+            Assert.True(snapshot.HasUpstream); // 有上游才进入 rev-list 分支
+            Assert.Equal("main", snapshot.Branch);
+            Assert.Equal("origin/main", snapshot.Upstream);
+            Assert.Equal(1, snapshot.Ahead);
+            Assert.Equal(0, snapshot.Behind);
+            var aheadState = await new GitWorkspaceProvider(source).GetStateAsync(
+                Widget(repoPath: root), Connection(), Ctx(), CancellationToken.None);
+            Assert.Equal("main · ↑1↓0 · 改 0", aheadState!.Summary);
+
+            RunGit(root, $"clone \"{bare}\" \"{clone}\"");
+            RunGit(clone, $"{Identity} commit --allow-empty -m third");
+            RunGit(clone, "push origin main");
+            RunGit(root, "fetch origin"); // 上游再进一提交 → 工作区分叉
+
+            snapshot = source.Read(root);
+            Assert.Equal(1, snapshot.Ahead);
+            Assert.Equal(1, snapshot.Behind);
+            var diverged = await new GitWorkspaceProvider(source).GetStateAsync(
+                Widget(repoPath: root), Connection(), Ctx(), CancellationToken.None);
+            Assert.Equal(Severity.Warning, diverged!.Severity); // 分叉（前后都有）→ 提醒拉取/合并
+            Assert.Equal("main · ↑1↓1 · 改 0", diverged.Summary);
+        }
+        finally
+        {
+            foreach (var dir in new[] { root, bare, clone })
+            {
+                try { Directory.Delete(dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    [Fact]
+    public void GitCliSource_GitMissing_FailLoudDegraded()
+    {
+        // git 不在 PATH → Process.Start 抛 Win32Exception → fail-loud（Windows 与 Linux 同一路径）
+        var repo = Path.Combine(Path.GetTempPath(), $"beacon-nogit-repo-{Guid.NewGuid():N}");
+        var emptyBin = Path.Combine(Path.GetTempPath(), $"beacon-nogit-bin-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(repo);
+        Directory.CreateDirectory(emptyBin);
+        var originalPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", emptyBin);
+            var exception = Assert.Throws<ConnectionException>(() => { new GitCliSource().Read(repo); });
+            Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+            Assert.Contains("找不到 git 命令", exception.Message);
+            Assert.IsType<System.ComponentModel.Win32Exception>(exception.InnerException); // 底层是进程启动失败
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", originalPath);
+        }
+    }
+
+    [Fact]
+    public void GitCliSource_Timeout_KillsAndFailsDegraded()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 假 git 用 shebang + 关 fd 的 shell 脚本，仅 Linux 语义（windows-latest 无）
+        }
+        var repo = Path.Combine(Path.GetTempPath(), $"beacon-timeout-repo-{Guid.NewGuid():N}");
+        var bin = Path.Combine(Path.GetTempPath(), $"beacon-timeout-bin-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(repo);
+        Directory.CreateDirectory(bin);
+        var fakeGit = Path.Combine(bin, "git");
+        File.WriteAllText(fakeGit, "#!/bin/sh\nexec 1>&- 2>&-\nexec sleep 30\n"); // 关输出后挂起 >10s → 命中超时
+        File.SetUnixFileMode(fakeGit, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            | UnixFileMode.GroupRead | UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        var originalPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            // 假 git 前插 PATH（优先命中），保留原 PATH 供脚本里的 sleep 解析
+            Environment.SetEnvironmentVariable("PATH", bin + Path.PathSeparator + originalPath);
+            var exception = Assert.Throws<ConnectionException>(() => { new GitCliSource().Read(repo); });
+            Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
+            Assert.Contains("超时", exception.Message);
+            Assert.Contains("status", exception.Message); // 超时信息携带首个 git 子命令名
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", originalPath);
+        }
+    }
 }

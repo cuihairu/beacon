@@ -347,4 +347,13 @@ public sealed class GitHubPullRequestsProviderTests
         Assert.Equal(ConnectionHealthState.Degraded, exception.Health);
         Assert.Contains("combined status 解析失败", exception.Message);
     }
+
+    [Fact]
+    public void Descriptor_PinsPullRequestsDescriptor()
+    {
+        var provider = new GitHubPullRequestsProvider();
+
+        Assert.Same(GitHubWidgetDescriptors.PullRequests, provider.Descriptor);
+        Assert.Equal(GitHubWidgetDescriptors.PullRequestsType, provider.Descriptor.Type);
+    }
 }

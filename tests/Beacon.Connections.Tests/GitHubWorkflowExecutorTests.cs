@@ -154,4 +154,16 @@ public sealed class GitHubWorkflowExecutorTests
         Assert.Contains("runId", result.Message);
         Assert.Empty(requests);
     }
+
+    [Fact]
+    public void ActionType_PinsRegistrationType()
+    {
+        // 动作注册表按 ActionType 分派：getter 必须钉死默认类型字面量
+        Assert.Equal("gh.workflow_dispatch", new GitHubWorkflowDispatchExecutor().ActionType);
+        Assert.Equal(GitHubWorkflowDispatchExecutor.DefaultType, new GitHubWorkflowDispatchExecutor().ActionType);
+        Assert.Equal("gh.workflow_rerun", new GitHubWorkflowRerunExecutor().ActionType);
+        Assert.Equal(GitHubWorkflowRerunExecutor.DefaultType, new GitHubWorkflowRerunExecutor().ActionType);
+        Assert.Equal("gh.workflow_cancel", new GitHubWorkflowCancelExecutor().ActionType);
+        Assert.Equal(GitHubWorkflowCancelExecutor.DefaultType, new GitHubWorkflowCancelExecutor().ActionType);
+    }
 }

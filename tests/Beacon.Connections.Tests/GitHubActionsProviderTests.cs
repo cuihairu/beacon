@@ -21,6 +21,7 @@ public sealed class GitHubActionsProviderTests
         { "completed", "skipped", null, LifecycleState.Skipped, Severity.Success },
         { "completed", "neutral", null, LifecycleState.Success, Severity.Info },
         { "completed", null, null, LifecycleState.Failed, Severity.Error }, // 结论缺失按失败处理
+        { "completed", "some_unknown_conclusion", null, LifecycleState.Unknown, Severity.Warning }, // 未知结论兜底（completed 内 _ 分支）
         { "whatever", null, null, LifecycleState.Unknown, Severity.Warning },
     };
 

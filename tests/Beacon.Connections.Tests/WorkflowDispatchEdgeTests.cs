@@ -100,4 +100,20 @@ public sealed class WorkflowDispatchEdgeTests
         Assert.False(result.Success);
         Assert.Contains("boom", result.Message);
     }
+
+    [Fact]
+    public async Task MissingRepo_FailsWithHint_NoRequestSent()
+    {
+        // 基座统一入口：Parameters 与 SourceState.Payload 都拿不到 repo → Fail，不发请求
+        var handler = new FakeHttpMessageHandler();
+        var result = await RunAsync(
+            new GitHubWorkflowDispatchExecutor(),
+            handler,
+            Context(payload: new Dictionary<string, string>()),
+            Action("gh.workflow_dispatch", new Dictionary<string, string> { ["repo"] = "   " })); // 空白 repo 不生效
+
+        Assert.False(result.Success);
+        Assert.Contains("缺少 repo", result.Message);
+        Assert.Empty(handler.Requests);
+    }
 }
