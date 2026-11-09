@@ -92,6 +92,21 @@ public sealed class ComponentCenterCatalogTests
         Assert.Equal("github.pull_requests", item.TypeName);
     }
 
+    [Fact]
+    public void Group_DisplayNames_AreChineseDirectConfig()
+    {
+        // L177 ComponentCenterGroup.DisplayName：分组中文名直配（与 WidgetTypeNames 同款 Core 直配）
+        var groups = ComponentCenterCatalog.Group(
+        [
+            Widget("w-gh", "github.pull_requests"),
+            Widget("w-ark", "ark.usage"),
+        ]);
+        Assert.Equal(3, groups.Count); // status + quota + 岛虚拟组
+        Assert.Equal("状态监控", groups[0].DisplayName);
+        Assert.Equal("额度与用量", groups[1].DisplayName);
+        Assert.Equal("悬浮岛", groups[2].DisplayName);
+    }
+
     // —— 条目显示名：label/repo/owner 优先，类型短名兜底（与 PinTile 标签同源） ——
 
     [Fact]

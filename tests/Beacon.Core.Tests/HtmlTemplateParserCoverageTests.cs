@@ -42,6 +42,18 @@ public sealed class HtmlTemplateParserCoverageTests
     }
 
     [Fact]
+    public void Parse_MultipleTopLevelElements_AllWrappedInSyntheticColumn()
+    {
+        // L185 文档层 while 回边真臂：顶层元素连排（循环第二次迭代）→ 全部进合成 column 根
+        var result = HtmlTemplateParser.Parse("<text>a</text><badge>b</badge>");
+        Assert.True(result.Ok);
+        Assert.Equal("column", result.Root!.Type);
+        Assert.Equal(2, result.Root.Children.Count);
+        Assert.Equal("text", result.Root.Children[0].Type);
+        Assert.Equal("badge", result.Root.Children[1].Type);
+    }
+
+    [Fact]
     public void Parse_CommentOnly_NoVisibleElements_Fails()
     {
         // L208 _tops.Count==0 真臂

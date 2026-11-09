@@ -1,5 +1,6 @@
 using Beacon.Core.Models;
 using Beacon.Core.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Beacon.Core.Tests;
 
@@ -261,5 +262,122 @@ public sealed class RefreshSchedulerTests
 
         scheduler.KickWidget("w-1");
         await Poll.UntilAsync(() => Volatile.Read(ref refreshCount) >= 1);
+    }
+
+    // ---- 收口：Register 重注册（行 60）/ Unregister 未知 ID 早退（行 94）/ Stop 聚合故障任务（行 144/147）
+    //      / delay 赢 WhenAny + 取消窗口 break（行 188）/ kick-drain 吸收挂起 kick（行 227）----
+
+    [Fact]
+    public async Task ReRegisterSameWidget_MovesToNewGroupWithoutDuplicate()
+    {
+        // 已注册 ID 再次 Register → UnregisterCore（行 60）先摘旧组再注册新组，不得重复条目
+        var delayer = new FakeDelayer();
+        await using var scheduler = Create(delayer, _ => new RefreshTierPolicy(TimeSpan.FromMilliseconds(1000)));
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+        scheduler.Register(new WidgetRegistration("w-1", "conn-2", RefreshTiers.Ci)); // 重注册：换连接
+
+        var requests = new List<RefreshRequest>();
+        var gate = new object();
+        scheduler.Start((request, _) => { lock (gate) requests.Add(request); return Task.CompletedTask; });
+
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 1);
+        delayer.Calls[0].Complete();
+        await Poll.UntilAsync(() => requests.Count >= 1);
+
+        var request = Assert.Single(requests); // 旧组已拆，只剩新组一条
+        Assert.Equal("conn-2", request.ConnectionId);
+        Assert.Equal(["w-1"], request.WidgetIds); // 组内无重复条目
+    }
+
+    [Fact]
+    public async Task UnregisterUnknownWidget_IsNoOp()
+    {
+        // 未注册 ID 走 UnregisterCore 早退（行 94）：不抛异常、不影响既有组
+        var delayer = new FakeDelayer();
+        await using var scheduler = Create(delayer);
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+        scheduler.Unregister("ghost");
+
+        var requests = new List<RefreshRequest>();
+        var gate = new object();
+        scheduler.Start((request, _) => { lock (gate) requests.Add(request); return Task.CompletedTask; });
+
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 1);
+        delayer.Calls[0].Complete();
+        await Poll.UntilAsync(() => requests.Count >= 1);
+
+        Assert.Equal(["w-1"], requests[0].WidgetIds); // 既有组未受影响
+    }
+
+    private sealed class ThrowingLogger : ILogger
+    {
+        public int LogCalls;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            where TState : notnull
+        {
+            Interlocked.Increment(ref LogCalls);
+            throw new InvalidOperationException("logger fault");
+        }
+    }
+
+    [Fact]
+    public async Task Stop_AggregatesFaultedLoopTask_WithoutThrowing()
+    {
+        // 循环任务因 logger 抛异常从 catch 逸出而故障 → Stop 的 WaitAll 聚合成 AggregateException，
+        // 被 catch（行 144/147）吞掉，不向调用方抛出（进程生命周期对象口径）。
+        var delayer = new FakeDelayer();
+        var logger = new ThrowingLogger();
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromMilliseconds(1000)),
+            delayer.Delay,
+            logger,
+            randomSeed: 42);
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+        scheduler.Start((_, _) => throw new InvalidOperationException("provider down")); // 刷新失败 → LogWarning 抛 → 循环故障
+
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 1);
+        delayer.Calls[0].Complete();
+        await Poll.UntilAsync(() => logger.LogCalls >= 1); // 故障已发生（loop task 进入 Faulted）
+
+        scheduler.Stop(); // 不抛异常（WaitAll 的 AggregateException 被吞）
+    }
+
+    [Fact]
+    public async Task DelayWinsWithPendingKick_BreaksOnCancelBeforeRefresh()
+    {
+        // 行 227 + 行 188：第 2 轮 delay 委托同步 Unregister 取消组 token → WaitAsync(ct) 因 token 已取消
+        // 返回取消任务且不消耗 count → delay 赢 WhenAny → kick-drain 吸收挂起 kick（行 227）→
+        // await completed 后查 token 已取消 → break（行 188），不再触发第 2 次刷新。
+        RefreshScheduler? scheduler = null;
+        var delayCalls = 0;
+        var refreshCount = 0;
+        scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromMilliseconds(1000)),
+            (_, _) =>
+            {
+                if (Interlocked.Increment(ref delayCalls) >= 2)
+                {
+                    scheduler!.Unregister("w-1"); // 取消组循环（行 101）
+                }
+                return Task.CompletedTask;
+            },
+            randomSeed: 42);
+        await using var owned = scheduler;
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+        scheduler.Start((_, _) =>
+        {
+            Interlocked.Increment(ref refreshCount);
+            scheduler!.KickWidget("w-1"); // 为下一轮 drain 预置 count=1
+            return Task.CompletedTask;
+        });
+
+        await Poll.UntilAsync(() => Volatile.Read(ref delayCalls) >= 2); // 第 2 轮 delay 已发出（且已取消）
+        await Poll.UntilAsync(() => Volatile.Read(ref refreshCount) >= 1); // 第 1 轮已刷新
+        Assert.Equal(1, Volatile.Read(ref refreshCount)); // 第 2 轮在 refresh 前 break，不再刷新
     }
 }

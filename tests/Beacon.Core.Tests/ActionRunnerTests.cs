@@ -319,4 +319,61 @@ public sealed class ActionRunnerTests
         Assert.Equal("w-9", cancelled.SourceWidgetId); // 非成功结算同样带来源（失败后刷权威状态更诚实）
         Assert.Null(new ActionResult("a-1", true, "done", null, DateTimeOffset.UtcNow).SourceWidgetId); // 无来源构造不触发刷新
     }
+
+    // ---- 收口：远程 Action 上下文富化（行 161-167）——Connection 由 SourceState.ConnectionId 从配置注入 ----
+
+    private sealed class ContextCapturingExecutor(string type, Action<ActionExecutionContext> onContext) : IActionExecutor
+    {
+        public string ActionType => type;
+
+        public Task<ActionResult> ExecuteAsync(ActionConfig action, ActionExecutionContext context, CancellationToken cancellationToken)
+        {
+            onContext(context);
+            return Task.FromResult(Ok(action.Id));
+        }
+    }
+
+    [Fact]
+    public async Task RemoteAction_EnrichesContextWithConnectionAndSecrets()
+    {
+        // EnrichContext 新 return 路径：context.Connection 为 null + SourceState 有 ConnectionId +
+        // 配置命中连接 + 密钥存储非空 → 注入 Connection 与 ConnectionContext（行 161-167）。
+        var connection = new ConnectionConfig { Id = "conn-9", Type = "github", Endpoint = "https://example.invalid" };
+        var store = new InMemoryConfigStore();
+        store.UpsertConnection(connection);
+        var secrets = new InMemorySecretStore();
+
+        var bus = new EventBus();
+        var events = new List<Core.Events.ActionExecuted>();
+        bus.Subscribe<Core.Events.ActionExecuted>(events.Add);
+        ActionExecutionContext? seen = null;
+        var runner = new ActionRunner(
+            [new ContextCapturingExecutor("gh.action", context => seen = context)],
+            bus,
+            new FakeClock(),
+            store,
+            secrets);
+        var vars = new Dictionary<string, string> { ["run_id"] = "123" };
+        var state = new WidgetState
+        {
+            WidgetId = "w-9",
+            WidgetType = "test.type",
+            ConnectionId = "conn-9",
+            Severity = Severity.Success,
+            Summary = "OK",
+        };
+
+        var result = await runner.ExecuteAsync(
+            Action("gh.action"),
+            new ActionExecutionContext { SourceState = state, Vars = vars });
+
+        Assert.True(result.Success);
+        Assert.NotNull(seen);
+        Assert.Same(state, seen!.SourceState);                          // SourceState 透传（行 164）
+        Assert.Same(connection, seen.Connection);                       // 连接已注入（行 165）
+        Assert.NotNull(seen.ConnectionContext);
+        Assert.Same(secrets, seen.ConnectionContext!.Secrets);          // 密钥通道已注入（行 166）
+        Assert.Equal("123", seen.Vars["run_id"]);                       // Vars 透传（行 163）
+        Assert.Single(events);
+    }
 }
