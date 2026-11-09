@@ -19,8 +19,16 @@ public sealed class LocalCommandExecutorCoverageTests
     {
         var executor = new LocalCommandExecutor(Path.Combine(Path.GetTempPath(), "beacon-local-logs"));
 
+        // shell=exe 直启不存在的可执行：Windows/Linux 两侧 process.Start 均抛（文件找不到）→
+        // 「无法启动命令」。旧配置 shell=powershell 在 Linux 上因 powershell 缺失才走到启动失败，
+        // Windows 上 powershell 存在 → beacon-unused 运行时失败给「退出码」而非启动失败（CI 实证）。
         var result = await executor.ExecuteAsync(
-            Action(new Dictionary<string, string> { ["command"] = "beacon-unused", ["timeoutSeconds"] = "bad" }),
+            Action(new Dictionary<string, string>
+            {
+                ["command"] = "beacon-unused-absolutely-missing",
+                ["timeoutSeconds"] = "bad",
+                ["shell"] = "exe",
+            }),
             new ActionExecutionContext(),
             CancellationToken.None);
 
@@ -34,6 +42,8 @@ public sealed class LocalCommandExecutorCoverageTests
         var logDirectory = Path.Combine(Path.GetTempPath(), "beacon-local-coverage-" + Guid.NewGuid().ToString("N"));
         var executor = new LocalCommandExecutor(logDirectory);
 
+        // shell=exe 直启可执行（规范调用）：Windows=powershell、Linux=/bin/sh，均不走 -Command 双包裹
+        //（旧 shell=powershell + command=powershell 在 Windows 引号解析下双包裹失败，CI 实证）。
         var result = await executor.ExecuteAsync(
             Action(new Dictionary<string, string>
             {
@@ -41,7 +51,7 @@ public sealed class LocalCommandExecutorCoverageTests
                 ["args"] = IsWindows
                     ? "-NoProfile -NonInteractive -Command \"Write-Output beacon-out; Write-Error beacon-error\""
                     : "-c \"printf beacon-out; printf beacon-error >&2\"",
-                ["shell"] = IsWindows ? "powershell" : "exe",
+                ["shell"] = "exe",
             }),
             new ActionExecutionContext(),
             CancellationToken.None);
@@ -107,7 +117,7 @@ public sealed class LocalCommandExecutorCoverageTests
             {
                 ["command"] = IsWindows ? "powershell" : "/bin/sh",
                 ["args"] = IsWindows ? "-NoProfile -NonInteractive -Command \"exit 7\"" : "-c \"exit 7\"",
-                ["shell"] = IsWindows ? "powershell" : "exe",
+                ["shell"] = "exe",
             }),
             new ActionExecutionContext(),
             CancellationToken.None);

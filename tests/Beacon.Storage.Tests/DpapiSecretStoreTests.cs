@@ -79,7 +79,9 @@ public sealed class DpapiSecretStoreTests
 
         if (OperatingSystem.IsWindows())
         {
-            await Assert.ThrowsAnyAsync<Exception>(() => store.GetAsync("beacon-constructor-test"));
+            // 默认根（%APPDATA%\Beacon）在 Windows 上可用：缺键 GetAsync 返 null（与显式根用例同契约）。
+            // 旧断言 ThrowsAnyAsync 假设默认构造在 Windows 不可用——实际 DPAPI 下不抛（CI 实证 2026-11-09）。
+            Assert.Null(await store.GetAsync("beacon-constructor-test"));
             return;
         }
 
