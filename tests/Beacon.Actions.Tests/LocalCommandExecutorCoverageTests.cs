@@ -44,12 +44,14 @@ public sealed class LocalCommandExecutorCoverageTests
 
         // shell=exe 直启可执行（规范调用）：Windows=powershell、Linux=/bin/sh，均不走 -Command 双包裹
         //（旧 shell=powershell + command=powershell 在 Windows 引号解析下双包裹失败，CI 实证）。
+        // Windows 端补 exit 0：powershell.exe -Command 对未捕获 error record（Write-Error）恒回退出码 1
+        //（$?=False → exit 1，CI 42539712896 实证），显式 exit 压回 0 才断言成功；stderr 照样带出记录文本。
         var result = await executor.ExecuteAsync(
             Action(new Dictionary<string, string>
             {
                 ["command"] = IsWindows ? "powershell" : "/bin/sh",
                 ["args"] = IsWindows
-                    ? "-NoProfile -NonInteractive -Command \"Write-Output beacon-out; Write-Error beacon-error\""
+                    ? "-NoProfile -NonInteractive -Command \"Write-Output beacon-out; Write-Error beacon-error; exit 0\""
                     : "-c \"printf beacon-out; printf beacon-error >&2\"",
                 ["shell"] = "exe",
             }),
