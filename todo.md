@@ -271,12 +271,12 @@
 - `src/Beacon.Connections` 平铺了通用 HTTP、GitHub、Jenkins、本机、Herald 和 12 家厂商适配；当前 34 个源文件仍可检索，但协议客户端、Descriptor、Widget Provider、Connection Provider 混层，后续扩展建议按协议家族子目录收敛（`src/Beacon.Connections/ProviderDsl.cs:15`、`src/Beacon.Connections/GitHubApiClient.cs:12`、`src/Beacon.Connections/BigModelUsageProvider.cs:48`）。
 - `AppConfigFile` 与 `JsonConfigurationStore` 都指向 `config.json` 且恢复策略不同：前者损坏即回默认，后者有诊断/备份；这是启动早期读写的历史薄封装，应作为后续收敛点，不宜新增调用方（`src/Beacon.Storage/AppConfigFile.cs:8`、`src/Beacon.Storage/JsonConfigurationStore.cs:276`）。
 
-## 悬浮岛数据化 ISLAND-DATA-001（2026-11-08 用户令：三步流程——展示方式/展示组件/数据源/后续行为）
+## 悬浮岛数据化 ISLAND-DATA-001（2026-11-08 用户令：三步流程——展示方式/展示组件/数据源/后续行为；4 项 = 4 勾 / 0 未勾）
 
 用户反复强调的悬浮岛三步流程，现状逐条盘点（file:line 实证）：
 
-- [ ] ISLAND-D1 [P0] 第一步·选择展示方式：岛收起态展示形态可选（当前仅 CapsuleWindow.StatusFaces.cs:34-66 的 环/条 二选勾）。组件中心岛组扩为「展示方式」选择：单组件常驻 / 多组件堆叠 / 徽标+轮播 等，选项落 AppConfig 并进组件中心 UI（file: src/Beacon.Core/Services/ComponentCenterCatalog.cs:97-107）
-- [ ] ISLAND-D2 [P0] 第二步·选择展示组件：组件中心勾选的真实 widget 可「上岛」（当前岛上零真实组件，仅虚拟环/条）。岛组列出全部已连接 widget（ComponentCenterCatalog.Group 已有全量清单）加「上岛」勾选；岛收起态按序渲染所选组件，宽度自适应收起行上限，超出堆叠/轮播
-- [ ] ISLAND-D3 [P0] 第三步·对接数据源：岛组件吃真实数据流（当前只接 Notifications.UnreadCount，App.xaml.cs:228）。26 个连接 Provider 的 widget 数据（claude/codex/copilot/kimi 用量、deepseek/moonshot 余额、herald 告警、http.status、jenkins.build、machine.net 等）按现有刷新节拍喂进岛组件渲染，数据为零/断连的组件按 data_quality 口径显示占位不造假
-- [ ] ISLAND-D4 [P1] 后续行为：点岛上某组件→展开看板并定位到该组件详情/配置（当前只有整岛点击开看板，无组件级下钻）；critical 数据组件点击直达对应处置入口
+- [x] ISLAND-D1 [P0] 第一步·选择展示方式：岛收起态展示形态可选（当前仅 CapsuleWindow.StatusFaces.cs:34-66 的 环/条 二选勾）。组件中心岛组扩为「展示方式」选择：单组件常驻 / 多组件堆叠 / 徽标+轮播 等，选项落 AppConfig 并进组件中心 UI（file: src/Beacon.Core/Services/ComponentCenterCatalog.cs:97-107）（cc9b577+89ccaf0：IslandDisplayPlan 三模式 single/stack/carousel + AppConfig.IslandDisplayMode + 设置页「展示方式」下拉 BuildIslandSection；Windows CI 42546551569 绿，Core 1170/Connections 874/Actions 54/Storage 48）
+- [x] ISLAND-D2 [P0] 第二步·选择展示组件：组件中心勾选的真实 widget 可「上岛」（当前岛上零真实组件，仅虚拟环/条）。岛组列出全部已连接 widget（ComponentCenterCatalog.Group 已有全量清单）加「上岛」勾选；岛收起态按序渲染所选组件，宽度自适应收起行上限，超出堆叠/轮播（cc9b577+89ccaf0：ComponentCenterCatalog.OnboardCandidates/SetIslandOnboarded + AppConfig.IslandComponents 序 + 岛组「上岛」勾选 BuildIslandOnboardRow；同上 CI 42546551569 绿）
+- [x] ISLAND-D3 [P0] 第三步·对接数据源：岛组件吃真实数据流（当前只接 Notifications.UnreadCount，App.xaml.cs:228）。26 个连接 Provider 的 widget 数据（claude/codex/copilot/kimi 用量、deepseek/moonshot 余额、herald 告警、http.status、jenkins.build、machine.net 等）按现有刷新节拍喂进岛组件渲染，数据为零/断连的组件按 data_quality 口径显示占位不造假（cc9b577+89ccaf0：App.xaml.cs RecomputeIsland 喂真实 widget 状态节拍 + IslandDisplayPlan.Compute 对空/断连/陈旧出占位 chip 不造假；同上 CI 42546551569 绿）
+- [x] ISLAND-D4 [P1] 后续行为：点岛上某组件→展开看板并定位到该组件详情/配置（当前只有整岛点击开看板，无组件级下钻）；critical 数据组件点击直达对应处置入口（89ccaf0：RouteIslandClick 组件级下钻 + IslandWidgetActivated + QuickPanelWindow.RevealSource/OpenIslandTarget；同上 CI 42546551569 绿）
 - 验收（用户可执行）：勾选 ≥2 个真实组件上岛 → 岛收起态截图显示真实数据（非恒 0 计数）→ 点组件跳对应详情；证据入 docs/acceptance-evidence/island-data/
