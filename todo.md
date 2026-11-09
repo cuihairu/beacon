@@ -12,6 +12,7 @@
 - 状态灯像素断言阈值：亚像素漂移 10~44px 属正常渲染（非呼吸调光），失效模式 0 与实测底 10 之间定标 8px（38261911354 逐像素实测）。
 - reduced 档同色闪灯缺陷：TransitionFill 只在色变 tick 过渡，同色 tick 直接填充（patrol-20261013-A1 读码发现）。
 - 覆盖率巡检收口：全仓 7504/7636 = 98.27%（coverlet cobertura 四测试项目合并口径，Beacon.App 不在任何测试工程引用内故不计），达标 98%；本批 bb389ea/e7dfc1c/a06c345/c4b2822/d9cefc0，并行批 2992bc0/5d4c315/b9a45fe/3924840；残余未覆盖 = Windows 专属 P/Invoke（DpapiSecretStore 39 行、MachineLocalProvider 9 行）与时序竞态/防御分支（RefreshScheduler、WidgetHost 晚到闸门等 130 行总计）（2026-11-08）。
+- 覆盖率 98% 门槛复收口（2026-11-09 用户令，codecov 基线 95.31%）：本地 coverlet cobertura 四测试项目合并（逐行 hits 去重 + 跨报告 branch 并集）7647/7712 = 99.16%，codecov/project+patch 双 success（a209e87 触发 CI run 42600394019，≥98% 门槛确认过）；本批 e3e8620/ca652bf/8b383db（补 ~51 行关键路径：Json*Store 归档损坏回退、RefreshScheduler 重注册/取消/竞态、ActionRunner 连接富化、DisplayTemplates 记录面、Git 工作区真实仓库 ahead/behind、SvgPath 带符号指数、IslandMotion 牛顿→二分回退、GitHub 执行器动作类型等，四测试工程 1268+1011+54+54 全绿）；残余未覆盖 65 行/13 文件 = 平台锁死 49（DpapiSecretStore 39 + MachineLocalProvider 9 + MachineNetProvider 1，Linux 不可跑）与死码/测量伪影 16（RefreshScheduler 227/230/232 竞态窗不可确定性复现、DisplayTemplates 323-325 ArgsEqual 非空双字典不可达、LocalCommandExecutor 140/143 TryKill 竞态、SvgPathParser 289 TryParse 溢出臂（.NET Core 3.0+ 溢出返回 +∞ 非 false）、ProviderDsl 93 非映射列表项（YamlLite 解析期全拒）、Qwen 288/Kimi 472 守卫重复、JsonConfigurationStore 128/JsonNotificationRecordStore 55/HTML 401 不可达、HTML 185 while(true) 无 sequence point）；生产代码零改动、无凑数测试（2026-11-09）。
 
 ## MVP 待验/未修项（50 项 = 42 勾 / 8 未勾；未完成项即装机清单）
 
