@@ -78,4 +78,20 @@ public sealed class JsonCacheStoreTests
         Assert.Empty(store.LoadStates("conn-b"));
         Assert.Equal("from-a", store.LoadStates("conn-a")["w-1"].Summary);
     }
+
+    /// <summary>缓存写失败（连接目录槽位被同名文件占住 → IOException）不影响主流程：内存态仍在，磁盘未落。</summary>
+    [Fact]
+    public void SaveState_WriteFailure_KeepsMemoryStateWithoutDiskWrite()
+    {
+        using var dir = new TempDir();
+        Directory.CreateDirectory(System.IO.Path.Combine(dir.Path, "cache"));
+        File.WriteAllText(System.IO.Path.Combine(dir.Path, "cache", "conn-1"), "not a directory"); // 占住连接目录槽位
+        var store = new JsonCacheStore(dir.Path);
+
+        store.SaveState("conn-1", State("w-1", "memory-only")); // IOException 被吞，不抛
+
+        Assert.Equal("memory-only", store.LoadStates("conn-1")["w-1"].Summary); // 内存态兜底可读
+        Assert.False(File.Exists(System.IO.Path.Combine(dir.Path, "cache", "conn-1", "states.json"))); // 磁盘未落
+        Assert.True(File.Exists(System.IO.Path.Combine(dir.Path, "cache", "conn-1"))); // 占位文件原样（未被目录替换）
+    }
 }

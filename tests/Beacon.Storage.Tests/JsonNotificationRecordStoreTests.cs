@@ -79,4 +79,37 @@ public sealed class JsonNotificationRecordStoreTests : IDisposable
         Assert.Empty(loaded);
         Assert.True(File.Exists(Path.Combine(_directory, "notifications.json.corrupt"))); // 损坏原件留档
     }
+
+    /// <summary>留档失败也当空（.corrupt 槽位被目录占住）：不阻断启动，占位目录不被文件冲掉。</summary>
+    [Fact]
+    public async Task Load_CorruptWithBlockedArchive_ReturnsEmpty()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "notifications.json"), "{ not json");
+        Directory.CreateDirectory(Path.Combine(_directory, "notifications.json.corrupt")); // 占住留档槽位
+
+        var loaded = await new JsonNotificationRecordStore(_directory).LoadAsync();
+
+        Assert.Empty(loaded);
+        Assert.True(Directory.Exists(Path.Combine(_directory, "notifications.json.corrupt"))); // 占位目录原样
+        Assert.False(File.Exists(Path.Combine(_directory, "notifications.json.corrupt"))); // 没被留档文件覆盖
+        Assert.Contains("not json", File.ReadAllText(Path.Combine(_directory, "notifications.json"))); // 主文件未被动
+    }
+
+    /// <summary>主文件与 .bak 双损坏：主文件照常留档，记录兜底当空。</summary>
+    [Fact]
+    public async Task Load_CorruptMainAndBackup_ReturnsEmptyAndArchives()
+    {
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(Path.Combine(_directory, "notifications.json"), "garbage");
+        File.WriteAllText(Path.Combine(_directory, "notifications.json.bak"), "stale garbage");
+
+        var loaded = await new JsonNotificationRecordStore(_directory).LoadAsync();
+
+        Assert.Empty(loaded);
+        var corrupt = Path.Combine(_directory, "notifications.json.corrupt");
+        Assert.True(File.Exists(corrupt)); // 留档路径未被占 → 留档成功
+        Assert.Contains("garbage", File.ReadAllText(corrupt));
+        Assert.True(File.Exists(Path.Combine(_directory, "notifications.json.bak"))); // .bak 原样未被删
+    }
 }

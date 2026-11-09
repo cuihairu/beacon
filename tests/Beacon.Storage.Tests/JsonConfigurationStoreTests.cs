@@ -381,6 +381,63 @@ public sealed class JsonConfigurationStoreTests
         Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("reserved"));
     }
 
+    /// <summary>UpsertWidget 同 Id 走替换臂（FindIndex 命中既有槽位），替换结果落盘且跨实例读回。</summary>
+    [Fact]
+    public void UpsertWidgetSameId_ReplacesExistingEntry()
+    {
+        using var dir = new TempDir();
+        var store = new JsonConfigurationStore(dir.Path);
+        store.UpsertWidget(new WidgetConfig { Id = "w-1", Type = "github.pr.list", ConnectionId = "gh-main" });
+        store.UpsertWidget(new WidgetConfig { Id = "w-1", Type = "http.status", ConnectionId = "gh-main" });
+
+        var replaced = Assert.Single(store.Widgets);
+        Assert.Equal("http.status", replaced.Type);
+
+        var reloaded = new JsonConfigurationStore(dir.Path);
+        reloaded.LoadAll();
+        var persisted = Assert.Single(reloaded.Widgets);
+        Assert.Equal("http.status", persisted.Type);
+        Assert.Equal("gh-main", persisted.ConnectionId);
+    }
+
+    /// <summary>损坏原件留档失败（.corrupt 槽位被目录占住）：诊断明示「留档失败」，占位目录不被文件冲掉。</summary>
+    [Fact]
+    public void LoadAll_CorruptArchiveBlocked_ReportsArchiveFailure()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(System.IO.Path.Combine(dir.Path, "connections.json"), "{ this is not json");
+        Directory.CreateDirectory(System.IO.Path.Combine(dir.Path, "connections.json.corrupt")); // 占住留档槽位
+
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+
+        Assert.Equal(2, store.LoadErrors.Count); // 主文件解析错 + 留档失败，两条诊断
+        Assert.Contains(store.LoadErrors, e => e.StartsWith("connections.json", StringComparison.Ordinal));
+        Assert.Contains(store.LoadErrors, e => e.Contains("留档 .corrupt 失败", StringComparison.Ordinal));
+        Assert.True(Directory.Exists(System.IO.Path.Combine(dir.Path, "connections.json.corrupt"))); // 占位目录原样
+        Assert.False(File.Exists(System.IO.Path.Combine(dir.Path, "connections.json.corrupt"))); // 没被留档文件覆盖
+        Assert.Empty(store.Connections); // 无备份 → 当空
+    }
+
+    /// <summary>主文件与 .bak 双损坏：报告「备份也损坏」，兜底当空，损坏原件仍成功留档。</summary>
+    [Fact]
+    public void LoadAll_CorruptMainAndBackup_FallsBackToDefaultsAndReportsBoth()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(System.IO.Path.Combine(dir.Path, "connections.json"), "garbage");
+        File.WriteAllText(System.IO.Path.Combine(dir.Path, "connections.json.bak"), "stale garbage");
+
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+
+        Assert.Contains(store.LoadErrors, e => e.Contains(".bak", StringComparison.Ordinal) && e.Contains("损坏", StringComparison.Ordinal));
+        Assert.Empty(store.Connections);
+        var corrupt = System.IO.Path.Combine(dir.Path, "connections.json.corrupt");
+        Assert.True(File.Exists(corrupt)); // 留档路径未被占 → 留档成功
+        Assert.Contains("garbage", File.ReadAllText(corrupt));
+        Assert.True(File.Exists(System.IO.Path.Combine(dir.Path, "connections.json.bak"))); // .bak 原样未被删
+    }
+
     /// <summary>纵深链：root → child → … 共 levels 层。</summary>
     private static ComponentDescriptor Deep(int levels)
     {
