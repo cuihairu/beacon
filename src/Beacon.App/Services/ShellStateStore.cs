@@ -42,10 +42,17 @@ public sealed class ShellStateStore
         }
     }
 
+    /// <summary>胶囊布局落盘（原子写同口径），读改写保留 IslandLayout/QuickPanelLayout 段互不覆盖
+    /// （审核修复 2026-11-12：此前漏配读改写，胶囊保存会抹掉已存的岛/看板布局）。</summary>
     public void SaveCapsuleLayout(PinLayout? layout)
     {
         Directory.CreateDirectory(DirectoryPath);
-        var state = new ShellStateFile { CapsuleLayout = layout };
+        var state = new ShellStateFile
+        {
+            CapsuleLayout = layout,
+            IslandLayout = LoadIslandLayout(),
+            QuickPanelLayout = LoadQuickPanelLayout(),
+        };
         var temporary = FilePath + ".tmp";
         File.WriteAllText(temporary, BeaconJson.Serialize(state));
         File.Move(temporary, FilePath, overwrite: true);
