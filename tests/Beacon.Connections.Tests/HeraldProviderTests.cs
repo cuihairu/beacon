@@ -234,6 +234,39 @@ public sealed class HeraldProviderTests
     }
 
     [Fact]
+    public async Task Feed_SeenBaseline_TrimmedToCurrentWindow_WhenOverCap()
+    {
+        // P1 审核修复（HeraldFeedProvider._seen）：基线 guid 只增不减，长驻进程内存爬升；
+        // 超限裁到只剩当前 feed 窗口——之后被裁掉的旧 guid 滚回来按未读计（有界换一次误报，可接受）。
+        var http = new FakeHttpMessageHandler();
+        var provider = new HeraldFeedProvider(http);
+        var big = RssManyGuids(HeraldFeedProvider.MaxSeenPerFeed + 5, "bulk");
+
+        http.Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, big);
+        var first = await provider.GetStateAsync(FeedWidget("dev"), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal("0", first!.Payload["unread"]); // 首刷整单入基线
+
+        http.Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, RssManyGuids(1, "solo"));
+        var second = await provider.GetStateAsync(FeedWidget("dev"), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal("1", second!.Payload["unread"]); // 新 guid 计未读；基线超限 → 裁到只剩当前窗口 1 条
+
+        http.Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, RssManyGuids(1, "bulk-0")); // 被裁掉的旧 guid 滚回
+        var third = await provider.GetStateAsync(FeedWidget("dev"), Connection(), Ctx(), CancellationToken.None);
+        Assert.Equal("1", third!.Payload["unread"]); // 旧 guid 已不在基线 → 按未读计（证明基线确实被裁）
+    }
+
+    /// <summary>拼 N 条 item 的极简 RSS（guid = {prefix}-{i}，最新在前顺序无所谓，未读计数不看 pubDate）。</summary>
+    private static string RssManyGuids(int count, string prefix)
+    {
+        var items = new System.Text.StringBuilder();
+        for (var i = 0; i < count; i++)
+        {
+            items.Append($"<item><title>{prefix} {i}</title><guid isPermaLink=\"false\">{prefix}-{i}</guid></item>");
+        }
+        return $"<rss version=\"2.0\"><channel><title>t</title>{items}</channel></rss>";
+    }
+
+    [Fact]
     public async Task Feed_EmptySource()
     {
         var http = new FakeHttpMessageHandler { Responder = _ => new FakeHttpResponse(HttpStatusCode.OK, "<rss version=\"2.0\"><channel><title>t</title></channel></rss>") };

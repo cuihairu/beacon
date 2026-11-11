@@ -257,6 +257,9 @@ public sealed class HeraldFeedProvider : IWidgetProvider
     private readonly object _gate = new();
     private readonly Dictionary<string, HashSet<string>> _seen = new(StringComparer.Ordinal); // widget.Id → 已见 guid
 
+    /// <summary>单 feed 已见基线上限（审核修复 2026-11-12）：长驻进程下 guid 只增不减，超限裁剪防内存爬升。</summary>
+    internal const int MaxSeenPerFeed = 4096;
+
     public HeraldFeedProvider() { }
 
     public HeraldFeedProvider(HttpMessageHandler handler) => _client = HttpEndpoint.Create(handler);
@@ -309,7 +312,6 @@ public sealed class HeraldFeedProvider : IWidgetProvider
                 ? existing
                 : new HashSet<string>(StringComparer.Ordinal);
             var hasBaseline = _seen.ContainsKey(widget.Id);
-            _seen[widget.Id] = seen;
             foreach (var item in items)
             {
                 if (!hasBaseline)
@@ -321,6 +323,17 @@ public sealed class HeraldFeedProvider : IWidgetProvider
                     unread++; // 基线已建：新 guid 才算未读
                 }
             }
+            // 基线超限（审核修复 2026-11-12）：裁到只剩当前 feed 窗口内的 guid——
+            // 内存有界（feed 窗口大小）；被裁掉的旧条若滚回窗口会多计一次未读，可接受。
+            if (seen.Count > MaxSeenPerFeed)
+            {
+                seen = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var item in items)
+                {
+                    seen.Add(item.Id);
+                }
+            }
+            _seen[widget.Id] = seen;
         }
 
         var latest = items.Count > 0 ? items[0] : null;
