@@ -346,6 +346,30 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task GroupAllSkipped_TriggersBackoff()
+    {
+        // P1 审核修复（WidgetHost.OnGroupRefreshAsync）：缺配置/缺 provider/连接停用三种 skip 此前
+        // 一律算成功，全组跳过时 failures==0 → 组循环按常规档全速空转刷警告日志；修复后全组跳过
+        // 同样抛给调度器退避一档（连接恢复/配置修复仍由 kick 与注册重建兜住）。
+        var delayer = new FakeDelayer();
+        var fixture = new HostFixture();
+        fixture.Config.ConnectionItems.Clear();
+        fixture.Config.ConnectionItems.Add(new ConnectionConfig { Id = "conn-1", Type = "github", Enabled = false }); // 停用 → 唯一组件跳过
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromSeconds(1), JitterFraction: 0),
+            delayer.Delay,
+            randomSeed: 42);
+        await using var host = fixture.CreateHost(scheduler);
+
+        host.Start(); // kick 首轮 → 回调全组跳过 → 抛 → 组退避 ×2
+
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 2);
+        Assert.Equal(TimeSpan.FromSeconds(2), delayer.Calls[1].Requested); // 1s 基档退避 ×2
+
+        Assert.True(await host.RefreshWidgetAsync("w-1")); // 手动刷新口径不变：跳过不算失败
+    }
+
+    [Fact]
     public async Task RefreshCompletingAfterWidgetDeleted_DropsLateResult()
     {
         // P1-01 晚到保护：取数 await 期间组件被删——缓存/状态/健康一律不写回（幽灵快照不得复活）

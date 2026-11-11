@@ -170,18 +170,24 @@ public sealed class WidgetHost : IAsyncDisposable
     {
         var result = await TryRefreshOneAsync(widgetId, cancellationToken).ConfigureAwait(false);
         _scheduler.KickWidget(widgetId); // 让组循环恢复常规节奏
-        return result;
+        return result != RefreshOutcome.Failed;
     }
 
     private async Task OnGroupRefreshAsync(RefreshRequest request, CancellationToken cancellationToken)
     {
         var failures = 0;
+        var skipped = 0;
         foreach (var widgetId in request.WidgetIds)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!await TryRefreshOneAsync(widgetId, cancellationToken).ConfigureAwait(false))
+            var outcome = await TryRefreshOneAsync(widgetId, cancellationToken).ConfigureAwait(false);
+            if (outcome == RefreshOutcome.Failed)
             {
                 failures++;
+            }
+            else if (outcome == RefreshOutcome.Skipped)
+            {
+                skipped++;
             }
         }
         if (failures == request.WidgetIds.Count)
@@ -191,26 +197,43 @@ public sealed class WidgetHost : IAsyncDisposable
                 $"All {failures} widget(s) in group {request.ConnectionId}/{request.Tier} failed to refresh.",
                 ConnectionHealthState.Offline);
         }
+        if (skipped == request.WidgetIds.Count)
+        {
+            // 全组跳过（缺配置/缺 provider/连接停用）→ 抛给调度器退避一档
+            // （审核修复 2026-11-12，P1：此前三种 skip 一律算成功，全组跳过时 failures==0，
+            // 组循环按 15s 档全速空转刷日志）。
+            throw new ConnectionException(
+                $"All {skipped} widget(s) in group {request.ConnectionId}/{request.Tier} skipped (missing config/provider or disabled connection).",
+                ConnectionHealthState.Offline);
+        }
     }
 
-    private async Task<bool> TryRefreshOneAsync(string widgetId, CancellationToken cancellationToken)
+    /// <summary>单组件刷新结果三分：刷新成（含 304 未变化）/ 跳过（配置暂不适用，不算失败）/ 失败（抛过异常）。</summary>
+    private enum RefreshOutcome
+    {
+        Refreshed,
+        Skipped,
+        Failed,
+    }
+
+    private async Task<RefreshOutcome> TryRefreshOneAsync(string widgetId, CancellationToken cancellationToken)
     {
         var widget = _config.FindWidget(widgetId);
         var connection = _config.FindConnection(widget?.ConnectionId);
         if (widget is null || connection is null)
         {
             _logger?.LogWarning("Widget {WidgetId} or its connection is missing; skipped.", widgetId);
-            return true;
+            return RefreshOutcome.Skipped;
         }
         var provider = _resolver.Resolve(widget.Type);
         if (provider is null)
         {
             _logger?.LogWarning("No provider for widget type {WidgetType}; skipped.", widget.Type);
-            return true;
+            return RefreshOutcome.Skipped;
         }
         if (!connection.Enabled)
         {
-            return true; // 模块停用：静默跳过（不算失败，不触发退避）
+            return RefreshOutcome.Skipped; // 模块停用：静默跳过（手动刷新不算失败；全组跳过走组级退避）
         }
 
         try
@@ -221,7 +244,7 @@ public sealed class WidgetHost : IAsyncDisposable
             // 晚到结果闸门：await 期间组件/连接可能已被删停，写回前复核配置现值
             if (RefreshResultDropped(widgetId))
             {
-                return true;
+                return RefreshOutcome.Skipped;
             }
             if (state is null)
             {
@@ -235,36 +258,36 @@ public sealed class WidgetHost : IAsyncDisposable
                 {
                     _store.Update(cached with { IsStale = false, ConnectionHealthy = true });
                 }
-                return true;
+                return RefreshOutcome.Refreshed;
             }
             state = DebugInjection.OverrideSeverity(state); // debug 注入面：BEACON_DEBUG_SEVERITY=critical 时改判（缓存/事件/聚合全下游同判）
             _cache.SaveState(connection.Id, state);
             PublishHealth(connection.Id, ConnectionHealthState.Healthy);
             _store.Update(state);
             _logger?.LogInformation("Widget {WidgetId} refreshed ok: {Summary}", widgetId, state.Summary); // 逐跳诊断：拉取成功一行
-            return true;
+            return RefreshOutcome.Refreshed;
         }
         catch (ConnectionException exception)
         {
             if (RefreshResultDropped(widgetId))
             {
-                return true; // 失败结果同样晚到：不复活幽灵陈旧态
+                return RefreshOutcome.Skipped; // 失败结果同样晚到：不复活幽灵陈旧态
             }
             _logger?.LogWarning(exception, "Widget {WidgetId} refresh failed: {Health}.", widgetId, exception.Health);
             PublishHealth(connection.Id, exception.Health);
             PublishStale(widget, connection.Id, exception.Message); // 失败原因直显 tile（空白/静默吞错零容忍）
-            return false;
+            return RefreshOutcome.Failed;
         }
         catch (Exception exception)
         {
             if (RefreshResultDropped(widgetId))
             {
-                return true;
+                return RefreshOutcome.Skipped;
             }
             _logger?.LogError(exception, "Widget {WidgetId} refresh failed unexpectedly.", widgetId);
             PublishHealth(connection.Id, ConnectionHealthState.Degraded);
             PublishStale(widget, connection.Id, exception.Message);
-            return false;
+            return RefreshOutcome.Failed;
         }
     }
 
