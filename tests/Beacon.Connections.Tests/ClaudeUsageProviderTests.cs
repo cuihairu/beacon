@@ -190,6 +190,31 @@ public sealed class ClaudeUsageProviderTests
     // ---- 端到端（真实目录 IO）----
 
     [Fact]
+    public async Task GetStateAsync_CancellationRequested_StopsScanImmediately()
+    {
+        // P1 审核修复（ClaudeUsageProvider.EnumerateLines）：取消 token 逐文件逐行检查——
+        // days 配大时扫描可被打断，不再刷完整目录。
+        var dir = Path.Combine(Path.GetTempPath(), "beacon-claude-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var fresh = Path.Combine(dir, "fresh.jsonl");
+            await File.WriteAllTextAsync(fresh, "{}");
+
+            using var cancelled = new CancellationTokenSource(TimeSpan.Zero); // 进门即取消
+
+            // 取消即抛 OCE（与 HTTP provider 同口径：token 交底层，取消上抛由 WidgetHost 兜）；
+            // 关键是「立即」——扫描在第一个文件第一个读点就断，不把目录刷完。
+            await Assert.ThrowsAsync<OperationCanceledException>(
+                () => new ClaudeUsageProvider().GetStateAsync(Widget(), Connection(dir), Ctx(), cancelled.Token));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task GetStateAsync_ReadsFreshFilesOnly_PayloadAndSummary()
     {
         var dir = Path.Combine(Path.GetTempPath(), "beacon-claude-test-" + Guid.NewGuid().ToString("N"));

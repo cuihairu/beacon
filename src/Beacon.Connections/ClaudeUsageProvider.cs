@@ -57,7 +57,7 @@ public sealed class ClaudeUsageProvider : IWidgetProvider
 
         var days = widget.Config.TryGetValue("days", out var daysRaw) && int.TryParse(daysRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var d) && d > 0 ? d : 1;
         var nowLocal = DateTimeOffset.Now;
-        var usage = Aggregate(EnumerateLines(dir, nowLocal - TimeSpan.FromDays(days)), nowLocal, days);
+        var usage = Aggregate(EnumerateLines(dir, nowLocal - TimeSpan.FromDays(days), cancellationToken), nowLocal, days);
 
         double? limit = widget.Config.TryGetValue("daily_cost_limit", out var limitRaw) && double.TryParse(limitRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var l) && l > 0 ? l : null;
         var warnPercent = widget.Config.TryGetValue("warn_percent", out var warnRaw) && double.TryParse(warnRaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var w) ? w : 60;
@@ -105,18 +105,22 @@ public sealed class ClaudeUsageProvider : IWidgetProvider
             : configured;
     }
 
-    /// <summary>窗口内最近修改的会话文件逐行产出（LastWriteTime 粗筛——超大目录不整读）。</summary>
-    internal static IEnumerable<string> EnumerateLines(string dir, DateTimeOffset fromLocal)
+    /// <summary>窗口内最近修改的会话文件逐行产出（LastWriteTime 粗筛——超大目录不整读）。
+    /// 取消检查逐文件逐行（审核修复 2026-11-12：days 配大时扫描可达 HttpClient 级耗时，
+    /// 此前 token 不进循环，刷新取消（Stop）打不断扫描）。</summary>
+    internal static IEnumerable<string> EnumerateLines(string dir, DateTimeOffset fromLocal, CancellationToken cancellationToken)
     {
         var fromUtc = fromLocal.ToUniversalTime();
         var files = Directory.EnumerateFiles(dir, "*.jsonl", SearchOption.AllDirectories)
             .Where(file => File.GetLastWriteTimeUtc(file) >= fromUtc);
         foreach (var file in files)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             string? line;
             using var reader = new StreamReader(file);
             while ((line = reader.ReadLine()) is not null)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 yield return line;
             }
         }
