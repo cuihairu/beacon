@@ -246,6 +246,33 @@ public sealed class RefreshSchedulerTests
     }
 
     [Fact]
+    public async Task WidgetUnregisteredDuringWait_NotRefreshedNextCycle()
+    {
+        // P1 审核修复（RefreshScheduler.RunLoopAsync）：旧实现刷等待前的快照——等待期注销的组件
+        // 下一轮仍被白拉（网络请求打给已删组件，只靠晚到闸兜）；修复后等待完重取快照。
+        var delayer = new FakeDelayer();
+        await using var scheduler = Create(delayer);
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+        scheduler.Register(new WidgetRegistration("w-2", "conn-1", RefreshTiers.Ci)); // 同组
+
+        var requests = new List<RefreshRequest>();
+        var gate = new object();
+        scheduler.Start((request, _) => { lock (gate) requests.Add(request); return Task.CompletedTask; });
+
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 1);
+        delayer.Calls[0].Complete();
+        await Poll.UntilAsync(() => requests.Count >= 1);
+        Assert.Equal(2, requests[0].WidgetIds.Count); // 第一轮：两个都在
+
+        scheduler.Unregister("w-2"); // 等待期注销：组不空，循环不取消
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 2);
+        delayer.Calls[1].Complete();
+
+        await Poll.UntilAsync(() => requests.Count >= 2);
+        Assert.Equal(["w-1"], requests[1].WidgetIds); // 第二轮只刷幸存者，不带已注销的 w-2
+    }
+
+    [Fact]
     public async Task ManualTier_NoAutoRefresh_KickTriggersRefresh()
     {
         var delayer = new FakeDelayer();

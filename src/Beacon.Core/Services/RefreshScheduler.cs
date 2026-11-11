@@ -187,6 +187,17 @@ public sealed class RefreshScheduler : IAsyncDisposable
                 {
                     break;
                 }
+                lock (_gate)
+                {
+                    // 等待后重取快照（审核修复 2026-11-12 P1）：此前刷的是等待前的旧快照——
+                    // 等待期被注销的组件仍被白拉一轮（网络请求打给已删组件，只能靠晚到闸兜）；
+                    // 等待期新注册进组的组件则要多等一拍才刷。
+                    widgetIds = [.. group.WidgetIds];
+                }
+                if (widgetIds.Count == 0)
+                {
+                    break;
+                }
                 await _refreshAsync!(new RefreshRequest(group.ConnectionId, group.Tier, widgetIds), cancellationToken)
                     .ConfigureAwait(false);
                 lock (_gate)
