@@ -91,6 +91,19 @@ public sealed class LocalCommandExecutor : IActionExecutor
     /// <summary>构造启动信息（纯函数，跨平台可测）。</summary>
     internal static ProcessStartInfo BuildStartInfo(string shell, string command, string? args, ActionConfig action)
     {
+        if (shell is "powershell")
+        {
+            // 审核修复 2026-11-12（P1）：Arguments 裸拼后由 Windows 进程参数解析器
+            // （CommandLineToArgvW 口径）再拆一遍，双引号在这一层就被吃掉——"a b" 静默变成
+            // a、b 两段，PowerShell 收到的命令语义走样且无声。与其拆错继续跑，不如启动前失败
+            // 直说：PowerShell 用单引号包裹含空格参数即可（单引号不经此层）。
+            // cmd 分支不加此闸：/C 的引号由 cmd 自身按原文解析，双引号是正常用法。
+            if (command.Contains('"') || (args?.Contains('"') is true))
+            {
+                throw new ArgumentException(
+                    "powershell 的 command/args 不支持双引号（会先被进程参数解析吃掉，导致参数拆分错乱）；请改用单引号包裹含空格参数。");
+            }
+        }
         var (fileName, arguments) = shell switch
         {
             "powershell" => ("powershell", $"-NoProfile -NonInteractive -Command {command} {args}".TrimEnd()),

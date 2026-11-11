@@ -56,6 +56,30 @@ public sealed class LocalCommandExecutorTests
     }
 
     [Fact]
+    public void BuildStartInfo_Powershell_EmbeddedDoubleQuote_FailsLoud()
+    {
+        // P1 审核修复：裸拼 Arguments 后双引号会被进程参数解析吃掉（"a b" → a、b 两段），
+        // 与其静默拆错不如启动前失败直说；单引号不受影响（下方断言）。
+        Assert.Throws<ArgumentException>(() => LocalCommandExecutor.BuildStartInfo(
+            "powershell", "Get-Process \"dotnet host\"", null,
+            Action(new Dictionary<string, string> { ["command"] = "Get-Process" })));
+        Assert.Throws<ArgumentException>(() => LocalCommandExecutor.BuildStartInfo(
+            "powershell", "Get-Process", "-Name \"dotnet host\"",
+            Action(new Dictionary<string, string> { ["command"] = "Get-Process" })));
+
+        var singleQuoted = LocalCommandExecutor.BuildStartInfo(
+            "powershell", "Get-Process", "-Name 'dotnet host'",
+            Action(new Dictionary<string, string> { ["command"] = "Get-Process" }));
+        Assert.Equal("-NoProfile -NonInteractive -Command Get-Process -Name 'dotnet host'", singleQuoted.Arguments);
+
+        // cmd 分支照旧：/C 的引号由 cmd 自行按原文解析，属正常用法
+        var cmd = LocalCommandExecutor.BuildStartInfo(
+            "cmd", "echo", "\"hello world\"",
+            Action(new Dictionary<string, string> { ["command"] = "echo" }));
+        Assert.Equal("/C echo \"hello world\"", cmd.Arguments);
+    }
+
+    [Fact]
     public void BuildStartInfo_AppliesEnvAndWorkingDirectory()
     {
         var startInfo = LocalCommandExecutor.BuildStartInfo(
