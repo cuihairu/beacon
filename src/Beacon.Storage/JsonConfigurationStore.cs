@@ -175,6 +175,10 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             _app = app;
             _connections = connections;
             _widgets = widgets;
+            // 写入面防呆（审核修复 2026-11-12）：导入包与 UpsertWidget/加载同一 fail-closed 口径，
+            // 坏组件树/坏源整面弃用并进诊断，绕过写入防呆直达渲染层。
+            SanitizeWidgetComponents();
+            SanitizeComponentSources();
             _pins = pins;
             _actions = actions;
         }

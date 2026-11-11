@@ -438,6 +438,68 @@ public sealed class JsonConfigurationStoreTests
         Assert.True(File.Exists(System.IO.Path.Combine(dir.Path, "connections.json.bak"))); // .bak 原样未被删
     }
 
+    /// <summary>
+    /// P0 审核修复（JsonConfigurationStore.ReplaceAll，B-802 导入路径）：导入的坏组件树/坏源
+    /// 与 UpsertWidget/加载同一 fail-closed 口径——整面弃用 + 诊断进 LoadErrors，不直达渲染层。
+    /// </summary>
+    [Fact]
+    public void ReplaceAll_DropsInvalidSurfacesAndSources_SanitizesLikeUpsert()
+    {
+        using var dir = new TempDir();
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+        Assert.Empty(store.LoadErrors);
+
+        var widgets = new List<WidgetConfig>
+        {
+            new()
+            {
+                Id = "w-good",
+                Type = "github.pr.list",
+                Components = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["detail"] = new ComponentDescriptor { Type = "surface-card" },
+                },
+                Sources = new Dictionary<string, Dictionary<string, string>>
+                {
+                    ["detail"] = new Dictionary<string, string> { ["runs"] = "w-2" },
+                },
+            },
+            new()
+            {
+                Id = "w-bad",
+                Type = "github.pr.list",
+                Components = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["detail"] = Deep(ComponentTreeValidator.MaxDepth + 1), // 纵深超上限
+                },
+                Sources = new Dictionary<string, Dictionary<string, string>>
+                {
+                    ["detail"] = new Dictionary<string, string> { [""] = "w-2" }, // 空源名非法
+                },
+            },
+        };
+
+        store.ReplaceAll(new AppConfig(), [], widgets, new PinsConfig(), []);
+
+        // 坏面整面弃用（本地列表与落盘一致），好面保留，诊断进 LoadErrors
+        var good = Assert.Single(store.Widgets, widget => widget.Id == "w-good");
+        Assert.Single(good.Components!);
+        Assert.Single(good.Sources!);
+        var bad = Assert.Single(store.Widgets, widget => widget.Id == "w-bad");
+        Assert.Empty(bad.Components!);
+        Assert.Empty(bad.Sources!);
+        Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("depth"));
+        Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("source name"));
+
+        // 落盘复口径：重开 store 读回同样的净化结果
+        var reloaded = new JsonConfigurationStore(dir.Path);
+        reloaded.LoadAll();
+        var persistedBad = Assert.Single(reloaded.Widgets, widget => widget.Id == "w-bad");
+        Assert.Empty(persistedBad.Components!);
+        Assert.Empty(persistedBad.Sources!);
+    }
+
     /// <summary>纵深链：root → child → … 共 levels 层。</summary>
     private static ComponentDescriptor Deep(int levels)
     {
