@@ -500,6 +500,49 @@ public sealed class JsonConfigurationStoreTests
         Assert.Empty(persistedBad.Sources!);
     }
 
+    /// <summary>
+    /// P0 审核修复（PinnedHostWindow.PersistLayout IO 放大）：批量 upsert 一次落盘——
+    /// 更新与新增混批、防呆逐个（坏树整面弃用 + 诊断），落盘结果与逐个 UpsertWidget 等价。
+    /// </summary>
+    [Fact]
+    public void UpsertWidgets_BulkUpsert_SanitizesEach_SingleFileWrite()
+    {
+        using var dir = new TempDir();
+        var store = new JsonConfigurationStore(dir.Path);
+        store.LoadAll();
+        store.UpsertWidget(new WidgetConfig { Id = "w-keep", Type = "github.pr.list" });
+
+        var widgets = new List<WidgetConfig>
+        {
+            new() { Id = "w-keep", Type = "http.status" }, // 更新已有
+            new() { Id = "w-new", Type = "github.pr.list" }, // 新增
+            new()
+            {
+                Id = "w-bad",
+                Type = "github.pr.list",
+                Components = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["detail"] = Deep(ComponentTreeValidator.MaxDepth + 1), // 坏树：防呆逐个仍生效
+                },
+            },
+        };
+
+        store.UpsertWidgets(widgets);
+
+        Assert.Equal(3, store.Widgets.Count);
+        Assert.Equal("http.status", store.FindWidget("w-keep")!.Type);
+        Assert.Equal("github.pr.list", store.FindWidget("w-new")!.Type);
+        Assert.Empty(store.FindWidget("w-bad")!.Components!); // 坏面弃用，组件本体保留
+        Assert.Contains(store.LoadErrors, error => error.Contains("w-bad") && error.Contains("depth"));
+
+        // 一次落盘的文件内容 = 全量视图（更新+新增+净化都在盘上）
+        var reloaded = new JsonConfigurationStore(dir.Path);
+        reloaded.LoadAll();
+        Assert.Equal(3, reloaded.Widgets.Count);
+        Assert.Equal("http.status", reloaded.FindWidget("w-keep")!.Type);
+        Assert.Empty(reloaded.FindWidget("w-bad")!.Components!);
+    }
+
     /// <summary>纵深链：root → child → … 共 levels 层。</summary>
     private static ComponentDescriptor Deep(int levels)
     {

@@ -34,6 +34,10 @@ public interface IConfigurationStore
 
     void UpsertWidget(WidgetConfig widget);
 
+    /// <summary>批量 upsert（审核修复 2026-11-12）：防呆口径同 UpsertWidget，锁与落盘各一次——
+    /// 拖动落点等一次改多个 widget 的场景不再放大成 N 次全量 widgets.json 原子写。</summary>
+    void UpsertWidgets(IReadOnlyList<WidgetConfig> widgets);
+
     void RemoveWidget(string widgetId);
 
     void UpsertAction(ActionConfig action);

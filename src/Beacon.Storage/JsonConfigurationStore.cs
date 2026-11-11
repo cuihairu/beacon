@@ -235,6 +235,33 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         SaveWidgets();
     }
 
+    /// <summary>批量 upsert（审核修复 2026-11-12）：防呆逐个（与 UpsertWidget 同 fail-closed 口径），
+    /// 锁与 widgets.json 落盘各一次——布局落点高频写不再放大成 N 次全量原子写。</summary>
+    public void UpsertWidgets(IReadOnlyList<WidgetConfig> widgets)
+    {
+        foreach (var widget in widgets)
+        {
+            SanitizeWidgetSurfaces(widget);
+            SanitizeWidgetSources(widget);
+        }
+        lock (_gate)
+        {
+            foreach (var widget in widgets)
+            {
+                var index = _widgets.FindIndex(w => w.Id == widget.Id);
+                if (index >= 0)
+                {
+                    _widgets[index] = widget;
+                }
+                else
+                {
+                    _widgets.Add(widget);
+                }
+            }
+        }
+        SaveWidgets();
+    }
+
     public void RemoveWidget(string widgetId)
     {
         lock (_gate)

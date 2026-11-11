@@ -262,17 +262,21 @@ internal sealed class PinnedHostWindow
     private void PersistLayout()
     {
         var pinned = _runtime.Config.Widgets.Where(w => w.Pinned).ToList();
+        var layout = new PinLayout
+        {
+            Monitor = _layout.Monitor,
+            Anchor = _layout.Anchor,
+            OffsetDips = _layout.OffsetDips,
+            Collapsed = _layout.Collapsed,
+        };
+        var touched = new List<WidgetConfig>(pinned.Count);
         foreach (var widget in pinned)
         {
-            widget.PinLayout = new PinLayout
-            {
-                Monitor = _layout.Monitor,
-                Anchor = _layout.Anchor,
-                OffsetDips = _layout.OffsetDips,
-                Collapsed = _layout.Collapsed,
-            };
-            _runtime.Config.UpsertWidget(widget);
+            widget.PinLayout = layout;
+            touched.Add(widget);
         }
+        // 批量落盘（审核修复 2026-11-12）：一次拖动落点只写一次 widgets.json，不放大成 N 次。
+        _runtime.Config.UpsertWidgets(touched);
         var pins = _runtime.Config.Pins;
         pins.Tiles = [.. pinned.Select(w => new Beacon.Core.Models.PinTile
         {

@@ -94,11 +94,14 @@ internal sealed partial class SettingsWindow
             Collapsed = _layoutCollapsedToggle.IsOn,
         };
         var pinned = _runtime.Config.Widgets.Where(w => w.Pinned).ToList();
+        var touched = new List<WidgetConfig>(pinned.Count);
         foreach (var widget in pinned)
         {
             widget.PinLayout = new PinLayout { Monitor = layout.Monitor, Anchor = layout.Anchor, OffsetDips = layout.OffsetDips, Collapsed = layout.Collapsed };
-            _runtime.Config.UpsertWidget(widget);
+            touched.Add(widget);
         }
+        // 批量落盘（审核修复 2026-11-12，与 PersistLayout 同口径）：widgets.json 只写一次。
+        _runtime.Config.UpsertWidgets(touched);
         var pins = _runtime.Config.Pins;
         pins.Tiles = [.. pinned.Select(w => new Beacon.Core.Models.PinTile
         {

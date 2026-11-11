@@ -180,6 +180,14 @@ internal sealed class InMemoryConfigStore : IConfigurationStore
         }
     }
 
+    public void UpsertWidgets(IReadOnlyList<WidgetConfig> widgets)
+    {
+        foreach (var widget in widgets)
+        {
+            UpsertWidget(widget);
+        }
+    }
+
     public void RemoveWidget(string widgetId) => WidgetItems.RemoveAll(w => w.Id == widgetId);
 
     public void UpsertAction(ActionConfig action)
