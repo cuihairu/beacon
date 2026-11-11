@@ -201,6 +201,44 @@ public sealed class ActionRunnerTests
     }
 
     [Fact]
+    public async Task Retry_ExecutorReturnsTimedOut_SingleAttemptNoResend()
+    {
+        // P0 审核修复（ActionRunner.cs:116）：超时以「返回值」携带（LocalCommandExecutor.cs:70 口径，
+        // 超时返回而非抛出）时同样不重试——副作用动作绝不因超时重复触发。
+        var executor = new StubExecutor("flaky", (_, _) => Task.FromResult(
+            new ActionResult("a-1", false, "已超时", null, DateTimeOffset.UtcNow)
+            {
+                Outcome = ActionOutcome.TimedOut,
+            }));
+        var (runner, _, _) = Build(executor);
+
+        var result = await runner.ExecuteAsync(RetryAction(3, 0), new ActionExecutionContext());
+
+        Assert.False(result.Success);
+        Assert.Equal(ActionOutcome.TimedOut, result.Outcome);
+        Assert.Equal("已超时", result.Message); // 不被「已重试 N 次」文案覆盖
+        Assert.Equal(1, executor.CallCount);
+    }
+
+    [Fact]
+    public async Task Retry_ExecutorReturnsCancelled_SingleAttemptNoResend()
+    {
+        // P0 审核修复（ActionRunner.cs:116）：取消以返回值携带时同样不重试。
+        var executor = new StubExecutor("flaky", (_, _) => Task.FromResult(
+            new ActionResult("a-1", false, "已取消", null, DateTimeOffset.UtcNow)
+            {
+                Outcome = ActionOutcome.Cancelled,
+            }));
+        var (runner, _, _) = Build(executor);
+
+        var result = await runner.ExecuteAsync(RetryAction(3, 0), new ActionExecutionContext());
+
+        Assert.Equal(ActionOutcome.Cancelled, result.Outcome);
+        Assert.Equal("已取消", result.Message);
+        Assert.Equal(1, executor.CallCount);
+    }
+
+    [Fact]
     public async Task Retry_FailThenSuccess_ReturnsSuccessWithoutAnnotation()
     {
         var calls = 0;

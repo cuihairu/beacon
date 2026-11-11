@@ -113,7 +113,12 @@ public sealed class ActionRunner
                     _logger?.LogError(exception, "Action {ActionId} 执行失败。", action.Id);
                     result = Fail(action.Id, exception.Message);
                 }
-                if (result.Success || cancellationToken.IsCancellationRequested || attempt >= maxAttempts)
+                // 超时/取消不重试（自注口径）：executor 以返回值携带 TimedOut/Cancelled（如
+                // LocalCommandExecutor 超时返回而非抛出）同样计入，绝不重发副作用动作。
+                if (result.Success
+                    || result.Outcome is ActionOutcome.TimedOut or ActionOutcome.Cancelled
+                    || cancellationToken.IsCancellationRequested
+                    || attempt >= maxAttempts)
                 {
                     // 多次尝试后仍失败：标注尝试次数（单次路径不标注，消息与既有口径一致）
                     return !result.Success && maxAttempts > 1 && attempt > 1
