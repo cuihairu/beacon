@@ -113,7 +113,7 @@ public sealed class GitHubApiClient
             {
                 >= 200 and < 300 => true,
                 401 => throw new ConnectionException("GitHub 认证失败 (401)：PAT 无效或过期。", ConnectionHealthState.Unauthorized),
-                403 => throw (RateLimitRemaining == 0
+                403 => throw (ReadRateLimitRemaining(response) == 0
                     ? new ConnectionException("GitHub rate limit 耗尽 (403)。", ConnectionHealthState.Offline)
                     : new ConnectionException("GitHub 拒绝访问 (403)：检查 PAT workflow 授权。", ConnectionHealthState.Unauthorized)),
                 404 => throw new ConnectionException("GitHub 资源不存在 (404)：检查仓库/workflow/run 配置。", ConnectionHealthState.Offline),
@@ -127,12 +127,20 @@ public sealed class GitHubApiClient
 
     private void ReadRateLimit(HttpResponseMessage response)
     {
-        if (response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
-            && int.TryParse(values.FirstOrDefault(), out var remaining))
+        var remaining = ReadRateLimitRemaining(response);
+        if (remaining >= 0)
         {
             RateLimitRemaining = remaining;
         }
     }
+
+    /// <summary>读单条响应自己的配额头（-1 = 无头）——403 分流用它而非共享快照
+    /// （审核修复 2026-11-12：GET/POST 并发时共享属性可能被并发响应改写成陈旧值，按错健康态）。</summary>
+    private static int ReadRateLimitRemaining(HttpResponseMessage response)
+        => response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
+            && int.TryParse(values.FirstOrDefault(), out var remaining)
+            ? remaining
+            : -1;
 
     private async Task<GitHubResponse> HandleStatusAsync(
         HttpResponseMessage response,
@@ -160,7 +168,7 @@ public sealed class GitHubApiClient
             case 401:
                 throw new ConnectionException("GitHub 认证失败 (401)：PAT 无效或过期。", ConnectionHealthState.Unauthorized);
             case 403:
-                throw RateLimitRemaining == 0
+                throw ReadRateLimitRemaining(response) == 0
                     ? new ConnectionException("GitHub rate limit 耗尽 (403)。", ConnectionHealthState.Offline)
                     : new ConnectionException("GitHub 拒绝访问 (403)：检查 PAT 授权范围。", ConnectionHealthState.Unauthorized);
             case 404:

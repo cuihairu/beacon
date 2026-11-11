@@ -106,6 +106,24 @@ public sealed class GitHubApiClientTests
     }
 
     [Fact]
+    public async Task Forbidden403_WithoutHeader_UsesOwnResponseNotStaleSnapshot()
+    {
+        // P1 审核修复（GitHubApiClient 403 分流）：此前读共享 RateLimitRemaining 快照——
+        // 前次响应已把 remaining 置 0，本 403 不带配额头时按陈旧值误判 Offline；
+        // 修复后 403 只看本响应自己的头（无头 = 权限 403）。
+        var handler = new FakeHttpMessageHandler();
+        handler.Enqueue(HttpStatusCode.OK, "{}", headers: [("X-RateLimit-Remaining", "0")]); // 前次：配额耗尽（GET 正常 2xx）
+        handler.Enqueue(HttpStatusCode.Forbidden, "{\"message\":\"forbidden\"}"); // 本次：无配额头的 403
+        var client = CreateClient(handler);
+
+        await client.GetAsync("/user");
+        var exception = await Assert.ThrowsAsync<ConnectionException>(() => client.GetAsync("/user"));
+
+        Assert.Equal(0, client.RateLimitRemaining); // 快照仍是上次的 0
+        Assert.Equal(ConnectionHealthState.Unauthorized, exception.Health); // 但分流不再被它带偏
+    }
+
+    [Fact]
     public async Task RateLimitHeader_IsParsed_AndLowQuotaFlagged()
     {
         var handler = new FakeHttpMessageHandler();
