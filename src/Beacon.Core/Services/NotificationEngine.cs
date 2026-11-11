@@ -185,6 +185,16 @@ public sealed class NotificationEngine : IDisposable
         catch (Exception exception)
         {
             _logger?.LogError(exception, "通知出口投递失败（{NotificationId}）。", record.Id);
+            // 审核修复 2026-11-12：出口失败不占坑——撤销本次门槛记账（跨越键/冷却戳），
+            // 下一条同级别状态事件重新投递；否则 sink 抖一次，告警静默到重启/回落。
+            lock (_gate)
+            {
+                _activeCrossings.Remove(key);
+                _lastNotified.Remove(key);
+            }
+            _bus.Publish(new NotificationRaised(record));
+            RaiseRecordsChanged();
+            return;
         }
         _bus.Publish(new NotificationRaised(record));
         RaiseRecordsChanged();

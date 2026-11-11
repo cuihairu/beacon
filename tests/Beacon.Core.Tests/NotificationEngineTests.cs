@@ -12,8 +12,17 @@ public sealed class NotificationEngineTests
     {
         public List<(NotificationRecord Record, NotificationDelivery Delivery)> Shown { get; } = [];
 
+        /// <summary>前 N 次 Show 抛异常（模拟出口抖动），之后正常记录。</summary>
+        public int ThrowFirst { get; set; }
+
         public void Show(NotificationRecord notification, NotificationDelivery delivery)
-            => Shown.Add((notification, delivery));
+        {
+            if (ThrowFirst-- > 0)
+            {
+                throw new InvalidOperationException("sink down");
+            }
+            Shown.Add((notification, delivery));
+        }
     }
 
     private sealed class Harness
@@ -116,6 +125,42 @@ public sealed class NotificationEngineTests
         harness.Bus.Publish(new WidgetStateChanged(State(severity: Severity.Warning)));
 
         Assert.Equal(2, harness.Sink.Shown.Count);
+    }
+
+    [Fact]
+    public void SinkFailure_DoesNotOccupyGate_NextEventRedelivers()
+    {
+        // P1 审核修复（NotificationEngine.Deliver）：出口抛异常被吞但门槛已占坑——
+        // 跨越键留在 _activeCrossings → 告警静默到回落/重启。修复后失败撤销记账，
+        // 同段内下一条状态事件重新投递。
+        var harness = new Harness();
+        using var engine = harness.Create();
+        harness.Rules.Add(Rule()); // 跨越语义
+        harness.Sink.ThrowFirst = 1;
+
+        harness.Bus.Publish(new WidgetStateChanged(State())); // 出口失败：记录在案但 toast 丢
+        Assert.Empty(harness.Sink.Shown);
+        Assert.Single(harness.Raised);
+
+        harness.Bus.Publish(new WidgetStateChanged(State())); // 同段重试：成功
+        Assert.Single(harness.Sink.Shown);
+        Assert.Equal(2, harness.Raised.Count);
+    }
+
+    [Fact]
+    public void CooldownSinkFailure_RestampsOnRetry()
+    {
+        // 同修复的冷却侧：失败撤销 _lastNotified 戳，冷却内重试不被旧戳压住。
+        var harness = new Harness();
+        using var engine = harness.Create();
+        harness.Rules.Add(Rule(cooldown: TimeSpan.FromMinutes(10)));
+        harness.Sink.ThrowFirst = 1;
+
+        harness.Bus.Publish(new WidgetStateChanged(State())); // 出口失败
+        harness.Clock.Advance(TimeSpan.FromMinutes(1));
+        harness.Bus.Publish(new WidgetStateChanged(State())); // 冷却内重试：戳已撤销 → 投递
+
+        Assert.Single(harness.Sink.Shown);
     }
 
     [Fact]
