@@ -181,6 +181,17 @@ public sealed class GitWorkspaceProviderTests
     // —— 真仓库集成（护 CLI 链路：参数引号/退出码/porcelain 实协议；Linux 与 windows-latest 均有 git） ——
 
     [Fact]
+    public void CreateGitStartInfo_SpaceAndQuotePaths_PassedVerbatim()
+    {
+        // P1 审核修复（GitCliSource.Git）：路径改走 ArgumentList 逐参数传递，不再手拼引号+剥引号
+        var startInfo = GitCliSource.CreateGitStartInfo("status --porcelain=v1 -b", "/tmp/my repo");
+        Assert.Equal(new[] { "-C", "/tmp/my repo", "status", "--porcelain=v1", "-b" }, startInfo.ArgumentList);
+
+        var quoted = GitCliSource.CreateGitStartInfo("stash list", "/tmp/we\"ird");
+        Assert.Equal("/tmp/we\"ird", quoted.ArgumentList[1]); // 引号保留原文（旧实现剥掉 → 悄悄指向别的目录）
+    }
+
+    [Fact]
     public async Task GitCliSource_RealRepo_EndToEnd()
     {
         var root = Path.Combine(Path.GetTempPath(), $"beacon-git-{Guid.NewGuid():N}");
@@ -254,6 +265,79 @@ public sealed class GitWorkspaceProviderTests
         {
             // Windows 上 .git 对象文件只读，递归删除会 UnauthorizedAccessException——清理尽力而为
             try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public void GitCliSource_RealRepo_PathWithSpace_ReadsSnapshot()
+    {
+        // P1 审核修复：含空格路径不再依赖手拼引号（ArgumentList 直传）——真仓库链路护住
+        var root = Path.Combine(Path.GetTempPath(), $"beacon git space-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            GitHelper(root, "init -b main");
+            GitHelper(root, "-c user.name=test -c user.email=test@example.com commit --allow-empty -m init");
+
+            var snapshot = new GitCliSource().Read(root);
+
+            Assert.Equal("main", snapshot.Branch);
+            Assert.Equal(0, snapshot.Dirty);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public void GitCliSource_RealRepo_PathWithQuote_ReadsSnapshot()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // 引号入目录名 Linux 才合法
+        }
+        // 旧实现 Replace 剥引号 → git -C 指向不存在的路径 → 误报「仓库路径不存在」
+        var root = Path.Combine(Path.GetTempPath(), $"beacon-\"q\"-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            GitHelper(root, "init -b main");
+
+            var snapshot = new GitCliSource().Read(root);
+
+            Assert.Equal("main", snapshot.Branch);
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>测试内 git 辅助（与被测 Git() 分开，保独立取证口径；ArgumentList 直传路径，含空格/引号均可）。</summary>
+    private static void GitHelper(string repoPath, string args)
+    {
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "git",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(repoPath);
+        foreach (var token in args.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            startInfo.ArgumentList.Add(token);
+        }
+        using var process = new System.Diagnostics.Process { StartInfo = startInfo };
+        process.Start();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit(10_000);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"git {args} 失败：{error}");
         }
     }
 

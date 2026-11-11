@@ -190,19 +190,7 @@ public sealed class GitCliSource : IGitSource
 
     private static string Git(string arguments, string repoPath)
     {
-        var safePath = repoPath.Replace("\"", ""); // Windows 路径本就容不下引号；Unix 防注入式写坏参数
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = "git",
-                Arguments = $"-C \"{safePath}\" {arguments}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            },
-        };
+        using var process = new Process { StartInfo = CreateGitStartInfo(arguments, repoPath) };
         try
         {
             process.Start();
@@ -212,19 +200,44 @@ public sealed class GitCliSource : IGitSource
             throw new ConnectionException($"找不到 git 命令（需安装 Git 并加入 PATH）：{exception.Message}", ConnectionHealthState.Degraded, exception);
         }
 
-        var output = process.StandardOutput.ReadToEnd();
-        var error = process.StandardError.ReadToEnd();
+        // 双管道并发读（审核修复 2026-11-12 P1）：顺序 ReadToEnd 有死锁面——stderr 先填满管道
+        // 时子进程写 stderr 阻塞、父进程还在读 stdout，互等到 10s 超时被杀。
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(10_000))
         {
             try { process.Kill(); } catch (InvalidOperationException) { } // 已退出即无事
             throw new ConnectionException($"git {arguments.Split(' ')[0]} 超时（>10s）", ConnectionHealthState.Degraded);
         }
+        var output = outputTask.GetAwaiter().GetResult();
+        var error = errorTask.GetAwaiter().GetResult();
         if (process.ExitCode != 0)
         {
             var reason = FirstLine(error) ?? $"exit {process.ExitCode}";
             throw new ConnectionException($"git {arguments.Split(' ')[0]} 失败：{reason}", ConnectionHealthState.Degraded);
         }
         return output;
+    }
+
+    /// <summary>git 启动信息（审核修复 2026-11-12 P1）：参数逐个入 ArgumentList——仓库路径含空格/引号
+    /// 不再靠手拼引号+剥引号（Replace 拆引号会把路径悄悄改写到别的目录）。git 子参数全是固定字面量。</summary>
+    internal static ProcessStartInfo CreateGitStartInfo(string arguments, string repoPath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(repoPath);
+        foreach (var token in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            startInfo.ArgumentList.Add(token);
+        }
+        return startInfo;
     }
 
     private static string? FirstLine(string text)
