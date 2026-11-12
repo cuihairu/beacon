@@ -48,69 +48,36 @@ public sealed class ConfigurationEdgeTests
         Assert.Equal("https://two", action.Parameters["url"]);
     }
 
-    // ---------- AppConfigFile（ApplicationData，经 XDG_CONFIG_HOME 隔离） ----------
-
-    private static string? SwapConfigHome(string? next)
-    {
-        var previous = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", next);
-        return previous;
-    }
+    // ---------- AppConfigFile（根目录注入隔离：构造传 TempDir，Linux/Windows 双平台真隔离） ----------
 
     [Fact]
     public void AppConfig_Load_MissingFile_ReturnsDefaults()
     {
         using var dir = new TempDir();
-        var previous = SwapConfigHome(dir.Path);
-        try
-        {
-            var config = new AppConfigFile().Load();
-            Assert.NotNull(config);
-        }
-        finally
-        {
-            SwapConfigHome(previous);
-        }
+        var config = new AppConfigFile(dir.Path).Load();
+        Assert.NotNull(config);
     }
 
     [Fact]
     public void AppConfig_SaveThenLoad_RoundTrips()
     {
         using var dir = new TempDir();
-        var previous = SwapConfigHome(dir.Path);
-        try
-        {
-            var file = new AppConfigFile();
-            var config = new AppConfig { Hotkey = "Ctrl+Shift+B" };
-            file.Save(config);
+        var file = new AppConfigFile(dir.Path);
+        file.Save(new AppConfig { Hotkey = "Ctrl+Shift+B" });
 
-            var reloaded = new AppConfigFile().Load();
-            Assert.Equal("Ctrl+Shift+B", reloaded.Hotkey);
-        }
-        finally
-        {
-            SwapConfigHome(previous);
-        }
+        var reloaded = new AppConfigFile(dir.Path).Load();
+        Assert.Equal("Ctrl+Shift+B", reloaded.Hotkey);
     }
 
     [Fact]
     public void AppConfig_Load_CorruptFile_ReturnsDefaults()
     {
         using var dir = new TempDir();
-        var previous = SwapConfigHome(dir.Path);
-        try
-        {
-            var beaconDir = Path.Combine(dir.Path, "Beacon");
-            Directory.CreateDirectory(beaconDir);
-            File.WriteAllText(Path.Combine(beaconDir, "config.json"), "{not valid json");
+        Directory.CreateDirectory(dir.Path);
+        File.WriteAllText(Path.Combine(dir.Path, "config.json"), "{not valid json");
 
-            var config = new AppConfigFile().Load();
-            Assert.NotNull(config);
-        }
-        finally
-        {
-            SwapConfigHome(previous);
-        }
+        var config = new AppConfigFile(dir.Path).Load();
+        Assert.NotNull(config);
     }
 
     [Fact]
@@ -120,26 +87,16 @@ public sealed class ConfigurationEdgeTests
         // 静默回默认（落盘窗口被读 = 热键/主题/自启归零）。修复后 Save 留 .bak，损坏走 *.corrupt
         // 留档 + .bak 恢复（与 JsonConfigurationStore 同口径）。
         using var dir = new TempDir();
-        var previous = SwapConfigHome(dir.Path);
-        try
-        {
-            var file = new AppConfigFile();
-            var first = new AppConfig { Hotkey = "Ctrl+Shift+B" };
-            file.Save(first);
-            file.Save(new AppConfig { Hotkey = "Ctrl+Alt+T" }); // 旧值进 .bak
+        var file = new AppConfigFile(dir.Path);
+        file.Save(new AppConfig { Hotkey = "Ctrl+Shift+B" });
+        file.Save(new AppConfig { Hotkey = "Ctrl+Alt+T" }); // 旧值进 .bak
 
-            var beaconDir = Path.Combine(dir.Path, "Beacon");
-            Assert.True(File.Exists(Path.Combine(beaconDir, "config.json.bak"))); // Save 留备份
+        Assert.True(File.Exists(Path.Combine(dir.Path, "config.json.bak"))); // Save 留备份
 
-            File.WriteAllText(Path.Combine(beaconDir, "config.json"), "{not valid json"); // 落盘窗口被读
-            var recovered = file.Load();
+        File.WriteAllText(Path.Combine(dir.Path, "config.json"), "{not valid json"); // 落盘窗口被读
+        var recovered = file.Load();
 
-            Assert.Equal("Ctrl+Shift+B", recovered.Hotkey); // .bak 恢复，不归默认
-            Assert.True(File.Exists(Path.Combine(beaconDir, "config.json.corrupt"))); // 坏文件留档
-        }
-        finally
-        {
-            SwapConfigHome(previous);
-        }
+        Assert.Equal("Ctrl+Shift+B", recovered.Hotkey); // .bak 恢复，不归默认
+        Assert.True(File.Exists(Path.Combine(dir.Path, "config.json.corrupt"))); // 坏文件留档
     }
 }

@@ -4,13 +4,22 @@ using Beacon.Core.Models;
 namespace Beacon.Storage;
 
 /// <summary>config.json 最小读写（B-103 热键持久化所需）。
-/// B-201 的 JsonConfigurationStore 将以完整 IConfigurationStore 覆盖配置面，本类保留为薄封装。</summary>
+/// B-201 的 JsonConfigurationStore 将以完整 IConfigurationStore 覆盖配置面，本类保留为薄封装。
+/// .bak 备份 + 损坏恢复（*.corrupt 留档）与 JsonConfigurationStore 同口径。</summary>
 public sealed class AppConfigFile
 {
-    private static string DirectoryPath
-        => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Beacon");
+    private readonly string _directoryPath;
 
-    private static string FilePath => Path.Combine(DirectoryPath, "config.json");
+    /// <summary>可注入根目录（测试隔离；与 JsonConfigurationStore 同口径），默认 ApplicationData\Beacon。</summary>
+    public AppConfigFile(string? rootDirectory = null)
+    {
+        _directoryPath = rootDirectory
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Beacon");
+    }
+
+    private string DirectoryPath => _directoryPath;
+
+    private string FilePath => Path.Combine(DirectoryPath, "config.json");
 
     public AppConfig Load()
     {
