@@ -64,6 +64,7 @@ public sealed partial class QuickPanelWindow : Window
     private readonly Dictionary<string, WidgetState> _states = [];
     private readonly List<RecentEvent> _events = [];
     private string? _activeSource; // OVERVIEW 卡片点击过滤：null=全部（默认），点击同类再点取消（用户单①）
+    private bool _sectionRebuildQueued; // 段重建合并闸：同拍多条状态事件只排一次全量重建（见 QueueSectionRebuild）
 
     private QuickPanelLayout? _boardLayout; // shell-state 记忆位（null=没拖过，回落默认右下 720x560）
     private DragSession? _drag; // 头部把手拖动会话（PinnedHostWindow 同款记录：光标物理像素锚定）

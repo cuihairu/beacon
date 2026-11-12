@@ -32,11 +32,29 @@ public sealed partial class QuickPanelWindow
                 _events.RemoveAt(_events.Count - 1);
             }
         }
-        UpdateHeader();
-        UpdateOverview();
-        RebuildStatus(); // 「现在」列随当前状态现场重建（OnStateChanged 现场重建口径保留——场景 S 实证）
-        UpdateFooter(); // 脚条「运行中/正常」计数随状态现场刷新
-        RebuildRecent();
+        QueueSectionRebuild();
+    }
+
+    /// <summary>段重建合并节流（审核修复 2026-11-12 P1）：正常轮询多组件状态事件同拍到达，
+    /// 此前每条事件都全量重建 Header/Overview/Status/Footer/Recent 五段（ItemsSource 整表替换），
+    /// 大面板每拍 N×5 次重排。改为数据即时入表（_states/_events 始终同步）、UI 重建按调度拍合并——
+    /// 重建已排队时后续事件只更新数据，同拍只重排一次。过滤/失效等交互路径仍走即时重建。</summary>
+    private void QueueSectionRebuild()
+    {
+        if (_sectionRebuildQueued)
+        {
+            return;
+        }
+        _sectionRebuildQueued = true;
+        _dispatcher.Post(() =>
+        {
+            _sectionRebuildQueued = false;
+            UpdateHeader();
+            UpdateOverview();
+            RebuildStatus(); // 「现在」列随当前状态现场重建（现场重建口径保留——场景 S 实证）
+            UpdateFooter(); // 脚条「运行中/正常」计数随状态现场刷新
+            RebuildRecent();
+        });
     }
 
     /// <summary>组件失效（模块停用/删除）：丢弃残留状态与事件，不留旧灯。</summary>
