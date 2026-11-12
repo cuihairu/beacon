@@ -39,15 +39,28 @@ public sealed class BeaconRuntime : IAsyncDisposable
     /// <summary>检查更新服务（B-806）：GitHub releases/latest 与本地版本比较，进程内缓存结果。</summary>
     public UpdateCheckService UpdateCheck { get; }
 
+    private IReadOnlyList<ActionConfig>? _dslActionsCache;
+    private DateTimeOffset _dslActionsAt;
+
+    private static readonly TimeSpan DslActionsTtl = TimeSpan.FromSeconds(2);
+
     /// <summary>
-    /// DSL 声明动作（positioning §6，批3-补42）：配置里带 dsl_path 的连接 → YAML actions，
-    /// 每次取现算（LoadFile 有 mtime+size 缓存，成本低；坏文件记警告并跳过该连接——
-    /// 绝不影响启动与其他连接的动作加载）。
+    /// DSL 声明动作（positioning §6，批3-补42）：配置里带 dsl_path 的连接 → YAML actions
+    /// （LoadFile 有 mtime+size 缓存；坏文件记警告并跳过该连接——绝不影响启动与其他连接的动作加载）。
+    /// 2 秒 TTL 进程内缓存（审核修复 2026-11-12 P1）：详情窗每次状态重建都取现算——mtime 缓存虽在
+    /// 仍含每连接一次 FileInfo 磁盘 stat（UI 线程同步 IO），坏 DSL 每刷打一次 warning；
+    /// DSL 编辑生效延迟 ≤2s，可接受。仅 UI 线程读写，竞态最坏多算一次（无害）。
     /// </summary>
     public IReadOnlyList<ActionConfig> DslActions
     {
         get
         {
+            var now = DateTimeOffset.UtcNow;
+            var cached = _dslActionsCache;
+            if (cached is not null && now - _dslActionsAt < DslActionsTtl)
+            {
+                return cached;
+            }
             var actions = new List<ActionConfig>();
             foreach (var connection in Config.Connections)
             {
@@ -65,6 +78,8 @@ public sealed class BeaconRuntime : IAsyncDisposable
                     Logger?.LogWarning(exception, "DSL 动作加载失败（连接 {ConnectionId}）：{Message}", connection.Id, exception.Message);
                 }
             }
+            _dslActionsCache = actions;
+            _dslActionsAt = now;
             return actions;
         }
     }
