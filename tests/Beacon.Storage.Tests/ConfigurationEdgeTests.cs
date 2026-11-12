@@ -112,4 +112,34 @@ public sealed class ConfigurationEdgeTests
             SwapConfigHome(previous);
         }
     }
+
+    [Fact]
+    public void AppConfig_Save_RetainsBackup_CorruptLoadRecoversFromIt()
+    {
+        // P1 审核修复（AppConfigFile）：Save 此前 File.Move(overwrite) 不留 .bak；Load 损坏时
+        // 静默回默认（落盘窗口被读 = 热键/主题/自启归零）。修复后 Save 留 .bak，损坏走 *.corrupt
+        // 留档 + .bak 恢复（与 JsonConfigurationStore 同口径）。
+        using var dir = new TempDir();
+        var previous = SwapConfigHome(dir.Path);
+        try
+        {
+            var file = new AppConfigFile();
+            var first = new AppConfig { Hotkey = "Ctrl+Shift+B" };
+            file.Save(first);
+            file.Save(new AppConfig { Hotkey = "Ctrl+Alt+T" }); // 旧值进 .bak
+
+            var beaconDir = Path.Combine(dir.Path, "Beacon");
+            Assert.True(File.Exists(Path.Combine(beaconDir, "config.json.bak"))); // Save 留备份
+
+            File.WriteAllText(Path.Combine(beaconDir, "config.json"), "{not valid json"); // 落盘窗口被读
+            var recovered = file.Load();
+
+            Assert.Equal("Ctrl+Shift+B", recovered.Hotkey); // .bak 恢复，不归默认
+            Assert.True(File.Exists(Path.Combine(beaconDir, "config.json.corrupt"))); // 坏文件留档
+        }
+        finally
+        {
+            SwapConfigHome(previous);
+        }
+    }
 }

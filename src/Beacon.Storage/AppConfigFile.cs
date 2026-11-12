@@ -24,7 +24,28 @@ public sealed class AppConfigFile
         }
         catch (Exception)
         {
-            // 配置损坏：回退默认值（B-201 会加上 .bak 备份恢复）
+            // 损坏回退 .bak（审核修复 2026-11-12 P1）：此前静默回默认——config.json 在落盘窗口
+            // 被读时热键/主题/自启悄悄归零。与 JsonConfigurationStore.LoadFile 同口径：
+            // *.corrupt 留档 + .bak 恢复，坏文件不被后续落盘直接冲掉。
+            try
+            {
+                File.Copy(FilePath, FilePath + ".corrupt", overwrite: true);
+            }
+            catch (Exception)
+            {
+                // 留档失败不挡恢复
+            }
+            if (File.Exists(FilePath + ".bak"))
+            {
+                try
+                {
+                    return BeaconJson.Deserialize<AppConfig>(File.ReadAllText(FilePath + ".bak"));
+                }
+                catch (Exception)
+                {
+                    // 备份也坏 → 默认值
+                }
+            }
             return new AppConfig();
         }
     }
@@ -34,6 +55,14 @@ public sealed class AppConfigFile
         Directory.CreateDirectory(DirectoryPath);
         var temporary = FilePath + ".tmp";
         File.WriteAllText(temporary, BeaconJson.Serialize(config));
-        File.Move(temporary, FilePath, overwrite: true);
+        // 原子替换 + .bak（审核修复 2026-11-12 P1）：此前 File.Move(overwrite) 冲掉旧文件不留备份
+        if (File.Exists(FilePath))
+        {
+            File.Replace(temporary, FilePath, FilePath + ".bak");
+        }
+        else
+        {
+            File.Move(temporary, FilePath);
+        }
     }
 }
