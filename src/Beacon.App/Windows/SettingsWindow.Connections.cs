@@ -382,6 +382,11 @@ internal sealed partial class SettingsWindow
                 // 停用即失活关联组件（不留旧灯），再重建列表
                 _runtime.InvalidateWidgets(_runtime.Config.Widgets.Where(w => w.ConnectionId == connection.Id).Select(w => w.Id));
             }
+            else
+            {
+                // 复订唤醒（run 43134760840 AB2 实证）：打断停用期积累的 skip 退避段，恢复刷新立即一拍
+                _runtime.Host.KickConnection(connection.Id);
+            }
             RebuildConnections();
             RebuildWidgets();
             RefreshWidgetConnectionOptions(); // 停用连接后下拉同步移除，启用后恢复

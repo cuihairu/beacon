@@ -370,6 +370,35 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task KickConnection_WakesSkipBackedOffGroup_BeforeBackoffExpires()
+    {
+        // nightly 场景 AB2 红（run 43134760840）根修（WidgetHost.KickConnection）：停用期间组按
+        // skip 退避越睡越久，复订只翻 enabled 标志——组循环仍睡满当前退避段（实证 60s），恢复刷新
+        // 溢出判据窗。复订须 kick 打断退避等待：刷新落在段到期前，成功后节奏自然复位。
+        var delayer = new FakeDelayer();
+        var fixture = new HostFixture();
+        fixture.Config.ConnectionItems.Clear();
+        fixture.Config.ConnectionItems.Add(new ConnectionConfig { Id = "conn-1", Type = "github", Enabled = false }); // 停用 → 全组跳过
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromSeconds(1), JitterFraction: 0),
+            delayer.Delay,
+            randomSeed: 42);
+        await using var host = fixture.CreateHost(scheduler);
+
+        host.Start(); // kick 首轮 → 全组跳过 → 退避 ×2
+        await Poll.UntilAsync(() => delayer.Calls.Count >= 2);
+        Assert.Equal(TimeSpan.FromSeconds(2), delayer.Calls[1].Requested); // 1s 基档退避 ×2（skip 已发生）
+        Assert.False(delayer.Calls[1].IsCompleted); // 退避段挂起（FakeDelayer 不自然放行）
+
+        fixture.Config.ConnectionItems[0] = new ConnectionConfig { Id = "conn-1", Type = "github", Enabled = true }; // 复订
+        host.KickConnection("conn-1");
+
+        // 恢复刷新落在退避段到期前——段永不 Complete 也能刷成（无 kick 时此处 Poll 必超时红）
+        await Poll.UntilAsync(() => fixture.HealthsSnapshot().Any(h => h.State == ConnectionHealthState.Healthy));
+        Assert.False(delayer.Calls[1].IsCompleted); // 段被打断而非自然到期
+    }
+
+    [Fact]
     public async Task RefreshCompletingAfterWidgetDeleted_DropsLateResult()
     {
         // P1-01 晚到保护：取数 await 期间组件被删——缓存/状态/健康一律不写回（幽灵快照不得复活）

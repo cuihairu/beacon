@@ -253,11 +253,13 @@ public sealed class BeaconRuntime : IAsyncDisposable
 
     /// <summary>
     /// 模块启停（PowerToys 形态配置中心）：按连接类型整体开关。停用即失活——宿主按 Enabled 跳过刷新，
-    /// 已有状态经 WidgetsInvalidated 从聚合器/面板丢弃（不留旧灯）。
+    /// 已有状态经 WidgetsInvalidated 从聚合器/面板丢弃（不留旧灯）；复订唤醒该类型各连接的组循环
+    /// （打断停用期积累的 skip 退避段，与 conn-toggle 同口径）。
     /// </summary>
     public void SetConnectionTypeEnabled(string connectionType, bool enabled)
     {
         var affected = new List<string>();
+        var reEnabled = new List<string>();
         foreach (var connection in Config.Connections.Where(c => c.Type == connectionType && c.Enabled != enabled))
         {
             // ConnectionConfig 是 class 且 Enabled init-only：重建替换（连接是不可变值语义）
@@ -274,10 +276,18 @@ public sealed class BeaconRuntime : IAsyncDisposable
             {
                 affected.AddRange(Config.Widgets.Where(w => w.ConnectionId == connection.Id).Select(w => w.Id));
             }
+            else
+            {
+                reEnabled.Add(connection.Id);
+            }
         }
         if (affected.Count > 0)
         {
             Bus.Publish(new WidgetsInvalidated(affected));
+        }
+        foreach (var id in reEnabled)
+        {
+            Host.KickConnection(id);
         }
     }
 

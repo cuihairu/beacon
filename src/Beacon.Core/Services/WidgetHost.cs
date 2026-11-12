@@ -165,6 +165,18 @@ public sealed class WidgetHost : IAsyncDisposable
         }
     }
 
+    /// <summary>连接恢复（停用→启用）后唤醒该连接的组循环：打断退避等待，下一拍立即拉取。
+    /// 停用期间组按 skip 退避越睡越久（30s/60s/...），仅翻 enabled 标志时循环仍要睡满当前段，
+    /// 复订恢复刷新被推迟到退避段溢出（run 43134760840 场景 AB2 实证：判据窗只捞到 1 行）。
+    /// 与手动刷新入口 RefreshWidgetAsync 的单组件 kick 同口径，这里是连接级批量 kick（不直取数，避免双请求）。</summary>
+    public void KickConnection(string connectionId)
+    {
+        foreach (var widget in _config.Widgets.Where(w => w.ConnectionId == connectionId))
+        {
+            _scheduler.KickWidget(widget.Id);
+        }
+    }
+
     /// <summary>手动刷新入口（L2/L3 的 [Retry]，B-207）。</summary>
     public async Task<bool> RefreshWidgetAsync(string widgetId, CancellationToken cancellationToken = default)
     {
