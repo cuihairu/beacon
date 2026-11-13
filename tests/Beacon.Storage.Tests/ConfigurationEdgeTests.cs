@@ -118,4 +118,29 @@ public sealed class ConfigurationEdgeTests
         Assert.False(File.Exists(Path.Combine(dir.Path, "config.json.corrupt"))); // 不误留档
         Assert.Equal(content, File.ReadAllText(Path.Combine(dir.Path, "config.json"))); // 原文件不动
     }
+
+    [Fact]
+    public void ConnectionsVersion_BumpsOnConnectionMutationsOnly()
+    {
+        // Codex 2026-11-12 M（DslActions TTL 缓存）：App 侧派生缓存按连接代数立即失效——
+        // Upsert/Remove/ReplaceAll 递增；移除不存在的 ID 不动代数。
+        using var dir = new TempDir();
+        var store = new JsonConfigurationStore(dir.Path);
+        Assert.Equal(0, store.ConnectionsVersion);
+
+        store.UpsertConnection(new ConnectionConfig { Id = "conn-1", Type = "github" });
+        Assert.Equal(1, store.ConnectionsVersion);
+
+        store.UpsertConnection(new ConnectionConfig { Id = "conn-1", Type = "github" }); // 编辑覆盖同 Id
+        Assert.Equal(2, store.ConnectionsVersion);
+
+        store.RemoveConnection("ghost");
+        Assert.Equal(2, store.ConnectionsVersion);
+
+        store.RemoveConnection("conn-1");
+        Assert.Equal(3, store.ConnectionsVersion);
+
+        store.ReplaceAll(new AppConfig(), [new ConnectionConfig { Id = "conn-2", Type = "github" }], [], new PinsConfig(), []);
+        Assert.Equal(4, store.ConnectionsVersion);
+    }
 }

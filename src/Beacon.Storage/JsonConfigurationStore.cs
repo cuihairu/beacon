@@ -157,6 +157,12 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         }
     }
 
+    private int _connectionsVersion;
+
+    /// <summary>连接列表变更代数（UpsertConnection/RemoveConnection/ReplaceAll 递增）：App 侧派生缓存
+    /// （BeaconRuntime.DslActions 的 DSL 动作 TTL 缓存）据此立即失效，不等 TTL——连接增删改须马上反映到动作面。</summary>
+    public int ConnectionsVersion { get { lock (_gate) return _connectionsVersion; } }
+
     public void SaveApp() => SaveFile("config.json", _app);
 
     public void SaveConnections() => SaveFile("connections.json", _connections);
@@ -174,6 +180,7 @@ public sealed class JsonConfigurationStore : IConfigurationStore
         {
             _app = app;
             _connections = connections;
+            _connectionsVersion++;
             _widgets = widgets;
             // 写入面防呆（审核修复 2026-11-12）：导入包与 UpsertWidget/加载同一 fail-closed 口径，
             // 坏组件树/坏源整面弃用并进诊断，绕过写入防呆直达渲染层。
@@ -202,6 +209,7 @@ public sealed class JsonConfigurationStore : IConfigurationStore
             {
                 _connections.Add(connection);
             }
+            _connectionsVersion++;
         }
         SaveConnections();
     }
@@ -210,7 +218,10 @@ public sealed class JsonConfigurationStore : IConfigurationStore
     {
         lock (_gate)
         {
-            _connections.RemoveAll(c => c.Id == connectionId);
+            if (_connections.RemoveAll(c => c.Id == connectionId) > 0)
+            {
+                _connectionsVersion++;
+            }
         }
         SaveConnections();
     }

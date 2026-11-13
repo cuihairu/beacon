@@ -41,23 +41,27 @@ public sealed class BeaconRuntime : IAsyncDisposable
 
     private IReadOnlyList<ActionConfig>? _dslActionsCache;
     private DateTimeOffset _dslActionsAt;
+    private int _dslActionsVersion = -1;
 
     private static readonly TimeSpan DslActionsTtl = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// DSL 声明动作（positioning §6，批3-补42）：配置里带 dsl_path 的连接 → YAML actions
     /// （LoadFile 有 mtime+size 缓存；坏文件记警告并跳过该连接——绝不影响启动与其他连接的动作加载）。
-    /// 2 秒 TTL 进程内缓存（审核修复 2026-11-12 P1）：详情窗每次状态重建都取现算——mtime 缓存虽在
-    /// 仍含每连接一次 FileInfo 磁盘 stat（UI 线程同步 IO），坏 DSL 每刷打一次 warning；
-    /// DSL 编辑生效延迟 ≤2s，可接受。仅 UI 线程读写，竞态最坏多算一次（无害）。
+    /// 进程内缓存双重失效（审核修复 2026-11-12 P1 + Codex 同根因收敛）：①连接列表变更代数
+    /// （ConnectionsVersion，Upsert/Remove/ReplaceAll 递增）不一致 → 立即重算，连接增删改/编辑
+    /// 保存马上反映到动作面；②代数未变时 2 秒 TTL 兜住重复取用——mtime 缓存虽在仍含每连接一次
+    /// FileInfo 磁盘 stat（UI 线程同步 IO），坏 DSL 每刷打一次 warning；DSL 文件编辑（连接未变）
+    /// 生效延迟 ≤2s，可接受。仅 UI 线程读写，竞态最坏多算一次（无害）。
     /// </summary>
     public IReadOnlyList<ActionConfig> DslActions
     {
         get
         {
             var now = DateTimeOffset.UtcNow;
+            var version = Config.ConnectionsVersion;
             var cached = _dslActionsCache;
-            if (cached is not null && now - _dslActionsAt < DslActionsTtl)
+            if (cached is not null && _dslActionsVersion == version && now - _dslActionsAt < DslActionsTtl)
             {
                 return cached;
             }
@@ -80,6 +84,7 @@ public sealed class BeaconRuntime : IAsyncDisposable
             }
             _dslActionsCache = actions;
             _dslActionsAt = now;
+            _dslActionsVersion = version;
             return actions;
         }
     }
