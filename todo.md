@@ -287,10 +287,11 @@
 - [ ] ISLAND-D4 [P1] 后续行为：点岛上某组件→展开看板并定位到该组件详情/配置（当前只有整岛点击开看板，无组件级下钻）；critical 数据组件点击直达对应处置入口（89ccaf0：RouteIslandClick 组件级下钻 + IslandWidgetActivated + QuickPanelWindow.RevealSource/OpenIslandTarget；同上 CI 42546551569 绿）；2026-11-13 界面审计改未勾：同 D1，无视觉取证待真机走查
 - 验收（用户可执行）：勾选 ≥2 个真实组件上岛 → 岛收起态截图显示真实数据（非恒 0 计数）→ 点组件跳对应详情；证据入 docs/acceptance-evidence/island-data/
 
-## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M，待修）
+## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
-- [ ] [M] DSL 动作 TTL 缓存感知配置变更（src/Beacon.App/Services/BeaconRuntime.cs:42-83）——连接列表变更不失效，注释与实际竞态面不符
-- [ ] [M] AppConfigFile 区分 IO 异常与 JSON 损坏（src/Beacon.Storage/AppConfigFile.cs:24-58）——任意 IO 异常误触发备份恢复链路
-- [ ] [M] RefreshScheduler 重取快照收敛 TOCTOU（src/Beacon.Core/Services/RefreshScheduler.cs:190-201）——组内 widget 删除后仍白拉、空组循环不终止
-- [ ] [M] WidgetHost 重建 Clear()→逐个注册竞争收敛（src/Beacon.Core/Services/WidgetHost.cs:174-176）——批量 kick 与组内注册竞争
-- [ ] [M] 同根因两条 DSL 缓存项合并同一 commit 处理（src/Beacon.App/Services/BeaconRuntime.cs）——避免修一半
+- [x] [M] DSL 动作 TTL 缓存感知配置变更（src/Beacon.App/Services/BeaconRuntime.cs:42-83）——连接列表变更不失效，注释与实际竞态面不符（96de3e3：JsonConfigurationStore 新增 ConnectionsVersion 代数（Upsert/Remove/ReplaceAll 递增、删不存在不增，Storage 测试 ConnectionsVersion_BumpsOnConnectionMutationsOnly）+ DslActions getter 版本不匹配即重算、代数未变才走 2s TTL，注释按实际双失效面重写；App 侧 getter 属 App 工程 Linux 不编译，CS 面人工核 + CI 编译门）
+- [x] [M] AppConfigFile 区分 IO 异常与 JSON 损坏（src/Beacon.Storage/AppConfigFile.cs:24-58）——任意 IO 异常误触发备份恢复链路（c2c9c8b：catch 收窄 JsonException/null 两类才进恢复链，IO 带一次 150ms 瞬时重试后 fail loud 不冒充损坏；Storage 测试 AppConfig_Load_IoFailure_ThrowsInsteadOfCorruptChain（新增 Reader 注入 seam + Beacon.Storage.csproj 补 InternalsVisibleTo，断言抛 IOException 且不误留档、原文件不动）；ReadConfigText 重试仅包 IOException，UnauthorizedAccess 直接上抛）
+- [x] [M] RefreshScheduler 重取快照收敛 TOCTOU（src/Beacon.Core/Services/RefreshScheduler.cs:190-201）——组内 widget 删除后仍白拉、空组循环不终止（debf201：GroupState.Registered 标志（UnregisterCore 摘组/Clear 清表置 false）+ 等待后取消位、注册态与快照同锁原子判定，组被注销/清表不再发那轮刷新；锁释放后单组件移除的残余窗由 WidgetHost 晚到闸兜底（无网络请求），该结构窗不可确定性注入——空组终止与快照剔除两终态由既有 UnregisterLastWidget_StopsGroupLoop / WidgetUnregisteredDuringWait_NotRefreshedNextCycle 两测锁住）
+- [x] [M] WidgetHost 重建 Clear()→逐个注册竞争收敛（src/Beacon.Core/Services/WidgetHost.cs:174-176）——批量 kick 与组内注册竞争（debf201：_lifecycleGate 串行 Start/Reload/ReloadRegistrations 的 Clear→注册→启动序列与 KickConnection；KickWidget 改返投递成败（Core 测试 KickWidget_ReportsDelivery_LossSignalForUnregistered），真空期丢失的 kick 记 _pendingKicks、注册重建后 DrainPendingKicks 补放——唤醒意图穿越重建时序；回归 KickConnection_BeforeRegistration_PreservesWakeThroughReload：宿主未启动先 kick（丢失）→ Reload 空 kickIds → 1h 档负验门下立即首拉，摘 DrainPendingKicks 实测复红 Poll 超时）
+- [x] [M] 同根因两条 DSL 缓存项合并同一 commit 处理（src/Beacon.App/Services/BeaconRuntime.cs）——避免修一半（已并入 96de3e3 单 commit：代数计数源（Storage）与 getter 失效消费（App）同批落地，不留半修；调度器/宿主两竞争项同根因（重建时序）同批 debf201）
+- 门禁收口（2026-11-13）：全套测试绿 Core 1277/Connections 1017/Actions 55/Storage 59 合计 2408 过；ci run 43458417175 绿（Windows 编译门覆盖 App 侧 BeaconRuntime.cs，App 工程 Linux 本地不编译）
