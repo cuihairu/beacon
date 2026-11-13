@@ -99,4 +99,23 @@ public sealed class ConfigurationEdgeTests
         Assert.Equal("Ctrl+Shift+B", recovered.Hotkey); // .bak 恢复，不归默认
         Assert.True(File.Exists(Path.Combine(dir.Path, "config.json.corrupt"))); // 坏文件留档
     }
+
+    [Fact]
+    public void AppConfig_Load_IoFailure_ThrowsInsteadOfCorruptChain()
+    {
+        // Codex 2026-11-12 M（AppConfigFile）：IO 故障此前与 JSON 损坏同进 catch-all——
+        // 好文件被 *.corrupt 留档顶掉真损坏档、会话配置静默归默认。收敛后仅反序列化失败
+        // （JsonException/null）进恢复链，IO 带一次瞬时重试后 fail loud，不冒充损坏。
+        using var dir = new TempDir();
+        Directory.CreateDirectory(dir.Path);
+        const string content = "{\"hotkey\":\"Ctrl+Alt+B\"}";
+        File.WriteAllText(Path.Combine(dir.Path, "config.json"), content);
+        var file = new AppConfigFile(dir.Path);
+        file.Reader = () => throw new IOException("simulated transient lock");
+
+        Assert.Throws<IOException>(() => file.Load());
+
+        Assert.False(File.Exists(Path.Combine(dir.Path, "config.json.corrupt"))); // 不误留档
+        Assert.Equal(content, File.ReadAllText(Path.Combine(dir.Path, "config.json"))); // 原文件不动
+    }
 }
