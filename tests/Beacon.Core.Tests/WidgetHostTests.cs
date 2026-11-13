@@ -399,6 +399,27 @@ public sealed class WidgetHostTests
     }
 
     [Fact]
+    public async Task KickConnection_BeforeRegistration_PreservesWakeThroughReload()
+    {
+        // Codex 2026-11-12 收敛（WidgetHost 重建竞争）：kick 落在注册真空期（Clear→重注册窗口，
+        // 或宿主尚未启动）被调度器静默丢掉。KickConnection 对未投递 kick 记账、注册重建后补放——
+        // 唤醒意图穿越重建时序。本测宿主未启动先 kick（丢失），Reload 重建后必须立即首拉；
+        // 档位 1h + 负验门（FakeDelayer TCS 永不放行）：无补放时 Poll 必超时红。
+        var delayer = new FakeDelayer();
+        var fixture = new HostFixture();
+        await using var scheduler = new RefreshScheduler(
+            _ => new RefreshTierPolicy(TimeSpan.FromHours(1), JitterFraction: 0),
+            delayer.Delay, randomSeed: 42);
+        await using var host = fixture.CreateHost(scheduler);
+
+        host.KickConnection("conn-1"); // 未注册：投递失败 → 记 pending
+        host.Reload(Array.Empty<string>()); // 空 kickIds = 无直取批，首拉只能来自补放的 kick
+
+        await Poll.UntilAsync(() => fixture.HealthsSnapshot().Any(h => h.State == ConnectionHealthState.Healthy));
+        Assert.False(delayer.Calls[0].IsCompleted); // 首拉由 kick 唤醒，非自然到期（1h 未到）
+    }
+
+    [Fact]
     public async Task RefreshCompletingAfterWidgetDeleted_DropsLateResult()
     {
         // P1-01 晚到保护：取数 await 期间组件被删——缓存/状态/健康一律不写回（幽灵快照不得复活）

@@ -26,6 +26,9 @@ public sealed class RefreshScheduler : IAsyncDisposable
         public SemaphoreSlim Kick { get; } = new(0, 1);
         public CancellationTokenSource? Cancellation { get; set; }
         public Task? LoopTask { get; set; }
+        /// <summary>组是否仍在注册表（UnregisterCore 摘组/Clear 清表置 false）：循环唤醒后与取消位同锁判定，
+        /// 收敛「等待期组被注销仍发一轮刷新」的 TOCTOU 窗（Codex 2026-11-12）。</summary>
+        public bool Registered { get; set; } = true;
     }
 
     private readonly object _gate = new();
@@ -98,6 +101,7 @@ public sealed class RefreshScheduler : IAsyncDisposable
             group.WidgetIds.Remove(widgetId);
             if (group.WidgetIds.Count == 0 && _groups.Remove(key))
             {
+                group.Registered = false;
                 group.Cancellation?.Cancel();
             }
         }
@@ -162,6 +166,10 @@ public sealed class RefreshScheduler : IAsyncDisposable
         Stop();
         lock (_gate)
         {
+            foreach (var group in _groups.Values)
+            {
+                group.Registered = false;
+            }
             _groups.Clear();
             _widgetToGroup.Clear();
         }
@@ -189,9 +197,13 @@ public sealed class RefreshScheduler : IAsyncDisposable
                 }
                 lock (_gate)
                 {
-                    // 等待后重取快照（审核修复 2026-11-12 P1）：此前刷的是等待前的旧快照——
-                    // 等待期被注销的组件仍被白拉一轮（网络请求打给已删组件，只能靠晚到闸兜）；
-                    // 等待期新注册进组的组件则要多等一拍才刷。
+                    // 等待后原子重验再取快照（审核修复 2026-11-12 P1 + Codex TOCTOU 收敛）：取消位、
+                    // 注册态与快照同锁判定——组被整体注销/清表则不再发这轮刷新；锁释放后才可能出现的
+                    // 单组件移除残余窗由 WidgetHost 晚到闸兜底（网络请求打给已删组件）。
+                    if (cancellationToken.IsCancellationRequested || !group.Registered)
+                    {
+                        break;
+                    }
                     widgetIds = [.. group.WidgetIds];
                 }
                 if (widgetIds.Count == 0)
@@ -269,8 +281,10 @@ public sealed class RefreshScheduler : IAsyncDisposable
         return TimeSpan.FromMilliseconds(Math.Max(50, low + _random.NextDouble() * (high - low)));
     }
 
-    /// <summary>手动刷新：唤醒分组循环立即拉取（退避不重置，成功后自然复位）。</summary>
-    public void KickWidget(string widgetId)
+    /// <summary>手动刷新：唤醒分组循环立即拉取（退避不重置，成功后自然复位）。
+    /// 返回是否真投递——widget 未在注册表（注册真空期，如 Clear→重注册窗口）返回 false，
+    /// 调用方（WidgetHost.KickConnection）据此记账待补放，防唤醒被静默丢掉。</summary>
+    public bool KickWidget(string widgetId)
     {
         lock (_gate)
         {
@@ -279,7 +293,9 @@ public sealed class RefreshScheduler : IAsyncDisposable
                 && group.Kick.CurrentCount == 0)
             {
                 group.Kick.Release();
+                return true;
             }
+            return false;
         }
     }
 

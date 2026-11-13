@@ -23,6 +23,13 @@ public sealed class WidgetHost : IAsyncDisposable
     private readonly ILogger? _logger;
     private readonly object _gate = new();
     private readonly Dictionary<string, ConnectionHealthState> _health = [];
+    /// <summary>生命周期串行闸（Codex 2026-11-12 收敛）：Start/Reload/ReloadRegistrations 的
+    /// Clear→注册→启动序列与 KickConnection 批量 kick 互斥——kick 落在注册真空期会被调度器
+    /// 静默丢掉（KickWidget no-op），复订唤醒丢失（AB2 修的正是这类丢唤醒）。</summary>
+    private readonly object _lifecycleGate = new();
+    /// <summary>真空期丢失的连接级 kick 记账（widgetId → 待补）：注册重建后由 DrainPendingKicks 补放，
+    /// 唤醒意图穿越重建时序不丢失；kick 成功投递即出账，不产生重复拉取。</summary>
+    private readonly HashSet<string> _pendingKicks = new(StringComparer.Ordinal);
     private readonly IDisposable _invalidationSubscription;
     private readonly IDisposable _actionSubscription;
 
@@ -93,13 +100,17 @@ public sealed class WidgetHost : IAsyncDisposable
     /// <summary>注册全部 Widget 并启动调度；启动即水合缓存并 kick 第一轮拉取。</summary>
     public void Start()
     {
-        HydrateFromCache();
+        lock (_lifecycleGate)
+        {
+            HydrateFromCache();
 
-        _logger?.LogInformation("调度启动：全局检查频率 {PollSeconds}s（0=按档位），组件 {Count} 个。",
-            _config.App.PollIntervalSeconds, _config.Widgets.Count);
-        RegisterWidgets();
-        _scheduler.Start(OnGroupRefreshAsync);
-        KickAll();
+            _logger?.LogInformation("调度启动：全局检查频率 {PollSeconds}s（0=按档位），组件 {Count} 个。",
+                _config.App.PollIntervalSeconds, _config.Widgets.Count);
+            RegisterWidgets();
+            _scheduler.Start(OnGroupRefreshAsync);
+            DrainPendingKicks();
+            KickAll();
+        }
     }
 
     /// <summary>配置变化（Settings 增删 Widget/改查询参数）后重建注册并按需重拉（P3-02 受影响注册）：
@@ -110,12 +121,16 @@ public sealed class WidgetHost : IAsyncDisposable
     /// 对同一批组件的显式拉取，改一个组件 = 全体重拉，P3-02 由此收口。</summary>
     public void Reload(IEnumerable<string>? kickIds = null)
     {
-        _scheduler.Clear();
-        RegisterWidgets();
-        _scheduler.Start(OnGroupRefreshAsync);
-        foreach (var id in kickIds ?? _config.Widgets.Select(w => w.Id))
+        lock (_lifecycleGate)
         {
-            _ = TryRefreshOneAsync(id, CancellationToken.None);
+            _scheduler.Clear();
+            RegisterWidgets();
+            _scheduler.Start(OnGroupRefreshAsync);
+            DrainPendingKicks(); // 复订唤醒意图穿越注册重建（Clear 会清掉调度侧已投递的 kick）
+            foreach (var id in kickIds ?? _config.Widgets.Select(w => w.Id))
+            {
+                _ = TryRefreshOneAsync(id, CancellationToken.None);
+            }
         }
     }
 
@@ -123,8 +138,12 @@ public sealed class WidgetHost : IAsyncDisposable
     /// 只重排调度注册，不 kick 不取数——展示保存零网络请求；检测间隔有变由注册周期自然接管。</summary>
     public void ReloadRegistrations()
     {
-        _scheduler.Clear();
-        RegisterWidgets();
+        lock (_lifecycleGate)
+        {
+            _scheduler.Clear();
+            RegisterWidgets();
+            DrainPendingKicks(); // 只重排不取数口径不变：补放的仅是此前真空期丢失的唤醒
+        }
     }
 
     /// <summary>启动水合（P1-01）：磁盘缓存 → Store 先于首轮拉取——离线启动不等网络即亮旧数据与时间。
@@ -168,13 +187,38 @@ public sealed class WidgetHost : IAsyncDisposable
     /// <summary>连接恢复（停用→启用）后唤醒该连接的组循环：打断退避等待，下一拍立即拉取。
     /// 停用期间组按 skip 退避越睡越久（30s/60s/...），仅翻 enabled 标志时循环仍要睡满当前段，
     /// 复订恢复刷新被推迟到退避段溢出（run 43134760840 场景 AB2 实证：判据窗只捞到 1 行）。
-    /// 与手动刷新入口 RefreshWidgetAsync 的单组件 kick 同口径，这里是连接级批量 kick（不直取数，避免双请求）。</summary>
+    /// 与手动刷新入口 RefreshWidgetAsync 的单组件 kick 同口径，这里是连接级批量 kick（不直取数，避免双请求）。
+    /// kick 未投递（widget 恰处注册真空期）则记账，注册重建后补放——唤醒不因时序丢失。</summary>
     public void KickConnection(string connectionId)
     {
-        foreach (var widget in _config.Widgets.Where(w => w.ConnectionId == connectionId))
+        lock (_lifecycleGate)
         {
-            _scheduler.KickWidget(widget.Id);
+            foreach (var widget in _config.Widgets.Where(w => w.ConnectionId == connectionId))
+            {
+                if (_scheduler.KickWidget(widget.Id))
+                {
+                    _pendingKicks.Remove(widget.Id);
+                }
+                else
+                {
+                    _pendingKicks.Add(widget.Id);
+                }
+            }
         }
+    }
+
+    /// <summary>补放真空期丢失的 kick（须持 _lifecycleGate 且注册已重建后调用）。</summary>
+    private void DrainPendingKicks()
+    {
+        if (_pendingKicks.Count == 0)
+        {
+            return;
+        }
+        foreach (var id in _pendingKicks)
+        {
+            _scheduler.KickWidget(id); // 已注销的组件调度器 no-op，出账即可
+        }
+        _pendingKicks.Clear();
     }
 
     /// <summary>手动刷新入口（L2/L3 的 [Retry]，B-207）。</summary>

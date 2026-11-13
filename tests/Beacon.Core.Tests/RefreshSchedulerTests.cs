@@ -291,6 +291,21 @@ public sealed class RefreshSchedulerTests
         await Poll.UntilAsync(() => Volatile.Read(ref refreshCount) >= 1);
     }
 
+    [Fact]
+    public async Task KickWidget_ReportsDelivery_LossSignalForUnregistered()
+    {
+        // Codex 2026-11-12 收敛（WidgetHost 重建竞争）：KickWidget 返回是否真投递——
+        // 未注册 ID（注册真空期）false，WidgetHost.KickConnection 据此记账待补放。
+        var delayer = new FakeDelayer();
+        await using var scheduler = Create(delayer);
+
+        Assert.False(scheduler.KickWidget("ghost"));
+
+        scheduler.Register(new WidgetRegistration("w-1", "conn-1", RefreshTiers.Ci));
+        Assert.True(scheduler.KickWidget("w-1"));
+        Assert.False(scheduler.KickWidget("w-1")); // 信号量上限 1：挂起中的 kick 不重复投递
+    }
+
     // ---- 收口：Register 重注册（行 60）/ Unregister 未知 ID 早退（行 94）/ Stop 聚合故障任务（行 144/147）
     //      / delay 赢 WhenAny + 取消窗口 break（行 188）/ kick-drain 吸收挂起 kick（行 227）----
 
