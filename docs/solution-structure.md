@@ -52,7 +52,7 @@ Hard rules:
 
 ```text
 Beacon.Core/
-├── Models/                            # 17 文件
+├── Models/                            # 19 文件
 │   ├── Severity.cs                    # Info/Success/Warning/Error/Critical（+ Offline 展示态）
 │   ├── LifecycleState.cs              # Queued/Running/…/Unknown
 │   ├── ConnectionConfig.cs  ConnectionHealthState.cs  WidgetConfig.cs  WidgetTypeDescriptor.cs
@@ -63,6 +63,8 @@ Beacon.Core/
 │   ├── RefreshTiers.cs                # 7 级刷新策略（pr/ci/machine/agent/workflow/static/default）
 │   ├── AppConfig.cs                   # 全局设置 + PinTile/PinsConfig
 │   ├── PinLayout.cs                   # monitor/anchor/offsetDips/collapsed + floatingX/Y（悬浮框位置）
+│   ├── CapsuleIslandLayout.cs         # 悬浮岛布局（岛=顶中锚点 + DIP 偏移，shell-state.json islandLayout 段；与四角 PinLayout 分开存，切形态各回各的记忆位）
+│   ├── QuickPanelLayout.cs            # 看板窗口布局（显示器+锚点角+DIP 偏移+窗口 DIP 尺寸，shell-state.json quickPanelLayout 段；看板可调尺寸，尺寸记 DIP 随 DPI 缩放）
 │   ├── ComponentBinding.cs             # 组件实例绑定（widget 数据 → 展示字段，组件库）
 │   ├── ComponentDescriptor.cs          # 组件声明描述（type/label/默认值，组件库注册表）
 │   ├── ComponentSourcesValidator.cs    # 组件源字段合法性校验（fail-closed 口径）
@@ -74,7 +76,7 @@ Beacon.Core/
 │   ├── IStateStore.cs                  # 状态存储抽象（Store 注入，组件库）
 │   ├── IEventBus.cs
 │   └── INotificationSink.cs           # 通知出口（App 侧 Toast/声音/托盘着色实现）+ 记录落盘抽象 INotificationRecordStore
-├── Services/                           # 37 文件
+├── Services/                           # 42 文件
 │   ├── EventBus.cs                    # 线程安全的进程内发布/订阅
 │   ├── RefreshScheduler.cs            # (connection,tier,间隔覆盖) 合并轮询 + 抖动 + 退避
 │   ├── StatusAggregator.cs            # WidgetState* → 总体 Severity + 计数
@@ -108,6 +110,11 @@ Beacon.Core/
 │   ├── ComponentVisibility.cs           # 组件可见性纯函数（stale/offline/has:字段/字段 op 值）
 │   ├── DisplayTemplates.cs              # 显示模板注册表（横条/圆环/数字卡/水位/状态行 + 最小高）
 │   ├── StateStore.cs                    # 状态存储（事件总线 → 组件状态，替换/合并语义）
+│   ├── CapsuleIslandMath.cs             # 悬浮岛几何（USER-RPT-4，BrimDeck Notch 口径对拍重做：顶缘恒贴屏幕顶、水平居中 + 仅 X 可持久化，纯函数 Core 层供单测）
+│   ├── CarrierCatalog.cs                # 展示载体统一选择（ISLAND-RING-1 扩围②：岛形态/数量悬浮窗/悬浮形态/看板开关收编为单源读写，纯函数）
+│   ├── IslandDisplayPlan.cs             # 岛收起态展示计划（ISLAND-D1..D3：展示档位 + 上岛白名单 + 真实状态 → 可见面清单，决策沉 Core 供单测）
+│   ├── IslandMotion.cs                  # 悬浮岛开合动效（USER-RPT-4，BrimDeck PanelMotion 口径：展开 360ms/收起 270ms + Bounce/Drawer 曲面，纯函数）
+│   ├── IslandSurfaceOutline.cs          # 悬浮岛单连续曲面轮廓（USER-RPT-4，BrimDeck IslandBorder 同式：肩部双段 C2 三次贝塞尔 + 底圆角 12 DIP，纯函数）
 │   └── HtmlTemplateParser.cs            # 受控 HTML 子集解析器（白名单标签/属性，sanitize）
 ├── Events/
 │   └── Events.cs                      # WidgetStateChanged / AggregateStatusChanged 等事件
@@ -223,39 +230,53 @@ Beacon.App/
 │   ├── DispatcherQueueGuard.cs        # UI 派发兜底（TryEnqueue 回调异常不闪退：落日志+CrashLog，包装 Core DispatchGuard）
 │   ├── DesignTokens.cs                # 设计令牌（间距/圆角/字阶/尺寸，UI 升级）
 │   └── AppIcon.cs                     # 应用图标唯一来源（逐窗 AppWindow.SetIcon——unpackaged 任务栏图标坑）
-└── Windows/                           # 11 文件（9 .cs + 2 .xaml，UI 多为代码构建）
+└── Windows/                           # 33 文件（31 .cs + 2 .xaml，UI 多为代码构建）
     ├── CapsuleWindow.xaml|cs          # L1 聚合胶囊（独立置顶常驻窗，位置记忆；右键直达设置）
+    ├── CapsuleWindow.{Drag,FullscreenAvoidance,IslandChrome,IslandFaces,Positioning,StatusFaces}.cs
+    │                                  # 胶囊 6 个分部文件：拖拽 / 全屏避让 / 悬浮岛形态开关与锚点（config.capsuleIsland）/
+    │                                  # 岛收起态面（状态环+徽标）/ 定位贴顶居中 / 状态面重绘
     ├── QuickPanelWindow.xaml|cs       # L2 快捷面板（可激活，ESC 关；通知中心/组件列表）
+    ├── QuickPanelWindow.{Drag,InvokeableRow,Notifications,Sections}.cs
+    │                                  # 看板 4 个分部文件：拖拽 / 可点行 / 通知中心（notifications.json 水合、标已读）/
+    │                                  # NEEDS ATTENTION 三分区
+    ├── SettingsWindow.cs              # B-801/802/805：PowerToys 形态配置中心（模块目录+启停+连接/组件 CRUD，
+    │                                  #   悬浮形态二选一、导入导出、通知规则；代码建 UI）
+    ├── SettingsWindow.{Actions,Appearance,ComponentStyles,ComponentTree,Connections,Navigation,Pages,Widgets}.cs
+    │                                  # 设置页 8 个分部文件：动作库 / 外观 / 组件样式 / 组件中心树 / 连接 CRUD /
+    │                                  # 导航 / 页面装配（展示载体单源落库）/ 组件 CRUD
     ├── PinnedHostWindow.cs            # ★ L0 宿主面板形态（默认）：每显示器一窗，代码建 UI，
-    │                                  #   Topmost+NoActivate+空白点击穿透；含 PinTile 控件
+    │                                  #   Topmost+NoActivate+空白点击穿透；贴边收起由 config.edgeCollapseEnabled 门控
     ├── FloatingTileWindow.cs          # ★ L0 独立悬浮框形态（pinDisplayMode=floating）：
     │                                  #   每钉选组件一窗，拖放位置按组件持久化（FloatingX/Y）
+    ├── PinTile.cs                     # tile 控件（自 PinnedHostWindow.cs 拆出独立文件：高=max(尺寸档, 模板最小高)）
+    ├── DragSession.cs                 # 一次拖动会话（左键按住 tile 起手；FreeX/FreeY = 吸附前自由落点，供贴边收起判定）
+    ├── IslandSurfacePath.cs           # 悬浮岛曲面轮廓 → WinUI 路径（轮廓常量与 Core IslandSurfaceOutline 对拍）
+    ├── SeverityPalette.cs             # 中性灰阶色（L1/L2/L3 文本与底色共用；级别色由 UiPalette 承载，B-706）
     ├── BrandIconFactory.cs            # 品牌 path → Path(Stretch=Uniform)（设置目录/悬浮 tile 共用，
     │                                  #   空几何/渲染失败退 null 让调用方字形兜底）
     ├── DetailWindow.cs                # L3 详情 + 全部 Action（代码建 UI）
     ├── ThemeColors.cs                 # 主题色桥：Core 高对比调色板 → WinUI 画刷（配对断言见 ContrastMathTests）；语义色板 StatusOk/Warn/Crit/Off/Accent（UI 升级）
-    ├── SampleGalleryWindow.cs         # 组件中心（组件库预览/参数表单/实时渲染，A-16 复核用）
-    └── SettingsWindow.cs              # B-801/802/805：PowerToys 形态配置中心（模块目录+启停+连接/组件 CRUD，
-                                       #   悬浮形态二选一、导入导出、通知规则；代码建 UI）
+    └── SampleGalleryWindow.cs         # 组件中心（组件库预览/参数表单/实时渲染，A-16 复核用）
 ```
 
 ### 3.5b src/Beacon.App/Components（组件库渲染层，2026-10-16 组件化重构）
 
 ```text
-Beacon.App/Components/                 # 19 文件
+Beacon.App/Components/                 # 21 文件
 ├── ComponentSurface.cs  ComponentSurfaceRenderer.cs   # 表面 + 声明式渲染器（注册表在渲染侧）
 ├── ComponentAction.cs  ComponentBadge.cs  ComponentCard.cs  ComponentChart.cs
 ├── ComponentDivider.cs  ComponentFeedback.cs  ComponentIcon.cs  ComponentKeyValue.cs
 ├── ComponentLayout.cs  ComponentList.cs  ComponentMetric.cs  ComponentProgress.cs
 ├── ComponentStatus.cs  ComponentTable.cs  ComponentText.cs  ComponentTimeline.cs
+├── BarProgressBadge.cs  RingProgressBadge.cs   # 额度徽标两式（横向进度条徽标 / 环形百分比徽标，胶囊与卡片共用）
 └── StatusRing.cs                        # 状态圆环（轨道+弧长描边，胶囊健康环/面板卡共用）
 ```
 
-Note: no `Controls/`, `ViewModels/`, `Themes/`, `Notifications/` directories — 但 Components/（组件库渲染层）存在，见 §3.5b；PinTile 在 PinnedHostWindow.cs 内 — status lights/PinTile etc. are composed as code classes (`PinTile` is inside `PinnedHostWindow.cs`), no XAML resource dictionaries; Toast is in `Services/`.
+Note: no `Controls/`, `ViewModels/`, `Themes/`, `Notifications/` directories — 但 Components/（组件库渲染层）存在，见 §3.5b；PinTile 已自 PinnedHostWindow.cs 拆出为独立文件 `Windows/PinTile.cs` — status lights/PinTile etc. are composed as code classes, no XAML resource dictionaries; Toast is in `Services/`.
 
 ### 3.6 tests/
 
-xUnit; `Beacon.Core.Tests` (aggregation/scheduling/backoff/rules/notification engine/ActionRunner, clock injection; SvgPathParser, full parseability and aliases of the BrandIcons dictionary, WidgetValueHint numeric mapping), `Beacon.Connections.Tests` (fake HttpMessageHandler + API fixtures + ETag branches, assembly serialization to avoid shared client cache races), `Beacon.Storage.Tests` (round-trip/atomic write/DPAPI, requires Windows environment), `Beacon.Actions.Tests` (open.url/local.command/http/webhook executors, Windows-only test cases OS-gated). All wired into coverlet.collector (CI reports to Codecov). Currently 4 projects with a total of 1674 tests (Core 939 / Connections 667 / Actions 27 / Storage 41), i.e. the local gate (2026-11-05 recount). The Core side also covers QuickPanelSections three-section classification, ContrastMath/HighContrastPalette contrast pairings, WidgetTypeNames short-name mapping, PinLayoutMath/DpiLayoutMath conversion and clamping, and UpdateCheck version parsing and SemVer comparison (v prefix/build metadata/pre-release rules/rate-limit degraded body).
+xUnit; `Beacon.Core.Tests` (aggregation/scheduling/backoff/rules/notification engine/ActionRunner, clock injection; SvgPathParser, full parseability and aliases of the BrandIcons dictionary, WidgetValueHint numeric mapping), `Beacon.Connections.Tests` (fake HttpMessageHandler + API fixtures + ETag branches, assembly serialization to avoid shared client cache races), `Beacon.Storage.Tests` (round-trip/atomic write/DPAPI; no Windows-only gate — runs green on net10.0), `Beacon.Actions.Tests` (open.url/local.command/http/webhook executors, Windows-only test cases OS-gated). All wired into coverlet.collector (CI reports to Codecov). Currently 4 projects with a total of 2408 tests (Core 1277 / Connections 1017 / Actions 55 / Storage 59), i.e. the local gate (2026-11-14 recount, all four projects run green on net10.0). The Core side also covers QuickPanelSections three-section classification, ContrastMath/HighContrastPalette contrast pairings, WidgetTypeNames short-name mapping, PinLayoutMath/DpiLayoutMath conversion and clamping, and UpdateCheck version parsing and SemVer comparison (v prefix/build metadata/pre-release rules/rate-limit degraded body).
 
 ## 4. Key NuGet Packages (unified versions in Directory.Packages.props)
 

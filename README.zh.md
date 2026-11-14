@@ -24,7 +24,7 @@
 
 **[每日构建（nightly）](https://github.com/cuihairu/beacon/releases/tag/nightly)** — main 分支滚动构建，tag 固定 `nightly` 清旧传新，本页永远对应当前主干。Windows x86_64 自包含包（含 .NET 10 + Windows App SDK 运行时），附 `SHA256SUMS` 校验单。直链：[安装包 setup.exe](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64-setup.exe) · [便携 zip](https://github.com/cuihairu/beacon/releases/download/nightly/beacon-nightly-windows-x86_64.zip)。
 
-由 [daily-build 工作流](.github/workflows/nightly.yml)每天北京时间凌晨自动发布，也可[手动触发](https://github.com/cuihairu/beacon/actions/workflows/nightly.yml)。
+由 [nightly 工作流](.github/workflows/nightly.yml)每天北京时间凌晨自动发布，也可[手动触发](https://github.com/cuihairu/beacon/actions/workflows/nightly.yml)。
 
 ### 安装说明（Windows 10 1809+ / Windows 11）
 
