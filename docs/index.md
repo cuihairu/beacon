@@ -21,7 +21,7 @@ A developer status and action center that lives on the Windows desktop: it aggre
 | [MVP issue list](zh/mvp-issues.md) | 43 MVP issues (P0–P8, each with acceptance criteria and dependencies; the ledger is maintained on the Chinese page) |
 | [Troubleshooting](troubleshooting.md) | Installation and launch FAQ: log locations, SmartScreen, SHA256 verification |
 | [Configuration reference](configuration.md) | Every setting itemized: files and when they take effect, global settings, appearance and motion, notification rules, endpoint / credential / quota conventions for 17 connection types, component fields, pinned layout, action library, import and export |
-| [Documentation and source consistency audit](审计-文档一致性.md) | Ledger of documentation-versus-source drift (105 items in total, baseline plus every increment through the 2026-11-14 G2 re-audit, with the P0 list) |
+| [Documentation and source consistency audit](审计-文档一致性.md) | Ledger of documentation-versus-source drift (106 items in total, baseline plus every increment through the 2026-11-14 G2 re-audit, with the P0 list) |
 | [Acceptance execution checklist](acceptance-checklist.md) | 71 acceptance items in executable form: preconditions / verification steps / expected results for each, plus the shared preparation pack (C-*) and notes on local automation coverage |
 | [B-705 L0 behavior audit](acceptance-B705-L0-behavior.md) · [B-803 end-to-end walkthrough](acceptance-B803-e2e-walkthrough.md) | Acceptance records and the real-machine checklist |
 

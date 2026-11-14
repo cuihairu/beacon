@@ -1,7 +1,7 @@
 
 # Beacon Solution / Project Directory
 
-> Companion to [RFC-001](rfc/RFC-001-technical-design.md). This document is based on **the actual current repository structure** (synchronized 2026-10-09).
+> Companion to [RFC-001](rfc/RFC-001-technical-design.md). This document is based on **the actual current repository structure** (synchronized 2026-11-14).
 > Beacon code can only be built and run on Windows (WinUI 3, CI `windows-latest`); a Linux development environment can build and run the 4 test projects as a local gate.
 
 ## 1. Solution Overview

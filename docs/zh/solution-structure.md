@@ -1,7 +1,7 @@
 
 # Beacon Solution / 项目目录
 
-> 配套 [RFC-001](rfc/RFC-001-technical-design.md)。本文以**当前仓库实际结构**为准（2026-10-09 同步）。
+> 配套 [RFC-001](rfc/RFC-001-technical-design.md)。本文以**当前仓库实际结构**为准（2026-11-14 同步）。
 > Beacon 代码只能在 Windows 上构建运行（WinUI 3，CI `windows-latest`）；Linux 工作环境可构建并运行 4 个测试项目作为本地门禁。
 
 ## 1. Solution 总览
