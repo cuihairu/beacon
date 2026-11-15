@@ -227,6 +227,9 @@ internal sealed partial class SettingsWindow
     {
         _runtime.Config.App.Appearance.Density = TagOf(_densityBox) ?? "regular";
         _runtime.Config.SaveApp();
+        // 密度是构造期读 DesignTokens.Spacing 的档位——不重建 L0 就要等重启才看到变化，
+        // 与 progressStyle/动效档同口径：保存即触发 SettingsApplied 重建两宿主。
+        SettingsApplied?.Invoke();
     }
 
     /// <summary>逐族预览（B-805）：与 L0 同一引擎，off 档内部即静止。</summary>

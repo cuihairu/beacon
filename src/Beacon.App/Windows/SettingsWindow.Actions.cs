@@ -205,6 +205,7 @@ internal sealed partial class SettingsWindow
             Parameters = parameters,
         });
         _runtime.Config.SaveActions();
+        SettingsApplied?.Invoke(); // 动作增删即时生效：悬浮 tile 下次打开详情窗即见按钮，不必等重启
         Feedback(_actionFeedback, $"✓ 动作「{name}」已保存——点悬浮 tile 打开详情窗即可看到按钮。", error: false);
         RebuildActionList();
     }
@@ -235,6 +236,7 @@ internal sealed partial class SettingsWindow
             {
                 _runtime.Config.RemoveAction(captured.Id);
                 _runtime.Config.SaveActions();
+                SettingsApplied?.Invoke(); // 删除同保存口径：详情窗按钮即时消失
                 RebuildActionList();
             };
             row.Children.Add(delete);
