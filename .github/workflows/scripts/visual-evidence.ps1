@@ -5472,7 +5472,13 @@ try
     }
     Write-Host "场景 AB2 通过：恢复 zhipu → enabled=true 落盘 + GLM tile 回归"
     Start-Sleep -Seconds 5
-    $len2 = (Get-Content (Get-AbLog) -Raw -Encoding UTF8).Length
+    # 静默窗基线钉在本轮复订重建行（kick 首刷）之前：43662875796 实证复订 kick 三连刷
+    #（02:07:10/12/17）在 tile 回归确认基线取点前已落日志大半——基线取整流长度把 kick 首两刷
+    # 划在窗外、随后连接进 skip 退避段 3 分钟不刷 → 50s 窗内只剩 1 行假红。取最后一处
+    # 「组件注册已重建并立即拉取」的位置作切片起点（当日日志被全天场景共享，须锚最后一处）
+    $logNow = Get-Content (Get-AbLog) -Raw -Encoding UTF8
+    $rebuild = [regex]::Matches($logNow, "组件注册已重建并立即拉取") | Select-Object -Last 1
+    $len2 = if ($rebuild) { $rebuild.Index } else { $logNow.Length }
     Start-Sleep -Seconds 50
     $log2 = Get-Content (Get-AbLog) -Raw -Encoding UTF8
     $slice2 = if ($log2.Length -ge $len2) { $log2.Substring($len2) } else { $log2 }
@@ -6298,6 +6304,14 @@ try
     }
     Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 8) "AH-island-expanded.png" 3
     Write-Host "场景 AH1 通过：岛展开态在位（预览行长出，窗高 ≥1.6×收起基线）"
+    # AH1a 真实指针进入：探针首展是程序化 ShowPreview 直调（不设 _hovered）——指针从未「进入」过岛时
+    # 移出不构成 PointerExited（43662875796 实证：跳过这步移出后岛不收）。先真悬停进岛建立 enter 态
+    #（岛已展开，ShowPreview 重入走「已可见」早退无害），随后的移出才是真实 enter→exit 序列
+    $rect = [WinEnum]::RectOf($islandHandles[0])
+    $centerX = [int](($rect.Left + $rect.Right) / 2)
+    $centerY = [int](($rect.Top + $rect.Bottom) / 2)
+    [WinEnum]::MoveMouse($centerX, $centerY)
+    Start-Sleep -Seconds 2
     # AH1b 真实指针收起：移出窗 → PointerExited → 收（动效 off 档瞬时）→ 高回基线
     [WinEnum]::MoveMouse(30, 600)
     Start-Sleep -Seconds 3
