@@ -2,6 +2,10 @@
 #   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
 #     进度条像素硬断言（底部 4 DIP 条带，2026-10-11 重设计后 bar 为默认）+「NN%」UIA 文本硬断言
 #     （zhipu 连接指 mock /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据）。
+#   场景 AI 水族箱整行进度（AQUA-001 2026-11-15）：progressStyle=aquarium 通栏 12 DIP 水位带——
+#     三态（20/60/95% ↔ mock p20/p60/error）带像素在场（≥120 bar 同阈值）+ 逐态全屏/6x 近景截图；
+#     活水=reduced 档双帧差分 ≥50 校准（G7c 口径，CI 会话不可证则降级 warning 转装机目检）；
+#     off 档静止=双帧差分 ≤2（只在活水可证时拦红，防测量瞎掉的 vacuous 通过）。
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
 #   场景 C 浅色主题 icon 可辨度：白桌面 + theme=light，tile 近景暗像素硬断言——
 #     近白 icon/文字叠浅底不可辨（用户实测「根本看不清」）在这里现形（修复=实色底+深前景）。
@@ -509,10 +513,16 @@ function Stop-Beacon
     }
 }
 
-function Write-ScenarioConfig([bool] $numericFloating, [string] $theme = "dark")
+function Write-ScenarioConfig([bool] $numericFloating, [string] $theme = "dark", [string] $progressStyle = "", [string] $motionMode = "")
 {
     Stop-Beacon
     # numericFloatingResetDone 必须 true：否则启动迁移把开关强制回关，场景 A 直接失真
+    # AQUA-001（场景 AI）：非默认进度样式/动效档才注入 appearance 段——默认路径落盘 JSON 与历史逐字节一致
+    $appearanceSlot = ""
+    if ($progressStyle -or $motionMode)
+    {
+        $appearanceSlot = ', "appearance": { "motion": { "mode": "' + $(if ($motionMode) { $motionMode } else { "reduced" }) + '", "intensity": 1.0 }, "progressStyle": "' + $(if ($progressStyle) { $progressStyle } else { "bar" }) + '" }'
+    }
     $config = @'
 {
   "configVersion": 1,
@@ -522,9 +532,9 @@ function Write-ScenarioConfig([bool] $numericFloating, [string] $theme = "dark")
   "pinDisplayMode": "floating",
   "numericFloatingEnabled": __NUM__,
   "numericFloatingResetDone": true,
-  "showCapsule": false
+  "showCapsule": false__APPEARANCE__
 }
-'@.Replace("__THEME__", $theme).Replace("__NUM__", $numericFloating.ToString().ToLowerInvariant())
+'@.Replace("__THEME__", $theme).Replace("__NUM__", $numericFloating.ToString().ToLowerInvariant()).Replace("__APPEARANCE__", $appearanceSlot)
     Set-Content -Path (Join-Path $configDir "config.json") -Value $config -Encoding UTF8
     @'
 [
@@ -647,7 +657,11 @@ function Start-MockServer
         $bigmodelP0 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":0,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":0,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":0,"nextResetTime":0}]}}'
         $bigmodelP52 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":52,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":10,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         $bigmodelP100 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":100,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
-        # 档位文件：内容 "error"=95% / "p0"=0% / "p52"=52% / "p100"=100%，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
+        # 水族箱三态档（场景 AI，AQUA-001）：p20=20%（低位档，水位 2px）/ p60=60%（中位档，水位 7px）；
+        # 95% 复用 error 档。形状同 38 健康链（主窗=最高窗，摘要「已用 NN%」打头），NN% 文本轮询可锚
+        $bigmodelP20 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":20,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
+        $bigmodelP60 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":60,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":10,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
+        # 档位文件：内容 "error"=95% / "p0"=0% / "p52"=52% / "p100"=100% / "p20"=20% / "p60"=60%，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
         $modeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
@@ -677,11 +691,13 @@ function Start-MockServer
                     "/api/monitor/usage/quota/limit" {
                         $mode = ""
                         try { $mode = (Get-Content $modeFile -Raw -ErrorAction Stop).Trim() } catch { }
-                        # 38% 健康链 / 95% Error 链 / 0%-52%-100% 四态链按档位文件翻转
+                        # 38% 健康链 / 95% Error 链 / 0%-52%-100% 四态链 / 20%-60% 水族箱三态链按档位文件翻转
                         $body = if ($mode -eq "error") { $bigmodelError }
                             elseif ($mode -eq "p0") { $bigmodelP0 }
                             elseif ($mode -eq "p52") { $bigmodelP52 }
                             elseif ($mode -eq "p100") { $bigmodelP100 }
+                            elseif ($mode -eq "p20") { $bigmodelP20 }
+                            elseif ($mode -eq "p60") { $bigmodelP60 }
                             else { $bigmodel }
                     }
                     "/user/balance" { $body = $deepseek }
@@ -1481,6 +1497,191 @@ catch
     Save-FullScreenshot "A-FAIL-unexpected.png"
     $failures.Add("场景 A：$($_.Exception.Message)")
     Write-Host "::error::场景 A 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 AI：水族箱整行进度（AQUA-001，2026-11-15 用户令「整个一行都是进度条…做成水族箱」）——
+# progressStyle=aquarium：文字行下方通栏 12 DIP 水位带（水位=用量、双层正弦波活水）。硬断言链：
+# ① 三态（20/60/95% ↔ mock p20/p60/error 档）逐态：客户区 32px 行高不变（带叠行内底部，非撑高）
+#    + 带像素在场（≥120，Count-BarPixels bar 同口径）+ 全屏与 6x 带近景截图（acceptance-evidence 取证源）；
+# ② 活水校准：reduced 档双帧差分 ≥50（G7c 呼吸灯同阈值口径）=「帧差分测量本会话可证」；测不出=
+#    Composition 属性动画本 CI 会话不可证（G7c 同款裁决）→ 降级 warning 转装机目检，不拦红；
+# ③ off 档静止：双帧差分 ≤2——只在②可证时才硬断言（测量校准失败时 0 差分无从归因，防 vacuous 通过）。
+try
+{
+    function New-AquariumBandCrop([IntPtr] $hwnd, [int] $bandPx)
+    {
+        $client = [WinEnum]::ClientScreenRectOf($hwnd)
+        $w = $client.Right - $client.Left
+        $xStart = [int]($w * 0.2)
+        $cropW = [int]($w * 0.6)
+        $crop = New-Object System.Drawing.Bitmap $cropW, $bandPx
+        $g = [System.Drawing.Graphics]::FromImage($crop)
+        $g.CopyFromScreen($client.Left + $xStart, $client.Bottom - $bandPx, 0, 0, (New-Object System.Drawing.Size $cropW, $bandPx))
+        $g.Dispose()
+        return $crop
+    }
+
+    # 摘要「已用 NN%」打头（主窗=最高窗，mock 形状同 38 链）——轮询等模式档被下一个 ci tick 拾取
+    # （ci 档 15s；Pickup 慢于一次刷新即重找重读，与 AE2 Wait-GlmTileText 同款双轮询）
+    function Wait-GlmTilePercent([string] $percent, [int] $timeoutSec, [string] $stage)
+    {
+        $deadline = (Get-Date).AddSeconds($timeoutSec)
+        while ((Get-Date) -lt $deadline)
+        {
+            $h = [IntPtr]::Zero
+            foreach ($x in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+            {
+                if (@(Get-WindowUiaTexts $x) -contains "GLM") { $h = $x; break }
+            }
+            if ($h -ne [IntPtr]::Zero)
+            {
+                $texts = @(Get-WindowUiaTexts $h)
+                if (@($texts | Where-Object { $_ -match ($percent + "%") }).Count -gt 0) { return $texts }
+            }
+            Start-Sleep -Seconds 2
+        }
+        $h = [IntPtr]::Zero
+        foreach ($x in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+        {
+            if (@(Get-WindowUiaTexts $x) -contains "GLM") { $h = $x; break }
+        }
+        $last = if ($h -ne [IntPtr]::Zero) { @(Get-WindowUiaTexts $h) -join " | " } else { "（GLM tile 未建窗）" }
+        Save-FullScreenshot "AI-FAIL-percent-$stage.png"
+        throw "断言失败（场景 AI $stage）：GLM tile 文本未见「$percent%」（ci 档 15s，等 ${timeoutSec}s）——mock 模式档未被拾取，带态截图会失真；实际：$last"
+    }
+
+    Ensure-MockServer
+    $aiModeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
+    Set-Content -Path $aiModeFile -Value "p20" -Encoding ASCII
+    Write-ScenarioConfig $true "dark" "aquarium" "reduced"
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 18
+    $aiTile = [IntPtr]::Zero
+    foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+    {
+        if (@(Get-WindowUiaTexts $h) -contains "GLM") { $aiTile = $h; break }
+    }
+    if ($aiTile -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "AI-FAIL-no-tile.png"
+        throw "断言失败（场景 AI）：aquarium 档未见 GLM 悬浮框（标题 Beacon Tile）——样式档 tile 未建窗"
+    }
+    Assert-ClientHeight $aiTile (ExpectedRowPx $aiTile) "场景 AI"
+    $aiBandPx = ExpectedRowPx $aiTile 12
+    $aiBand = New-AquariumBandCrop $aiTile $aiBandPx
+    Save-Zoom $aiBand "AI-aquarium-20-band.png" 6
+    $aiPixels20 = Count-BarPixels $aiBand
+    $aiBand.Dispose()
+    if ($aiPixels20 -lt 120)
+    {
+        throw "断言失败（场景 AI）：aquarium 带仅 $aiPixels20 像素（期望 ≥120，底轨+水体 2px@20%）——水族箱带未渲染"
+    }
+    Save-FullScreenshot "AI-aquarium-20-full.png"
+    Write-Host "场景 AI 20% 态通过：带像素 $aiPixels20（AI-aquarium-20-band.png 6x 近景 + 全屏）"
+
+    # 60% 中位档 + 活水校准（双帧差分，G7c 呼吸灯口径）
+    Set-Content -Path $aiModeFile -Value "p60" -Encoding ASCII
+    Wait-GlmTilePercent "60" 60 "p60" | Out-Null
+    Start-Sleep -Seconds 2 # 水位推进/着色落定
+    $aiBand60 = New-AquariumBandCrop $aiTile $aiBandPx
+    Save-Zoom $aiBand60 "AI-aquarium-60-band.png" 6
+    $aiPixels60 = Count-BarPixels $aiBand60
+    $aiBand60.Dispose()
+    if ($aiPixels60 -lt 120)
+    {
+        throw "断言失败（场景 AI）：aquarium 60% 带仅 $aiPixels60 像素——水族箱带退化"
+    }
+    $f1 = New-AquariumBandCrop $aiTile $aiBandPx
+    Start-Sleep -Seconds 3
+    $f2 = New-AquariumBandCrop $aiTile $aiBandPx
+    $aiMotionDiff = Count-FrameDiff $f1 $f2 12
+    Save-Zoom $f1 "AI-motion-frame1.png" 6
+    Save-Zoom $f2 "AI-motion-frame2.png" 6
+    $f1.Dispose(); $f2.Dispose()
+    $aiMotionProvable = $false
+    if ($aiMotionDiff -ge 50)
+    {
+        $aiMotionProvable = $true
+        Write-Host "场景 AI 活水断言通过：reduced 档双帧差分 $aiMotionDiff px（≥50，波纹漂移可见）"
+    }
+    else
+    {
+        Write-Host "::warning::场景 AI reduced 档双帧差分仅 $aiMotionDiff px——Composition 属性动画本 CI 会话不可证（G7c 呼吸灯同款裁决），活水观感转装机目检；off 档静止硬断言随之失效（测量校准失败）"
+    }
+    Save-FullScreenshot "AI-aquarium-60-full.png"
+    Write-Host "场景 AI 60% 态通过：带像素 $aiPixels60"
+
+    # 95% 高位档（复用 error 链，BarFillColor ≥98 才翻红——95% 仍是 error 档位色，观感见截图）
+    Set-Content -Path $aiModeFile -Value "error" -Encoding ASCII
+    Wait-GlmTilePercent "95" 60 "p95" | Out-Null
+    Start-Sleep -Seconds 2
+    $aiBand95 = New-AquariumBandCrop $aiTile $aiBandPx
+    Save-Zoom $aiBand95 "AI-aquarium-95-band.png" 6
+    $aiPixels95 = Count-BarPixels $aiBand95
+    $aiBand95.Dispose()
+    if ($aiPixels95 -lt 120)
+    {
+        throw "断言失败（场景 AI）：aquarium 95% 带仅 $aiPixels95 像素——水族箱带退化"
+    }
+    Save-FullScreenshot "AI-aquarium-95-full.png"
+    Write-Host "场景 AI 95% 态通过：带像素 $aiPixels95"
+
+    # off 档静止：重启（motion mode 构造期读档，同动效档口径），双帧差分 ≤2
+    Set-Content -Path $aiModeFile -Value "p60" -Encoding ASCII
+    Write-ScenarioConfig $true "dark" "aquarium" "off"
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 18
+    $aiTile = [IntPtr]::Zero
+    foreach ($h in [WinEnum]::VisibleHandlesByTitle("Beacon Tile"))
+    {
+        if (@(Get-WindowUiaTexts $h) -contains "GLM") { $aiTile = $h; break }
+    }
+    if ($aiTile -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "AI-FAIL-no-tile-off.png"
+        throw "断言失败（场景 AI off）：aquarium+off 档未见 GLM 悬浮框"
+    }
+    Assert-ClientHeight $aiTile (ExpectedRowPx $aiTile) "场景 AI off"
+    Wait-GlmTilePercent "60" 60 "off-p60" | Out-Null
+    Start-Sleep -Seconds 3
+    $aiBandOff = New-AquariumBandCrop $aiTile $aiBandPx
+    Save-Zoom $aiBandOff "AI-aquarium-off-band.png" 6
+    $aiPixelsOff = Count-BarPixels $aiBandOff
+    $aiBandOff.Dispose()
+    if ($aiPixelsOff -lt 120)
+    {
+        throw "断言失败（场景 AI off）：off 档带仅 $aiPixelsOff 像素——off 档是静止不是缺席，带必须照常渲染"
+    }
+    $s1 = New-AquariumBandCrop $aiTile $aiBandPx
+    Start-Sleep -Seconds 3
+    $s2 = New-AquariumBandCrop $aiTile $aiBandPx
+    $aiOffDiff = Count-FrameDiff $s1 $s2 12
+    Save-Zoom $s1 "AI-off-frame1.png" 6
+    Save-Zoom $s2 "AI-off-frame2.png" 6
+    $s1.Dispose(); $s2.Dispose()
+    if ($aiMotionProvable)
+    {
+        if ($aiOffDiff -gt 2)
+        {
+            throw "断言失败（场景 AI off）：off 档双帧差分 $aiOffDiff px（期望 ≤2）——波纹未随 off 档停（B-707 纪律回归）"
+        }
+        Write-Host "场景 AI off 档静止断言通过：双帧差分 $aiOffDiff px（≤2；同会话活水差分 $aiMotionDiff px 已校准测量有效）"
+    }
+    else
+    {
+        Write-Host "::warning::场景 AI off 档双帧差分 $aiOffDiff px——活水校准本会话未过，静止断言不拦红（同 G7c 降级口径），转装机目检"
+    }
+    Save-FullScreenshot "AI-aquarium-off-full.png"
+    Remove-Item $aiModeFile -Force -ErrorAction SilentlyContinue
+    Stop-Beacon
+    Write-Host "场景 AI 通过：aquarium 三态（20/60/95%）带在场+逐态截图，活水/静止差分证据已存"
+}
+catch
+{
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "AI-FAIL-unexpected.png"
+    $failures.Add("场景 AI：$($_.Exception.Message)")
+    Write-Host "::error::场景 AI 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 B：数量悬浮窗关 ——桌面零残留窗（硬断言）
