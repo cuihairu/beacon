@@ -26,6 +26,15 @@ public sealed class AquariumWaveTests
     }
 
     [Fact]
+    public void Crest_WidthNotPeriodMultiple_LastPointPeriodAlignedBeyondWidth() // 采样周期对齐（无缝循环前提）：宽非整倍数时末点越过宽度（App 侧 Clip 裁带外），且末点在周期边界上与首点同形
+    {
+        var points = AquariumWave.Crest(185, AquariumWave.FrontPeriodDips, AquariumWave.FrontAmplitudeDips, 0);
+        Assert.Equal(5 * AquariumWave.SegmentsPerPeriod + 1, points.Length); // ceil(185/40)=5
+        Assert.Equal(200, points[^1].X, 9);
+        Assert.Equal(0, points[^1].Y, 9);
+    }
+
+    [Fact]
     public void Crest_PeriodSpan_HasIdenticalY() // 无缝循环：x 与 x+P 处 Y 重合（宽取周期整倍数，采样点才落在周期边界上）
     {
         var points = AquariumWave.Crest(68, AquariumWave.BackPeriodDips, AquariumWave.BackAmplitudeDips, AquariumWave.BackPhaseTurns);

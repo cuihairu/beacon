@@ -26,16 +26,19 @@ public static class AquariumWave
     /// <summary>每周期折线段数：16 段/周期在 4 DIP 振幅下视觉连续，点数预算可控。</summary>
     public const int SegmentsPerPeriod = 16;
 
-    /// <summary>水面波形采样点（含 x=0 与 x=width 两端）：width 必须 ≥ period（保证平移循环有整周期）。
-    /// 返回点数 = floor(width/period)·SegmentsPerPeriod + 1。</summary>
+    /// <summary>水面波形采样点（x=0 起，周期对齐步进 period/SegmentsPerPeriod，覆盖 ≥ widthDips）：
+    /// 无缝循环只在这种采样下成立——按宽均匀劈宽采样在宽非周期整倍数时末段漂相（43729489131 修复）。
+    /// 返回点数 = ceil(widthDips/periodDips)·SegmentsPerPeriod + 1；末点 X 为 period 整倍数且 ≥
+    /// widthDips（越界部分由 App 侧 Clip 裁掉）。</summary>
     public static (double X, double Y)[] Crest(double widthDips, double periodDips, double amplitudeDips, double phaseTurns)
     {
-        var segments = Math.Max(1, (int)Math.Floor(widthDips / periodDips)) * SegmentsPerPeriod;
+        var periods = Math.Max(1, (int)Math.Ceiling(widthDips / periodDips));
+        var segments = periods * SegmentsPerPeriod;
         var points = new (double X, double Y)[segments + 1];
         for (var i = 0; i <= segments; i++)
         {
-            var x = widthDips * i / segments;
-            points[i] = (x, amplitudeDips * Math.Sin(2 * Math.PI * x / periodDips + 2 * Math.PI * phaseTurns));
+            points[i] = (periodDips * i / SegmentsPerPeriod,
+                amplitudeDips * Math.Sin(2 * Math.PI * i / SegmentsPerPeriod + 2 * Math.PI * phaseTurns));
         }
         return points;
     }
