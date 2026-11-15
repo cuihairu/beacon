@@ -19,8 +19,9 @@
 - 真机（imac 200% DPI，2026-11-08 a413ec0，`docs/acceptance-evidence/island-head-closeout/`）：
   `01-island-collapsed.png` / `02-island-collapsed-10x.png`（收起）、`06-island-expanded.png`（悬停展开）、
   `08-island-critical.png`（critical 徽标）、`09-capsule-classic.png`（经典胶囊回归对照）。
-- nightly visual-evidence（本轮新增场景 AG/AH）：**run 43671206004 全绿**（main 202cc26），
-  七张截图已入 `docs/acceptance-evidence/island-data/`（场景↔文件映射见该目录 README）；
+- nightly visual-evidence（本轮新增场景 AG/AH）：**run 43671206004 全绿**（main 202cc26，场景首绿）→
+  **run 43679247117 全绿**（main d555834 = D-4 宽度改版后的重取证，八张截图已刷新入
+  `docs/acceptance-evidence/island-data/`，场景↔文件映射见该目录 README）；
   首轮 run 43662875796 的 AG 三态 + AH1 展开帧同型（其 AH1b 假红根因=探针首展不设 _hovered、
   移出不构成 PointerExited——已在 202cc26 修 AH1a 先真悬停进岛）。
 
@@ -28,7 +29,7 @@
 
 | 对比图 | 内容 | 量化读数 |
 |---|---|---|
-| `cmp-01-collapsed.png` | DI 紧凑（di-03 crop）vs beacon 收起（01 crop），高归一 120px | DI w/h=3.98 全圆角（r=h/2）；beacon w/h=7.44 顶角 0、底角 r=12/h=0.375 |
+| `cmp-01-collapsed.png` | DI 紧凑（di-03 crop）vs beacon 收起（**D-4 后 AG-island-single**，高归一 150px 重排 2026-11-15） | DI w/h=3.98 全圆角（r=h/2）；beacon 单面收起 **w/h≈4.7**（150 DIP/32，D-4 贴内容后；改版前 238 DIP 恒宽=7.44），顶角 0、底角 r=12 |
 | `cmp-02-expanded.png` | DI 展开（di-02 crop）vs beacon 展开（06 crop） | DI 展开仍全圆角；beacon 展开同刘海轮廓（顶角 0） |
 | `cmp-03-ref-minimal.png` | DI 最小态（di-04 autocontrast 增强） | AOD 下岛融入壁纸（亮度差 <4/255） |
 | `cmp-04-ref-multi.png` | DI 多活动（di-01 中机特写） | 双活动并列：左活动区+右实时图标区 |
@@ -60,18 +61,23 @@
   （AG-island-stack.png，run 43662875796 证据）。DI 紧凑态只承载 1-2 活动是 iOS 单活动横幅语义，
   beacon 收起行是监控摘要面（一屏看全），改 2 面会把 GLM/DeepSeek 挤进溢出池且连锁打红
   AG1/AH3 场景断言（AH3 下钻点击目标就是 chip 面）。随 D-4 的宽度收缩，面少时岛变窄，
-  长宽比向 DI 靠拢的效果由 D-4 承担。
+  长宽比向 DI 靠拢的效果由 D-4 承担——**已由 run 43679247117 复核证实**（single w/h 4.7）。
 
-### D-4 内容内边距：DI 左右≈0.5×h vs beacon 1.66×h 🔧 已修（2026-11-15，待重截图复核）
+### D-4 内容内边距：DI 左右≈0.5×h vs beacon 1.66×h 🔧 已修并复核（2026-11-15，run 43679247117）
 
-- 证据：beacon 01 实测 glyph 左 inset 636px = 1.66×surface-h；DI di-02 实测左 inset 3px（相机帧特写）
-  / di-03 胶囊左右留白≈胶囊半高。
+- 证据（修前）：beacon 01 实测 glyph 左 inset 636px = 1.66×surface-h；DI di-02 实测左 inset 3px
+  （相机帧特写）/ di-03 胶囊左右留白≈胶囊半高。
 - 根因：`MeasureSizePx` 岛分支宽恒 `max(DefaultWidthDips 238, rowDips)`——固定 238 下限在
   面少时两侧各留 ~90 DIP 对称空白，读作「字缩在中间」。
-- 修复（CapsuleWindow.Positioning.cs 岛分支）：收起态宽=收起行+2×Inset 30 贴内容（DI compact
-  语义，下限 MinWidthDips 72 不变）；展开态/离线横幅保 238 下限（预览行 MaxWidth=岛宽-60，
-  窄收起行会把预览裁到不可读——DI expanded 同样横向变宽）。`DefaultWidthDips` 注释同步更新
-  （Core.Tests 锁的是常量值 238/30/72/178，全不动）。
+- 修复（CapsuleWindow.Positioning.cs 岛分支，d555834）：收起态宽=收起行+2×Inset 30 贴内容
+  （DI compact 语义，下限 MinWidthDips 72 不变）；展开态/离线横幅保 238 下限（预览行
+  MaxWidth=岛宽-60，窄收起行会把预览裁到不可读——DI expanded 同样横向变宽）。
+  `DefaultWidthDips` 注释同步更新（Core.Tests 锁的是常量值 238/30/72/178，全不动）。
+- 复核（run 43679247117 全绿，CI Windows 编译门过；同场景同 zoom 同脚本 crop 宽对比）：
+  single 面 1024→**648**（×0.63，w/h 7.44→**≈4.7**，向 DI 3.98 靠拢）、carousel 1024→**784**
+  （×0.77，宽随轮转面内容浮动）、stack 1424→1424 与 expanded 1080→1080 持平（4 面内容
+  ≈238 触旧下限、展开态保 238 下限——与设计一致，不受 D-4 影响）。cmp-01 已按新截图重排。
+  用户可感知面（面少时岛变窄、内容不再「缩中间」）**待用户装机亲验**。
 
 ### D-5 字体层级：DI 图标≈文字同高、无多级字号 vs beacon 11px 单级 ✅ 已对齐（复核通过）
 
@@ -106,7 +112,8 @@
 
 ## 验收口径
 
-- 修 D-3/D-4/D-6 后重跑 nightly visual-evidence（AG/AH 场景）重出对比图，差异清单逐项更新读数；
+- D-4 已修并随 run 43679247117 重取证（AG/AH 全绿，cmp-01 按新截图重排，读数已更新）；
+  D-3/D-6 维持设计取舍不改；
 - 视觉类条目一律「待用户装机亲验」：装机确认①收起面宽随面数收缩、②内容不再「缩中间」、
   ③主/次面分区可辨，D-3/D-4/D-6 才由用户闭项；
 - 本轮 agent 不勾任何岛类 todo 条目。
