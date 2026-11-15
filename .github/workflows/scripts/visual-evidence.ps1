@@ -1504,6 +1504,8 @@ catch
 # ① 三态（20/60/95% ↔ mock p20/p60/error 档）逐态：客户区 32px 行高不变（带叠行内底部，非撑高）
 #    + 带像素在场（≥120，Count-BarPixels bar 同口径）+ 水体色像素（≥120，fill 档位色逐态硬断言——
 #    底轨 (62,72,91) 冷色与档位色/绿相差远，water/wave 缺席 Collapsed 回归在此现形，43720846043 实证）
+#    + 波峰透镜区像素（60%/off 档 ≥40，水位线上方 rows 2-5 只含底轨+波峰——负 Y 几何 Path 整件
+#    不渲染回归在此现形，43729489131 实证）
 #    + 全屏与 6x 带近景截图（acceptance-evidence 取证源）；
 # ② 活水校准：reduced 档双帧差分 ≥50（G7c 呼吸灯同阈值口径）=「帧差分测量本会话可证」；测不出=
 #    Composition 属性动画本 CI 会话不可证（G7c 同款裁决）→ 降级 warning 转装机目检，不拦红；
@@ -1519,6 +1521,17 @@ try
         $crop = New-Object System.Drawing.Bitmap $cropW, $bandPx
         $g = [System.Drawing.Graphics]::FromImage($crop)
         $g.CopyFromScreen($client.Left + $xStart, $client.Bottom - $bandPx, 0, 0, (New-Object System.Drawing.Size $cropW, $bandPx))
+        $g.Dispose()
+        return $crop
+    }
+
+    # 带裁图行切片（源分辨率；波峰透镜区断言用——水位线上方 rows 只含底轨+波峰，水体色即波峰）
+    function New-RowCrop([System.Drawing.Bitmap] $src, [int] $rowFrom, [int] $rowTo)
+    {
+        $h = $rowTo - $rowFrom
+        $crop = New-Object System.Drawing.Bitmap $src.Width, $h
+        $g = [System.Drawing.Graphics]::FromImage($crop)
+        $g.DrawImage($src, (New-Object System.Drawing.Rectangle 0, 0, $src.Width, $h), (New-Object System.Drawing.Rectangle 0, $rowFrom, $src.Width, $h), [System.Drawing.GraphicsUnit]::Pixel)
         $g.Dispose()
         return $crop
     }
@@ -1594,6 +1607,9 @@ try
     Save-Zoom $aiBand60 "AI-aquarium-60-band.png" 6
     $aiPixels60 = Count-BarPixels $aiBand60
     $aiWater60 = Count-ColorPixels $aiBand60 210 153 34 45 # 60% fill=warning #d29922（severity 60≥60 翻 Warning）
+    $aiCrestBand = New-RowCrop $aiBand60 2 5 # 水位线 row5（水位 7px）；crest 顶 3.4——rows 2-5 只含底轨+波峰透镜区
+    $aiCrest60 = Count-ColorPixels $aiCrestBand 210 153 34 45
+    $aiCrestBand.Dispose()
     $aiBand60.Dispose()
     if ($aiPixels60 -lt 120)
     {
@@ -1602,6 +1618,10 @@ try
     if ($aiWater60 -lt 120)
     {
         throw "断言失败（场景 AI）：60% 带水体色像素仅 $aiWater60（期望 ≥120，水体 7px+波峰）——水体缺席只剩底轨（同 20% 缺席回归）"
+    }
+    if ($aiCrest60 -lt 40)
+    {
+        throw "断言失败（场景 AI）：60% 带水位线上方（rows 2-5）波峰色像素仅 $aiCrest60（期望 ≥40）——波层缺席（负 Y 几何 Path 整件不渲染回归，43729489131 同款）"
     }
     $f1 = New-AquariumBandCrop $aiTile $aiBandPx
     Start-Sleep -Seconds 3
@@ -1665,6 +1685,9 @@ try
     Save-Zoom $aiBandOff "AI-aquarium-off-band.png" 6
     $aiPixelsOff = Count-BarPixels $aiBandOff
     $aiWaterOff = Count-ColorPixels $aiBandOff 210 153 34 45 # off 档 p60：水体照常在场只是静止
+    $aiCrestBandOff = New-RowCrop $aiBandOff 2 5 # off 档波纹静止≠缺席：波峰透镜区必须同样在场
+    $aiCrestOff = Count-ColorPixels $aiCrestBandOff 210 153 34 45
+    $aiCrestBandOff.Dispose()
     $aiBandOff.Dispose()
     if ($aiPixelsOff -lt 120)
     {
@@ -1673,6 +1696,10 @@ try
     if ($aiWaterOff -lt 120)
     {
         throw "断言失败（场景 AI off）：off 档水体色像素仅 $aiWaterOff（期望 ≥120）——水体缺席（同 20% 缺席回归）"
+    }
+    if ($aiCrestOff -lt 40)
+    {
+        throw "断言失败（场景 AI off）：off 档波峰色像素仅 $aiCrestOff（期望 ≥40）——波层缺席（off 是静止不是缺席）"
     }
     $s1 = New-AquariumBandCrop $aiTile $aiBandPx
     Start-Sleep -Seconds 3
