@@ -258,7 +258,11 @@ internal sealed class PinnedHostWindow
         };
     }
 
-    /// <summary>宿主布局落到每个 pinned tile 的记录（widgets.json 便利引用 + pins.json 权威），单宿主共享同一位置。</summary>
+    /// <summary>宿主布局落到每个 pinned tile 的记录（widgets.json 便利引用 + pins.json 权威），单宿主共享同一位置。
+/// 有意不广播（SET-INST-001 全仓复查 2026-11-15 判定非缺口）：三个调用点都在本宿主内部，且都在
+/// ApplyLayout 之后落盘——拖动/贴边/拓扑变化的可见效果已由本窗当场施加，广播 ReloadTiles 只会
+/// 在拖动尾帧重建宿主窗（把刚完成的拖动打断成闪烁）。设置页改共享布局走 ComponentStyles 的
+/// PinsChanged，那条路径已广播。</summary>
     private void PersistLayout()
     {
         var pinned = _runtime.Config.Widgets.Where(w => w.Pinned).ToList();

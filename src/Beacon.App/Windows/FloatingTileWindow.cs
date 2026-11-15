@@ -215,7 +215,9 @@ internal sealed class FloatingTileHost
     private bool IsPinSupported(string widgetType)
         => _runtime.Resolver.Resolve(widgetType)?.Descriptor.PinSupported == true;
 
-    /// <summary>拖动落点持久化：每组件各记（widgets.json 便利引用 + pins.json 权威，同单宿主双写口径）。</summary>
+    /// <summary>拖动落点持久化：每组件各记（widgets.json 便利引用 + pins.json 权威，同单宿主双写口径）。
+/// 有意不广播（SET-INST-001 全仓复查 2026-11-15 判定非缺口）：拖动过程中窗体自身已实时移动到位，
+/// 落盘只为重启还原；此处广播 ReloadTiles 会在拖动尾帧重建宿主窗、打断刚结束的拖动。</summary>
     public void PersistPosition(string widgetId, int x, int y)
     {
         var widget = _runtime.Config.Widgets.FirstOrDefault(w => w.Id == widgetId);
