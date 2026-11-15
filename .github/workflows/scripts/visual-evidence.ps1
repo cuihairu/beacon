@@ -16,6 +16,14 @@
 #     数据链）②设置搜索「额度」过滤 + 清词复原 ③SendInput 拖拽分隔条 +60px（不生效降级 warning，
 #     手势转装机手验）；设置常规页改「检查频率」→15 秒——config.json 落盘
 #     + 日志「检查频率变更为 15s」双硬断言（轮询节奏可配证据）。
+#   场景 AG 悬浮岛收起态三档（ISLAND-D1 single/stack/carousel）+ 上岛白名单（ISLAND-D2）：
+#     capsuleIsland=true 建岛窗（独立于 showCapsule，EnsureCapsule 口径）——UIA 面 AutomationId
+#     （island-face-{WidgetId}，FaceHost 补 SetName 造 peer）逐档硬断言：stack=环/条+双白名单面 4 面、
+#     single=仅序首环面（余面退场）、carousel=4s 节拍 12s 采样窗内 ≥2 个不同面（轮转在走）；
+#     每档收起行近景截图=岛视觉取证（docs/review/island-compare 对照源，11-13 界面审计零岛场景在此收口）。
+#   场景 AH 岛展开态（悬停预览，BEACON_DEBUG_ISLAND_PREVIEW=1 程序触发取证钩子）+ 占位面（ISLAND-D3
+#     data_quality：未取数组件出空心灯点占位 chip，不造摘要）+ 组件级下钻（ISLAND-D4：坐标单击真实
+#     组件面 → 看板开 + chip-智谱 来源卡定位）；展开/收起窗高几何断言（ExpectedRowPx DPI 换算）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
 # UIA/System.Security 需 Windows PowerShell 5.1（pwsh 缺 UIA 程序集）——非 5.1 自动自重启。
 $ErrorActionPreference = "Stop"
@@ -426,6 +434,17 @@ public static class WinEnum
         System.Threading.Thread.Sleep(90);
         SendInput(1, new[] { up }, size);
         System.Threading.Thread.Sleep(300);
+    }
+    // 场景 AH 悬停展开/收起：SendInput 纯移动（无按键）——SetCursorPos 合成移动不进 XAML 输入管线
+    //（38044411443 同款实证），PointerEntered/Exited 只认 INPUT 队列注入。两次移动间隔 ≥120ms
+    //（WinUI Pointer 事件按注入序列派发，连发过密会被合并丢失进入/离开语义）。
+    public static void MoveMouse(int x, int y)
+    {
+        int vx = ToVirtual(x, 76, 78); int vy = ToVirtual(y, 77, 79);
+        var move = new INPUT { type = 0, u = new INPUTUNION { mi = new MOUSEINPUT { dx = vx, dy = vy, dwFlags = 0x8001 } } };
+        int size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(INPUT));
+        SendInput(1, new[] { move }, size);
+        System.Threading.Thread.Sleep(120);
     }
     // 键盘 UNICODE 注入：KEYEVENTF_UNICODE(0x0004)、wScan=码位——与键盘布局无关，文件名里的 - . 在
     // VK 注入下会错。type 必须是 INPUT_KEYBOARD(1)。CI 会话键盘注入可达性未证实（K1 注记），故仅作
@@ -866,10 +885,21 @@ function Invoke-TrayMenu([int] $downCount, [string] $expect)
 
 # G 场景配置：GLM（bigmodel 38% 健康）+ DeepSeek（420.5）双 tile；GLM 可带 colorOverride（合法/非法两态）
 # $showCapsule：胶囊窗显示开关（场景 Q 胶囊计数/离线横幅断言用；默认 false 维持各场景零残留口径）
-function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0, [bool] $launchOnStartup = $false, [bool] $showCapsule = $false)
+function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "off", [double] $motionIntensity = 1.0, [bool] $launchOnStartup = $false, [bool] $showCapsule = $false, [bool] $capsuleIsland = $false, [string] $islandMode = "", [string] $islandComponents = "", [string] $extraWidgets = "")
 {
     Stop-Beacon
     $appearance = '"appearance": { "motion": { "mode": "' + $motionMode + '", "intensity": ' + $motionIntensity + ' } }'
+    # 岛形态注入（场景 AG/AH）：islandMode 非空=岛三件套全落（capsuleIsland/islandDisplayMode/islandComponents）；
+    # 仅 capsuleIsland=true =岛窗收起态默认档（stack 空白名单）。islandComponents 直接喂 JSON 数组字面量。
+    $islandConfig = ""
+    if ($islandMode)
+    {
+        $islandConfig = '"capsuleIsland": ' + $capsuleIsland.ToString().ToLowerInvariant() + ', "islandDisplayMode": "' + $islandMode + '", "islandComponents": ' + $islandComponents + ','
+    }
+    elseif ($capsuleIsland)
+    {
+        $islandConfig = '"capsuleIsland": true,'
+    }
     @'
 {
   "configVersion": 1,
@@ -881,9 +911,10 @@ function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "
   "numericFloatingResetDone": true,
   "showCapsule": __CAPSULE__,
   "settingsSidebarWidth": 400,
+  __ISLAND__
   __APPEARANCE__
 }
-'@.Replace("__STARTUP__", $launchOnStartup.ToString().ToLowerInvariant()).Replace("__APPEARANCE__", $appearance).Replace("__CAPSULE__", $showCapsule.ToString().ToLowerInvariant()) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
+'@.Replace("__STARTUP__", $launchOnStartup.ToString().ToLowerInvariant()).Replace("__APPEARANCE__", $appearance).Replace("__CAPSULE__", $showCapsule.ToString().ToLowerInvariant()).Replace("__ISLAND__", $islandConfig) | Set-Content -Path (Join-Path $configDir "config.json") -Encoding UTF8
     @'
 [
   { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
@@ -895,9 +926,10 @@ function Write-GConfig([string] $glmColorOverride = "", [string] $motionMode = "
     $widgets = @"
 [
   { "id": "bigmodel.usage:GLM", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "pinned": true, "config": { "label": "GLM" }$glmOverride },
-  { "id": "deepseek.balance:ds", "type": "deepseek.balance", "connectionId": "ds-main", "refreshTier": "ci", "pinned": true, "config": {} }
+  { "id": "deepseek.balance:ds", "type": "deepseek.balance", "connectionId": "ds-main", "refreshTier": "ci", "pinned": true, "config": {} }__EXTRA__
 ]
 "@
+    $widgets = $widgets.Replace("__EXTRA__", $extraWidgets)
     Set-Content -Path (Join-Path $configDir "widgets.json") -Value $widgets -Encoding UTF8
     '{ "tiles": [] }' | Set-Content -Path (Join-Path $configDir "pins.json") -Encoding UTF8
     # deepseek 密钥预置（420.5 健康链）
@@ -6126,6 +6158,263 @@ catch
     Save-FullScreenshot "AF-FAIL-unexpected.png"
     $failures.Add("场景 AF：$($_.Exception.Message)")
     Write-Host "::error::场景 AF 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 AG：悬浮岛收起态三档（ISLAND-D1 展示方式 single/stack/carousel）+ 上岛白名单（ISLAND-D2）——
+# 岛=胶囊窗形态（capsuleIsland 独立于 showCapsule，App.xaml.cs EnsureCapsule「岛开也建窗」口径）；
+# 面锚=island-face-{WidgetId}（IslandFaces.cs FaceHost：AutomationId 挂 Grid 不进 UIA 树，补 SetName 造 peer）。
+# 三档断言全走 UIA 结构 + 收起行近景截图；观感面（贴顶/曲面/发丝描边）仍属装机——本场景是
+# 2026-11-13 界面审计点名的结构性缺口（岛类改动零机器证据）收口。
+try
+{
+    Ensure-MockServer
+    # AG1 stack 档 + 双白名单：环/条虚拟面前置 + GLM/DS 真实面续后 = MaxCollapsedFaces(4) 恰满
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM","deepseek.balance:ds"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AG-FAIL-no-island.png"
+        throw "断言失败（场景 AG 前置）：capsuleIsland=true 未见「Beacon Status」岛窗（EnsureCapsule 岛开也建窗失效？）"
+    }
+    $islandRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles[0])
+    foreach ($faceId in @("island-face-island.progressring", "island-face-island.progressbar", "island-face-bigmodel.usage:GLM", "island-face-deepseek.balance:ds"))
+    {
+        $face = Find-UiaById $islandRoot $faceId 8
+        if (!$face)
+        {
+            Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AG-FAIL-missing-$($faceId -replace '[^a-zA-Z0-9]', '-').png" 4
+            throw "断言失败（场景 AG1）：岛收起行未找到 $faceId（stack 档应=环/条+双白名单面共 4 面）"
+        }
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AG-island-stack.png" 4
+    Write-Host "场景 AG1 通过：stack 档收起行 4 面齐（环/条/GLM/DS，上岛白名单按序渲染）"
+    Stop-Beacon
+    # AG2 single 档：序首面常驻（=环），条/GLM/DS 全部退场（IslandDisplayPlan Take(1) 口径）
+    Write-GConfig "" "off" 1.0 $false $false $true "single" '["bigmodel.usage:GLM","deepseek.balance:ds"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AG-FAIL-single-no-window.png"
+        throw "断言失败（场景 AG2 前置）：single 档岛窗未出现"
+    }
+    $islandRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles[0])
+    if (!(Find-UiaById $islandRoot "island-face-island.progressring" 8))
+    {
+        Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AG-FAIL-single-no-ring.png" 4
+        throw "断言失败（场景 AG2）：single 档序首环面未常驻"
+    }
+    foreach ($gone in @("island-face-island.progressbar", "island-face-bigmodel.usage:GLM", "island-face-deepseek.balance:ds"))
+    {
+        if (Find-UiaById $islandRoot $gone 2)
+        {
+            Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AG-FAIL-single-not-taken.png" 4
+            throw "断言失败（场景 AG2）：single 档 $gone 未退场（单组件常驻=Take(1)，溢出面必须不渲染）"
+        }
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AG-island-single.png" 4
+    Write-Host "场景 AG2 通过：single 档仅序首环面常驻（条/GLM/DS 退场）"
+    Stop-Beacon
+    # AG3 carousel 档：徽标+单面轮转（4s 一拍，UpdateCarouselTimer 口径）——12s 采样窗内观察到
+    # ≥2 个不同面=节拍在走。逐面探测（timeout 1s≈2 次 FindFirst）避免单轮全 4 面探测拖过一拍。
+    Write-GConfig "" "off" 1.0 $false $false $true "carousel" '["bigmodel.usage:GLM","deepseek.balance:ds"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AG-FAIL-carousel-no-window.png"
+        throw "断言失败（场景 AG3 前置）：carousel 档岛窗未出现"
+    }
+    $islandRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles[0])
+    $carouselIds = @("island-face-island.progressring", "island-face-island.progressbar", "island-face-bigmodel.usage:GLM", "island-face-deepseek.balance:ds")
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($round in 1..12)
+    {
+        foreach ($faceId in $carouselIds)
+        {
+            if (Find-UiaById $islandRoot $faceId 1) { [void]$seen.Add($faceId) }
+        }
+        if ($seen.Count -ge 2) { break }
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AG-island-carousel.png" 4
+    if ($seen.Count -lt 2)
+    {
+        throw "断言失败（场景 AG3）：carousel 档 12s 采样窗内只见 $($seen.Count) 面（实际：$($seen -join ' | ')）——4s 轮转节拍未走（候选池 4 面）"
+    }
+    Stop-Beacon
+    Write-Host "场景 AG3 通过：carousel 档单面轮转在走（12s 内观察到 $($seen.Count) 个不同面）"
+    Write-Host "场景 AG 通过：岛收起态三档（stack 4 面 / single 序首常驻 / carousel 轮转）+ 上岛白名单——ISLAND-D1/D2 CI 视觉取证面"
+}
+catch
+{
+    Stop-Beacon
+    Save-FullScreenshot "AG-FAIL-unexpected.png"
+    $failures.Add("场景 AG：$($_.Exception.Message)")
+    Write-Host "::error::场景 AG 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 AH：岛展开态（悬停预览三态取证）+ 占位面（ISLAND-D3）+ 组件级下钻（ISLAND-D4）——
+# 展开态=悬停 SourcePreview 长出（岛变高）；CI 锁屏会话取数批+真实指针悬停双通道：
+#   ①BEACON_DEBUG_ISLAND_PREVIEW=1 程序触发取证钩子（CapsuleWindow.cs：首次拿到预览行自动展开，
+#     不设变量行为逐字节不动）覆盖「注入不了指针」的首展；②SendInput 纯移动（MoveMouse）驱动
+#     PointerExited→收 / PointerEntered→再展 的真实悬停往返。
+# 占位面=白名单含未取数组件（enabled:false → 无 WidgetStateChanged → _lastStates 缺键 → 占位 chip）。
+try
+{
+    Ensure-MockServer
+    # AH1 展开态：程序触发首展（窗高长出收起 32 DIP 基线）→ 真实指针收/展往返
+    $env:BEACON_DEBUG_ISLAND_PREVIEW = "1"
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM","deepseek.balance:ds"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Remove-Item Env:BEACON_DEBUG_ISLAND_PREVIEW -ErrorAction SilentlyContinue # 注入只给这一个子进程（教训：残留会泄给后续所有实例）
+    Start-Sleep -Seconds 25 # mock 取数 + 首批预览行落地（Q 口径 15s + 喂入余量）
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AH-FAIL-no-island.png"
+        throw "断言失败（场景 AH 前置）：岛窗未出现"
+    }
+    $collapsedPx = ExpectedRowPx $islandHandles[0] 32 # 收起态曲面高 32 DIP（贴顶无阴影带口径）
+    $expanded = $false
+    $texts = @()
+    $deadline = (Get-Date).AddSeconds(40)
+    while ((Get-Date) -lt $deadline)
+    {
+        $rect = [WinEnum]::RectOf($islandHandles[0])
+        $h = $rect.Bottom - $rect.Top
+        $texts = Get-WindowUiaTexts $islandHandles[0]
+        if (($h -ge [int]($collapsedPx * 1.6)) -and (@($texts | Where-Object { $_ -match 'GLM' }).Count -gt 0)) { $expanded = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$expanded)
+    {
+        $rect = [WinEnum]::RectOf($islandHandles[0])
+        Save-FullScreenshot "AH-FAIL-not-expanded.png"
+        throw "断言失败（场景 AH1）：40s 内岛未展开（窗高 $($rect.Bottom - $rect.Top)px < 1.6×收起基线 $collapsedPx，或预览行文本未到）"
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 8) "AH-island-expanded.png" 3
+    Write-Host "场景 AH1 通过：岛展开态在位（预览行长出，窗高 ≥1.6×收起基线）"
+    # AH1b 真实指针收起：移出窗 → PointerExited → 收（动效 off 档瞬时）→ 高回基线
+    [WinEnum]::MoveMouse(30, 600)
+    Start-Sleep -Seconds 3
+    $rect = [WinEnum]::RectOf($islandHandles[0])
+    if (($rect.Bottom - $rect.Top) -gt [int]($collapsedPx * 1.5))
+    {
+        Save-FullScreenshot "AH-FAIL-hover-out.png"
+        throw "断言失败（场景 AH1b）：指针移出后岛未收（高 $($rect.Bottom - $rect.Top)px vs 基线 $collapsedPx）——PointerExited 收起链失效"
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AH-island-collapsed-after-hover.png" 4
+    # AH1c 真实指针再展：移回收起行中心 → PointerEntered → ShowPreview → 高长出
+    $rect = [WinEnum]::RectOf($islandHandles[0])
+    $centerX = [int](($rect.Left + $rect.Right) / 2)
+    $centerY = [int](($rect.Top + $rect.Bottom) / 2)
+    [WinEnum]::MoveMouse($centerX, $centerY)
+    $reexpanded = $false
+    $deadline = (Get-Date).AddSeconds(10)
+    while ((Get-Date) -lt $deadline)
+    {
+        $rect = [WinEnum]::RectOf($islandHandles[0])
+        if (($rect.Bottom - $rect.Top) -ge [int]($collapsedPx * 1.6)) { $reexpanded = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$reexpanded)
+    {
+        Save-FullScreenshot "AH-FAIL-hover-in.png"
+        throw "断言失败（场景 AH1c）：指针悬停岛后 10s 内未再展开——PointerEntered 展开链失效（MoveMouse 注入未进 XAML 管线？）"
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 8) "AH-island-reexpanded.png" 3
+    Write-Host "场景 AH1 通过：悬停往返（指针移出收 / 移回展）真实事件链全通"
+    Stop-Beacon
+    # AH2 占位面（ISLAND-D3 data_quality）：enabled:false 组件上岛 → 无状态 → 空心灯点占位 chip（不造摘要）
+    $ghostWidget = ',{ "id": "bigmodel.usage:ghost", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "pinned": false, "enabled": false, "config": { "label": "GHOST" } }'
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:ghost"]' $ghostWidget
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AH-FAIL-ghost-no-window.png"
+        throw "断言失败（场景 AH2 前置）：占位批岛窗未出现"
+    }
+    $islandRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles[0])
+    $ghostFace = $null
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline -and !$ghostFace)
+    {
+        $ghostFace = Find-UiaById $islandRoot "island-face-bigmodel.usage:ghost" 3
+        if (!$ghostFace) { Start-Sleep -Seconds 1 }
+    }
+    if (!$ghostFace)
+    {
+        Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AH-FAIL-no-ghost-face.png" 4
+        throw "断言失败（场景 AH2）：白名单未取数组件未出占位面（island-face-bigmodel.usage:ghost 不在树）"
+    }
+    if (!(Find-UiaById $islandRoot "island-face-island.progressring" 8))
+    {
+        throw "断言失败（场景 AH2）：占位批环面缺失（对照组，环/条应照常前置）"
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 6) "AH-island-placeholder.png" 4
+    Write-Host "场景 AH2 通过：未取数组件出占位面（不造进度/摘要，data_quality 口径 CI 面）"
+    Stop-Beacon
+    # AH3 组件级下钻（ISLAND-D4）：坐标单击 GLM 面宿主 → IslandWidgetActivated → 看板开 + 智谱来源卡定位
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 20
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AH-FAIL-drill-no-window.png"
+        throw "断言失败（场景 AH3 前置）：下钻批岛窗未出现"
+    }
+    $drilled = $false
+    $drillErr = ""
+    foreach ($attempt in 1..3)
+    {
+        $islandRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles[0])
+        $face = Find-UiaById $islandRoot "island-face-bigmodel.usage:GLM" 8
+        if (!$face) { $drillErr = "GLM 面不在树（第 $attempt 次）"; continue }
+        [WinEnum]::ForceForeground($islandHandles[0]) # 岛本身置顶，防御性拉前台（点击必落最上层）
+        Start-Sleep -Milliseconds 400
+        $point = Get-ClickPoint $face
+        if (!$point) { $drillErr = "GLM 面取不到可点坐标（第 $attempt 次，BoundingRectangle NaN？）"; continue }
+        [WinEnum]::MoveMouse($point[0], $point[1]) # 先移入再点：命中测试按释放点跑，冷启动单击跳过进入事件偶发丢失
+        [WinEnum]::ClickAt($point[0], $point[1])
+        $panelHandle = [IntPtr]::Zero
+        $deadline = (Get-Date).AddSeconds(8)
+        while ((Get-Date) -lt $deadline)
+        {
+            $hs = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+            if ($hs.Count -ge 1) { $panelHandle = $hs[0]; break }
+            Start-Sleep -Milliseconds 400
+        }
+        if ($panelHandle -eq [IntPtr]::Zero) { $drillErr = "单击后 8s 内看板未开（第 $attempt 次）"; continue }
+        $panelRoot = [System.Windows.Automation.AutomationElement]::FromHandle($panelHandle)
+        $chip = Find-UiaById $panelRoot "chip-智谱" 8
+        if (!$chip) { $drillErr = "看板开但未定位到 chip-智谱 来源卡（RevealSource 过滤链失效，第 $attempt 次）"; continue }
+        Save-Zoom (New-Crop ([WinEnum]::RectOf($panelHandle)) 0) "AH3-drilldown-panel.png" 2
+        $drilled = $true
+        break
+    }
+    if (!$drilled)
+    {
+        Save-FullScreenshot "AH-FAIL-drill.png"
+        throw "断言失败（场景 AH3）：岛组件面单击下钻三连失败：$drillErr"
+    }
+    Stop-Beacon
+    Write-Host "场景 AH3 通过：岛 GLM 面单击 → 看板开 + 智谱来源卡定位（组件级下钻链）"
+    Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻——ISLAND-D3/D4 CI 视觉取证面"
+}
+catch
+{
+    Stop-Beacon
+    Remove-Item Env:BEACON_DEBUG_ISLAND_PREVIEW -ErrorAction SilentlyContinue # 失败路径同样清注入（防泄给后续场景实例）
+    Save-FullScreenshot "AH-FAIL-unexpected.png"
+    $failures.Add("场景 AH：$($_.Exception.Message)")
+    Write-Host "::error::场景 AH 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
