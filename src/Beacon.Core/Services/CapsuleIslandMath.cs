@@ -29,8 +29,10 @@ public static class CapsuleIslandMath
     /// <summary>最小曲面宽（BrimDeck CollapsedLimits.NotchWidthMin=72：形态自身所需，内容不够时靠内缩保形）。</summary>
     public const double MinWidthDips = 72;
 
-    /// <summary>默认曲面宽（BrimDeck CollapsedLimits.NotchWidthDefault=238）：收起内容短也保持刘海默认宽，
-    /// 展开预览的内容区 = 238 - 2×30 = 178 DIP，与 BrimDeck 开面板的内容宽同口径。</summary>
+    /// <summary>默认曲面宽（BrimDeck CollapsedLimits.NotchWidthDefault=238）：**展开态/离线横幅**的
+    /// 保宽下限（展开预览的内容区 = 238 - 2×30 = 178 DIP，与 BrimDeck 开面板的内容宽同口径）；
+    /// 收起态自 2026-11-15 island-di-parity D-4 起贴内容（宽=收起行+2×Inset，Dynamic Island compact
+    /// 语义），不再以此值兜底——固定 238 的对称留白把收起岛读成「字缩在中间」。</summary>
     public const double DefaultWidthDips = 238;
 
     /// <summary>默认偏移：水平居中（X 偏移 0）；Y 恒 0——刘海式贴顶没有垂直偏移。</summary>

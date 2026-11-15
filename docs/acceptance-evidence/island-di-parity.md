@@ -19,8 +19,10 @@
 - 真机（imac 200% DPI，2026-11-08 a413ec0，`docs/acceptance-evidence/island-head-closeout/`）：
   `01-island-collapsed.png` / `02-island-collapsed-10x.png`（收起）、`06-island-expanded.png`（悬停展开）、
   `08-island-critical.png`（critical 徽标）、`09-capsule-classic.png`（经典胶囊回归对照）。
-- nightly visual-evidence（本轮新增场景 AG/AH）：run 43662875796（本文写作时在跑），
-  截图落 `AG-island-*.png` / `AH-island-*.png`，run 绿后路径抄录进下表。
+- nightly visual-evidence（本轮新增场景 AG/AH）：**run 43671206004 全绿**（main 202cc26），
+  七张截图已入 `docs/acceptance-evidence/island-data/`（场景↔文件映射见该目录 README）；
+  首轮 run 43662875796 的 AG 三态 + AH1 展开帧同型（其 AH1b 假红根因=探针首展不设 _hovered、
+  移出不构成 PointerExited——已在 202cc26 修 AH1a 先真悬停进岛）。
 
 ## 并排对比图（docs/review/island-compare/，同尺度同底色重排）
 
@@ -49,26 +51,27 @@
 - 裁决：随 D-1。贴顶形态的上角不可能有圆角；底角 12 DIP（h=32 的 37.5%）读数上已是「半圆收尾」，
   DI 的 r=h/2=50% 在贴顶约束下不可达（16 DIP 半径需 h≥32 且上角为 0 的镜像对称）。**不修**。
 
-### D-3 收起态长宽比：DI 3.98 vs beacon 7.44 🔧 待修（ nightly 截图绿后动）
+### D-3 收起态长宽比：DI 3.98 vs beacon 7.44 ⚠️ 设计取舍（不修）
 
 - 证据：cmp-01 读数。DI 紧凑胶囊 477×120px（di-03 crop 实测）≈ 3.98:1；beacon 收起面 2856×384px
   （01 实测，482×70 物理窗 @200%，曲面 238 DIP 宽）= 7.44:1。
-- 根因：`CapsuleIslandMath.DefaultWidthDips=238`（CapsuleIslandMath.cs:34）在 4 面 stack 场景下
-  拉满（1 面 placeholder + 3 真实面的证据图来自 ring+bar+GLM+DeepSeek 四面场景）。
-- 动作：收起面宽按面数自适应已在（ApplySize 实测 + 238 下限）；差异主要来自 beacon 一行塞 4 面
-  而 DI 紧凑态最多 2 活动区。**修复方向=收起行 max 2 组件面**（与 DI「紧凑态=左活动+右图标」
-  同构），超出部分只进展开面。改动点：`IslandDisplayPlan.Compute`（Core 纯函数）collapsed 段
-  Take(2)，展开段不变。测试锁口径在 Core.Tests。
+- 裁决：**保留 stack 上限 4 面**。「stack=收起行上限内全显」是 ISLAND-D1..D3（2026-11-09 用户令）
+  的既定决策；238 DIP 下 4 面（环+条+GLM bar+DeepSeek chip）实测内容 ≈218 DIP 无挤压
+  （AG-island-stack.png，run 43662875796 证据）。DI 紧凑态只承载 1-2 活动是 iOS 单活动横幅语义，
+  beacon 收起行是监控摘要面（一屏看全），改 2 面会把 GLM/DeepSeek 挤进溢出池且连锁打红
+  AG1/AH3 场景断言（AH3 下钻点击目标就是 chip 面）。随 D-4 的宽度收缩，面少时岛变窄，
+  长宽比向 DI 靠拢的效果由 D-4 承担。
 
-### D-4 内容内边距：DI 左右≈0.5×h vs beacon 1.66×h 🔧 待修
+### D-4 内容内边距：DI 左右≈0.5×h vs beacon 1.66×h 🔧 已修（2026-11-15，待重截图复核）
 
 - 证据：beacon 01 实测 glyph 左 inset 636px = 1.66×surface-h；DI di-02 实测左 inset 3px（相机帧特写）
   / di-03 胶囊左右留白≈胶囊半高。
-- 根因：`CapsuleIslandMath.InsetDips=30`（两端留白）+ `PillRow.HorizontalAlignment=Center`
-  （IslandChrome.cs:91）在 238 默认宽下面少时两侧各留 ~90 DIP 空白，读作「字缩在中间」。
-- 动作：收起行内容居中改为**跟面数收缩曲面宽**（曲面宽=内容宽+2×inset，inset 降到 0.75×h=24 DIP
-  对齐 DI 视觉），下限仍保 MinWidthDips=72。改动点：`ApplySize`（CapsuleWindow.Positioning.cs）
-  的收起宽计算 + `InsetDips` 语义拆分（内容留白 vs 形态最小 inset）。
+- 根因：`MeasureSizePx` 岛分支宽恒 `max(DefaultWidthDips 238, rowDips)`——固定 238 下限在
+  面少时两侧各留 ~90 DIP 对称空白，读作「字缩在中间」。
+- 修复（CapsuleWindow.Positioning.cs 岛分支）：收起态宽=收起行+2×Inset 30 贴内容（DI compact
+  语义，下限 MinWidthDips 72 不变）；展开态/离线横幅保 238 下限（预览行 MaxWidth=岛宽-60，
+  窄收起行会把预览裁到不可读——DI expanded 同样横向变宽）。`DefaultWidthDips` 注释同步更新
+  （Core.Tests 锁的是常量值 238/30/72/178，全不动）。
 
 ### D-5 字体层级：DI 图标≈文字同高、无多级字号 vs beacon 11px 单级 ✅ 已对齐（复核通过）
 
@@ -77,12 +80,15 @@
 - 裁决：beacon 的信息密度（4 组件标签）高于 DI 双活动，11px 是 32 DIP 面内可读下限；
   层级（灯点色→标签字）已由色相承担。**不修**，装机验字重再议。
 
-### D-6 活动图标布局：DI 左活动+右圆图标 vs beacon 顺序平铺 🔧 待修（与 D-3 同一改动）
+### D-6 活动图标布局：DI 左活动+右圆图标 vs beacon 顺序平铺 ⚠️ 设计取舍（不修）
 
 - 证据：cmp-04（DI 多活动=左文本活动区+右侧实时活动圆图标独立成区）；cmp-01 右（beacon 4 面
   等间距平铺，无主次分区）。
-- 动作：收起行分区=主面（环/条虚拟面，靠左）+ 次面区（chip，靠右），两区间以固定 12 DIP 间隔
-  分组而非等距平铺。改动点：`BuildIslandContent`（CapsuleWindow.IslandFaces.cs:36-70）行内布局。
+- 裁决：beacon 的面序已表达主次（环/条虚拟面在前=聚合进度、组件 chip 续后=单组件），DI 的
+  左活动+右图标分区是「单活动的双元素排版」，与 beacon 的 4 面摘要平铺没有结构对应物。
+  分组间距（主/次区 12 DIP 分隔）是纯视觉糖，且需把行树加深一层（面宿主外再包组容器）——
+  UIA 锚（island-face-{id}）虽不受层级影响，但收益低于视觉树扰动。**保留计划面序平铺**，
+  装机反馈主次不可辨时再议。
 
 ### D-7 展开动画时长/曲线：360ms Bounce vs DI ≈0.5s spring ✅ 已对齐（复核通过）
 

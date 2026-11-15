@@ -39,11 +39,18 @@ public sealed partial class CapsuleWindow
         var dpi = GetDpi();
         if (_island)
         {
-            // 岛（BrimDeck Notch 口径）：宽 = max(NotchWidthDefault 238, 收起行 + 2×NotchInset 30)，
-            // 下限 NotchWidthMin 72、上限屏宽 - 16 DIP；展开不改宽（BrimDeck 面板宽随岛宽，只向下长），
-            // 高 = max(BaseHeight 32, 内容实测)——收起恒 32，悬停预览把岛向下拉长。
+            // 岛宽（Dynamic Island 对标，2026-11-15 island-di-parity D-4）：收起态贴内容——
+            // 宽 = 收起行 + 2×Inset 30（DI compact 语义：曲面贴内容、少留白；「缩中间」的对称
+            // 大留白是固定 238 下限的产物）；展开态/离线横幅保 NotchWidthDefault 238 下限——
+            // 预览行 MaxWidth = 岛宽 - 60，窄收起行会把预览裁到不可读（DI expanded 同样横向变宽）。
+            // 下限 NotchWidthMin 72、上限屏宽 - 16 DIP 不变。
             var rowDips = PillArea.DesiredSize.Width + CapsuleIslandMath.InsetDips * 2;
-            var widthDips = Math.Clamp(Math.Ceiling(Math.Max(CapsuleIslandMath.DefaultWidthDips, rowDips)),
+            var expandedOrBanner = SourcePreview.Visibility == Visibility.Visible
+                || OfflineBanner.Visibility == Visibility.Visible;
+            var wantDips = expandedOrBanner
+                ? Math.Max(CapsuleIslandMath.DefaultWidthDips, rowDips)
+                : rowDips;
+            var widthDips = Math.Clamp(Math.Ceiling(wantDips),
                 CapsuleIslandMath.MinWidthDips, IslandMaxWidthDips(dpi));
             _islandWidthDips = widthDips;
             var heightDips = Math.Max(CapsuleIslandMath.HeightDips, Math.Ceiling(desired.Height));
