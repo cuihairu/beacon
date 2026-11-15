@@ -42,9 +42,11 @@ if ($PSVersionTable.PSVersion.Major -ne 5)
 # 分离 watchdog 进程倒计时，到点强杀本脚本进程（pid 定向）：步骤非 0 退出=红构建，
 # 「挂满 job timeout / 数小时」从机制上不再可能。缺省 4800s=80min：本脚本含 15min 浸泡
 # （场景 AD）与 40+ 场景，历史全程实测 ~70-90min（不能按 15min 设——会在浸泡中段误杀）；
-# 早于 job timeout-minutes=90 触发，让 evidence 照常走 always() 上传步留证。
+# 场景 AI 四阶段再加 ~4min 后全程可破 80min（43747051732 于 80min 整点在 AH3 睡眠中被强杀=
+# 静默 exit 1 无任何场景报错——watchdog 死法特征）→ 抬 6000s=100min 并留 AH3+J 收尾余量。
+# 早于 job timeout-minutes=110 触发，让 evidence 照常走 always() 上传步留证。
 # 可用环境变量 BEACON_EVIDENCE_TIMEOUT_SEC 覆盖（本地调试缩短用）。
-[int]$script:EvidenceTimeoutSec = 4800
+[int]$script:EvidenceTimeoutSec = 6000
 if ($env:BEACON_EVIDENCE_TIMEOUT_SEC)
 {
     [int]::TryParse($env:BEACON_EVIDENCE_TIMEOUT_SEC, [ref]$script:EvidenceTimeoutSec) | Out-Null
