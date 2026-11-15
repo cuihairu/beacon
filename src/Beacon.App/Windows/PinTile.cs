@@ -654,6 +654,11 @@ internal sealed class PinTile
             _waveFront.Fill = new SolidColorBrush(fill);
             _waveBack.Fill = new SolidColorBrush(fill);
             _aquariumTrack.Visibility = Visibility.Visible;
+            // 水体与双层波逐件翻开（构建期 Collapsed，只翻 host/track=带里只剩底轨——run 43720846043
+            // 三态带像素逐行采样实证：12 行全 (62,72,91) 零水体。host 收时子件随隐，显形须逐件翻）
+            _aquariumWater.Visibility = Visibility.Visible;
+            _waveBack.Visibility = Visibility.Visible;
+            _waveFront.Visibility = Visibility.Visible;
             _aquariumHost.Visibility = Visibility.Visible;
             _aquariumFraction = fraction;
             ApplyAquariumGeometry(_root.ActualWidth - _root.Padding.Left - _root.Padding.Right);
