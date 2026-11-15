@@ -38,6 +38,12 @@ internal sealed class PinTile
     // 档位阈值（≥80% warning / ≥98% error）下沉 Core ProgressTiers 单源（Phase 2），此处不再持有
     private const double BarMinFillDips = 2; // 极小进度保底可辨
 
+    // —— 整行水族箱（AQUA-001，2026-11-15 用户令「bar 显示在文字下方也就是整个一行都是进度条…做成水族箱」）——
+    // 通栏 12 DIP 带：水位=进度（档位配色），水面双层正弦波（Core AquariumWave 折线）composition 漂移出活水感。
+    // 波形幅度小（≤1.6 DIP）频率慢（3.8s/5.4s 一漂移周期），motion off 档静止（B-707 纪律，Core WavesAnimate 门）。
+    private const double AquariumHeightDips = 12;
+    private const double AquariumWaveSkirtDips = 4; // 波形下裙边（盖住与水体的接缝， trough 1.6 DIP 内无漏缝）
+
     /// <summary>tile 高（DIP）：max(尺寸档, 模板最小高)——带模板树时按模板防裁切放大
     /// （评审 P2 裁切：数字卡 48/圆环 34 等），无树恒等尺寸档（TileSizing 单源；常规 32 恒等）。</summary>
     public int TileHeightDips { get; private set; }
@@ -188,6 +194,20 @@ internal sealed class PinTile
     };
     private bool _barMode; // 非只读：构建主体抽到 BuildTraditionalContent（方法内不得赋 readonly，CS0191）
 
+    // —— 水族箱件（AQUA-001）——与 pool 件同纪律：无字段初始化器、构建主体 BuildTraditionalContent 赋值
+    //（方法内赋 readonly 是 CS0191）；模式恒构建、可见性在 UpdateProgress 按模式与有无进度门。
+    private Grid _aquariumHost;
+    private Rectangle _aquariumTrack;
+    private Rectangle _aquariumWater;
+    private global::Microsoft.UI.Xaml.Shapes.Path _waveBack;
+    private global::Microsoft.UI.Xaml.Shapes.Path _waveFront;
+    private TranslateTransform _waveBackShift;
+    private TranslateTransform _waveFrontShift;
+    private Storyboard? _aquariumStoryboard; // 字段持有：水位推进先 Stop 上段（HoldEnd 动画值压本地新值，bar 同口径）
+    private double _aquariumFraction;
+    private bool _aquariumMode; // 非只读同 _barMode（构建主体赋值）
+    private bool _aquariumWavesRunning; // composition 波纹在跑标记（Stop 幂等）
+
     /// <summary>宿主面板挂载与输入挂接的根元素。</summary>
     public Border Root => _root;
 
@@ -295,14 +315,18 @@ internal sealed class PinTile
                 Foreground = new SolidColorBrush(ThemeColors.Label()),
             };
 
-        // 显示路径：bar=底部线性进度条（默认，2026-10-11 用户令翻转）；pool=圆池注水（旧特效，显式选择）。
-        // 组件级 widgets.json config.progressStyle 可覆盖外观设置（向后兼容）；加载中=bar 空轨/空池环+「加载中」
+        // 显示路径：bar=底部线性进度条（默认，2026-10-11 用户令翻转）；pool=圆池注水（旧特效，显式选择）；
+        // aquarium=整行水族箱（AQUA-001，2026-11-15 用户令，显式选择）。
+        // 组件级 widgets.json config.progressStyle 可覆盖外观设置（向后兼容）；组件级值与外观值同过
+        // Core ProgressStyles 三值解析（非法一律落 bar）。加载中=bar 空轨/空池环+「加载中」（水族箱加载中不显带）
         var style = widget.Config.GetValueOrDefault("progressStyle");
         if (string.IsNullOrEmpty(style))
         {
             style = _motion.ProgressStyle;
         }
-        _barMode = string.Equals(style, "bar", StringComparison.OrdinalIgnoreCase);
+        style = ProgressStyles.Resolve(style);
+        _barMode = string.Equals(style, ProgressStyles.Bar, StringComparison.Ordinal);
+        _aquariumMode = string.Equals(style, ProgressStyles.Aquarium, StringComparison.Ordinal);
         var labelBrush = new SolidColorBrush(ThemeColors.Label());
         _poolRing = new Ellipse { Width = PoolSize, Height = PoolSize, Stroke = labelBrush, StrokeThickness = 1.5 };
         // 池水填充：Path 圆弓形（水位线以下整块）。UIElement.Clip 在 WinUI/UWP 只接受 RectangleGeometry——
@@ -318,12 +342,59 @@ internal sealed class PinTile
             Width = PoolSize,
             Height = PoolSize,
             VerticalAlignment = VerticalAlignment.Center,
-            Visibility = _barMode ? Visibility.Collapsed : Visibility.Visible,
+            Visibility = _barMode || _aquariumMode ? Visibility.Collapsed : Visibility.Visible,
         };
         _waveHost.Children.Add(_poolFill);
         _waveHost.Children.Add(_poolRing);
         _progressText.Text = "加载中"; // 首态静态可读量：首个状态事件到达即被 NN% 覆盖
         _progressText.Visibility = Visibility.Visible;
+
+        // 水族箱带（AQUA-001）：通栏 12 DIP，叠层自底向上=底轨（35% 白）→ 水体（档位色）→ 后波（45% 深度感）
+        // → 前波（实色）。Host 裁切用 RectangleGeometry（WinUI Clip 只收矩形，8b94469 同口径）——波路径
+        // 比带宽宽出一个平移周期，必须裁掉带外行程。构建恒在（与 pool 件同口径），可见性按模式门。
+        _aquariumTrack = new Rectangle
+        {
+            Height = AquariumHeightDips,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Fill = new SolidColorBrush(ThemeColors.Value()) { Opacity = 0.35 },
+            RadiusX = BarRadiusDips,
+            RadiusY = BarRadiusDips,
+            Visibility = Visibility.Collapsed,
+        };
+        _aquariumWater = new Rectangle
+        {
+            Height = 0, // 空 tank：首个进度事件按 fraction 落水位
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Visibility = Visibility.Collapsed,
+        };
+        _waveBackShift = new TranslateTransform();
+        _waveFrontShift = new TranslateTransform();
+        _waveBack = new global::Microsoft.UI.Xaml.Shapes.Path
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            RenderTransform = _waveBackShift, // Y=水面线随 fraction 走；X 由 composition 漂移（StartRipple）
+            Opacity = 0.45,
+            Visibility = Visibility.Collapsed,
+        };
+        _waveFront = new global::Microsoft.UI.Xaml.Shapes.Path
+        {
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            RenderTransform = _waveFrontShift,
+            Visibility = Visibility.Collapsed,
+        };
+        _aquariumHost = new Grid
+        {
+            Height = AquariumHeightDips,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            IsHitTestVisible = false, // 纯装饰带：不吃输入（tile 点击面归主行）
+            Visibility = Visibility.Collapsed,
+        };
+        _aquariumHost.Children.Add(_aquariumTrack);
+        _aquariumHost.Children.Add(_aquariumWater);
+        _aquariumHost.Children.Add(_waveBack);
+        _aquariumHost.Children.Add(_waveFront);
 
         var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, _palette.Density), GridLength.Auto, GridLength.Auto,
             new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto);
@@ -340,13 +411,19 @@ internal sealed class PinTile
         grid.Children.Add(_waveHost);
         grid.Children.Add(_progressText);
 
-        // 主行 + 底部进度条叠放（见 _barTrack/_barFill 注释）：单 Grid 三子，后加者在上层；
-        // 主内容竖直居中（进度读数字号居 32 DIP，下部留白 ≥6 DIP），与 4 DIP 条互不碰撞。
+        // 主行 + 水族箱带 + 底部进度条叠放：单 Grid 多子，后加者在上层——水族箱带先加（最底层），
+        // 文字行压其上（AQUA-001「文字行下方通栏」：32 DIP tile 里带占底部 12，主行文字与带顶可轻微
+        // 交叠但文字在上层可读）；bar 两矩形最后加（贴底 4 DIP 不与文字碰）。
         var container = new Grid();
+        container.Children.Add(_aquariumHost);
         container.Children.Add(grid);
         container.Children.Add(_barTrack);
         container.Children.Add(_barFill);
-        container.SizeChanged += (_, e) => ApplyBarGeometry(e.NewSize.Width); // 布局实测后重放比例
+        container.SizeChanged += (_, e) =>
+        {
+            ApplyBarGeometry(e.NewSize.Width); // 布局实测后重放比例
+            ApplyAquariumGeometry(e.NewSize.Width); // 水族箱带同步重放（AQUA-001）
+        };
         _root.Child = container;
     }
 
@@ -469,6 +546,7 @@ internal sealed class PinTile
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
             CollapseBar(); // 先停推进动画再收条（HoldEnd 值压本地值）
+            CollapseAquarium(); // 离线降级同收水族箱带（波纹停、水位清）
             ToolTipService.SetToolTip(_root,
                 UiStrings.FeedbackOffline + " · " + WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true));
             _motion.StopLoops(_light);
@@ -527,11 +605,13 @@ internal sealed class PinTile
         }
     }
 
-    /// <summary>进度两显示路径（2026-10-11 用户令重设计，默认翻转）：
+    /// <summary>进度三显示路径（2026-10-11 用户令重设计 bar 默认；AQUA-001 2026-11-15 增第三档）：
     /// ① bar（默认）——底部 4 DIP 圆角线性条：track 35% 透明底轨 + fill 档位色
     ///   （≥80% warning、≥98% error 红——用户「满了就变成另一颜色」），推进平滑过渡；
     /// ② pool（可选，显式选择）——16DIP 圆池水位=进度（Path 圆弓形=水位线以下整块），满格变 severity 色；
-    /// ③ percent——「NN%」静态文本常驻（动画+文字双通道，截图/肉眼硬口径，永远可读）。
+    /// ③ aquarium（可选，显式选择）——文字行下方通栏 12 DIP 水族箱：水位=进度、双层正弦波活水
+    ///   （composition 漂移，off 档静止），档位配色同 bar；
+    /// ④ percent——「NN%」静态文本常驻（动画+文字双通道，截图/肉眼硬口径，永远可读）。
     /// 无进度语义的类型全收（value 已带可读量）。</summary>
     private void UpdateProgress(WidgetState state, global::Windows.UI.Color color)
     {
@@ -540,6 +620,7 @@ internal sealed class PinTile
             _waveHost.Visibility = Visibility.Collapsed;
             _progressText.Visibility = Visibility.Collapsed;
             CollapseBar();
+            CollapseAquarium();
             return;
         }
 
@@ -553,19 +634,37 @@ internal sealed class PinTile
 
         if (_barMode)
         {
-            // ① bar 默认路径：显式像素矩形（CI 已证渲染），档位配色，池收
+            // ① bar 默认路径：显式像素矩形（CI 已证渲染），档位配色，池/箱收
             _waveHost.Visibility = Visibility.Collapsed;
+            CollapseAquarium();
             _barFill.Fill = new SolidColorBrush(BarFillColor(fraction, color));
             _barTrack.Visibility = Visibility.Visible;
             _barFill.Visibility = Visibility.Visible;
             _barFraction = fraction;
             ApplyBarGeometry(_root.ActualWidth - _root.Padding.Left - _root.Padding.Right);
         }
+        else if (_aquariumMode)
+        {
+            // ③ aquarium 路径（AQUA-001）：通栏带显形，水位=进度（档位配色 BarFillColor 同 bar 合流），
+            // 波纹漂移（off 档 StartWaves 内部直接不启动=静止）；池收
+            CollapseBar();
+            _waveHost.Visibility = Visibility.Collapsed;
+            var fill = BarFillColor(fraction, color);
+            _aquariumWater.Fill = new SolidColorBrush(fill);
+            _waveFront.Fill = new SolidColorBrush(fill);
+            _waveBack.Fill = new SolidColorBrush(fill);
+            _aquariumTrack.Visibility = Visibility.Visible;
+            _aquariumHost.Visibility = Visibility.Visible;
+            _aquariumFraction = fraction;
+            ApplyAquariumGeometry(_root.ActualWidth - _root.Padding.Left - _root.Padding.Right);
+            StartWaves();
+        }
         else
         {
             // ② pool 可选路径（旧特效，显式选择）：水位=进度（≥2 DIP 保底可辨），Fill=severity 色
-            // （满格 Error 红同口径）；bar 收
+            // （满格 Error 红同口径）；bar/箱收
             CollapseBar();
+            CollapseAquarium();
             _waveHost.Visibility = Visibility.Visible;
             _poolFill.Data = PoolGeometry(fraction);
             _poolFill.Fill = new SolidColorBrush(color);
@@ -579,6 +678,118 @@ internal sealed class PinTile
         _barStoryboard?.Stop();
         _barTrack.Visibility = Visibility.Collapsed;
         _barFill.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>收掉水族箱路径（无进度/离线/切其他样式）：停水位推进与波纹漂移，整带收起。</summary>
+    private void CollapseAquarium()
+    {
+        _aquariumFraction = 0;
+        _aquariumStoryboard?.Stop();
+        StopWaves();
+        if (_aquariumHost is not null)
+        {
+            _aquariumHost.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>波纹漂移起停（AQUA-001）：off 档 StartRipple 内部直接不启动（静止）；运行标记幂等，
+    /// SuspendMotion（收起态省电）与 CollapseAquarium 走同一 Stop。</summary>
+    private void StartWaves()
+    {
+        if (_aquariumWavesRunning)
+        {
+            return;
+        }
+        _motion.StartRipple(_waveFront, AquariumWave.FrontPeriodDips, rightward: false);
+        _motion.StartRipple(_waveBack, AquariumWave.BackPeriodDips, rightward: true); // 反向+异周期=视差活水
+        _aquariumWavesRunning = true;
+    }
+
+    private void StopWaves()
+    {
+        if (!_aquariumWavesRunning)
+        {
+            return;
+        }
+        _motion.StopRipple(_waveFront);
+        _motion.StopRipple(_waveBack);
+        _aquariumWavesRunning = false;
+    }
+
+    /// <summary>水族箱带几何（AQUA-001，bar 同口径防抖）：通栏宽=容器实测，水位高=fraction×带高
+    /// （≥2 DIP 保底可辨，Storyboard 平滑过渡 off 档瞬时），波路径宽=带宽+平移周期（无缝循环），
+    /// Y=水面线（bandH−水位）。Host 裁到通栏矩形——波带外行程全裁（RectangleGeometry 唯一合法 Clip）。</summary>
+    private void ApplyAquariumGeometry(double innerWidth)
+    {
+        if (_aquariumHost is null || _aquariumHost.Visibility != Visibility.Visible || double.IsNaN(innerWidth) || innerWidth < 8)
+        {
+            return;
+        }
+
+        var trackWidth = Math.Floor(innerWidth);
+        _aquariumHost.Clip = new RectangleGeometry
+        {
+            Rect = new global::Windows.Foundation.Rect(0, 0, trackWidth, AquariumHeightDips),
+        };
+        _aquariumTrack.Width = trackWidth;
+        _aquariumWater.Width = trackWidth;
+        var waterHeight = _aquariumFraction <= 0.001 ? 0 : Math.Max(BarMinFillDips, Math.Floor(AquariumHeightDips * _aquariumFraction));
+        var waterlineY = AquariumHeightDips - waterHeight; // 水面中线（波 Y 平移锚）
+
+        _aquariumStoryboard?.Stop(); // 上段还在 HoldEnd：不先停会压住本地新值（bar 同坑）
+        var from = _aquariumWater.Height;
+        _aquariumWater.Height = waterHeight; // 本地值=目标（动画结束 HoldEnd 与其重合，无跳变）
+        var duration = _motion.BarTransitionDuration;
+        if (duration > TimeSpan.Zero && double.IsFinite(from) && from != waterHeight)
+        {
+            var animation = new DoubleAnimation
+            {
+                From = from,
+                To = waterHeight,
+                Duration = new Duration(duration),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            };
+            Storyboard.SetTarget(animation, _aquariumWater);
+            Storyboard.SetTargetProperty(animation, "Height");
+            var storyboard = new Storyboard();
+            storyboard.Children.Add(animation);
+            _aquariumStoryboard = storyboard;
+            storyboard.Begin();
+        }
+
+        // 波形重建（点数 ~50，重建廉价；宽随 SizeChanged/fraction 重放同到）：宽=带宽+平移周期，
+        // 平移 [0,−P]（前层）/ [−P,0]（后层反向）全程覆盖通栏——无缝循环的几何前提
+        _waveFront.Width = trackWidth + AquariumWave.FrontPeriodDips;
+        _waveFront.Data = WaveFigure(AquariumWave.Crest(
+            trackWidth + AquariumWave.FrontPeriodDips, AquariumWave.FrontPeriodDips, AquariumWave.FrontAmplitudeDips, phaseTurns: 0));
+        _waveFrontShift.Y = waterlineY;
+        _waveBack.Width = trackWidth + AquariumWave.BackPeriodDips;
+        _waveBack.Data = WaveFigure(AquariumWave.Crest(
+            trackWidth + AquariumWave.BackPeriodDips, AquariumWave.BackPeriodDips, AquariumWave.BackAmplitudeDips, AquariumWave.BackPhaseTurns));
+        _waveBackShift.Y = waterlineY;
+    }
+
+    /// <summary>波形 PathGeometry（Core AquariumWave 折线 → XAML 几何，PoolGeometry 同纪律：
+    /// 折线零歧义）。上缘=正弦水面，下缘=水面线下 skirt 深度直线（盖住与水体的接缝），
+    /// 两端竖边落在平移行程带外（Clip 裁掉）。</summary>
+    private static Geometry WaveFigure((double X, double Y)[] crest)
+    {
+        var figure = new PathFigure
+        {
+            StartPoint = new global::Windows.Foundation.Point(crest[0].X, crest[0].Y),
+            IsClosed = true,
+        };
+        foreach (var point in crest)
+        {
+            figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(point.X, point.Y) });
+        }
+        var last = crest[^1];
+        var first = crest[0];
+        figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(last.X, last.Y + AquariumWaveSkirtDips) });
+        figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(first.X, first.Y + AquariumWaveSkirtDips) });
+        var geometry = new PathGeometry();
+        geometry.Figures.Add(figure);
+        return geometry;
     }
 
     /// <summary>进度条档位配色：≥98% 满格 error 红、≥80% 接近满 warning、其余用组件 severity 色
@@ -627,7 +838,7 @@ internal sealed class PinTile
         }
     }
 
-    /// <summary>收起为细条（宿主 ApplyLayout 判定）：暂停全部动画循环省电；展开复位。</summary>
+    /// <summary>收起为细条（宿主 ApplyLayout 判定）：暂停全部动画循环省电（含水族箱波纹，AQUA-001）；展开复位。</summary>
     public void SuspendMotion()
     {
         if (_suspended)
@@ -637,6 +848,7 @@ internal sealed class PinTile
         _suspended = true;
         _motion.StopLoops(_light);
         _motion.StopLoops(_root);
+        StopWaves(); // composition 漂移同样在收起态停（波形定格不消失）
     }
 
     public void ResumeMotion()

@@ -46,11 +46,52 @@ internal sealed class MotionEngine
         : 1.0;
 
     /// <summary>tile 额度显示方式（config appearance.progressStyle）："bar"=底部线性进度条（默认，2026-10-11
-    /// 用户令翻转）；"pool"=圆池注水（旧特效，仅显式选择——缺省/非法值一律落 bar，圆池绝不做默认路径）。
+    /// 用户令翻转）；"pool"=圆池注水（旧特效，仅显式选择）；"aquarium"=整行水族箱（AQUA-001，2026-11-15
+    /// 用户令）——三值解析走 Core ProgressStyles 单源（缺省/非法一律落 bar，pool/aquarium 都不做默认路径）。
     /// 实时读，设置改即刻生效。</summary>
-    public string ProgressStyle => string.Equals(_config.App.Appearance.ProgressStyle, "pool", StringComparison.OrdinalIgnoreCase)
-        ? "pool"
-        : "bar";
+    public string ProgressStyle => ProgressStyles.Resolve(_config.App.Appearance.ProgressStyle);
+
+    /// <summary>装饰性循环动画放行门（水族箱波纹用）：motion 显式 off=静止（B-707 纪律），其余放行。</summary>
+    public bool WavesAllowed => ProgressStyles.WavesAnimate(_config.App.Appearance.Motion.Mode);
+
+    /// <summary>水族箱波纹漂移（AQUA-001）：波形路径宽=通栏宽+travelDips（一个周期），匀速平移整周期即
+    /// 无缝循环。composition 线程驱动（不占 UI 线程帧预算），时长随 intensity（慢频率，用户令「不抢眼」），
+    /// off 档直接不启动（静止——Core WavesAnimate 门）。</summary>
+    public void StartRipple(UIElement element, double travelDips, bool rightward)
+    {
+        if (!WavesAllowed || travelDips <= 0)
+        {
+            return;
+        }
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            var compositor = visual.Compositor;
+            var drift = compositor.CreateScalarKeyFrameAnimation();
+            drift.InsertKeyFrame(0.0f, (float)(rightward ? -travelDips : 0));
+            drift.InsertKeyFrame(1.0f, (float)(rightward ? 0 : -travelDips)); // 线性匀速（不插 easing）
+            drift.IterationBehavior = AnimationIterationBehavior.Forever; // 常驻循环；收起态由 SuspendMotion 停
+            drift.Duration = TimeSpan.FromMilliseconds((rightward ? 5400 : 3800) * Intensity);
+            visual.StartAnimation("Offset.X", drift);
+        }
+        catch
+        {
+            // 动效不可用（无 Composition 支持）：水面静止，波形仍显示
+        }
+    }
+
+    /// <summary>停波纹漂移（收起态/切档/无进度）：Offset 归布局值（HorizontalAlignment=Left → 0），波形定格。</summary>
+    public void StopRipple(UIElement element)
+    {
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.StopAnimation("Offset.X");
+        }
+        catch
+        {
+        }
+    }
 
     /// <summary>进度条推进过渡时长（intensity 接管）；off 档 0 = 瞬时直设。</summary>
     public TimeSpan BarTransitionDuration => Mode == MotionMode.Off ? TimeSpan.Zero : TimeSpan.FromMilliseconds(300 * Intensity);

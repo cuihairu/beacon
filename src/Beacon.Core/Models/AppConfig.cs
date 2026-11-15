@@ -74,8 +74,10 @@ public sealed class AppearanceConfig
     public Dictionary<string, string> SeverityColors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public MotionConfig Motion { get; set; } = new();
     /// <summary>tile 额度显示方式（2026-10-11 用户令翻转默认：恢复早期进度条表现）：
-    /// "bar"=底部 4DIP 线性进度条 + NN% 静态读数（默认）；"pool"=圆池注水（旧特效，仅显式选择）。
-    /// 组件级 widgets.json config.progressStyle 可覆盖；旧配置已显式写 "pool" 的保持不动（不迁移不覆盖）。</summary>
+    /// "bar"=底部 4DIP 线性进度条 + NN% 静态读数（默认）；"pool"=圆池注水（旧特效，仅显式选择）；
+    /// "aquarium"=整行水族箱（AQUA-001，2026-11-15 用户令：文字行下方通栏活水，水位=用量）。
+    /// 三值解析 Core ProgressStyles 单源（缺省/非法一律落 bar）。组件级 widgets.json config.progressStyle
+    /// 可覆盖；旧配置已显式写 "pool" 的保持不动（不迁移不覆盖）。</summary>
     public string ProgressStyle { get; set; } = "bar";
     /// <summary>密度档（Phase 5 行 5，设计令牌三档）："regular"（默认恒等）/ "compact"（间距 ×0.75）/
     /// "spacious"（间距 ×1.25）；未知值回常规（Core UiDensity 单源，fail-open）。</summary>
