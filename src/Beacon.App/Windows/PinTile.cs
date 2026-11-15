@@ -201,8 +201,6 @@ internal sealed class PinTile
     private Rectangle _aquariumWater;
     private global::Microsoft.UI.Xaml.Shapes.Path _waveBack;
     private global::Microsoft.UI.Xaml.Shapes.Path _waveFront;
-    private TranslateTransform _waveBackShift;
-    private TranslateTransform _waveFrontShift;
     private Storyboard? _aquariumStoryboard; // 字段持有：水位推进先 Stop 上段（HoldEnd 动画值压本地新值，bar 同口径）
     private double _aquariumFraction;
     private bool _aquariumMode; // 非只读同 _barMode（构建主体赋值）
@@ -367,13 +365,13 @@ internal sealed class PinTile
             VerticalAlignment = VerticalAlignment.Bottom,
             Visibility = Visibility.Collapsed,
         };
-        _waveBackShift = new TranslateTransform();
-        _waveFrontShift = new TranslateTransform();
+        // 波层（pool Path 同款已证形态：显式宽高 + 全非负几何 + 零变换——负 Y 几何/无 Height 的 Path
+        // 在 CI 实证整件不渲染，43729489131）。位置烘进几何（水位随 fraction 重建即到）；漂移只走
+        // composition Offset.X（off 档不启动=静止；CI 会话不可证时波形静止在场，观感转装机目检）。
         _waveBack = new global::Microsoft.UI.Xaml.Shapes.Path
         {
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            RenderTransform = _waveBackShift, // Y=水面线随 fraction 走；X 由 composition 漂移（StartRipple）
             Opacity = 0.45,
             Visibility = Visibility.Collapsed,
         };
@@ -381,7 +379,6 @@ internal sealed class PinTile
         {
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            RenderTransform = _waveFrontShift,
             Visibility = Visibility.Collapsed,
         };
         _aquariumHost = new Grid
@@ -739,7 +736,7 @@ internal sealed class PinTile
         _aquariumTrack.Width = trackWidth;
         _aquariumWater.Width = trackWidth;
         var waterHeight = _aquariumFraction <= 0.001 ? 0 : Math.Max(BarMinFillDips, Math.Floor(AquariumHeightDips * _aquariumFraction));
-        var waterlineY = AquariumHeightDips - waterHeight; // 水面中线（波 Y 平移锚）
+        var waterlineY = AquariumHeightDips - waterHeight; // 水面中线（烘进波几何 Y 域）
 
         _aquariumStoryboard?.Stop(); // 上段还在 HoldEnd：不先停会压住本地新值（bar 同坑）
         var from = _aquariumWater.Height;
@@ -762,36 +759,41 @@ internal sealed class PinTile
             storyboard.Begin();
         }
 
-        // 波形重建（点数 ~50，重建廉价；宽随 SizeChanged/fraction 重放同到）：宽=带宽+平移周期，
-        // 平移 [0,−P]（前层）/ [−P,0]（后层反向）全程覆盖通栏——无缝循环的几何前提
-        _waveFront.Width = trackWidth + AquariumWave.FrontPeriodDips;
-        _waveFront.Data = WaveFigure(AquariumWave.Crest(
-            trackWidth + AquariumWave.FrontPeriodDips, AquariumWave.FrontPeriodDips, AquariumWave.FrontAmplitudeDips, phaseTurns: 0));
-        _waveFrontShift.Y = waterlineY;
-        _waveBack.Width = trackWidth + AquariumWave.BackPeriodDips;
-        _waveBack.Data = WaveFigure(AquariumWave.Crest(
-            trackWidth + AquariumWave.BackPeriodDips, AquariumWave.BackPeriodDips, AquariumWave.BackAmplitudeDips, AquariumWave.BackPhaseTurns));
-        _waveBackShift.Y = waterlineY;
+        // 波形重建（点数 ~80，重建廉价；宽/水位随 SizeChanged/fraction 重放同到）：Core 周期对齐采样
+        // （末点落周期整倍数且 ≥带宽）→ 平移一周期波形自重合=无缝循环；几何 Y 全非负（waterlineY+
+        // crestY+A，pool「显式宽高+非负几何」同口径，负 Y Path CI 实证不渲染）。漂移=composition
+        // Offset.X 平移 [0,−P]（前层）/ [−P,0]（后层反向）全程覆盖通栏。
+        var frontCrest = AquariumWave.Crest(
+            trackWidth + AquariumWave.FrontPeriodDips, AquariumWave.FrontPeriodDips, AquariumWave.FrontAmplitudeDips, phaseTurns: 0);
+        _waveFront.Width = frontCrest[^1].X;
+        _waveFront.Height = 2 * AquariumWave.FrontAmplitudeDips + AquariumWaveSkirtDips;
+        _waveFront.Data = WaveFigure(frontCrest, AquariumWave.FrontAmplitudeDips, waterlineY);
+        var backCrest = AquariumWave.Crest(
+            trackWidth + AquariumWave.BackPeriodDips, AquariumWave.BackPeriodDips, AquariumWave.BackAmplitudeDips, AquariumWave.BackPhaseTurns);
+        _waveBack.Width = backCrest[^1].X;
+        _waveBack.Height = 2 * AquariumWave.BackAmplitudeDips + AquariumWaveSkirtDips;
+        _waveBack.Data = WaveFigure(backCrest, AquariumWave.BackAmplitudeDips, waterlineY);
     }
 
     /// <summary>波形 PathGeometry（Core AquariumWave 折线 → XAML 几何，PoolGeometry 同纪律：
-    /// 折线零歧义）。上缘=正弦水面，下缘=水面线下 skirt 深度直线（盖住与水体的接缝），
+    /// 折线零歧义）。Y 平移进非负域（waterlineY + crestY + amplitudeDips：负 Y 几何 Path CI 实证
+    /// 整件不渲染）。上缘=正弦水面，下缘=水面线下 skirt 深度直线（盖住与水体的接缝），
     /// 两端竖边落在平移行程带外（Clip 裁掉）。</summary>
-    private static Geometry WaveFigure((double X, double Y)[] crest)
+    private static Geometry WaveFigure((double X, double Y)[] crest, double amplitudeDips, double waterlineY)
     {
         var figure = new PathFigure
         {
-            StartPoint = new global::Windows.Foundation.Point(crest[0].X, crest[0].Y),
+            StartPoint = new global::Windows.Foundation.Point(crest[0].X, waterlineY + crest[0].Y + amplitudeDips),
             IsClosed = true,
         };
         foreach (var point in crest)
         {
-            figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(point.X, point.Y) });
+            figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(point.X, waterlineY + point.Y + amplitudeDips) });
         }
         var last = crest[^1];
         var first = crest[0];
-        figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(last.X, last.Y + AquariumWaveSkirtDips) });
-        figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(first.X, first.Y + AquariumWaveSkirtDips) });
+        figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(last.X, waterlineY + last.Y + amplitudeDips + AquariumWaveSkirtDips) });
+        figure.Segments.Add(new LineSegment { Point = new global::Windows.Foundation.Point(first.X, waterlineY + first.Y + amplitudeDips + AquariumWaveSkirtDips) });
         var geometry = new PathGeometry();
         geometry.Figures.Add(figure);
         return geometry;
