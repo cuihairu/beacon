@@ -1502,7 +1502,9 @@ catch
 # —— 场景 AI：水族箱整行进度（AQUA-001，2026-11-15 用户令「整个一行都是进度条…做成水族箱」）——
 # progressStyle=aquarium：文字行下方通栏 12 DIP 水位带（水位=用量、双层正弦波活水）。硬断言链：
 # ① 三态（20/60/95% ↔ mock p20/p60/error 档）逐态：客户区 32px 行高不变（带叠行内底部，非撑高）
-#    + 带像素在场（≥120，Count-BarPixels bar 同口径）+ 全屏与 6x 带近景截图（acceptance-evidence 取证源）；
+#    + 带像素在场（≥120，Count-BarPixels bar 同口径）+ 水体色像素（≥120，fill 档位色逐态硬断言——
+#    底轨 (62,72,91) 冷色与档位色/绿相差远，water/wave 缺席 Collapsed 回归在此现形，43720846043 实证）
+#    + 全屏与 6x 带近景截图（acceptance-evidence 取证源）；
 # ② 活水校准：reduced 档双帧差分 ≥50（G7c 呼吸灯同阈值口径）=「帧差分测量本会话可证」；测不出=
 #    Composition 属性动画本 CI 会话不可证（G7c 同款裁决）→ 降级 warning 转装机目检，不拦红；
 # ③ off 档静止：双帧差分 ≤2——只在②可证时才硬断言（测量校准失败时 0 差分无从归因，防 vacuous 通过）。
@@ -1571,10 +1573,15 @@ try
     $aiBand = New-AquariumBandCrop $aiTile $aiBandPx
     Save-Zoom $aiBand "AI-aquarium-20-band.png" 6
     $aiPixels20 = Count-BarPixels $aiBand
+    $aiWater20 = Count-ColorPixels $aiBand 63 185 80 45 # 20% fill=正常档=组件 severity 色（success 绿 #3fb950）
     $aiBand.Dispose()
     if ($aiPixels20 -lt 120)
     {
         throw "断言失败（场景 AI）：aquarium 带仅 $aiPixels20 像素（期望 ≥120，底轨+水体 2px@20%）——水族箱带未渲染"
+    }
+    if ($aiWater20 -lt 120)
+    {
+        throw "断言失败（场景 AI）：20% 带水体色像素仅 $aiWater20（期望 ≥120，水体 2px+波峰绿）——水体缺席只剩底轨（run 43720846043 逐行采样实证的同款回归：water/wave 构建期 Collapsed 未翻开）"
     }
     Save-FullScreenshot "AI-aquarium-20-full.png"
     Write-Host "场景 AI 20% 态通过：带像素 $aiPixels20（AI-aquarium-20-band.png 6x 近景 + 全屏）"
@@ -1586,10 +1593,15 @@ try
     $aiBand60 = New-AquariumBandCrop $aiTile $aiBandPx
     Save-Zoom $aiBand60 "AI-aquarium-60-band.png" 6
     $aiPixels60 = Count-BarPixels $aiBand60
+    $aiWater60 = Count-ColorPixels $aiBand60 210 153 34 45 # 60% fill=warning #d29922（severity 60≥60 翻 Warning）
     $aiBand60.Dispose()
     if ($aiPixels60 -lt 120)
     {
         throw "断言失败（场景 AI）：aquarium 60% 带仅 $aiPixels60 像素——水族箱带退化"
+    }
+    if ($aiWater60 -lt 120)
+    {
+        throw "断言失败（场景 AI）：60% 带水体色像素仅 $aiWater60（期望 ≥120，水体 7px+波峰）——水体缺席只剩底轨（同 20% 缺席回归）"
     }
     $f1 = New-AquariumBandCrop $aiTile $aiBandPx
     Start-Sleep -Seconds 3
@@ -1618,10 +1630,15 @@ try
     $aiBand95 = New-AquariumBandCrop $aiTile $aiBandPx
     Save-Zoom $aiBand95 "AI-aquarium-95-band.png" 6
     $aiPixels95 = Count-BarPixels $aiBand95
+    $aiWater95 = Count-ColorPixels $aiBand95 210 153 34 45 # 95% fill=warning 档位色（ProgressTiers ≥0.8 <0.98 → Warning，非 severity 红）
     $aiBand95.Dispose()
     if ($aiPixels95 -lt 120)
     {
         throw "断言失败（场景 AI）：aquarium 95% 带仅 $aiPixels95 像素——水族箱带退化"
+    }
+    if ($aiWater95 -lt 120)
+    {
+        throw "断言失败（场景 AI）：95% 带水体色像素仅 $aiWater95（期望 ≥120，水位 11px 近满）——水体缺席只剩底轨（同 20% 缺席回归）"
     }
     Save-FullScreenshot "AI-aquarium-95-full.png"
     Write-Host "场景 AI 95% 态通过：带像素 $aiPixels95"
@@ -1647,10 +1664,15 @@ try
     $aiBandOff = New-AquariumBandCrop $aiTile $aiBandPx
     Save-Zoom $aiBandOff "AI-aquarium-off-band.png" 6
     $aiPixelsOff = Count-BarPixels $aiBandOff
+    $aiWaterOff = Count-ColorPixels $aiBandOff 210 153 34 45 # off 档 p60：水体照常在场只是静止
     $aiBandOff.Dispose()
     if ($aiPixelsOff -lt 120)
     {
         throw "断言失败（场景 AI off）：off 档带仅 $aiPixelsOff 像素——off 档是静止不是缺席，带必须照常渲染"
+    }
+    if ($aiWaterOff -lt 120)
+    {
+        throw "断言失败（场景 AI off）：off 档水体色像素仅 $aiWaterOff（期望 ≥120）——水体缺席（同 20% 缺席回归）"
     }
     $s1 = New-AquariumBandCrop $aiTile $aiBandPx
     Start-Sleep -Seconds 3
