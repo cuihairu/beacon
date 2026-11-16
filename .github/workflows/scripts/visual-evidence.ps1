@@ -1100,10 +1100,21 @@ function Get-AvgColor([int] $x, [int] $y, [int] $span)
 # 窗矩形四角与参照色的最大色距（岛态透明区应≈壁纸=小值；经典态四角=亚克力灰=大值）。
 # @( ) 内元素含二元运算必须显式括号：逗号优先级低于 +/-，「@($a.Left + 1, $b.Top + 1)」会把
 # 「1, $b.Top」先并成数组→「int + Object[]」炸 op_Addition（43789102976 实证，本地复现）。
-function Get-CornerMaxDistance([WinEnum+RECT] $rect, [int[]] $ref)
+function Get-CornerMaxDistance([IntPtr] $h, [int[]] $ref)
 {
+    # 采「弧外月牙」四点（客户区换屏幕坐标 + DIP×DPI）：窗矩形四角不可采——外框顶可负
+    # （贴顶窗 WINDOWEDGE 推到屏外，CopyFromScreen 采屏外恒黑）且轮廓顶缘横贯全宽、肩曲线
+    # 切向水平贴 y=0（客户区角点在多边形内=岛黑面）——run 43879288240 假 765 两案同根。
+    # 真弧外点：肩月牙 (4,5)/(w-5,5) DIP（y=5 处肩曲线 x≈15.9）；底角 (1,h-4)/(w-2,h-4) DIP
+    # （距底角圆心 (28,h-12) 28.2 > 半径 12 恒弧外）。region 生效=壁纸色（距≈0）、未生效=窗背板黑。
+    $rect = [WinEnum]::ClientScreenRectOf($h)
+    $scale = [WinEnum]::DpiScaleOf($h)
     $max = 0
-    foreach ($pt in @(@(($rect.Left + 1), ($rect.Top + 1)), @(($rect.Right - 3), ($rect.Top + 1)), @(($rect.Left + 1), ($rect.Bottom - 4)), @(($rect.Right - 3), ($rect.Bottom - 4))))
+    foreach ($pt in @(
+            @(($rect.Left + [int](4 * $scale)), ($rect.Top + [int](5 * $scale))),
+            @(($rect.Right - [int](5 * $scale)), ($rect.Top + [int](5 * $scale))),
+            @(($rect.Left + [int](1 * $scale)), ($rect.Bottom - [int](4 * $scale))),
+            @(($rect.Right - [int](2 * $scale)), ($rect.Bottom - [int](4 * $scale)))))
     {
         $c = Get-AvgColor $pt[0] $pt[1] 2
         $d = ([Math]::Abs($c[0] - $ref[0]) + [Math]::Abs($c[1] - $ref[1]) + [Math]::Abs($c[2] - $ref[2]))
@@ -6775,12 +6786,11 @@ try
     $refL5 = Get-AvgColor ($vs5.X + 10) ($vs5.Y + $vs5.Height - 80) 12
     $refR5 = Get-AvgColor ($vs5.X + $vs5.Width - 22) ($vs5.Y + $vs5.Height - 80) 12
     $wallpaper5 = @([int](($refL5[0] + $refR5[0]) / 2), [int](($refL5[1] + $refR5[1]) / 2), [int](($refL5[2] + $refR5[2]) / 2))
-    $rect5 = [WinEnum]::RectOf($islandHandles[0])
-    $islandDist = Get-CornerMaxDistance $rect5 $wallpaper5
+    $islandDist = Get-CornerMaxDistance $islandHandles[0] $wallpaper5
     Save-FullScreenshot "AH5-island-transparent.png"
     if ($islandDist -gt 24)
     {
-        throw "断言失败（场景 AH5a）：岛态窗四角与壁纸参照最大色距 $islandDist（期望 ≤24）——SystemBackdrop 未摘净，灰板仍在"
+        throw "断言失败（场景 AH5a）：岛态窗四角与壁纸参照最大色距 $islandDist（期望 ≤24）——弧外区露窗背板非壁纸（765 满值=黑板），SetWindowRgn 未裁出弧外区"
     }
     Write-Host "场景 AH5a 通过：岛态四角=壁纸（最大色距 $islandDist ≤24）——窗口级灰板已摘"
     Stop-Beacon
@@ -6794,7 +6804,7 @@ try
         Save-FullScreenshot "AH5-FAIL-no-classic.png"
         throw "断言失败（场景 AH5b 前置）：经典批胶囊窗未出现（showCapsule=true 未建窗？）"
     }
-    $classicDist = Get-CornerMaxDistance ([WinEnum]::RectOf($classicHandles[0])) $wallpaper5
+    $classicDist = Get-CornerMaxDistance $classicHandles[0] $wallpaper5
     Save-FullScreenshot "AH5-classic-backdrop.png"
     if ($classicDist -lt 40)
     {
@@ -6812,7 +6822,7 @@ try
         Save-FullScreenshot "AH5-FAIL-no-reisland.png"
         throw "断言失败（场景 AH5c 前置）：回切岛批岛窗未出现"
     }
-    $finalDist = Get-CornerMaxDistance ([WinEnum]::RectOf($finalHandles[0])) $wallpaper5
+    $finalDist = Get-CornerMaxDistance $finalHandles[0] $wallpaper5
     Save-FullScreenshot "AH5-reisland-transparent.png"
     if ($finalDist -gt 24)
     {
