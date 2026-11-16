@@ -242,6 +242,11 @@ public static class WinEnum
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     public static void SetForeground(IntPtr h) { SetForegroundWindow(h); }
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    // 点击前重钉 TOPMOST band（43850072289：SetWindowRgn 后岛窗被非置顶前台窗盖住，点击按 z 序落空）
+    public static void ForceTopmost(IntPtr h)
+    {
+        SetWindowPos(h, (IntPtr)(-1), 0, 0, 0, 0, 0x0001u | 0x0002u | 0x0010u); // HWND_TOPMOST|SWP_NOSIZE|SWP_NOMOVE|SWP_NOACTIVATE
+    }
     public static void MoveNoFocus(IntPtr h, int x, int y)
     {
         SetWindowPos(h, IntPtr.Zero, x, y, 0, 0, 0x0004u | 0x0001u | 0x0010u); // SWP_NOZORDER|SWP_NOSIZE|SWP_NOACTIVATE——移位不改叠层不抢焦点
@@ -6682,6 +6687,7 @@ try
         $face = Find-UiaById $islandRoot "island-face-bigmodel.usage:GLM" 8
         if (!$face) { $drillErr = "GLM 面不在树（第 $attempt 次）"; continue }
         [WinEnum]::ForceForeground($islandHandles[0]) # 岛本身置顶，防御性拉前台（点击必落最上层）
+        [WinEnum]::ForceTopmost($islandHandles[0]) # region 窗 band 兜底重钉（点击按 z 序命中，TOPMOST 必须在场）
         Start-Sleep -Milliseconds 400
         $point = Get-ClickPoint $face
         if (!$point) { $drillErr = "GLM 面取不到可点坐标（第 $attempt 次，BoundingRectangle NaN？）"; continue }
