@@ -118,19 +118,72 @@ public sealed partial class CapsuleWindow
 
     /// <summary>面宿主（点击路由锚）：Tag 挂 WidgetId（虚拟环/条 id 或真实 id），释放时命中测试
     /// 按 Tag 路由——整岛单击开板口径不变，真实组件面单击走 IslandWidgetActivated（ISLAND-D4）。
-    /// UIA：AutomationId 只挂在 Grid 上不进 UIA 树（记忆坑），补 SetName 造 peer 供取证锚定。</summary>
-    private static FrameworkElement FaceHost(IslandFace face, FrameworkElement view)
+    /// UIA：AutomationId 只挂在 Grid 上不进 UIA 树（记忆坑），补 SetName 造 peer 供取证锚定；
+    /// 容器换 FaceHostGrid（Grid 默认 peer 无 InvokePattern，读屏/取证无法直达组件下钻）。</summary>
+    private FrameworkElement FaceHost(IslandFace face, FrameworkElement view)
     {
-        var host = new Grid
+        var host = new FaceHostGrid
         {
             Tag = face.WidgetId,
             VerticalAlignment = VerticalAlignment.Center,
         };
+        host.FaceClicked += RouteFaceClick;
         host.Children.Add(view);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(host, $"island-face-{face.WidgetId}");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(host,
             face.Text.Length > 0 ? $"{face.WidgetId} {face.Text}" : face.WidgetId);
         return host;
+    }
+
+    /// <summary>Invoke 语义的 released 单击同款路由：命中真实组件面 → IslandWidgetActivated
+    /// （App 做看板定位/处置直达），虚拟环/条面 → 整岛开板。坐标版 RouteIslandClick 走
+    /// FaceIdAt 命中同批 Tag 锚，两条入口路由语义恒一致。</summary>
+    private void RouteFaceClick(FrameworkElement host)
+    {
+        if (host.Tag is string faceId
+            && faceId != Beacon.Core.Services.ComponentCenterCatalog.IslandRingId
+            && faceId != Beacon.Core.Services.ComponentCenterCatalog.IslandBarId)
+        {
+            IslandWidgetActivated?.Invoke(faceId);
+            return;
+        }
+        OpenPanelRequested?.Invoke();
+    }
+
+    /// <summary>面宿主容器：OnCreateAutomationPeer 换可 Invoke peer（Grid 默认 peer 无
+    /// InvokePattern）。Invoke 语义=released 单击同款路由（FaceClicked → RouteFaceClick）——
+    /// 读屏用户与取证脚本直达组件下钻，真实指针路径不动。</summary>
+    private sealed class FaceHostGrid : Grid
+    {
+        public event Action<FrameworkElement>? FaceClicked;
+
+        protected override Microsoft.UI.Xaml.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+        {
+            return new FaceInvokePeer(this);
+        }
+
+        private sealed class FaceInvokePeer : Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer,
+            global::Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider
+        {
+            public FaceInvokePeer(FrameworkElement owner) : base(owner)
+            {
+            }
+
+            protected override object GetPatternCore(Microsoft.UI.Xaml.Automation.Peers.PatternInterface patternInterface)
+            {
+                return patternInterface == Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke
+                    ? this
+                    : base.GetPatternCore(patternInterface);
+            }
+
+            public void Invoke()
+            {
+                if (Owner is FaceHostGrid host)
+                {
+                    host.FaceClicked?.Invoke(host);
+                }
+            }
+        }
     }
 
     /// <summary>释放点命中的岛面 WidgetId（Drag.OnPointerReleased 单击分支调用）：命中面宿主
