@@ -58,7 +58,7 @@ Severity colors apply to the tray dot, the capsule, and widget status lights. Wh
 | appearance.severityColors.offline | `#RRGGBB` | `#8b949e` | Connection offline color |
 | appearance.motion.mode | `full` / `reduced` / `off` | `reduced` | Motion tier: full / moderate / off. On off, every animation is still |
 | appearance.motion.intensity | number 0.5–2.0 | `1.0` | Scales motion duration and magnitude. Settings slider steps by 0.1 |
-| appearance.progressStyle | `"bar"` / `"pool"` | `"bar"` | How tiles show quota usage: **progress bar** (2026-10-11 redesign default: a 4 DIP rounded bar at the bottom + an NN% readout, ≥80% warning, ≥98% Error red) / **circular pool fill** (the legacy effect: water level = progress, full = Error red). Takes effect live, no restart needed |
+| appearance.progressStyle | `"bar"` / `"pool"` / `"aquarium"` | `"bar"` | How tiles show quota usage: **progress bar** (2026-10-11 redesign default: a 4 DIP rounded bar at the bottom + an NN% readout, ≥80% warning, ≥98% Error red) / **circular pool fill** (the legacy effect: water level = progress, full = Error red) / **fill tank** (AQUA-001: the whole tile is a horizontal tank filled left-to-right, the vertical water front advancing = usage, with a gentle live-wave front, static under motion off). Takes effect live, no restart needed |
 | appearance.density | `"regular"` / `"compact"` / `"spacious"` | `"regular"` | Component spacing density tier: Regular (identity) / Compact (spacing ×0.75) / Spacious (spacing ×1.25), rounded half away from zero. Surfaces pick the tier up when rebuilt (tiles and the panel on their next render, detail and quick panel on next open); unknown values fall back to Regular |
 
 Color changes take effect immediately (tray / capsule / L0 re-render with the new palette). Formats `#RRGGBB` and `#AARRGGBB` are accepted; invalid values report an error and are not saved. A widget can additionally override its own light via colorOverride in widgets.json.
@@ -213,7 +213,7 @@ Conventions: **the declaration layer only supplies data-extraction defaults** �
 | id | string | required | Unique widget instance name |
 | type | string | required | Widget type, e.g. `ark.usage` (see the widget-type column above; also `github.pull_requests` etc.) |
 | connectionId | string | `""` | The bound connection id |
-| config | object | `{}` | Type-specific fields, see the next section; common keys: `label` (tile display name), `icon` (override the brand glyph), `progressStyle` (`pool` = quota progress switches to the legacy circular-pool-fill effect; absent = follow the appearance setting's "额度显示方式") |
+| config | object | `{}` | Type-specific fields, see the next section; common keys: `label` (tile display name), `icon` (override the brand glyph), `progressStyle` (`pool` = legacy circular-pool fill / `aquarium` = horizontal fill tank; absent = follow the appearance setting's "额度显示方式") |
 | refreshTier | string | `default` | Refresh tier, see the tier table |
 | refreshIntervalSeconds | int | `null` | Detection-interval override (seconds). `null` = the refresh tier's period; settings options 30 s / 1 / 2 / 5 / 15 min / 1 hour |
 | pinned | bool | `false` | Whether pinned to the desktop (L0). The context menu, the settings page, and the quick panel all write this one field |

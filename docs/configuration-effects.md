@@ -49,11 +49,15 @@ unlocked, on another virtual desktop, or showing a screen saver.
 ![pinDisplayMode on (floating)](img/config-effects/pin-display-mode-on.png)
 ![pinDisplayMode transition](img/config-effects/pin-display-mode.gif)
 
-## appearance.progressStyle — bar vs pool
+## appearance.progressStyle — bar vs pool vs fill tank
 
 ![progressStyle off (pool)](img/config-effects/progress-style-off.png)
 ![progressStyle on (bar)](img/config-effects/progress-style-on.png)
 ![progressStyle transition](img/config-effects/progress-style.gif)
+
+**fill tank** (`aquarium`): the whole tile is a horizontal tank — water fills it left to right,
+the vertical water front advances with usage, and a gentle wave rides the front (static under
+motion off). Effect screenshots pending.
 
 ## appearance.motion.mode — off vs full
 

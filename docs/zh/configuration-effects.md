@@ -44,11 +44,14 @@ python tools/doc-gif/assemble.py <frames-dir> docs/img/config-effects
 ![pinDisplayMode 开（floating）](../img/config-effects/pin-display-mode-on.png)
 ![pinDisplayMode 切换](../img/config-effects/pin-display-mode.gif)
 
-## appearance.progressStyle —— 条形 / 圆环水位
+## appearance.progressStyle —— 条形 / 圆池 / 注水桶
 
 ![progressStyle 关（pool）](../img/config-effects/progress-style-off.png)
 ![progressStyle 开（bar）](../img/config-effects/progress-style-on.png)
 ![progressStyle 切换](../img/config-effects/progress-style.gif)
+
+**注水桶**（`aquarium`）：整个 tile = 横放的水桶——水从左往右灌满全高桶身，竖直水面推进=用量，
+前沿带轻微活水波纹（motion off 档静止）。效果图待补。
 
 ## appearance.motion.mode —— 静止 / full
 

@@ -81,14 +81,16 @@ internal sealed partial class SettingsWindow
 
         // 2026-10-10 用户令「设置里让用户自己选表现方式，比如一开始的进度条」：额度显示方式全局可选。
         // 2026-10-11 用户令重设计后 bar 为默认（4 DIP 圆角条 + NN% 读数），标签按用户易读序排列：
-        // 进度条（默认）在前，圆池注水（旧特效）在后；AQUA-001（2026-11-15 用户令「整个一行都是进度条…
-        // 做成水族箱」）第三档 aquarium 在后。保存走既有 SaveProgressStyle（SettingsApplied 已广播，即时重建）。
+        // 进度条（默认）在前，圆池注水（旧特效）在后；第三档 aquarium（2026-11-15 用户令「整个一行都
+        // 是进度条…做成水族箱」立档，2026-11-17 用户令横向改版「整个就是注水桶」——桶身=整个 tile，
+        // 水从左往右灌满，标签随之改注水桶）。保存走既有 SaveProgressStyle（SettingsApplied 已广播，即时重建）。
         _progressStyleBox = new ComboBox { Header = "额度显示方式", Width = 260 };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_progressStyleBox, "appearance-progress-style-box"); // UIA 取证：显示方式锚点（对齐 appearance-density-box 命名法）
         foreach (var (value, label) in new[]
         {
             ("bar", "进度条（默认：底部条 + 百分比读数）"),
             ("pool", "圆池注水（旧特效：水位=进度，满格变红）"),
-            ("aquarium", "水族箱（整行：活水波纹，水位=用量）"),
+            ("aquarium", "注水桶（整桶横灌：水面从左往右推进=用量）"),
         })
         {
             _progressStyleBox.Items.Add(new ComboBoxItem { Content = label, Tag = value });
