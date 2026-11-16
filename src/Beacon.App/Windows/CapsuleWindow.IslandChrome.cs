@@ -114,6 +114,7 @@ public sealed partial class CapsuleWindow
         {
             // 经典亚克力还原（重挂构造期单例，观感与修复前一致——经典形态逐字节不动红线）
             SystemBackdrop = _classicBackdrop;
+            RestoreWindowRegion(); // 经典=矩形窗：摘岛曲面裁剪 region（方案 B 配对操作）
             RootBorder.Background = _classicPillBackground;
             RootBorder.BorderBrush = _classicPillBorder;
             RootBorder.Padding = _classicPadding;
@@ -212,6 +213,7 @@ public sealed partial class CapsuleWindow
         // 展开态同样裁——预览长出后轮廓随窗高，描边仍只留内侧
         IslandSurface.Clip = new RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, width, height) };
         ApplyShadowGeometry(BuildOutlineGeometry(), BuildOutlineGeometry(), width, height);
+        ApplyIslandRegion(width, height); // 窗裁成曲面轮廓（方案 B）：弧外月牙出窗，壁纸直接可见
         IslandTrace($"outline {width}x{height} segs={outlineGeometry.Figures[0].Segments.Count} " +
             $"row={PillRow.ActualWidth}x{PillRow.ActualHeight} " +
             $"pill={PillArea.ActualWidth}x{PillArea.ActualHeight} " +
@@ -221,6 +223,123 @@ public sealed partial class CapsuleWindow
             $"align={PillRow.HorizontalAlignment} root={Root.ActualWidth}x{Root.ActualHeight}");
 
         static global::Windows.Foundation.Point ToPoint(IslandSurfaceOutline.Point p) => new(p.X, p.Y);
+    }
+
+    /// <summary>窗口 region 裁剪成岛曲面轮廓（岛灰板修复方案 B，2026-11-16）：方案 A（摘
+    /// SystemBackdrop）被 CI 像素实证否定——窗矩形内曲面外的月牙区露出的是 WinUI3 窗背板
+    /// （黑，白壁纸上色距 765=3×255 满值）而非壁纸，摘亚克力只是灰板换黑板。真镂空唯一路径=
+    /// OS 级裁剪：SetWindowRgn 把窗裁成轮廓多边形，弧外区域物理不在窗内，壁纸直接可见（与
+    /// 亚克力/背板无关）。坐标换算：轮廓 DIP→物理像素（GetDpiForWindow）+ 客户区原点在窗口
+    /// 坐标的偏移（ClientToScreen − GetWindowRect）。失败（句柄未就绪/region 构建失败）保持
+    /// 矩形窗=现状，不崩。展开态/换 DPI/切形态都走 UpdateSurfaceOutline 重设。</summary>
+    private void ApplyIslandRegion(double widthDips, double heightDips)
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+        try
+        {
+            var dpi = NativeMethods.GetDpiForWindow(_hwnd);
+            if (dpi <= 0)
+            {
+                dpi = 96;
+            }
+            var scale = dpi / 96.0;
+            var segs = IslandSurfaceOutline.Build(widthDips, heightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips);
+            if (segs.Count == 0)
+            {
+                return;
+            }
+            var origin = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out origin);
+            NativeMethods.GetWindowRect(_hwnd, out var window);
+            var offsetX = origin.X - window.Left;
+            var offsetY = origin.Y - window.Top;
+            var points = new List<NativeMethods.POINT>(segs.Count * FlattenStepsPerCubic);
+            foreach (var seg in segs)
+            {
+                switch (seg)
+                {
+                    case IslandSurfaceOutline.Move move:
+                        points.Add(RegionPoint(move.To, scale, offsetX, offsetY));
+                        break;
+                    case IslandSurfaceOutline.Line line:
+                        points.Add(RegionPoint(line.To, scale, offsetX, offsetY));
+                        break;
+                    case IslandSurfaceOutline.Cubic cubic:
+                        FlattenCubic(cubic, points, scale, offsetX, offsetY); // 起点取 points 末尾（前段终点）
+                        break;
+                }
+            }
+            if (points.Count < 3)
+            {
+                return;
+            }
+            var region = NativeMethods.CreatePolygonRgn(points.ToArray(), points.Count, 2 /* WINDING */);
+            if (region == IntPtr.Zero)
+            {
+                return;
+            }
+            if (NativeMethods.SetWindowRgn(_hwnd, region, true) == 0)
+            {
+                NativeMethods.DeleteObject(region); // 失败自持清理（成功后 region 归系统，不可再删）
+            }
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"ApplyIslandRegion FAILED\n{ex}");
+        }
+    }
+
+    /// <summary>三次贝塞尔折线展平（GDI region 只吃多边形）：起点=已有末点，每段 Cubic 采样
+    /// FlattenStepsPerCubic 步（曲线半径 7-12 DIP，24 步误差远小于 0.1 DIP，视觉连续）。</summary>
+    private const int FlattenStepsPerCubic = 24;
+
+    private static void FlattenCubic(IslandSurfaceOutline.Cubic cubic, List<NativeMethods.POINT> points, double scale, int offsetX, int offsetY)
+    {
+        if (points.Count == 0)
+        {
+            return;
+        }
+        var start = points[^1];
+        var startX = (start.X - offsetX) / scale;
+        var startY = (start.Y - offsetY) / scale;
+        for (var i = 1; i <= FlattenStepsPerCubic; i++)
+        {
+            var t = (double)i / FlattenStepsPerCubic;
+            var u = 1 - t;
+            var x = u * u * u * startX + 3 * u * u * t * cubic.C1.X + 3 * u * t * t * cubic.C2.X + t * t * t * cubic.To.X;
+            var y = u * u * u * startY + 3 * u * u * t * cubic.C1.Y + 3 * u * t * t * cubic.C2.Y + t * t * t * cubic.To.Y;
+            points.Add(RegionPoint(new IslandSurfaceOutline.Point(x, y), scale, offsetX, offsetY));
+        }
+    }
+
+    private static NativeMethods.POINT RegionPoint(IslandSurfaceOutline.Point dip, double scale, int offsetX, int offsetY)
+    {
+        return new NativeMethods.POINT
+        {
+            X = (int)Math.Round(dip.X * scale) + offsetX,
+            Y = (int)Math.Round(dip.Y * scale) + offsetY,
+        };
+    }
+
+    /// <summary>摘窗 region 还原矩形（经典切回）：SetWindowRgn(Zero)=无裁剪；句柄未就绪跳过
+    /// （经典态本就无 region）。</summary>
+    private void RestoreWindowRegion()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+        try
+        {
+            NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"RestoreWindowRegion FAILED\n{ex}");
+        }
     }
 
     /// <summary>岛软阴影（BrimDeck 技法的原生实现）：两层同轮廓剪影，逐层加粗描边模拟模糊半径、

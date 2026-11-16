@@ -342,6 +342,18 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool ClientToScreen(IntPtr hWnd, out POINT lpPoint);
 
+    // 窗口 region 裁剪（岛灰板修复方案 B）：OS 级把窗裁成曲面轮廓，弧外月牙物理不在窗内——壁纸
+    // 直接可见（WinUI3 窗矩形内真镂空的唯一路径：摘 backdrop 只换材质，黑/灰背板仍在窗矩形内，
+    // 43802230219 像素实证四角=黑背板非壁纸）。成功后 region 归系统管理（不可再 DeleteObject）。
+    [DllImport("user32.dll")]
+    public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreatePolygonRgn(POINT[] lpPoints, int nCount, int nPolyFillMode);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr hObject);
+
     [DllImport("user32.dll")]
     public static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }
