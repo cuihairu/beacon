@@ -1123,6 +1123,29 @@ function Get-CornerMaxDistance([IntPtr] $h, [int[]] $ref)
     return $max
 }
 
+# 岛态「弧外月牙透底」判据（CI 桌面特化版）：只采顶部肩月牙两点 (4,5)/(w-5,5) DIP——底部两角背后
+# 可能是 CI 桌面的宿主终端窗（深色非壁纸），与壁纸参照比会失真；参照改取窗外左右各 30px 的同高
+# 两点：与月牙背后是同一层背景，无论那层是壁纸还是窗都自洽。region 生效=月牙==同高参照（距≈0）、
+# 未生效=窗背板黑（距数百）。
+function Get-CrescentMaxDistance([IntPtr] $h)
+{
+    $rect = [WinEnum]::ClientScreenRectOf($h)
+    $scale = [WinEnum]::DpiScaleOf($h)
+    $max = 0
+    $detail = @()
+    foreach ($spec in @(
+            @(($rect.Left + [int](4 * $scale)), ($rect.Top + [int](5 * $scale)), ($rect.Left - 30)),
+            @(($rect.Right - [int](5 * $scale)), ($rect.Top + [int](5 * $scale)), ($rect.Right + 30))))
+    {
+        $c = Get-AvgColor $spec[0] $spec[1] 2
+        $r = Get-AvgColor $spec[2] $spec[1] 2
+        $d = ([Math]::Abs($c[0] - $r[0]) + [Math]::Abs($c[1] - $r[1]) + [Math]::Abs($c[2] - $r[2]))
+        Write-Host "月牙采样 ($($spec[0]),$($spec[1]))=$($c -join ',') vs 同高参照 ($($spec[2]),$($spec[1]))=$($r -join ',') 距$d"
+        if ($d -gt $max) { $max = $d }
+    }
+    return $max
+}
+
 function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow){
     $count = 0
     for ($y = 0; $y -lt $bmp.Height; $y++)
@@ -6768,11 +6791,10 @@ try
     }
     Stop-Beacon
     Write-Host "场景 AH3 通过：岛 GLM 面单击 → 看板开 + 智谱来源卡定位（组件级下钻链）"
-    # AH5 岛灰板修复取证（方案 A，2026-11-16 用户拍板：岛态摘 SystemBackdrop）——岛窗四角=曲面肩部
-    # （16px 弧）/底角（12px 圆）外的透明区：壁纸色=灰板已摘、亚克力灰=backdrop 泄漏；经典态四角
-    # 恒=亚克力灰（RootBorder 圆角外露窗底材质）=经典观感保持（经典逐字节不动红线）。壁纸参照在
-    # 岛批（窗顶部居中）先取：底部两角任务栏上方 80px（窗不在场）。重启链三轮切换（岛→经典→岛）
-    # 覆盖 backdrop 重挂/摘多轮；10 次运行时循环与亮/暗壁纸真机观感待装机亲验。
+    # AH5 岛灰板修复取证（方案 B，2026-11-16：SetWindowRgn 真镂空）——岛态肩月牙（16 DIP 肩弧外）
+    # 应透到背后层（与窗外同高参照比，CI 桌面有宿主终端窗占屏、底部背景非壁纸故只采顶部两点）；
+    # 经典态四角恒=亚克力灰（无 region，RootBorder 圆角外露窗底材质）=经典观感保持（逐字节不动红线）。
+    # 重启链三轮切换（岛→经典→岛）覆盖 region 摘/设多轮；10 次运行时循环与亮/暗壁纸真机观感待装机亲验。
     Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM"]'
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
     Start-Sleep -Seconds 15
@@ -6786,7 +6808,7 @@ try
     $refL5 = Get-AvgColor ($vs5.X + 10) ($vs5.Y + $vs5.Height - 80) 12
     $refR5 = Get-AvgColor ($vs5.X + $vs5.Width - 22) ($vs5.Y + $vs5.Height - 80) 12
     $wallpaper5 = @([int](($refL5[0] + $refR5[0]) / 2), [int](($refL5[1] + $refR5[1]) / 2), [int](($refL5[2] + $refR5[2]) / 2))
-    $islandDist = Get-CornerMaxDistance $islandHandles[0] $wallpaper5
+    $islandDist = Get-CrescentMaxDistance $islandHandles[0]
     Save-FullScreenshot "AH5-island-transparent.png"
     if ($islandDist -gt 24)
     {
@@ -6797,9 +6819,9 @@ try
             Copy-Item $trace (Join-Path $evidence "AH5-island-trace.txt") -Force
             Get-Content $trace -Tail 30 | ForEach-Object { Write-Host "trace: $_" }
         }
-        throw "断言失败（场景 AH5a）：岛态窗四角与壁纸参照最大色距 $islandDist（期望 ≤24）——弧外区露窗背板非壁纸（765 满值=黑板），SetWindowRgn 未裁出弧外区"
+        throw "断言失败（场景 AH5a）：岛态肩月牙与同高参照最大色距 $islandDist（期望 ≤24）——弧外区露窗背板非背后层（满值=黑板），SetWindowRgn 未裁出弧外区"
     }
-    Write-Host "场景 AH5a 通过：岛态四角=壁纸（最大色距 $islandDist ≤24）——窗口级灰板已摘"
+    Write-Host "场景 AH5a 通过：岛态肩月牙=背后层（最大色距 $islandDist ≤24）——region 真镂空成立"
     Stop-Beacon
     # AH5b 切经典：showCapsule=true 才建胶囊窗（EnsureCapsule 懒实例化口径），capsuleIsland=false
     Write-GConfig "" "off" 1.0 $false $true $false
@@ -6829,13 +6851,13 @@ try
         Save-FullScreenshot "AH5-FAIL-no-reisland.png"
         throw "断言失败（场景 AH5c 前置）：回切岛批岛窗未出现"
     }
-    $finalDist = Get-CornerMaxDistance $finalHandles[0] $wallpaper5
+    $finalDist = Get-CrescentMaxDistance $finalHandles[0]
     Save-FullScreenshot "AH5-reisland-transparent.png"
     if ($finalDist -gt 24)
     {
-        throw "断言失败（场景 AH5c）：回切岛态四角色距 $finalDist（期望 ≤24）——重挂后再摘仍有 backdrop 残留"
+        throw "断言失败（场景 AH5c）：回切岛态肩月牙与同高参照最大色距 $finalDist（期望 ≤24）——重挂后再摘仍有残留（满值=黑板，region 未重建）"
     }
-    Write-Host "场景 AH5 通过：岛↔经典↔岛三轮切换 backdrop 换入换出无泄漏（岛四角=壁纸、经典四角=亚克力、回切岛=壁纸）"
+    Write-Host "场景 AH5 通过：岛↔经典↔岛三轮切换无泄漏（岛月牙=背后层、经典四角=亚克力、回切岛=背后层）"
     Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除——ISLAND-D3/D4 与灰板修复 CI 视觉取证面"
 }
 catch
