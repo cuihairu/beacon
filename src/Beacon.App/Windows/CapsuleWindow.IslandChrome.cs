@@ -232,6 +232,11 @@ public sealed partial class CapsuleWindow
     /// 亚克力/背板无关）。坐标换算：轮廓 DIP→物理像素（GetDpiForWindow）+ 客户区原点在窗口
     /// 坐标的偏移（ClientToScreen − GetWindowRect）。失败（句柄未就绪/region 构建失败）保持
     /// 矩形窗=现状，不崩。展开态/换 DPI/切形态都走 UpdateSurfaceOutline 重设。</summary>
+    /// <summary>最近一次成功应用的 region 几何键（窗尺寸+chrome）：SetWindowRgn 会引发
+    /// AppWindow.Changed frame 回调，同键跳过防重建环；RestoreWindowRegion 清零（经典切回后
+    /// 同几何也要重设，region 已被摘）。</summary>
+    private (int WinW, int WinH, int ChromeW, int ChromeH) _lastRegionKey;
+
     private void ApplyIslandRegion()
     {
         if (_hwnd == IntPtr.Zero || _appWindow is null)
@@ -253,6 +258,11 @@ public sealed partial class CapsuleWindow
             // 窗矩形真相为准，收窄后 Region 跟 Resize 走。
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
+            var key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight);
+            if (key == _lastRegionKey)
+            {
+                return; // 同几何已应用（SetWindowRgn 自身触发的 frame 回调走这里，防环）
+            }
             var clientWidthDips = (windowSize.Width - chromeWidth) / scale;
             var clientHeightDips = (windowSize.Height - chromeHeight) / scale;
             var segs = IslandSurfaceOutline.Build(clientWidthDips, clientHeightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips);
@@ -300,6 +310,7 @@ public sealed partial class CapsuleWindow
                 return;
             }
             IslandTrace($"region ok points={points.Count} client={clientWidthDips:0.#}x{clientHeightDips:0.#} offset={offsetX},{offsetY}");
+            _lastRegionKey = key;
             EnsureTopmostBand();
         }
         catch (Exception ex)
@@ -351,6 +362,7 @@ public sealed partial class CapsuleWindow
         try
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            _lastRegionKey = default; // 同几何再切回岛也须重设（region 已被摘，去重键不能拦）
             EnsureTopmostBand();
         }
         catch (Exception ex)

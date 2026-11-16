@@ -134,6 +134,19 @@ public sealed partial class CapsuleWindow : Window
         }
         // 曲面轮廓按实际尺寸重绘（岛展开/切形态/换 DPI 都会改 RootBorder 尺寸；经典形态内部早退）
         RootBorder.SizeChanged += (_, _) => UpdateSurfaceOutline();
+        // 窗尺寸变化后重设岛 region：启动期 region 可能在带标题栏几何期构建，去标题栏/ApplySize
+        // 收窄后 stale（43879288240 AH5 批实证：窗顶 28px 被裁、只余底部轮廓顶缘条；AH3 批因 hover
+        // 展开触发布局重算偶然自愈）。SetWindowRgn 自身引发的回调按去重键跳过（IslandChrome）。
+        if (_appWindow is not null)
+        {
+            _appWindow.Changed += (_, e) =>
+            {
+                if (_island && e.DidSizeChange)
+                {
+                    UpdateSurfaceOutline();
+                }
+            };
+        }
         Closed += (_, _) =>
         {
             if (_foregroundHook != IntPtr.Zero)
@@ -208,6 +221,7 @@ public sealed partial class CapsuleWindow : Window
         SubclassForDpiChange();
         ApplySize(); // 按内容实测定尺寸（DIP×DPI 转物理像素，宽随内容=§6.2.2）
         RestorePosition();
+        UpdateSurfaceOutline(); // 框架样式/尺寸全部落定后再重建岛 region（启动期早于此构建的 region 带 stale chrome）
         _motion.SlideIn(RootBorder); // 入场滑入（full 档专属，其余档瞬时；2026-10-29 UI 升级）
         HookFullscreenAvoidance(); // 前台事件钩子：无边框全屏窗盖住岛所在屏时岛退场（USER-RPT-4 避让面）
         EvaluateFullscreenAvoidance(); // 启动即评估（进程可能在全屏应用已前台时才起）
