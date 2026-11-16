@@ -6790,6 +6790,13 @@ try
     Save-FullScreenshot "AH5-island-transparent.png"
     if ($islandDist -gt 24)
     {
+        # 失败即归档 island-trace（AH3 通过路径不落档，region 是否应用过只有 trace 能裁）
+        $trace = Join-Path $env:APPDATA "Beacon\logs\island-trace.txt"
+        if (Test-Path $trace)
+        {
+            Copy-Item $trace (Join-Path $evidence "AH5-island-trace.txt") -Force
+            Get-Content $trace -Tail 30 | ForEach-Object { Write-Host "trace: $_" }
+        }
         throw "断言失败（场景 AH5a）：岛态窗四角与壁纸参照最大色距 $islandDist（期望 ≤24）——弧外区露窗背板非壁纸（765 满值=黑板），SetWindowRgn 未裁出弧外区"
     }
     Write-Host "场景 AH5a 通过：岛态四角=壁纸（最大色距 $islandDist ≤24）——窗口级灰板已摘"

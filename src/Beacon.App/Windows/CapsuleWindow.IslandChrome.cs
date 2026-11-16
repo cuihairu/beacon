@@ -236,6 +236,7 @@ public sealed partial class CapsuleWindow
     {
         if (_hwnd == IntPtr.Zero || _appWindow is null)
         {
+            IslandTrace("region skipped hwnd/appWindow not ready");
             return;
         }
         try
@@ -257,6 +258,7 @@ public sealed partial class CapsuleWindow
             var segs = IslandSurfaceOutline.Build(clientWidthDips, clientHeightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips);
             if (segs.Count == 0)
             {
+                IslandTrace("region skipped empty outline");
                 return;
             }
             var origin = new NativeMethods.POINT { X = 0, Y = 0 };
@@ -282,18 +284,22 @@ public sealed partial class CapsuleWindow
             }
             if (points.Count < 3)
             {
+                IslandTrace($"region skipped thin polygon points={points.Count}");
                 return;
             }
             var region = NativeMethods.CreatePolygonRgn(points.ToArray(), points.Count, 2 /* WINDING */);
             if (region == IntPtr.Zero)
             {
+                IslandTrace("region skipped CreatePolygonRgn failed");
                 return;
             }
             if (NativeMethods.SetWindowRgn(_hwnd, region, true) == 0)
             {
+                IslandTrace($"region SetWindowRgn FAILED points={points.Count}");
                 NativeMethods.DeleteObject(region); // 失败自持清理（成功后 region 归系统，不可再删）
                 return;
             }
+            IslandTrace($"region ok points={points.Count} client={clientWidthDips:0.#}x{clientHeightDips:0.#} offset={offsetX},{offsetY}");
             EnsureTopmostBand();
         }
         catch (Exception ex)
