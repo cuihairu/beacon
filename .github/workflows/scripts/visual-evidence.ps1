@@ -1092,14 +1092,16 @@ function Get-AvgColor([int] $x, [int] $y, [int] $span)
     return @([int]($r / ($span * $span)), [int]($gg / ($span * $span)), [int]($b / ($span * $span)))
 }
 
-# 窗矩形四角与参照色的最大色距（岛态透明区应≈壁纸=小值；经典态四角=亚克力灰=大值）
+# 窗矩形四角与参照色的最大色距（岛态透明区应≈壁纸=小值；经典态四角=亚克力灰=大值）。
+# @( ) 内元素含二元运算必须显式括号：逗号优先级低于 +/-，「@($a.Left + 1, $b.Top + 1)」会把
+# 「1, $b.Top」先并成数组→「int + Object[]」炸 op_Addition（43789102976 实证，本地复现）。
 function Get-CornerMaxDistance([WinEnum+RECT] $rect, [int[]] $ref)
 {
     $max = 0
-    foreach ($pt in @(@($rect.Left + 1, $rect.Top + 1), @($rect.Right - 3, $rect.Top + 1), @($rect.Left + 1, $rect.Bottom - 4), @($rect.Right - 3, $rect.Bottom - 4)))
+    foreach ($pt in @(@(($rect.Left + 1), ($rect.Top + 1)), @(($rect.Right - 3), ($rect.Top + 1)), @(($rect.Left + 1), ($rect.Bottom - 4)), @(($rect.Right - 3), ($rect.Bottom - 4))))
     {
         $c = Get-AvgColor $pt[0] $pt[1] 2
-        $d = [Math]::Abs($c[0] - $ref[0]) + [Math]::Abs($c[1] - $ref[1]) + [Math]::Abs($c[2] - $ref[2])
+        $d = ([Math]::Abs($c[0] - $ref[0]) + [Math]::Abs($c[1] - $ref[1]) + [Math]::Abs($c[2] - $ref[2]))
         if ($d -gt $max) { $max = $d }
     }
     return $max
