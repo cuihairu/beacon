@@ -28,6 +28,8 @@
 #   场景 AH 岛展开态（悬停预览，BEACON_DEBUG_ISLAND_PREVIEW=1 程序触发取证钩子）+ 占位面（ISLAND-D3
 #     data_quality：未取数组件出空心灯点占位 chip，不造摘要）+ 组件级下钻（ISLAND-D4：坐标单击真实
 #     组件面 → 看板开 + chip-智谱 来源卡定位）；展开/收起窗高几何断言（ExpectedRowPx DPI 换算）。
+#     AH5 岛灰板修复（2026-11-16 方案 A：岛态摘 SystemBackdrop）：岛窗四角（曲面肩/底角圆外透明区）
+#     像素断言——岛态=壁纸色（灰板已摘）、经典态=亚克力灰（经典红线不变）、回切岛=壁纸（重挂摘无泄漏）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
 # UIA/System.Security 需 Windows PowerShell 5.1（pwsh 缺 UIA 程序集）——非 5.1 自动自重启。
 $ErrorActionPreference = "Stop"
@@ -1068,8 +1070,42 @@ function Save-Zoom([System.Drawing.Bitmap] $crop, [string] $name, [int] $zoom)
     Write-Host "近景截图已存：evidence/$name"
 }
 
-function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow)
+# AH5 岛灰板断言助手（屏上小区域均值色）：CopyFromScreen 取真实像素无压缩伪影。
+# 采样点贴窗角内缩 1px、span 2——100% DPI 下须全落在岛曲面外（底角 12px 圆、肩部 16px 弧的
+# 透明区，最坏采样点距底角圆心 13.4px > 12）：改 CapsuleIslandMath 半径须同步挪采样点。
+function Get-AvgColor([int] $x, [int] $y, [int] $span)
 {
+    $bmp = New-Object System.Drawing.Bitmap $span, $span
+    $g1 = [System.Drawing.Graphics]::FromImage($bmp)
+    $g1.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size $span, $span))
+    $g1.Dispose()
+    $r = 0; $gg = 0; $b = 0
+    for ($py = 0; $py -lt $span; $py++)
+    {
+        for ($px = 0; $px -lt $span; $px++)
+        {
+            $p = $bmp.GetPixel($px, $py)
+            $r += $p.R; $gg += $p.G; $b += $p.B
+        }
+    }
+    $bmp.Dispose()
+    return @([int]($r / ($span * $span)), [int]($gg / ($span * $span)), [int]($b / ($span * $span)))
+}
+
+# 窗矩形四角与参照色的最大色距（岛态透明区应≈壁纸=小值；经典态四角=亚克力灰=大值）
+function Get-CornerMaxDistance([WinEnum+RECT] $rect, [int[]] $ref)
+{
+    $max = 0
+    foreach ($pt in @(@($rect.Left + 1, $rect.Top + 1), @($rect.Right - 3, $rect.Top + 1), @($rect.Left + 1, $rect.Bottom - 4), @($rect.Right - 3, $rect.Bottom - 4)))
+    {
+        $c = Get-AvgColor $pt[0] $pt[1] 2
+        $d = [Math]::Abs($c[0] - $ref[0]) + [Math]::Abs($c[1] - $ref[1]) + [Math]::Abs($c[2] - $ref[2])
+        if ($d -gt $max) { $max = $d }
+    }
+    return $max
+}
+
+function Count-DarkPixels([System.Drawing.Bitmap] $bmp, [int] $luminanceBelow){
     $count = 0
     for ($y = 0; $y -lt $bmp.Height; $y++)
     {
@@ -6672,7 +6708,69 @@ try
     }
     Stop-Beacon
     Write-Host "场景 AH3 通过：岛 GLM 面单击 → 看板开 + 智谱来源卡定位（组件级下钻链）"
-    Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻——ISLAND-D3/D4 CI 视觉取证面"
+    # AH5 岛灰板修复取证（方案 A，2026-11-16 用户拍板：岛态摘 SystemBackdrop）——岛窗四角=曲面肩部
+    # （16px 弧）/底角（12px 圆）外的透明区：壁纸色=灰板已摘、亚克力灰=backdrop 泄漏；经典态四角
+    # 恒=亚克力灰（RootBorder 圆角外露窗底材质）=经典观感保持（经典逐字节不动红线）。壁纸参照在
+    # 岛批（窗顶部居中）先取：底部两角任务栏上方 80px（窗不在场）。重启链三轮切换（岛→经典→岛）
+    # 覆盖 backdrop 重挂/摘多轮；10 次运行时循环与亮/暗壁纸真机观感待装机亲验。
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $islandHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AH5-FAIL-no-island.png"
+        throw "断言失败（场景 AH5 前置）：岛批岛窗未出现"
+    }
+    $vs5 = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    $refL5 = Get-AvgColor ($vs5.X + 10) ($vs5.Y + $vs5.Height - 80) 12
+    $refR5 = Get-AvgColor ($vs5.X + $vs5.Width - 22) ($vs5.Y + $vs5.Height - 80) 12
+    $wallpaper5 = @([int](($refL5[0] + $refR5[0]) / 2), [int](($refL5[1] + $refR5[1]) / 2), [int](($refL5[2] + $refR5[2]) / 2))
+    $rect5 = [WinEnum]::RectOf($islandHandles[0])
+    $islandDist = Get-CornerMaxDistance $rect5 $wallpaper5
+    Save-FullScreenshot "AH5-island-transparent.png"
+    if ($islandDist -gt 24)
+    {
+        throw "断言失败（场景 AH5a）：岛态窗四角与壁纸参照最大色距 $islandDist（期望 ≤24）——SystemBackdrop 未摘净，灰板仍在"
+    }
+    Write-Host "场景 AH5a 通过：岛态四角=壁纸（最大色距 $islandDist ≤24）——窗口级灰板已摘"
+    Stop-Beacon
+    # AH5b 切经典：showCapsule=true 才建胶囊窗（EnsureCapsule 懒实例化口径），capsuleIsland=false
+    Write-GConfig "" "off" 1.0 $false $true $false
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $classicHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($classicHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AH5-FAIL-no-classic.png"
+        throw "断言失败（场景 AH5b 前置）：经典批胶囊窗未出现（showCapsule=true 未建窗？）"
+    }
+    $classicDist = Get-CornerMaxDistance ([WinEnum]::RectOf($classicHandles[0])) $wallpaper5
+    Save-FullScreenshot "AH5-classic-backdrop.png"
+    if ($classicDist -lt 40)
+    {
+        throw "断言失败（场景 AH5b）：经典态窗四角≈壁纸（色距 $classicDist 期望 ≥40）——经典亚克力丢失（经典观感逐字节不动红线）"
+    }
+    Write-Host "场景 AH5b 通过：经典态四角=亚克力（色距 $classicDist ≥40）——经典观感保持"
+    Stop-Beacon
+    # AH5c 切回岛：第二轮摘除后无残留（重挂→摘泄漏面）
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM"]'
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    Start-Sleep -Seconds 15
+    $finalHandles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($finalHandles.Count -lt 1)
+    {
+        Save-FullScreenshot "AH5-FAIL-no-reisland.png"
+        throw "断言失败（场景 AH5c 前置）：回切岛批岛窗未出现"
+    }
+    $finalDist = Get-CornerMaxDistance ([WinEnum]::RectOf($finalHandles[0])) $wallpaper5
+    Save-FullScreenshot "AH5-reisland-transparent.png"
+    if ($finalDist -gt 24)
+    {
+        throw "断言失败（场景 AH5c）：回切岛态四角色距 $finalDist（期望 ≤24）——重挂后再摘仍有 backdrop 残留"
+    }
+    Write-Host "场景 AH5 通过：岛↔经典↔岛三轮切换 backdrop 换入换出无泄漏（岛四角=壁纸、经典四角=亚克力、回切岛=壁纸）"
+    Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除——ISLAND-D3/D4 与灰板修复 CI 视觉取证面"
 }
 catch
 {
