@@ -292,7 +292,9 @@ public sealed partial class CapsuleWindow
             if (NativeMethods.SetWindowRgn(_hwnd, region, true) == 0)
             {
                 NativeMethods.DeleteObject(region); // 失败自持清理（成功后 region 归系统，不可再删）
+                return;
             }
+            EnsureTopmostBand();
         }
         catch (Exception ex)
         {
@@ -343,11 +345,26 @@ public sealed partial class CapsuleWindow
         try
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            EnsureTopmostBand();
         }
         catch (Exception ex)
         {
             IslandTrace($"RestoreWindowRegion FAILED\n{ex}");
         }
+    }
+
+    /// <summary>region 操作后重钉 TOPMOST band（43850072289 实证：SetWindowRgn 可能把窗带出
+    /// TOPMOST band——岛窗 IsWindowVisible=True 却被非置顶浏览器盖住，坐标点击按 z 序落浏览器，
+    /// 看板不开；同构造的 tile 未走 region 无此症）。回读 WS_EX_TOPMOST 位写 trace 供 CI 取证。</summary>
+    private void EnsureTopmostBand()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+        NativeMethods.SetWindowPos(_hwnd, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+            NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
+        IslandTrace($"topmost reasserted exStyle=0x{NativeMethods.GetWindowLongPtr(_hwnd, NativeMethods.GWL_EXSTYLE).ToInt64():X}");
     }
 
     /// <summary>岛软阴影（BrimDeck 技法的原生实现）：两层同轮廓剪影，逐层加粗描边模拟模糊半径、
