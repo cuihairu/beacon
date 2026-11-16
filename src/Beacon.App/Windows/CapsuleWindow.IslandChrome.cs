@@ -78,6 +78,10 @@ public sealed partial class CapsuleWindow
             // 底色交给曲面 Path（否则 Border 的矩形底会把肩部/底角的轮廓填平，岛退化成方块——
             // 真机实测：矩形底 + 同色曲面叠加后四边全直，肩部完全看不见）
             RootBorder.Background = null; // 无底色：曲面填充只由 IslandSurface 画（Background 可空，切回经典由快照还原）
+            // 窗口级亚克力摘除（岛灰板根因修复，2026-11-16 用户拍板方案 A）：DesktopAcrylic 是窗矩形
+            // 全幅材质、不随内容镂空，黑曲面外那圈窗内区域露出灰蒙底=「岛周围一层灰色底板」。岛态
+            // 收起/展开同窗恒摘；切回经典由 else 分支重挂 _classicBackdrop 单例。
+            SystemBackdrop = null;
             RootBorder.BorderBrush = new SolidColorBrush(ThemeColors.IslandHairline());
             // 药丸画法退场：曲面由 IslandSurface 单路径自绘（顶缘贴屏满宽 + 肩部 + 底角12），
             // 描边/圆角/内边距全从 Border 移走——Path 是 Border 的子元素，Border 若留圆角会把贴顶两角裁掉，
@@ -108,6 +112,8 @@ public sealed partial class CapsuleWindow
         }
         else
         {
+            // 经典亚克力还原（重挂构造期单例，观感与修复前一致——经典形态逐字节不动红线）
+            SystemBackdrop = _classicBackdrop;
             RootBorder.Background = _classicPillBackground;
             RootBorder.BorderBrush = _classicPillBorder;
             RootBorder.Padding = _classicPadding;

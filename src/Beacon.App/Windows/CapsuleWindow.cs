@@ -47,6 +47,7 @@ public sealed partial class CapsuleWindow : Window
     private IReadOnlyList<SourcePreviewRow> _previewRows = Array.Empty<SourcePreviewRow>();
     private bool _island; // 悬浮岛形态（§7 Phase 2，config.capsuleIsland）：顶中锚定 + 品牌标/徽标收起态
     private bool _chromeCaptured; // 经典形态的 XAML 视觉快照（首次切岛前抓，切回原样还原）
+    private Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop? _classicBackdrop; // 经典亚克力单例（岛态摘、切回重挂同例避免重建闪烁）
     private Brush _classicPillBackground = null!;
     private Brush _classicPillBorder = null!;
     private Thickness _classicPadding;
@@ -104,8 +105,11 @@ public sealed partial class CapsuleWindow : Window
     public CapsuleWindow(ShellStateStore shellState, Beacon.Storage.JsonConfigurationStore config)
     {
         InitializeComponent();
-        // RFC §6.2.2：亚克力/半透明背景（桌面悬浮物贴壁纸，Mica 会失去悬浮感，故用系统亚克力）
-        SystemBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
+        // RFC §6.2.2：亚克力/半透明背景（桌面悬浮物贴壁纸，Mica 会失去悬浮感，故用系统亚克力）。
+        // 实例存 _classicBackdrop 单例：岛态摘（岛=曲面 Path 自绘黑药丸，窗口级亚克力会在黑曲面外、
+        // 窗矩形内露一圈灰蒙底——用户实测「岛周围一层灰色底板」），切回经典重挂同例不重建。
+        _classicBackdrop = new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop();
+        SystemBackdrop = _classicBackdrop;
         _shellState = shellState;
         _config = config; // 岛进度组件勾选态实时读（ISLAND-RING-1：组件中心勾选 → 岛渲染面，Core 单源）
         _palette = new UiPalette(config); // B-706：聚合灯随 appearance.SeverityColors
