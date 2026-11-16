@@ -40,8 +40,9 @@ internal sealed class PinTile
 
     // —— 横灌注水桶（AQUA-001 横向改版，2026-11-17 用户令「我说的注水桶应该是横着的」「就是整个就是注水桶」）——
     // 整个 tile 本身=横放的水桶：水（档位配色）从左往右灌满全高桶身，水位前沿=竖直线（frontX=进度×桶宽），
-    // 前沿双层正弦波（Core AquariumWave 折线轴交换）composition 纵向漂移出活水感。波形幅度小（≤1.6 DIP）
-    // 频率慢（3.8s/5.4s 一漂移周期），motion off 档静止（B-707 纪律，Core WavesAnimate 门）。
+    // 前沿双层正弦波（Core AquariumWave 折线轴交换）composition 纵向漂移出活水感。波形幅度小（≤3 DIP，
+    // 桶高 1/10；也是 CI 列采样波峰可证下限）频率慢（3.8s/5.4s 一漂移周期），motion off 档静止
+    // （B-707 纪律，Core WavesAnimate 门）。
     private const double AquariumWaveSkirtDips = 4; // 波形裙边（没入水体侧，盖住与水体的接缝，trough 1.6 DIP 内无漏缝）
 
     /// <summary>tile 高（DIP）：max(尺寸档, 模板最小高)——带模板树时按模板防裁切放大

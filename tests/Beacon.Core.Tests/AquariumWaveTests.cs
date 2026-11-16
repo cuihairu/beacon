@@ -72,7 +72,9 @@ public sealed class AquariumWaveTests
     [Fact]
     public void Constants_SmallAmplitudeSlowPeriod_PerUserBrief() // 「幅度小、频率慢」的量化锚：改值必须自觉过这条
     {
-        Assert.True(AquariumWave.FrontAmplitudeDips <= 2.0); // 波峰不越过通栏一半高（12 DIP 带）
+        // 2026-11-17 横灌改版（前沿转竖直）重定标：桶高 32 DIP，振幅 ≤ 1/10 桶高仍是「小幅」；
+        // 且 ≥3 是 CI 列采样的波峰在场硬断言下限（1px 分辨率下领先幅 <3 DIP 无全色像素可断）
+        Assert.True(AquariumWave.FrontAmplitudeDips <= 3.0);
         Assert.True(AquariumWave.FrontPeriodDips >= 30);     // 慢波：周期长，肉眼是缓动不是抖动
         Assert.NotEqual(AquariumWave.FrontPeriodDips, AquariumWave.BackPeriodDips); // 异周期出视差
     }

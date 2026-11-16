@@ -11,8 +11,10 @@ public static class AquariumWave
     /// <summary>前层波周期（DIP）：漂移一个周期即无缝循环。</summary>
     public const double FrontPeriodDips = 40;
 
-    /// <summary>前层波振幅（DIP）：小幅度慢频率，不抢眼（用户令「波纹动画幅度小、频率慢」）。</summary>
-    public const double FrontAmplitudeDips = 1.6;
+    /// <summary>前层波振幅（DIP）：小幅度慢频率，不抢眼（用户令「波纹动画幅度小、频率慢」）。
+    /// 2026-11-17 横灌改版（前沿转竖直）：下限=CI 列采样可证性——1px 物理分辨率下前沿领先幅
+    /// ≥3 DIP 才有全色像素（波峰在场硬断言依赖，防「差分 0 两义」降级洗白波层缺席回归）。</summary>
+    public const double FrontAmplitudeDips = 3.0;
 
     /// <summary>后层波周期（DIP）：与前层异周期，漂移速度差出视差。</summary>
     public const double BackPeriodDips = 34;
