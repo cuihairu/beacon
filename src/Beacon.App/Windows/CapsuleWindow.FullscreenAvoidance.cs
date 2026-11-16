@@ -110,6 +110,15 @@ public sealed partial class CapsuleWindow
             return false;
         }
 
+        // shell 桌面窗盖满屏且无标题栏，但不是全屏应用——岛本就画在桌面上方（前台翻回桌面时
+        // 误判会导致岛消失：CI 43822978060 岛窗被 Hide「GLM 面不在树」+ 真机点桌面岛隐没同根因）
+        var className = new System.Text.StringBuilder(64);
+        NativeMethods.GetClassNameW(foreground, className, 64);
+        if (className.ToString() is "Progman" or "WorkerW")
+        {
+            return false;
+        }
+
         var style = NativeMethods.GetWindowLongPtr(foreground, NativeMethods.GWL_STYLE).ToInt64();
         return (style & NativeMethods.WS_CAPTION) == 0;
     }
