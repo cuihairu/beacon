@@ -6706,6 +6706,20 @@ try
     if (!$drilled)
     {
         Save-FullScreenshot "AH-FAIL-drill.png"
+        # 窗口诊断：全部含 Beacon 标题的可见窗+矩形（43812011171「GLM 面不在树」配套取证——
+        # 分辨「岛窗被 stale region 钉死」还是「抓到残留旧窗」）；island-trace 同步入档
+        foreach ($h in [WinEnum]::VisibleHandlesByTitlePrefix("Beacon"))
+        {
+            $r = [WinEnum]::RectOf($h)
+            Write-Host "诊断：可见窗 hwnd=$($h) title=$([WinEnum]::TitleOf($h)) rect=$($r.Left),$($r.Top)-$($r.Right),$($r.Bottom)"
+        }
+        $trace = Join-Path $env:APPDATA "Beacon\logs\island-trace.txt"
+        if (Test-Path $trace)
+        {
+            Copy-Item $trace (Join-Path $evidence "AH3-island-trace.txt") -Force
+            Write-Host "诊断：island-trace 已入档 evidence/AH3-island-trace.txt（尾部 40 行）"
+            Get-Content $trace -Tail 40 | ForEach-Object { Write-Host "trace: $_" }
+        }
         throw "断言失败（场景 AH3）：岛组件面单击下钻三连失败：$drillErr"
     }
     Stop-Beacon
