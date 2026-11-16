@@ -6708,6 +6708,25 @@ try
         Save-FullScreenshot "AH-FAIL-drill.png"
         # 窗口诊断：全部含 Beacon 标题的可见窗+矩形（43812011171「GLM 面不在树」配套取证——
         # 分辨「岛窗被 stale region 钉死」还是「抓到残留旧窗」）；island-trace 同步入档
+        if ($islandHandles.Count -ge 1)
+        {
+            $vh = [WinEnum]::RectOf($islandHandles[0])
+            Write-Host "诊断：岛窗 hwnd=$($islandHandles[0]) visible=$([WinEnum]::Visible($islandHandles[0])) rect=$($vh.Left),$($vh.Top)-$($vh.Right),$($vh.Bottom)"
+            try
+            {
+                $diagRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles[0])
+                $diagAll = $diagRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+                Write-Host "诊断：岛 UIA 树元素数=$($diagAll.Count)"
+                $dn = 0
+                foreach ($del in $diagAll)
+                {
+                    if ($dn -ge 60) { Write-Host "诊断：（仅列前 60）"; break }
+                    Write-Host "诊断：树 el id='$($del.Current.AutomationId)' name='$($del.Current.Name)'"
+                    $dn++
+                }
+            }
+            catch { Write-Host "诊断：岛 UIA 树枚举失败：$($_.Exception.Message)" }
+        }
         foreach ($h in [WinEnum]::VisibleHandlesByTitlePrefix("Beacon"))
         {
             $r = [WinEnum]::RectOf($h)
