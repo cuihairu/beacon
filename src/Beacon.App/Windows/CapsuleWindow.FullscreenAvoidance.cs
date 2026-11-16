@@ -62,6 +62,11 @@ public sealed partial class CapsuleWindow
         }
 
         _ruleHidden = hide;
+        var fg = NativeMethods.GetForegroundWindow();
+        var fgTitle = new System.Text.StringBuilder(256);
+        NativeMethods.GetWindowTextW(fg, fgTitle, 256);
+        NativeMethods.GetWindowRect(fg, out var fgRect);
+        IslandTrace($"avoidance hide={hide} fg='{fgTitle}' fgRect={fgRect.Left},{fgRect.Top}-{fgRect.Right},{fgRect.Bottom}");
         if (!_showAllowed)
         {
             return; // 用户本就关着岛：只记状态，等 SetVisible(true) 时按 _ruleHidden 决定是否 Show
