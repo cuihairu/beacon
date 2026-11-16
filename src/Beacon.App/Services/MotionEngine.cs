@@ -54,10 +54,12 @@ internal sealed class MotionEngine
     /// <summary>装饰性循环动画放行门（水族箱波纹用）：motion 显式 off=静止（B-707 纪律），其余放行。</summary>
     public bool WavesAllowed => ProgressStyles.WavesAnimate(_config.App.Appearance.Motion.Mode);
 
-    /// <summary>水族箱波纹漂移（AQUA-001）：波形路径宽=通栏宽+travelDips（一个周期），匀速平移整周期即
+    /// <summary>水族箱波纹漂移（AQUA-001）：波形路径长=行程跨度+travelDips（一个周期），匀速平移整周期即
     /// 无缝循环。composition 线程驱动（不占 UI 线程帧预算），时长随 intensity（慢频率，用户令「不抢眼」），
-    /// off 档直接不启动（静止——Core WavesAnimate 门）。</summary>
-    public void StartRipple(UIElement element, double travelDips, bool rightward)
+    /// off 档直接不启动（静止——Core WavesAnimate 门）。horizontal 档平移 Offset.X（水面横漂，rightward
+    /// 定向）；vertical 档平移 Offset.Y（竖直前沿波沿前沿纵向流动，forward=向下）——2026-11-17 横灌改版
+    /// （用户令「整个就是注水桶」）后波层走竖直前沿。</summary>
+    public void StartRipple(UIElement element, double travelDips, bool forward, bool vertical = false)
     {
         if (!WavesAllowed || travelDips <= 0)
         {
@@ -68,11 +70,11 @@ internal sealed class MotionEngine
             var visual = ElementCompositionPreview.GetElementVisual(element);
             var compositor = visual.Compositor;
             var drift = compositor.CreateScalarKeyFrameAnimation();
-            drift.InsertKeyFrame(0.0f, (float)(rightward ? -travelDips : 0));
-            drift.InsertKeyFrame(1.0f, (float)(rightward ? 0 : -travelDips)); // 线性匀速（不插 easing）
+            drift.InsertKeyFrame(0.0f, (float)(forward ? -travelDips : 0));
+            drift.InsertKeyFrame(1.0f, (float)(forward ? 0 : -travelDips)); // 线性匀速（不插 easing）
             drift.IterationBehavior = AnimationIterationBehavior.Forever; // 常驻循环；收起态由 SuspendMotion 停
-            drift.Duration = TimeSpan.FromMilliseconds((rightward ? 5400 : 3800) * Intensity);
-            visual.StartAnimation("Offset.X", drift);
+            drift.Duration = TimeSpan.FromMilliseconds((forward ? 5400 : 3800) * Intensity);
+            visual.StartAnimation(vertical ? "Offset.Y" : "Offset.X", drift);
         }
         catch
         {
@@ -81,12 +83,12 @@ internal sealed class MotionEngine
     }
 
     /// <summary>停波纹漂移（收起态/切档/无进度）：Offset 归布局值（HorizontalAlignment=Left → 0），波形定格。</summary>
-    public void StopRipple(UIElement element)
+    public void StopRipple(UIElement element, bool vertical = false)
     {
         try
         {
             var visual = ElementCompositionPreview.GetElementVisual(element);
-            visual.StopAnimation("Offset.X");
+            visual.StopAnimation(vertical ? "Offset.Y" : "Offset.X");
         }
         catch
         {
