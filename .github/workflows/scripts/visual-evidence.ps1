@@ -6689,10 +6689,18 @@ try
         [WinEnum]::ForceForeground($islandHandles[0]) # 岛本身置顶，防御性拉前台（点击必落最上层）
         [WinEnum]::ForceTopmost($islandHandles[0]) # region 窗 band 兜底重钉（点击按 z 序命中，TOPMOST 必须在场）
         Start-Sleep -Milliseconds 400
-        $point = Get-ClickPoint $face
-        if (!$point) { $drillErr = "GLM 面取不到可点坐标（第 $attempt 次，BoundingRectangle NaN？）"; continue }
-        [WinEnum]::MoveMouse($point[0], $point[1]) # 先移入再点：命中测试按释放点跑，冷启动单击跳过进入事件偶发丢失
-        [WinEnum]::ClickAt($point[0], $point[1])
+        try
+        {
+            Invoke-Uia $face # peer InvokePattern = released 单击同款路由（IslandWidgetActivated），与坐标/z 序无关
+        }
+        catch
+        {
+            # Invoke 不可用（peer 未挂 InvokePattern 等）退坐标点击链：pressed→released 净位移<6 路由
+            $point = Get-ClickPoint $face
+            if (!$point) { $drillErr = "GLM 面取不到可点坐标（第 $attempt 次，BoundingRectangle NaN？）"; continue }
+            [WinEnum]::MoveMouse($point[0], $point[1]) # 先移入再点：命中测试按释放点跑，冷启动单击跳过进入事件偶发丢失
+            [WinEnum]::ClickAt($point[0], $point[1])
+        }
         $panelHandle = [IntPtr]::Zero
         $deadline = (Get-Date).AddSeconds(8)
         while ((Get-Date) -lt $deadline)
