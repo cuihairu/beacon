@@ -2,8 +2,10 @@
 #   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
 #     进度条像素硬断言（底部 4 DIP 条带，2026-10-11 重设计后 bar 为默认）+「NN%」UIA 文本硬断言
 #     （zhipu 连接指 mock /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据）。
-#   场景 AI 水族箱整行进度（AQUA-001 2026-11-15）：progressStyle=aquarium 通栏 12 DIP 水位带——
-#     三态（20/60/95% ↔ mock p20/p60/error）带像素在场（≥120 bar 同阈值）+ 逐态全屏/6x 近景截图；
+#   场景 AI 横灌注水桶（AQUA-001 2026-11-15 立、2026-11-17 横向改版）：progressStyle=aquarium 整个
+#     tile=横放水桶，水从左往右灌满全高桶身（水位前沿=竖直线 frontX=进度×桶宽）——
+#     三态（20/60/95% ↔ mock p20/p60/error）全高列采样：前沿后方水体 ≥30% 列面积 / 前方空区 ≤2% /
+#     前沿条波峰 ≥4px（振幅 3 DIP 全色下限）+ 逐态全屏/8x 近景截图；
 #     活水=reduced 档双帧差分 ≥50 校准（G7c 口径，CI 会话不可证则降级 warning 转装机目检）；
 #     off 档静止=双帧差分 ≤2（只在活水可证时拦红，防测量瞎掉的 vacuous 通过）。
 #   场景 B 数量悬浮窗关：桌面零残留窗——硬断言无可见 "Beacon Tile" / "Beacon Pinned"。
@@ -666,8 +668,9 @@ function Start-MockServer
         $bigmodelP0 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":0,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":0,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":0,"nextResetTime":0}]}}'
         $bigmodelP52 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":52,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":10,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         $bigmodelP100 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":100,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
-        # 水族箱三态档（场景 AI，AQUA-001）：p20=20%（低位档，水位 2px）/ p60=60%（中位档，水位 7px）；
-        # 95% 复用 error 档。形状同 38 健康链（主窗=最高窗，摘要「已用 NN%」打头），NN% 文本轮询可锚
+        # 注水桶三态档（场景 AI，AQUA-001 横向版）：p20=20%（前沿=20% 桶宽）/ p60=60%（中位档，
+        # 前沿=60% 桶宽）；95% 复用 error 档。形状同 38 健康链（主窗=最高窗，摘要「已用 NN%」打头），
+        # NN% 文本轮询可锚
         $bigmodelP20 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":20,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         $bigmodelP60 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":60,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":10,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         # 档位文件：内容 "error"=95% / "p0"=0% / "p52"=52% / "p100"=100% / "p20"=20% / "p60"=60%，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
@@ -1578,41 +1581,93 @@ catch
     Write-Host "::error::场景 A 断言失败：$($_.Exception.Message)"
 }
 
-# —— 场景 AI：水族箱整行进度（AQUA-001，2026-11-15 用户令「整个一行都是进度条…做成水族箱」）——
-# progressStyle=aquarium：文字行下方通栏 12 DIP 水位带（水位=用量、双层正弦波活水）。硬断言链：
-# ① 三态（20/60/95% ↔ mock p20/p60/error 档）逐态：客户区 32px 行高不变（带叠行内底部，非撑高）
-#    + 带像素在场（≥120，Count-BarPixels bar 同口径）+ 水体色像素（≥120，fill 档位色逐态硬断言——
-#    底轨 (62,72,91) 冷色与档位色/绿相差远，water/wave 缺席 Collapsed 回归在此现形，43720846043 实证）
-#    + 波峰透镜区像素（60%/off 档 ≥40，水位线上方 rows 2-5 只含底轨+波峰——负 Y 几何 Path 整件
-#    不渲染回归在此现形，43729489131 实证）
-#    + 全屏与 6x 带近景截图（acceptance-evidence 取证源）；
+# —— 场景 AI：横灌注水桶（AQUA-001 横向改版，2026-11-17 用户令「我说的注水桶应该是横着的」「就是整个就是注水桶」）——
+# progressStyle=aquarium：整个 tile=横放水桶，水（档位配色）从左往右灌满全高桶身，水位前沿=竖直线
+# （frontX=进度×桶宽，PinTile.ApplyAquariumGeometry 钳位口径）、前沿双层正弦波（振幅 3 DIP）
+# composition 纵向漂移。旧「12 DIP 底带」断言全废（带已不存在），改全高列采样硬断言链：
+# ① 三态（20/60/95% ↔ mock p20/p60/error 档）逐态：
+#    客户区 32px 高不变（桶不加高 tile）
+#    + 前沿后方 12 DIP 全高列水体色 ≥30% 列面积（水体缺席只剩桶壁回归在此现形，43720846043 同类）
+#    + 前沿前方 8 DIP 全高列水体色 ≤2%（前沿没推进=竖直水位线钉错位置/方向的横向化回归）
+#    + 前沿条 [front+2,+7) 波峰色 ≥4px（领先幅 3 DIP 才有全色像素——波层缺席硬断言，差分 0 两义
+#    降级不洗白缺席回归；43729489131 负 Y 几何 Path 整件不渲染同类）
+#    + 全屏截图 + 后方列/前沿条 8x 近景（acceptance-evidence 取证源）；
 # ② 活水校准：reduced 档双帧差分 ≥50（G7c 呼吸灯同阈值口径）=「帧差分测量本会话可证」；测不出=
 #    Composition 属性动画本 CI 会话不可证（G7c 同款裁决）→ 降级 warning 转装机目检，不拦红；
 # ③ off 档静止：双帧差分 ≤2——只在②可证时才硬断言（测量校准失败时 0 差分无从归因，防 vacuous 通过）。
 try
 {
-    function New-AquariumBandCrop([IntPtr] $hwnd, [int] $bandPx)
+    # 桶身相对 DIP 裁剪（横灌版）：xDip/widthDip 自客户区左缘起算（root 左 Padding=10 DIP，桶身占
+    # [10, 客户宽−10]），高=客户区全高——竖直前沿使「带」失去意义，断言全走全高列/桶身板采样
+    function New-AquariumCrop([IntPtr] $hwnd, [int] $xDip, [int] $widthDip)
     {
+        $s = [WinEnum]::DpiScaleOf($hwnd)
         $client = [WinEnum]::ClientScreenRectOf($hwnd)
-        $w = $client.Right - $client.Left
-        $xStart = [int]($w * 0.2)
-        $cropW = [int]($w * 0.6)
-        $crop = New-Object System.Drawing.Bitmap $cropW, $bandPx
+        $h = $client.Bottom - $client.Top
+        $x = [int][Math]::Round($xDip * $s)
+        $w = [Math]::Max(1, [int][Math]::Round($widthDip * $s))
+        $crop = New-Object System.Drawing.Bitmap $w, $h
         $g = [System.Drawing.Graphics]::FromImage($crop)
-        $g.CopyFromScreen($client.Left + $xStart, $client.Bottom - $bandPx, 0, 0, (New-Object System.Drawing.Size $cropW, $bandPx))
+        $g.CopyFromScreen($client.Left + $x, $client.Top, 0, 0, (New-Object System.Drawing.Size $w, $h))
         $g.Dispose()
         return $crop
     }
 
-    # 带裁图行切片（源分辨率；波峰透镜区断言用——水位线上方 rows 只含底轨+波峰，水体色即波峰）
-    function New-RowCrop([System.Drawing.Bitmap] $src, [int] $rowFrom, [int] $rowTo)
+    # 水位前沿物理像素位（镜像 PinTile.ApplyAquariumGeometry 钳位口径：桶宽 DIP=floor(客户宽/s−20)、
+    # fill=floor(桶宽×fraction)、前沿 DIP=10+fill）——±1px 镜像误差已折进各断言的列偏移余量
+    function Get-AquariumFrontPx([IntPtr] $hwnd, [double] $fraction)
     {
-        $h = $rowTo - $rowFrom
-        $crop = New-Object System.Drawing.Bitmap $src.Width, $h
-        $g = [System.Drawing.Graphics]::FromImage($crop)
-        $g.DrawImage($src, (New-Object System.Drawing.Rectangle 0, 0, $src.Width, $h), (New-Object System.Drawing.Rectangle 0, $rowFrom, $src.Width, $h), [System.Drawing.GraphicsUnit]::Pixel)
-        $g.Dispose()
-        return $crop
+        $s = [WinEnum]::DpiScaleOf($hwnd)
+        $client = [WinEnum]::ClientScreenRectOf($hwnd)
+        $tankDips = [Math]::Floor(($client.Right - $client.Left) / $s - 20)
+        $fillDips = [Math]::Floor($tankDips * $fraction)
+        return [int][Math]::Round((10 + $fillDips) * $s)
+    }
+
+    # 桶身整板裁剪（双帧差分用：桶身=全部活水动画面，旧 12 DIP 带裁剪已无意义）
+    function New-AquariumTankCrop([IntPtr] $hwnd)
+    {
+        $s = [WinEnum]::DpiScaleOf($hwnd)
+        $client = [WinEnum]::ClientScreenRectOf($hwnd)
+        $tankDips = [Math]::Floor(($client.Right - $client.Left) / $s - 20)
+        return New-AquariumCrop $hwnd 10 ([int]$tankDips)
+    }
+
+    # 三段列采样硬断言（后方水体/前方空区/前沿波峰）：stage 只进截图名与报错文案
+    function Assert-AquariumColumns([IntPtr] $hwnd, [double] $fraction, [int] $r, [int] $g, [int] $b, [string] $stage)
+    {
+        $front = Get-AquariumFrontPx $hwnd $fraction
+        # ① 前沿后方 12 DIP 全高列：水体色 ≥30% 列面积（文字/图标遮挡 ≤45% 列高，阈值余量 2x）
+        $behind = New-AquariumCrop $hwnd ($front - 12) 3
+        $behindWater = Count-ColorPixels $behind $r $g $b 45
+        $minWater = [int][Math]::Floor($behind.Width * $behind.Height * 0.30)
+        Save-Zoom $behind "AI-aquarium-$stage-behind.png" 8
+        $behind.Dispose()
+        if ($behindWater -lt $minWater)
+        {
+            throw "断言失败（场景 AI $stage）：前沿后方（front−12 DIP）全高列水体色像素 $behindWater（期望 ≥$minWater）——水体缺席只剩桶壁（run 43720846043 逐行采样实证的同款回归：water/wave 构建期 Collapsed 未翻开）"
+        }
+        # ② 前沿前方 8 DIP 全高列：水体色 ≤2% 列面积（水体矩形右缘=frontX、波峰领先幅 3 DIP 都够不到；
+        # 列内若被越过=水位线钉错位置/方向的横向化回归）。文字/读数非档位色不干扰
+        $ahead = New-AquariumCrop $hwnd ($front + 8) 3
+        $aheadWater = Count-ColorPixels $ahead $r $g $b 45
+        $maxWater = [Math]::Floor($ahead.Width * $ahead.Height * 0.02)
+        $ahead.Dispose()
+        if ($aheadWater -gt $maxWater)
+        {
+            throw "断言失败（场景 AI $stage）：前沿前方（front+8 DIP）全高列水体色像素 $aheadWater（期望 ≤$maxWater）——水漫过前沿（横灌方向/钳位回归，frontX 应=floor(桶宽×$fraction)）"
+        }
+        # ③ 前沿条 [front+2, front+7)：波峰领先幅 3 DIP 的全色像素带（镜像 ±1px 与水体矩形右缘
+        # ≤front+1 都够不到 +2 起）——波层缺席硬断言，静止档同样在场（off 是静止不是缺席）
+        $wave = New-AquariumCrop $hwnd ($front + 2) 5
+        $waveWater = Count-ColorPixels $wave $r $g $b 45
+        Save-Zoom $wave "AI-aquarium-$stage-front.png" 8
+        $wave.Dispose()
+        if ($waveWater -lt 4)
+        {
+            throw "断言失败（场景 AI $stage）：前沿条（front+2..+7 DIP）波峰色像素 $waveWater（期望 ≥4，振幅 3 DIP 领先沿全色下限）——波层缺席（负 Y/负 X 几何 Path 整件不渲染回归，43729489131 同款；双帧差分 0 两义，缺席由此条拦）"
+        }
+        Write-Host "场景 AI $stage 列采样：后方水体 $behindWater/$minWater+，前方空区 $aheadWater/$maxWater−，前沿波峰 $waveWater/4+（front=$front px）"
     }
 
     # 摘要「已用 NN%」打头（主窗=最高窗，mock 形状同 38 链）——轮询等模式档被下一个 ci tick 拾取
@@ -1661,50 +1716,18 @@ try
         throw "断言失败（场景 AI）：aquarium 档未见 GLM 悬浮框（标题 Beacon Tile）——样式档 tile 未建窗"
     }
     Assert-ClientHeight $aiTile (ExpectedRowPx $aiTile) "场景 AI"
-    $aiBandPx = ExpectedRowPx $aiTile 12
-    $aiBand = New-AquariumBandCrop $aiTile $aiBandPx
-    Save-Zoom $aiBand "AI-aquarium-20-band.png" 6
-    $aiPixels20 = Count-BarPixels $aiBand
-    $aiWater20 = Count-ColorPixels $aiBand 63 185 80 45 # 20% fill=正常档=组件 severity 色（success 绿 #3fb950）
-    $aiBand.Dispose()
-    if ($aiPixels20 -lt 120)
-    {
-        throw "断言失败（场景 AI）：aquarium 带仅 $aiPixels20 像素（期望 ≥120，底轨+水体 2px@20%）——水族箱带未渲染"
-    }
-    if ($aiWater20 -lt 120)
-    {
-        throw "断言失败（场景 AI）：20% 带水体色像素仅 $aiWater20（期望 ≥120，水体 2px+波峰绿）——水体缺席只剩底轨（run 43720846043 逐行采样实证的同款回归：water/wave 构建期 Collapsed 未翻开）"
-    }
+    Assert-AquariumColumns $aiTile 0.20 63 185 80 "20" # 20% fill=正常档=组件 severity 色（success 绿 #3fb950）
     Save-FullScreenshot "AI-aquarium-20-full.png"
-    Write-Host "场景 AI 20% 态通过：带像素 $aiPixels20（AI-aquarium-20-band.png 6x 近景 + 全屏）"
+    Write-Host "场景 AI 20% 态通过：前沿后方全高列=绿、前方空区、波峰在场（AI-aquarium-20-*-png 8x 近景 + 全屏）"
 
     # 60% 中位档 + 活水校准（双帧差分，G7c 呼吸灯口径）
     Set-Content -Path $aiModeFile -Value "p60" -Encoding ASCII
     Wait-GlmTilePercent "60" 60 "p60" | Out-Null
-    Start-Sleep -Seconds 2 # 水位推进/着色落定
-    $aiBand60 = New-AquariumBandCrop $aiTile $aiBandPx
-    Save-Zoom $aiBand60 "AI-aquarium-60-band.png" 6
-    $aiPixels60 = Count-BarPixels $aiBand60
-    $aiWater60 = Count-ColorPixels $aiBand60 210 153 34 45 # 60% fill=warning #d29922（severity 60≥60 翻 Warning）
-    $aiCrestBand = New-RowCrop $aiBand60 2 5 # 水位线 row5（水位 7px）；crest 顶 3.4——rows 2-5 只含底轨+波峰透镜区
-    $aiCrest60 = Count-ColorPixels $aiCrestBand 210 153 34 45
-    $aiCrestBand.Dispose()
-    $aiBand60.Dispose()
-    if ($aiPixels60 -lt 120)
-    {
-        throw "断言失败（场景 AI）：aquarium 60% 带仅 $aiPixels60 像素——水族箱带退化"
-    }
-    if ($aiWater60 -lt 120)
-    {
-        throw "断言失败（场景 AI）：60% 带水体色像素仅 $aiWater60（期望 ≥120，水体 7px+波峰）——水体缺席只剩底轨（同 20% 缺席回归）"
-    }
-    if ($aiCrest60 -lt 40)
-    {
-        throw "断言失败（场景 AI）：60% 带水位线上方（rows 2-5）波峰色像素仅 $aiCrest60（期望 ≥40）——波层缺席（负 Y 几何 Path 整件不渲染回归，43729489131 同款）"
-    }
-    $f1 = New-AquariumBandCrop $aiTile $aiBandPx
+    Start-Sleep -Seconds 2 # 前沿推进/着色落定
+    Assert-AquariumColumns $aiTile 0.60 210 153 34 "60" # 60% fill=warning #d29922（severity 60≥60 翻 Warning）
+    $f1 = New-AquariumTankCrop $aiTile
     Start-Sleep -Seconds 3
-    $f2 = New-AquariumBandCrop $aiTile $aiBandPx
+    $f2 = New-AquariumTankCrop $aiTile
     $aiMotionDiff = Count-FrameDiff $f1 $f2 12
     Save-Zoom $f1 "AI-motion-frame1.png" 6
     Save-Zoom $f2 "AI-motion-frame2.png" 6
@@ -1713,34 +1736,22 @@ try
     if ($aiMotionDiff -ge 50)
     {
         $aiMotionProvable = $true
-        Write-Host "场景 AI 活水断言通过：reduced 档双帧差分 $aiMotionDiff px（≥50，波纹漂移可见）"
+        Write-Host "场景 AI 活水断言通过：reduced 档双帧差分 $aiMotionDiff px（≥50，波纹纵向漂移可见）"
     }
     else
     {
-        Write-Host "::warning::场景 AI reduced 档双帧差分仅 $aiMotionDiff px——Composition 属性动画本 CI 会话不可证（G7c 呼吸灯同款裁决），活水观感转装机目检；off 档静止硬断言随之失效（测量校准失败）"
+        Write-Host "::warning::场景 AI reduced 档双帧差分仅 $aiMotionDiff px——Composition 属性动画本 CI 会话不可证（G7c 呼吸灯同款裁决），活水观感转装机目检；波层在场已由列采样硬断言，off 档静止硬断言随之失效（测量校准失败）"
     }
     Save-FullScreenshot "AI-aquarium-60-full.png"
-    Write-Host "场景 AI 60% 态通过：带像素 $aiPixels60"
+    Write-Host "场景 AI 60% 态通过：前沿=60% 桶宽（列采样）+ 波峰在场"
 
-    # 95% 高位档（复用 error 链，BarFillColor ≥98 才翻红——95% 仍是 error 档位色，观感见截图）
+    # 95% 高位档（复用 error 链，BarFillColor ≥98 才翻红——95% 仍是 warning 档位色，观感见截图）
     Set-Content -Path $aiModeFile -Value "error" -Encoding ASCII
     Wait-GlmTilePercent "95" 60 "p95" | Out-Null
     Start-Sleep -Seconds 2
-    $aiBand95 = New-AquariumBandCrop $aiTile $aiBandPx
-    Save-Zoom $aiBand95 "AI-aquarium-95-band.png" 6
-    $aiPixels95 = Count-BarPixels $aiBand95
-    $aiWater95 = Count-ColorPixels $aiBand95 210 153 34 45 # 95% fill=warning 档位色（ProgressTiers ≥0.8 <0.98 → Warning，非 severity 红）
-    $aiBand95.Dispose()
-    if ($aiPixels95 -lt 120)
-    {
-        throw "断言失败（场景 AI）：aquarium 95% 带仅 $aiPixels95 像素——水族箱带退化"
-    }
-    if ($aiWater95 -lt 120)
-    {
-        throw "断言失败（场景 AI）：95% 带水体色像素仅 $aiWater95（期望 ≥120，水位 11px 近满）——水体缺席只剩底轨（同 20% 缺席回归）"
-    }
+    Assert-AquariumColumns $aiTile 0.95 210 153 34 "95" # 95% fill=warning 档位色（ProgressTiers ≥0.8 <0.98 → Warning，非 severity 红）
     Save-FullScreenshot "AI-aquarium-95-full.png"
-    Write-Host "场景 AI 95% 态通过：带像素 $aiPixels95"
+    Write-Host "场景 AI 95% 态通过：前沿=95% 桶宽（列采样）+ 波峰在场"
 
     # off 档静止：重启（motion mode 构造期读档，同动效档口径），双帧差分 ≤2
     Set-Content -Path $aiModeFile -Value "p60" -Encoding ASCII
@@ -1760,29 +1771,10 @@ try
     Assert-ClientHeight $aiTile (ExpectedRowPx $aiTile) "场景 AI off"
     Wait-GlmTilePercent "60" 60 "off-p60" | Out-Null
     Start-Sleep -Seconds 3
-    $aiBandOff = New-AquariumBandCrop $aiTile $aiBandPx
-    Save-Zoom $aiBandOff "AI-aquarium-off-band.png" 6
-    $aiPixelsOff = Count-BarPixels $aiBandOff
-    $aiWaterOff = Count-ColorPixels $aiBandOff 210 153 34 45 # off 档 p60：水体照常在场只是静止
-    $aiCrestBandOff = New-RowCrop $aiBandOff 2 5 # off 档波纹静止≠缺席：波峰透镜区必须同样在场
-    $aiCrestOff = Count-ColorPixels $aiCrestBandOff 210 153 34 45
-    $aiCrestBandOff.Dispose()
-    $aiBandOff.Dispose()
-    if ($aiPixelsOff -lt 120)
-    {
-        throw "断言失败（场景 AI off）：off 档带仅 $aiPixelsOff 像素——off 档是静止不是缺席，带必须照常渲染"
-    }
-    if ($aiWaterOff -lt 120)
-    {
-        throw "断言失败（场景 AI off）：off 档水体色像素仅 $aiWaterOff（期望 ≥120）——水体缺席（同 20% 缺席回归）"
-    }
-    if ($aiCrestOff -lt 40)
-    {
-        throw "断言失败（场景 AI off）：off 档波峰色像素仅 $aiCrestOff（期望 ≥40）——波层缺席（off 是静止不是缺席）"
-    }
-    $s1 = New-AquariumBandCrop $aiTile $aiBandPx
+    Assert-AquariumColumns $aiTile 0.60 210 153 34 "off" # off 档 p60：桶身照常在场只是静止（波峰列同样必须在场）
+    $s1 = New-AquariumTankCrop $aiTile
     Start-Sleep -Seconds 3
-    $s2 = New-AquariumBandCrop $aiTile $aiBandPx
+    $s2 = New-AquariumTankCrop $aiTile
     $aiOffDiff = Count-FrameDiff $s1 $s2 12
     Save-Zoom $s1 "AI-off-frame1.png" 6
     Save-Zoom $s2 "AI-off-frame2.png" 6
@@ -1802,7 +1794,7 @@ try
     Save-FullScreenshot "AI-aquarium-off-full.png"
     Remove-Item $aiModeFile -Force -ErrorAction SilentlyContinue
     Stop-Beacon
-    Write-Host "场景 AI 通过：aquarium 三态（20/60/95%）带在场+逐态截图，活水/静止差分证据已存"
+    Write-Host "场景 AI 通过：横灌三态（20/60/95%）前沿列采样+波峰在场+逐态截图，活水/静止差分证据已存"
 }
 catch
 {
