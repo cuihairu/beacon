@@ -290,6 +290,10 @@
 - [ ] ISLAND-D4 [P1] 后续行为：点岛上某组件→展开看板并定位到该组件详情/配置（当前只有整岛点击开看板，无组件级下钻）；critical 数据组件点击直达对应处置入口（89ccaf0：RouteIslandClick 组件级下钻 + IslandWidgetActivated + QuickPanelWindow.RevealSource/OpenIslandTarget；同上 CI 42546551569 绿）；2026-11-13 界面审计改未勾：同 D1，无视觉取证待真机走查
 - 验收（用户可执行）：勾选 ≥2 个真实组件上岛 → 岛收起态截图显示真实数据（非恒 0 计数）→ 点组件跳对应详情；证据入 docs/acceptance-evidence/island-data/
 
+## 悬浮岛灰板修复（2026-11-16 用户令执行巡检单 beacon-island-backdrop-fix 2026-10-20，1 项 CI 已取证 / 待装机亲验不闭项）
+
+- [ ] ISLAND-BACKDROP-1 岛态窗矩形内曲面外月牙区露灰蒙底（用户实测「岛周围一层灰色底板」）：方案 A（c4007ce 岛态摘 SystemBackdrop）被 CI 像素证伪（四角 765=3×255 满值=黑背板非壁纸，WinUI3 窗背板露底）；方案 B=SetWindowRgn 真镂空（a404049 窗裁曲面轮廓 + 2349493 region 量窗矩形 + 44d78ec 框架落定后重建+几何去重键防 SetWindowRgn 自触成环）；判据 AH5 三段=岛顶部肩月牙 vs 窗外同高参照 ≤24 / 经典四角 ≥40 / 回切岛 ≤24（fbcad6f+41da77d 修两重采样假红：外框顶出屏+客户区角点在轮廓多边形内、CI 桌面宿主终端窗占屏致底部背景非壁纸）；nightly 43898913432 全绿（AH3 组件下钻 Invoke 首绿 + AH5 三段 + 发布步 success），像素复核月牙=壁纸白、岛内部=GLM 环绿非黑；副产修复三件=Progman/WorkerW 免避让（9acfd0b，前台翻桌面岛隐没真机缺陷同根因）/ TOPMOST band 重钉（3906815，SetWindowRgn 降 band 症）/ 岛面 InvokePattern（d40e2a9，读屏可达性+取证通道兼修）；证据 docs/acceptance-evidence/island-backdrop-fix/；亮暗壁纸观感/运行时 10 次循环切换/切换瞬态闪烁/DWM 阴影观感待装机亲验
+
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
 - [x] [M] DSL 动作 TTL 缓存感知配置变更（src/Beacon.App/Services/BeaconRuntime.cs:42-83）——连接列表变更不失效，注释与实际竞态面不符（96de3e3：JsonConfigurationStore 新增 ConnectionsVersion 代数（Upsert/Remove/ReplaceAll 递增、删不存在不增，Storage 测试 ConnectionsVersion_BumpsOnConnectionMutationsOnly）+ DslActions getter 版本不匹配即重算、代数未变才走 2s TTL，注释按实际双失效面重写；App 侧 getter 属 App 工程 Linux 不编译，CS 面人工核 + CI 编译门）
