@@ -213,7 +213,7 @@ public sealed partial class CapsuleWindow
         // 展开态同样裁——预览长出后轮廓随窗高，描边仍只留内侧
         IslandSurface.Clip = new RectangleGeometry { Rect = new global::Windows.Foundation.Rect(0, 0, width, height) };
         ApplyShadowGeometry(BuildOutlineGeometry(), BuildOutlineGeometry(), width, height);
-        ApplyIslandRegion(width, height); // 窗裁成曲面轮廓（方案 B）：弧外月牙出窗，壁纸直接可见
+        ApplyIslandRegion(); // 窗裁成曲面轮廓（方案 B）：弧外月牙出窗，壁纸直接可见
         IslandTrace($"outline {width}x{height} segs={outlineGeometry.Figures[0].Segments.Count} " +
             $"row={PillRow.ActualWidth}x{PillRow.ActualHeight} " +
             $"pill={PillArea.ActualWidth}x{PillArea.ActualHeight} " +
@@ -232,9 +232,9 @@ public sealed partial class CapsuleWindow
     /// 亚克力/背板无关）。坐标换算：轮廓 DIP→物理像素（GetDpiForWindow）+ 客户区原点在窗口
     /// 坐标的偏移（ClientToScreen − GetWindowRect）。失败（句柄未就绪/region 构建失败）保持
     /// 矩形窗=现状，不崩。展开态/换 DPI/切形态都走 UpdateSurfaceOutline 重设。</summary>
-    private void ApplyIslandRegion(double widthDips, double heightDips)
+    private void ApplyIslandRegion()
     {
-        if (_hwnd == IntPtr.Zero)
+        if (_hwnd == IntPtr.Zero || _appWindow is null)
         {
             return;
         }
@@ -246,7 +246,15 @@ public sealed partial class CapsuleWindow
                 dpi = 96;
             }
             var scale = dpi / 96.0;
-            var segs = IslandSurfaceOutline.Build(widthDips, heightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips);
+            // 轮廓尺寸量窗矩形（客户区物理像素→DIP），不取布局回调时的 ActualWidth/Height——
+            // 启动期窗默认近全屏，布局回调先把 region 钉在全屏轮廓、随后 Resize 收窄时序脱节
+            // （43812011171 实证：窗顶 28px 被 stale region 裁掉、GLM 面不在树），量窗=每拍都以
+            // 窗矩形真相为准，收窄后 Region 跟 Resize 走。
+            var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            var windowSize = _appWindow.Size;
+            var clientWidthDips = (windowSize.Width - chromeWidth) / scale;
+            var clientHeightDips = (windowSize.Height - chromeHeight) / scale;
+            var segs = IslandSurfaceOutline.Build(clientWidthDips, clientHeightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips);
             if (segs.Count == 0)
             {
                 return;
