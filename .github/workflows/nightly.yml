@@ -41,7 +41,10 @@ jobs:
     # SignPath 代码签名凭据：api-token 与 organization-id 走仓库 Secrets
     # （SIGNPATH_API_TOKEN / SIGNPATH_ORGANIZATION_ID，均已配置），绝不硬编码。
     # secrets 未配置时版本通道打印提示并跳过签名、发布未签名资产（run 不红）；
-    # 已配置时签名步真实执行，失败即红（fail closed，不静默发未签名正式版）。
+    # 已配置时签名步真实执行：提交失败自动重试 3 次（2026-11-17 v0.1.4 实证 SignPath
+    # 服务端瞬态拉取 GitHub artifact 失败，run 44093246773），三次皆败则降级发布
+    # -unsigned 后缀资产并在 release 说明注明——fail closed 管「不冒充已签」，
+    # 空 release 摆烂不在此列（用户拿得到可用二进制比资产挂零强）。
     # 政策见 README「Code signing policy」与 docs/store-submission.md。
     env:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -186,7 +189,7 @@ jobs:
       #   artifact-configuration-slug  可选参数，省略 = 用项目默认 Artifact Configuration
       #     （用户在控制台建 Portable Executable + deep signing 配置后，如需指定再回来填）
       # 用户侧待办（不由 CI 代做）：在 SignPath 控制台把 API token 所属用户加进
-      # signing policy「beacon」的 Submitters 列表；未做前版本 tag 构建会在签名步红（fail closed）。
+      # signing policy「beacon」的 Submitters 列表；未做前签名提交可能被拒 → 走 -unsigned 降级通道。
       - name: Upload unsigned assets for signing
         if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
         id: sign-upload
@@ -197,8 +200,14 @@ jobs:
             ${{ steps.ver.outputs.asset }}.zip
             ${{ steps.ver.outputs.asset }}-setup.exe
 
-      - name: Submit to SignPath
+      # 提交签名带 3 次重试：瞬态服务端失败（artifact 拉取查无/超时）不应毁掉整次发布。
+      # nick-fields/retry 包不了 uses: 动作 → 用 outcome 链式三步等价实现（每步 15min 上限）；
+      # 三次皆败由 Report signing status 判定 unsigned-fallback，发布步走降级通道。
+      - name: Submit to SignPath (attempt 1/3)
+        id: sign-submit
         if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' }}
+        continue-on-error: true
+        timeout-minutes: 15
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -211,13 +220,49 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: signed/
 
+      - name: Submit to SignPath (attempt 2/3)
+        id: sign-submit-2
+        if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' && steps.sign-submit.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: beacon
+          signing-policy-slug: beacon
+          github-artifact-id: ${{ steps.sign-upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/
+
+      - name: Submit to SignPath (attempt 3/3)
+        id: sign-submit-3
+        if: ${{ steps.ver.outputs.channel == 'release' && env.SIGNPATH_API_TOKEN != '' && steps.sign-submit-2.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: beacon
+          signing-policy-slug: beacon
+          github-artifact-id: ${{ steps.sign-upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed/
+
       - name: Report signing status
+        id: sign-report
         if: ${{ steps.ver.outputs.channel == 'release' }}
         shell: bash
         run: |
           if [[ -n "${SIGNPATH_API_TOKEN}" && -d signed && -n "$(ls -A signed 2>/dev/null)" ]]; then
+            echo "sign_state=signed" >> "$GITHUB_OUTPUT"
             echo "SignPath 签名完成：signed/ 内为签名后资产，发布将使用签名件"
+          elif [[ -n "${SIGNPATH_API_TOKEN}" ]]; then
+            echo "sign_state=unsigned-fallback" >> "$GITHUB_OUTPUT"
+            echo "::warning::SignPath 提交重试后仍未产出签名件——按降级通道发布未签名资产（资产名 -unsigned 后缀，release 说明注明）；签名政策见 README「Code signing policy」"
           else
+            echo "sign_state=unsigned-unconf" >> "$GITHUB_OUTPUT"
             echo "::notice::SignPath secrets 未配置（或签名被跳过）——本次发布未签名资产；签名政策见 README「Code signing policy」"
           fi
 
@@ -250,6 +295,7 @@ jobs:
           CHANNEL: ${{ steps.ver.outputs.channel }}
           VERSION: ${{ steps.ver.outputs.version }}
           ASSET: ${{ steps.ver.outputs.asset }}
+          SIGN_STATE: ${{ steps.sign-report.outputs.sign_state }}
         run: |
           set -euo pipefail
           ZIP="${ASSET}.zip"
@@ -264,15 +310,29 @@ jobs:
           # MSIX 仅版本 tag 通道产出；打包失败已降级 warning，按实际存在与否纳入资产
           MSIX_SRC=""
           [[ "$CHANNEL" == "release" && -f "$MSIX" ]] && MSIX_SRC="$MSIX"
+          # 降级通道（2026-11-17 v0.1.4 实证）：签名提交重试皆败 → 未签名件加 -unsigned
+          # 后缀发布 + release 说明注明，比空 release 强；secrets 未配置维持无后缀先例（v0.1.0）。
+          # fail closed 语义保持在「声明面」：后缀+说明如实标注，不冒充已签。
+          ZIP_PUB="$ZIP"
+          SETUP_PUB="$SETUP"
+          MSIX_PUB="$MSIX"
+          if [[ "$CHANNEL" == "release" && "$SIGN_STATE" == "unsigned-fallback" ]]; then
+            ZIP_PUB="${ASSET}-unsigned.zip"
+            SETUP_PUB="${ASSET}-setup-unsigned.exe"
+            MSIX_PUB="${ASSET}-unsigned.msix"
+            cp "$ZIP_SRC" "$ZIP_PUB"
+            cp "$SETUP_SRC" "$SETUP_PUB"
+            [[ -n "$MSIX_SRC" ]] && cp "$MSIX_SRC" "$MSIX_PUB"
+          fi
 
           if [[ -n "$MSIX_SRC" ]]; then
-            sha256sum "$ZIP_SRC" "$SETUP_SRC" "$MSIX_SRC" > SHA256SUMS
+            sha256sum "$ZIP_PUB" "$SETUP_PUB" "$MSIX_PUB" > SHA256SUMS
           else
-            sha256sum "$ZIP_SRC" "$SETUP_SRC" > SHA256SUMS
+            sha256sum "$ZIP_PUB" "$SETUP_PUB" > SHA256SUMS
           fi
           stamp="$(date -u '+%Y-%m-%d %H:%M UTC')"
-          sz="$(du -h "$ZIP_SRC" | cut -f1)"
-          szs="$(du -h "$SETUP_SRC" | cut -f1)"
+          sz="$(du -h "$ZIP_PUB" | cut -f1)"
+          szs="$(du -h "$SETUP_PUB" | cut -f1)"
 
           if [[ "$CHANNEL" == "release" ]]; then
             TAG="v${VERSION}"
@@ -280,12 +340,21 @@ jobs:
               gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
             fi
             if [[ -n "$MSIX_SRC" ]]; then
-              gh release upload "$TAG" "$ZIP_SRC" "$SETUP_SRC" "$MSIX_SRC" SHA256SUMS --clobber
+              gh release upload "$TAG" "$ZIP_PUB" "$SETUP_PUB" "$MSIX_PUB" SHA256SUMS --clobber
             else
-              gh release upload "$TAG" "$ZIP_SRC" "$SETUP_SRC" SHA256SUMS --clobber
+              gh release upload "$TAG" "$ZIP_PUB" "$SETUP_PUB" SHA256SUMS --clobber
             fi
-            if [[ -n "${SIGNPATH_API_TOKEN}" && -f "signed/$ZIP" ]]; then signed="已签名"; else signed="未签名"; fi
-            echo "版本发布：$TAG（说明文字不动，仅上传资产；签名=${signed}，MSIX=$([[ -n "$MSIX_SRC" ]] && echo 已含 || echo 未含)）"
+            # 降级发布时在 release 说明追加未签名声明（幂等：带标记不重复追加）
+            if [[ "$SIGN_STATE" == "unsigned-fallback" ]] && ! gh release view "$TAG" --json body -q '.body // ""' | grep -qF '[unsigned-fallback]'; then
+              body="$(gh release view "$TAG" --json body -q '.body // ""')"
+              note="[unsigned-fallback] 本次资产未签名：SignPath 提交（重试 3 次）失败，按降级通道发布未签名件，签名状态以资产名后缀为准。Unsigned build: SignPath submission failed after 3 attempts; assets published without signature."
+              printf '%s\n\n> %s\n' "$body" "$note" > release-body-append.md
+              gh release edit "$TAG" --notes-file release-body-append.md
+            fi
+            if [[ -f "signed/$ZIP" ]]; then signed="已签名"
+            elif [[ "$SIGN_STATE" == "unsigned-fallback" ]]; then signed="未签名（降级通道）"
+            else signed="未签名（secrets 未配置）"; fi
+            echo "版本发布：$TAG（说明文字除降级声明外不动，仅上传资产；签名=${signed}，MSIX=$([[ -n "$MSIX_SRC" ]] && echo 已含 || echo 未含)）"
           else
             TAG=nightly
             {
@@ -338,8 +407,8 @@ jobs:
               exit 1
             fi
           fi
-          ASSERT_ASSETS="$ZIP $SETUP SHA256SUMS"
-          [[ -n "$MSIX_SRC" ]] && ASSERT_ASSETS="$ASSERT_ASSETS $MSIX"
+          ASSERT_ASSETS="$ZIP_PUB $SETUP_PUB SHA256SUMS"
+          [[ -n "$MSIX_SRC" ]] && ASSERT_ASSETS="$ASSERT_ASSETS $MSIX_PUB"
           for f in $ASSERT_ASSETS; do
             ts="$(echo "$view" | jq -r --arg n "$f" '.assets[] | select(.name == $n) | .updatedAt')"
             if [[ -z "$ts" || "$ts" < "$started" ]]; then
