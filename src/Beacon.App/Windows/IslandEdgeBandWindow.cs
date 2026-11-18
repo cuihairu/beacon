@@ -60,8 +60,9 @@ internal sealed class IslandEdgeBandWindow : IDisposable
             hInstance = hInstance,
             lpszClassName = _classNamePtr,
         };
-        // 1407 = 类已注册（同进程重建窗）：类名唯一性由调用方单例保证，这里只防崩
-        if (NativeMethods.RegisterClassExW(ref windowClass) == 0 && Marshal.GetLastWin32Error() != 1407)
+        // 1410 = ERROR_CLASS_ALREADY_EXISTS（同进程已注册：类不 UnregisterClass 故常驻，关窗重建第二个实例即撞）
+        // 放行不抛；1407 是 CANNOT_FIND_WND_CLASS，误当「已注册」会把真失败吞成静默无端带
+        if (NativeMethods.RegisterClassExW(ref windowClass) == 0 && Marshal.GetLastWin32Error() != 1410)
         {
             throw new InvalidOperationException($"RegisterClassExW(band) failed: {Marshal.GetLastWin32Error()}");
         }
@@ -148,9 +149,12 @@ internal sealed class IslandEdgeBandWindow : IDisposable
             }
             // z 序：插到岛窗正上层（同在 TOPMOST band 时按此相对序）；环带全透明区不挡点击
             NativeMethods.SetWindowPos(_hwnd, islandHwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            CapsuleWindow.IslandTraceShared($"edge band ok bmp={bmpW}x{bmpH} dst={dst.X},{dst.Y} scale={scale:0.###} segs={segs.Count}");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // 静默退场（岛体 region 边缘永远保底），但留取证面：边带首判全靠这行判「没画」vs「画了没用」
+            CapsuleWindow.IslandTraceShared($"edge band update FAILED {ex.Message}");
             Hide();
         }
     }
