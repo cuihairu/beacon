@@ -32,6 +32,9 @@
 #     组件面 → 看板开 + chip-智谱 来源卡定位）；展开/收起窗高几何断言（ExpectedRowPx DPI 换算）。
 #     AH5 岛灰板修复（2026-11-16 方案 A：岛态摘 SystemBackdrop）：岛窗四角（曲面肩/底角圆外透明区）
 #     像素断言——岛态=壁纸色（灰板已摘）、经典态=亚克力灰（经典红线不变）、回切岛=壁纸（重挂摘无泄漏）。
+#     AH5d 岛边缘精度取证（2026-11-18 用户真机三瑕疵：透明底板/圆角不自然/强锯齿）：底角月牙 vs 同高
+#     参照（region 底部镂空门，硬断言）+ 底缘中点过渡带剖面 + 左肩弧锯齿楼梯度量（HRGN 基线 advisory，
+#     逐像素 alpha 修复后升硬门）+ 四角双边 4x 近景存档（Dynamic Island 并排对照差异清单素材）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
 # UIA/System.Security 需 Windows PowerShell 5.1（pwsh 缺 UIA 程序集）——非 5.1 自动自重启。
 $ErrorActionPreference = "Stop"
@@ -6850,7 +6853,106 @@ try
         throw "断言失败（场景 AH5c）：回切岛态肩月牙与同高参照最大色距 $finalDist（期望 ≤24）——重挂后再摘仍有残留（满值=黑板，region 未重建）"
     }
     Write-Host "场景 AH5 通过：岛↔经典↔岛三轮切换无泄漏（岛月牙=背后层、经典四角=亚克力、回切岛=背后层）"
-    Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除——ISLAND-D3/D4 与灰板修复 CI 视觉取证面"
+    # AH5d 岛边缘精度取证（2026-11-18 用户真机三瑕疵驱动：透明底板/圆角不自然/强锯齿，复用 AH5c 活岛窗）：
+    # ①底角月牙 vs 同高窗外参照（AH5a 只采顶部两点；用户真机「透明底板」残留面在底部/底层——CI 补底部
+    #   两角的 region 镂空门，同款背后层自洽口径壁纸/终端皆可，硬断言）；
+    # ②底缘中点过渡带剖面（黑面→窗外逐行采色，「非黑非底」像素数=边缘灰带宽度；HRGN 硬边 + 1px 发丝
+    #   内缘的基线，暂 advisory——逐像素 alpha 修复后升硬断言 ≤1px）；
+    # ③左肩弧锯齿楼梯度量（逐列首个非背景行=边缘轨迹，相邻列 Δy=折线量化台阶；HRGN 物理锯齿基线，
+    #   Dynamic Island 并排对照的量化口径，暂 advisory）；
+    # ④四角+双边中点 4x 近景存档（NearestNeighbor 真实像素无插值美化——并排对照差异清单素材）。
+    $islandH5d = $finalHandles[0]
+    $rect5d = [WinEnum]::ClientScreenRectOf($islandH5d)
+    $scale5d = [WinEnum]::DpiScaleOf($islandH5d)
+    $w5d = $rect5d.Right - $rect5d.Left
+    $midX5d = $rect5d.Left + [int]($w5d / 2)
+    $midY5d = $rect5d.Top + [int](($rect5d.Bottom - $rect5d.Top) / 2)
+    $bottomDist5d = 0
+    foreach ($spec in @(
+            @(($rect5d.Left + [int](1 * $scale5d)), ($rect5d.Bottom - [int](4 * $scale5d)), ($rect5d.Left - 30)),
+            @(($rect5d.Right - [int](2 * $scale5d)), ($rect5d.Bottom - [int](4 * $scale5d)), ($rect5d.Right + 30))))
+    {
+        $c5d = Get-AvgColor $spec[0] $spec[1] 2
+        $r5d = Get-AvgColor $spec[2] $spec[1] 2
+        $d5d = ([Math]::Abs($c5d[0] - $r5d[0]) + [Math]::Abs($c5d[1] - $r5d[1]) + [Math]::Abs($c5d[2] - $r5d[2]))
+        Write-Host "AH5d 底角采样 ($($spec[0]),$($spec[1]))=$($c5d -join ',') vs 同高参照 ($($spec[2]),$($spec[1]))=$($r5d -join ',') 距$d5d"
+        if ($d5d -gt $bottomDist5d) { $bottomDist5d = $d5d }
+    }
+    if ($bottomDist5d -gt 24)
+    {
+        throw "断言失败（场景 AH5d①）：岛底角月牙与同高参照最大色距 $bottomDist5d（期望 ≤24）——底部弧外露窗背板/残留层（用户真机「透明底板」CI 面），region 底部未镂空"
+    }
+    Write-Host "场景 AH5d① 通过：岛底角月牙=背后层（最大色距 $bottomDist5d ≤24）——region 底部镂空成立"
+    # ② 底缘过渡带剖面：x=底边中点列，从黑面到窗外逐行采色分类（surface/bg/GRAY）
+    $bgBot5d = Get-AvgColor ($rect5d.Left - 30) ($rect5d.Bottom + 3) 2
+    $trans5d = 0
+    $prof5d = @()
+    foreach ($dy in -4..3)
+    {
+        $c = Get-AvgColor $midX5d ($rect5d.Bottom - 1 + $dy) 1
+        $lum = [int](0.2126 * $c[0] + 0.7152 * $c[1] + 0.0722 * $c[2])
+        $bgd = ([Math]::Abs($c[0] - $bgBot5d[0]) + [Math]::Abs($c[1] - $bgBot5d[1]) + [Math]::Abs($c[2] - $bgBot5d[2]))
+        $kind = "surface"
+        if ($bgd -le 24) { $kind = "bg" }
+        elseif ($lum -ge 45) { $kind = "GRAY"; $trans5d++ }
+        $prof5d += ("y{0}={1}/{2}" -f $dy, ($c -join ','), $kind)
+    }
+    Write-Host "AH5d② 底缘剖面（x=中点）：$($prof5d -join ' ')；灰带=$trans5d px（HRGN 硬边+1px 发丝内缘基线，逐像素 alpha 修复后硬断言 ≤1）"
+    if ($trans5d -gt 2)
+    {
+        Write-Host "::warning::岛底缘过渡灰带 $trans5d px（>2）——真机可见灰边基线（AH5d② advisory，随修复升硬门）"
+    }
+    # ③ 左肩弧楼梯度量：肩弧区逐列首个非背景行=边缘轨迹，相邻列 Δy=量化台阶、去重层数=色阶
+    $bgTop5d = Get-AvgColor ($rect5d.Left - 30) ($rect5d.Top + [int](10 * $scale5d)) 2
+    $cropW5d = 34
+    $cropH5d = 28
+    $stair5d = New-Object System.Drawing.Bitmap $cropW5d, $cropH5d
+    $sg5d = [System.Drawing.Graphics]::FromImage($stair5d)
+    $sg5d.CopyFromScreen($rect5d.Left, $rect5d.Top, 0, 0, (New-Object System.Drawing.Size $cropW5d, $cropH5d))
+    $sg5d.Dispose()
+    $edgeY5d = @()
+    for ($cx = 0; $cx -lt $cropW5d; $cx++)
+    {
+        $fy = -1
+        for ($cy = 0; $cy -lt $cropH5d; $cy++)
+        {
+            $p = $stair5d.GetPixel($cx, $cy)
+            $bd = ([Math]::Abs($p.R - $bgTop5d[0]) + [Math]::Abs($p.G - $bgTop5d[1]) + [Math]::Abs($p.B - $bgTop5d[2]))
+            if ($bd -gt 24) { $fy = $cy; break }
+        }
+        $edgeY5d += $fy
+    }
+    $stairMax5d = 0
+    for ($cx = 1; $cx -lt $cropW5d; $cx++)
+    {
+        if (($edgeY5d[$cx] -ge 0) -and ($edgeY5d[($cx - 1)] -ge 0))
+        {
+            $d = [Math]::Abs($edgeY5d[$cx] - $edgeY5d[($cx - 1)])
+            if ($d -gt $stairMax5d) { $stairMax5d = $d }
+        }
+    }
+    $lvl5d = ($edgeY5d | Where-Object { $_ -ge 0 } | Select-Object -Unique).Count
+    Write-Host "AH5d③ 左肩楼梯：maxΔy=$stairMax5d px、边缘色阶层=$lvl5d（HRGN 24 步折线量化基线，对照 Dynamic Island 平滑边缘）"
+    $stair5d.Dispose()
+    # ④ 四角+双边中点 4x 近景（NearestNeighbor=真实像素；人评并排对照素材，不进断言）
+    function New-IslandRectCrop([int] $l, [int] $t, [int] $r, [int] $b)
+    {
+        $bmp = New-Object System.Drawing.Bitmap ($r - $l), ($b - $t)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($l, $t, 0, 0, (New-Object System.Drawing.Size ($r - $l), ($b - $t)))
+        $g.Dispose()
+        return $bmp
+    }
+    $tlTop5d = [Math]::Max(0, ($rect5d.Top - 6))
+    $trTop5d = [Math]::Max(0, ($rect5d.Top - 6))
+    Save-Zoom (New-IslandRectCrop ($rect5d.Left - 6) $tlTop5d ($rect5d.Left + 40) ($rect5d.Top + 34)) "AH5d-zoom-tl-shoulder.png" 4
+    Save-Zoom (New-IslandRectCrop ($rect5d.Right - 40) $trTop5d ($rect5d.Right + 6) ($rect5d.Top + 34)) "AH5d-zoom-tr-shoulder.png" 4
+    Save-Zoom (New-IslandRectCrop ($rect5d.Left - 6) ($rect5d.Bottom - 34) ($rect5d.Left + 40) ($rect5d.Bottom + 6)) "AH5d-zoom-bl-corner.png" 4
+    Save-Zoom (New-IslandRectCrop ($rect5d.Right - 40) ($rect5d.Bottom - 34) ($rect5d.Right + 6) ($rect5d.Bottom + 6)) "AH5d-zoom-br-corner.png" 4
+    Save-Zoom (New-IslandRectCrop ($midX5d - 20) ($rect5d.Bottom - 14) ($midX5d + 20) ($rect5d.Bottom + 6)) "AH5d-zoom-bottom-edge.png" 4
+    Save-Zoom (New-IslandRectCrop ($rect5d.Left - 6) ($midY5d - 16) ($rect5d.Left + 14) ($midY5d + 16)) "AH5d-zoom-left-edge.png" 4
+    Write-Host "场景 AH5d 通过：底角月牙=背后层 + 过渡带/楼梯基线已记 + 6 件 4x 近景存档——边缘精度修复（逐像素 alpha）的取证面就绪"
+    Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除/边缘精度——ISLAND-D3/D4、灰板修复与边缘精度 CI 视觉取证面"
 }
 catch
 {
