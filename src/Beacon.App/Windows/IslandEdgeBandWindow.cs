@@ -77,7 +77,8 @@ internal sealed class IslandEdgeBandWindow : IDisposable
     }
 
     /// <summary>沿轮廓重建环带位图并 ULW。clientRect=岛窗客户区屏幕矩形；scale=岛窗 DPI 标度；
-    /// segs=曲面轮廓段表（DIP）；islandHwnd 用于把本窗插到岛窗正上层（TOPMOST band 内相对序）。
+    /// segs=曲面轮廓段表（DIP）；islandHwnd 保留岛窗身份（z 序用 HWND_TOP=TOPMOST band 顶，
+    /// 岛窗重申 TOPMOST 后本窗经 Show 回场重钉仍在其上）。
     /// 位图左上角钉在客户区左上角外扩 <see cref="BandMarginPx"/> 处（贴屏幕顶时上方出屏部分由屏裁剪，
     /// 顶缘平齐刘海读法不受影响）。任何失败静默自隐藏（岛体 region 边缘照旧，spike 不扰主线）。</summary>
     public void Update(IntPtr islandHwnd, NativeMethods.RECT clientRect, double scale, IReadOnlyList<IslandSurfaceOutline.Seg> segs)
@@ -151,8 +152,10 @@ internal sealed class IslandEdgeBandWindow : IDisposable
                 ShowWindow(_hwnd, SW_SHOWNA);
                 _shown = true;
             }
-            // z 序：插到岛窗正上层（同在 TOPMOST band 时按此相对序）；环带全透明区不挡点击
-            NativeMethods.SetWindowPos(_hwnd, islandHwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            // z 序：HWND_TOP=TOPMOST band 顶（岛窗紧随其下）。环带必须盖在岛窗之上，内半环才盖得住
+            // region 硬切边——旧写法 SetWindowPos(本窗, islandHwnd)=插到岛窗之后（下层），内半环被
+            // 岛窗盖死，全环只剩 region 台阶缝漏出的外沿 AA（CI 实证全环仅 2px 露出）
+            NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             CapsuleWindow.IslandTraceShared($"edge band ok bmp={bmpW}x{bmpH} dst={dst.X},{dst.Y} scale={scale:0.###} segs={segs.Count}");
         }
         catch (Exception ex)
@@ -175,7 +178,8 @@ internal sealed class IslandEdgeBandWindow : IDisposable
             ShowWindow(_hwnd, SW_SHOWNA);
             _shown = true;
         }
-        NativeMethods.SetWindowPos(_hwnd, islandHwnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        // 回场重钉=同 Update 的 HWND_TOP 口径（岛窗 TOPMOST 重申后 band 仍在其上）
+        NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     public void Hide()
