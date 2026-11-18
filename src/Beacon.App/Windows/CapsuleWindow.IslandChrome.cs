@@ -241,6 +241,11 @@ public sealed partial class CapsuleWindow
     /// 硬切边。仅岛态存在，经典态隐藏；失败静默退场不扰岛体（IslandEdgeBandWindow）。</summary>
     private IslandEdgeBandWindow? _edgeBand;
 
+    /// <summary>上次边带同步的 DPI 标度与轮廓段表：纯移动重钉（SyncEdgeBandPosition）时几何未变，
+    /// 沿用缓存；首拍 region 前为空（Count=0 即跳过）。</summary>
+    private double _lastBandScale = 1.0;
+    private IReadOnlyList<IslandSurfaceOutline.Seg> _lastBandSegs = [];
+
     private void ApplyIslandRegion()
     {
         if (_hwnd == IntPtr.Zero || _appWindow is null)
@@ -343,11 +348,44 @@ public sealed partial class CapsuleWindow
         try
         {
             _edgeBand ??= new IslandEdgeBandWindow();
+            _lastBandScale = scale; // 纯移动重钉（SyncEdgeBandPosition）复用：region 去重键无位置，
+            _lastBandSegs = segs;   // 岛窗挪动不触发 ApplyIslandRegion，band 只能靠这里缓存的重钉
             _edgeBand.Update(_hwnd, clientRect, scale, segs);
         }
         catch (Exception ex)
         {
             IslandTrace($"edge band sync FAILED\n{ex}");
+        }
+    }
+
+    /// <summary>纯移动重钉边带（AppWindow.Changed DidPositionChange）：band 位图钉的是屏幕坐标
+    /// （dst=clientRect−外扩），region 是窗相对坐标会跟窗走、band 不会——44288775018 实证：启动期
+    /// 岛窗 (378,0)→(370,−31)→(378,0) 弹跳，末段回挪不触发 region 重算，band 停在旧位，环带底缘
+    /// 整段压岛体黑面（黑对黑隐形）只漏 2px AA 斑，②③ 指标零收敛。几何未变，轮廓段表/DPI 沿用
+    /// 上次缓存；band 未同步过（segs 空）则无事可做。Update 重画位图+ULW+回钉 HWND_TOP 一并完成。</summary>
+    private void SyncEdgeBandPosition()
+    {
+        if (_appWindow is null || _lastBandSegs.Count == 0)
+        {
+            return;
+        }
+        try
+        {
+            var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            var windowSize = _appWindow.Size;
+            var origin = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out origin);
+            SyncEdgeBand(_lastBandScale, new NativeMethods.RECT
+            {
+                Left = origin.X,
+                Top = origin.Y,
+                Right = origin.X + (windowSize.Width - chromeWidth),
+                Bottom = origin.Y + (windowSize.Height - chromeHeight),
+            }, _lastBandSegs);
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"edge band reposition FAILED\n{ex}");
         }
     }
 

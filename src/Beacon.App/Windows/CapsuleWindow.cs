@@ -145,6 +145,10 @@ public sealed partial class CapsuleWindow : Window
                 {
                     UpdateSurfaceOutline();
                 }
+                if (_island && e.DidPositionChange)
+                {
+                    SyncEdgeBandPosition(); // 纯移动不走 region 重算：band 钉屏幕坐标必须跟挪
+                }
             };
         }
         Closed += (_, _) =>
