@@ -33,8 +33,8 @@
 #     AH5 岛灰板修复（2026-11-16 方案 A：岛态摘 SystemBackdrop）：岛窗四角（曲面肩/底角圆外透明区）
 #     像素断言——岛态=壁纸色（灰板已摘）、经典态=亚克力灰（经典红线不变）、回切岛=壁纸（重挂摘无泄漏）。
 #     AH5d 岛边缘精度取证（2026-11-18 用户真机三瑕疵：透明底板/圆角不自然/强锯齿）：底角月牙 vs 同高
-#     参照（region 底部镂空门，硬断言）+ 底缘中点过渡带剖面 + 左肩弧锯齿楼梯度量（HRGN 基线 advisory，
-#     逐像素 alpha 修复后升硬门）+ 四角双边 4x 近景存档（Dynamic Island 并排对照差异清单素材）。
+#     参照（region 底部镂空门，硬断言）+ 底缘中点过渡带剖面 + 曲线边（左肩/双底角弧）逐行楼梯度量
+#     （HRGN 基线 advisory，逐像素 alpha 修复后升硬门）+ 四角双边 4x 近景存档（并排对照差异清单素材）。
 # 断言失败不中途断：先收齐全部证据（失败现场截图），末尾统一 throw = 红构建。
 # UIA/System.Security 需 Windows PowerShell 5.1（pwsh 缺 UIA 程序集）——非 5.1 自动自重启。
 $ErrorActionPreference = "Stop"
@@ -6858,8 +6858,8 @@ try
     #   两角的 region 镂空门，同款背后层自洽口径壁纸/终端皆可，硬断言）；
     # ②底缘中点过渡带剖面（黑面→窗外逐行采色，「非黑非底」像素数=边缘灰带宽度；HRGN 硬边 + 1px 发丝
     #   内缘的基线，暂 advisory——逐像素 alpha 修复后升硬断言 ≤1px）；
-    # ③左肩弧锯齿楼梯度量（逐列首个非背景行=边缘轨迹，相邻列 Δy=折线量化台阶；HRGN 物理锯齿基线，
-    #   Dynamic Island 并排对照的量化口径，暂 advisory）；
+    # ③曲线边锯齿楼梯度量（逐行首个 surface 列=曲线轨迹，相邻行 Δx=量化台阶；HRGN 物理锯齿基线，
+    #   并排对照的量化口径，暂 advisory）；
     # ④四角+双边中点 4x 近景存档（NearestNeighbor 真实像素无插值美化——并排对照差异清单素材）。
     $islandH5d = $finalHandles[0]
     $rect5d = [WinEnum]::ClientScreenRectOf($islandH5d)
@@ -6902,38 +6902,60 @@ try
     {
         Write-Host "::warning::岛底缘过渡灰带 $trans5d px（>2）——真机可见灰边基线（AH5d② advisory，随修复升硬门）"
     }
-    # ③ 左肩弧楼梯度量：肩弧区逐列首个非背景行=边缘轨迹，相邻列 Δy=量化台阶、去重层数=色阶
-    $bgTop5d = Get-AvgColor ($rect5d.Left - 30) ($rect5d.Top + [int](10 * $scale5d)) 2
-    $cropW5d = 34
-    $cropH5d = 28
-    $stair5d = New-Object System.Drawing.Bitmap $cropW5d, $cropH5d
-    $sg5d = [System.Drawing.Graphics]::FromImage($stair5d)
-    $sg5d.CopyFromScreen($rect5d.Left, $rect5d.Top, 0, 0, (New-Object System.Drawing.Size $cropW5d, $cropH5d))
-    $sg5d.Dispose()
-    $edgeY5d = @()
-    for ($cx = 0; $cx -lt $cropW5d; $cx++)
+    # ③ 曲线边楼梯度量（首版逐列扫首个非背景行作废：轮廓顶缘横贯全宽，全列恒命中 y0=顶缘本身）——
+    #   IslandSurfaceOutline 曲线只在肩（y 0..肩深7，轮廓从 x0 收到 x16）与底角（y h-12..h，弧从 x0
+    #   收到 x12），改逐行扫首个 surface 列=曲线轨迹（右角自右往左），相邻行 Δx=量化台阶、边界像素
+    #   去重层数=色阶；HRGN 物理锯齿基线，暂 advisory
+    $shoulderPx5d = [int][Math]::Ceiling(16 * $scale5d)
+    $depthPx5d = [int][Math]::Ceiling(7 * $scale5d)
+    $brPx5d = [int][Math]::Ceiling(12 * $scale5d)
+    function Trace-CurveStair([int] $zoneL, [int] $zoneT, [int] $zoneW, [int] $zoneH, [int] $dir, [string] $tag)
     {
-        $fy = -1
-        for ($cy = 0; $cy -lt $cropH5d; $cy++)
+        $bgX = if ($dir -gt 0) { $zoneL - 30 } else { $zoneL + $zoneW + 30 }
+        $bgRef = Get-AvgColor $bgX ($zoneT + [int]($zoneH / 2)) 2
+        $bmp = New-Object System.Drawing.Bitmap $zoneW, $zoneH
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($zoneL, $zoneT, 0, 0, (New-Object System.Drawing.Size $zoneW, $zoneH))
+        $g.Dispose()
+        $trace = @()
+        $colors = @()
+        for ($ry = 0; $ry -lt $zoneH; $ry++)
         {
-            $p = $stair5d.GetPixel($cx, $cy)
-            $bd = ([Math]::Abs($p.R - $bgTop5d[0]) + [Math]::Abs($p.G - $bgTop5d[1]) + [Math]::Abs($p.B - $bgTop5d[2]))
-            if ($bd -gt 24) { $fy = $cy; break }
+            $xs = @(0..($zoneW - 1))
+            if ($dir -lt 0) { [array]::Reverse($xs) }
+            $fx = -1
+            $fc = ""
+            foreach ($rx in $xs)
+            {
+                $p = $bmp.GetPixel($rx, $ry)
+                $bd = ([Math]::Abs($p.R - $bgRef[0]) + [Math]::Abs($p.G - $bgRef[1]) + [Math]::Abs($p.B - $bgRef[2]))
+                if ($bd -gt 24) { $fx = $rx; $fc = ("{0},{1},{2}" -f $p.R, $p.G, $p.B); break }
+            }
+            $trace += $fx
+            $colors += $fc
         }
-        $edgeY5d += $fy
+        $maxStep = 0
+        for ($ry = 1; $ry -lt $zoneH; $ry++)
+        {
+            if (($trace[$ry] -ge 0) -and ($trace[($ry - 1)] -ge 0))
+            {
+                $d = [Math]::Abs($trace[$ry] - $trace[($ry - 1)])
+                if ($d -gt $maxStep) { $maxStep = $d }
+            }
+        }
+        $lvl = ($colors | Where-Object { $_ -ne "" } | Select-Object -Unique).Count
+        Write-Host ("AH5d③ {0}: maxΔx={1}px 色阶={2} 轨迹={3}" -f $tag, $maxStep, $lvl, ($trace -join ','))
+        $bmp.Dispose()
+        return $maxStep
     }
-    $stairMax5d = 0
-    for ($cx = 1; $cx -lt $cropW5d; $cx++)
+    $stairShoulder5d = Trace-CurveStair $rect5d.Left $rect5d.Top ($shoulderPx5d + 6) ($depthPx5d + 2) 1 "左肩曲线"
+    $stairBl5d = Trace-CurveStair $rect5d.Left ($rect5d.Bottom - $brPx5d) ($brPx5d + 6) $brPx5d 1 "左底角弧"
+    $stairBr5d = Trace-CurveStair ($rect5d.Right - $brPx5d - 6) ($rect5d.Bottom - $brPx5d) ($brPx5d + 6) $brPx5d -1 "右底角弧"
+    $stairMax5d = [Math]::Max($stairShoulder5d, [Math]::Max($stairBl5d, $stairBr5d))
+    if ($stairMax5d -ge 3)
     {
-        if (($edgeY5d[$cx] -ge 0) -and ($edgeY5d[($cx - 1)] -ge 0))
-        {
-            $d = [Math]::Abs($edgeY5d[$cx] - $edgeY5d[($cx - 1)])
-            if ($d -gt $stairMax5d) { $stairMax5d = $d }
-        }
+        Write-Host "::warning::曲线边楼梯台阶 maxΔx=$stairMax5d px（≥3）——HRGN 量化锯齿超粗基线（AH5d③ advisory，随修复升硬门）"
     }
-    $lvl5d = ($edgeY5d | Where-Object { $_ -ge 0 } | Select-Object -Unique).Count
-    Write-Host "AH5d③ 左肩楼梯：maxΔy=$stairMax5d px、边缘色阶层=$lvl5d（HRGN 24 步折线量化基线，对照 Dynamic Island 平滑边缘）"
-    $stair5d.Dispose()
     # ④ 四角+双边中点 4x 近景（NearestNeighbor=真实像素；人评并排对照素材，不进断言）
     function New-IslandRectCrop([int] $l, [int] $t, [int] $r, [int] $b)
     {
