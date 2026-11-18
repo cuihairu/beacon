@@ -237,6 +237,10 @@ public sealed partial class CapsuleWindow
     /// 同几何也要重设，region 已被摘）。</summary>
     private (int WinW, int WinH, int ChromeW, int ChromeH) _lastRegionKey;
 
+    /// <summary>岛边缘 alpha 边带窗（spike/island-alpha-edge）：ULW 逐像素 alpha 环带盖住 region
+    /// 硬切边。仅岛态存在，经典态隐藏；失败静默退场不扰岛体（IslandEdgeBandWindow）。</summary>
+    private IslandEdgeBandWindow? _edgeBand;
+
     private void ApplyIslandRegion()
     {
         if (_hwnd == IntPtr.Zero || _appWindow is null)
@@ -312,6 +316,14 @@ public sealed partial class CapsuleWindow
             IslandTrace($"region ok points={points.Count} client={clientWidthDips:0.#}x{clientHeightDips:0.#} offset={offsetX},{offsetY}");
             _lastRegionKey = key;
             EnsureTopmostBand();
+            // spike：alpha 边带随 region 同步（同一轮廓段表，GDI+ 真 AA；先钉 TOPMOST band 再插带）
+            SyncEdgeBand(scale, new NativeMethods.RECT
+            {
+                Left = origin.X,
+                Top = origin.Y,
+                Right = origin.X + (windowSize.Width - chromeWidth),
+                Bottom = origin.Y + (windowSize.Height - chromeHeight),
+            }, segs);
         }
         catch (Exception ex)
         {
@@ -322,6 +334,22 @@ public sealed partial class CapsuleWindow
     /// <summary>三次贝塞尔折线展平（GDI region 只吃多边形）：起点=已有末点，每段 Cubic 采样
     /// FlattenStepsPerCubic 步（曲线半径 7-12 DIP，24 步误差远小于 0.1 DIP，视觉连续）。</summary>
     private const int FlattenStepsPerCubic = 24;
+
+    /// <summary>边缘 alpha 边带同步（spike/island-alpha-edge）：region 应用成功后按同一轮廓重建
+    /// ULW 环带并插到岛窗正上层。边带自身任何异常静默退场（IslandEdgeBandWindow 内部也自兜），
+    /// 岛体 region 边缘永远保底——spike 面不破主线。</summary>
+    private void SyncEdgeBand(double scale, NativeMethods.RECT clientRect, IReadOnlyList<IslandSurfaceOutline.Seg> segs)
+    {
+        try
+        {
+            _edgeBand ??= new IslandEdgeBandWindow();
+            _edgeBand.Update(_hwnd, clientRect, scale, segs);
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"edge band sync FAILED\n{ex}");
+        }
+    }
 
     private static void FlattenCubic(IslandSurfaceOutline.Cubic cubic, List<NativeMethods.POINT> points, double scale, int offsetX, int offsetY)
     {
@@ -362,6 +390,7 @@ public sealed partial class CapsuleWindow
         try
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            _edgeBand?.Hide(); // 经典态无边带（region 摘除同步）
             _lastRegionKey = default; // 同几何再切回岛也须重设（region 已被摘，去重键不能拦）
             EnsureTopmostBand();
         }

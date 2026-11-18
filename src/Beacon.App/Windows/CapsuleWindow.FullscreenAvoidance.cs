@@ -75,10 +75,12 @@ public sealed partial class CapsuleWindow
         if (hide)
         {
             _appWindow.Hide();
+            _edgeBand?.Hide(); // 边带随岛体避让退场（独立原生窗不跟窗隐藏）
         }
         else
         {
             _appWindow.Show();
+            _edgeBand?.Show(_hwnd); // 边带随岛体回场
         }
     }
 
