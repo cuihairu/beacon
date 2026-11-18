@@ -7003,6 +7003,18 @@ try
     Save-Zoom (New-IslandRectCrop ($rect5d.Right - 40) ($rect5d.Bottom - 34) ($rect5d.Right + 6) ($rect5d.Bottom + 6)) "AH5d-zoom-br-corner.png" 4
     Save-Zoom (New-IslandRectCrop ($midX5d - 20) ($rect5d.Bottom - 14) ($midX5d + 20) ($rect5d.Bottom + 6)) "AH5d-zoom-bottom-edge.png" 4
     Save-Zoom (New-IslandRectCrop ($rect5d.Left - 6) ($midY5d - 16) ($rect5d.Left + 14) ($midY5d + 16)) "AH5d-zoom-left-edge.png" 4
+    # ⑤ 边带取证面（spike/island-alpha-edge）：岛窗 trace 记 region/edge band 成败，但成功路径
+    #   不归档 island-trace（只 AH5a 失败路径落档）→ 这里把末尾若干行直接打进 CI 日志，
+    #   「边带没画」vs「画了没用」单轮可分。44252023123 边带零效应（② 剖面逐字未变）即缺此口。
+    $traceFile5d = Join-Path $env:APPDATA "Beacon\logs\island-trace.txt"
+    if (Test-Path $traceFile5d)
+    {
+        Get-Content $traceFile5d -Tail 12 -Encoding UTF8 | ForEach-Object { Write-Host "AH5d trace | $_" }
+    }
+    else
+    {
+        Write-Host "AH5d trace 缺失：$traceFile5d"
+    }
     Write-Host "场景 AH5d 通过：底角月牙=背后层 + 过渡带/楼梯基线已记 + 6 件 4x 近景存档——边缘精度修复（逐像素 alpha）的取证面就绪"
     Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除/边缘精度——ISLAND-D3/D4、灰板修复与边缘精度 CI 视觉取证面"
 }
