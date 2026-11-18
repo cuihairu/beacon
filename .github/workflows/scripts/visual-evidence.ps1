@@ -7015,6 +7015,23 @@ try
     {
         Write-Host "AH5d trace 缺失：$traceFile5d"
     }
+    # ⑥ 边带窗几何真相（spike/island-alpha-edge）：FindWindow 类名直查 band 原生窗，rect/可见性
+    #   与岛窗对表——band 钉屏幕坐标、跟挪靠 DidPositionChange 重钉（44288775018 实证：纯移动
+    #   不走 region 重算致 band 停旧位，环带底缘黑对黑隐形只漏 2px AA）。此处一锤定音「band 与
+    #   岛是否同位」。advisory 先行，spike 验收后随 ②③ 一起升硬门。
+    $bandHwnd5d = [WinEnum]::FindByClass("BeaconIslandEdgeBand")
+    if ($bandHwnd5d -ne [IntPtr]::Zero)
+    {
+        $bandRect5d = [WinEnum]::RectOf($bandHwnd5d)
+        $bandVis5d = [WinEnum]::Visible($bandHwnd5d)
+        $bandW5d = $bandRect5d.Right - $bandRect5d.Left
+        $bandH5d = $bandRect5d.Bottom - $bandRect5d.Top
+        Write-Host ("AH5d⑥ band rect={0},{1} {2}x{3} vis={4} exStyle=0x{5:X} | island rect={6},{7} {8}x{9}" -f $bandRect5d.Left, $bandRect5d.Top, $bandW5d, $bandH5d, $bandVis5d, [WinEnum]::ExStyleOf($bandHwnd5d), $rect5d.Left, $rect5d.Top, ($rect5d.Right - $rect5d.Left), ($rect5d.Bottom - $rect5d.Top))
+    }
+    else
+    {
+        Write-Host "AH5d⑥ band 窗未找到（BeaconIslandEdgeBand 类不在顶层窗=边带未建或已销毁）"
+    }
     Write-Host "场景 AH5d 通过：底角月牙=背后层 + 过渡带/楼梯基线已记 + 6 件 4x 近景存档——边缘精度修复（逐像素 alpha）的取证面就绪"
     Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除/边缘精度——ISLAND-D3/D4、灰板修复与边缘精度 CI 视觉取证面"
 }
