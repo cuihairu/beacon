@@ -6938,7 +6938,7 @@ try
         # 近黑种子行（暗墙纸+黑岛不可分）跳过=该行不出现在轨迹，不发垃圾值。
         $bmp = New-Object System.Drawing.Bitmap ($zoneW + 7), $zoneH
         $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.CopyFromScreen($zoneL - 3, $zoneT, 0, 0, (New-Object System.Drawing.Size ($zoneW + 7) $zoneH))
+        $g.CopyFromScreen($zoneL - 3, $zoneT, 0, 0, (New-Object System.Drawing.Size ($zoneW + 7), $zoneH))
         $g.Dispose()
         $trace = @()
         $colors = @()
