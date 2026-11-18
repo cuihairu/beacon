@@ -103,12 +103,16 @@ internal sealed class IslandEdgeBandWindow : IDisposable
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 using var path = BuildPath(segs, scale, BandMarginPx);
+                var bounds = path.GetBounds(); // 取证面：路径若退化（近零尺寸），环带没画先从这里看
+                CapsuleWindow.IslandTraceShared($"edge band path bounds={bounds.X:0.#},{bounds.Y:0.#} {bounds.Width:0.#}x{bounds.Height:0.#} step={scale:0.###}x{BandPenWidthPx:0.#}");
                 using var pen = new Pen(Color.FromArgb(255, 0, 0, 0), BandPenWidthPx);
                 pen.LineJoin = LineJoin.Round;
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
                 g.DrawPath(pen, path); // 只描环不填充：内部透明露出下层岛体
             }
+            var (inked, maxAlpha) = CountInk(bmp); // 取证面：DrawPath 后位图若近乎空，问题在绘制侧而非 ULW
+            CapsuleWindow.IslandTraceShared($"edge band ink count={inked} maxA={maxAlpha} of {bmpW * bmpH}");
             Premultiply(bmp); // ULW AC_SRC_ALPHA 要求预乘 alpha（GDI+ 位图是非预乘 BGRA）
 
             var dst = new NativeMethods.POINT { X = clientRect.Left - BandMarginPx, Y = clientRect.Top - BandMarginPx };
@@ -242,6 +246,42 @@ internal sealed class IslandEdgeBandWindow : IDisposable
 
     private static PointF Pt(IslandSurfaceOutline.Point p, double scale, int offsetPx)
         => new((float)(p.X * scale + offsetPx), (float)(p.Y * scale + offsetPx));
+
+    /// <summary>取证统计：alpha&gt;0 像素数与最大 alpha（LockBits 单趟）。</summary>
+    private static (int Inked, byte MaxAlpha) CountInk(Bitmap bmp)
+    {
+        var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
+        var data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var stride = data.Stride;
+            var bytes = new byte[Math.Abs(stride) * bmp.Height];
+            Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+            int inked = 0;
+            byte maxA = 0;
+            for (var y = 0; y < bmp.Height; y++)
+            {
+                var rowBase = y * stride;
+                for (var x = 0; x < bmp.Width; x++)
+                {
+                    var a = bytes[rowBase + x * 4 + 3];
+                    if (a > 0)
+                    {
+                        inked++;
+                        if (a > maxA)
+                        {
+                            maxA = a;
+                        }
+                    }
+                }
+            }
+            return (inked, maxA);
+        }
+        finally
+        {
+            bmp.UnlockBits(data);
+        }
+    }
 
     /// <summary>逐像素预乘 alpha（ULW AC_SRC_ALPHA 语义）：rgb×a/255；全不透明行短路。</summary>
     private static void Premultiply(Bitmap bmp)
