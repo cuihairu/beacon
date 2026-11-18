@@ -6903,9 +6903,10 @@ try
         Write-Host "::warning::岛底缘过渡灰带 $trans5d px（>2）——真机可见灰边基线（AH5d② advisory，随修复升硬门）"
     }
     # ③ 曲线边楼梯度量（首版逐列扫首个非背景行作废：轮廓顶缘横贯全宽，全列恒命中 y0=顶缘本身）——
-    #   IslandSurfaceOutline 曲线只在肩（y 0..肩深7，轮廓从 x0 收到 x16）与底角（y h-12..h，弧从 x0
-    #   收到 x12），改逐行扫首个 surface 列=曲线轨迹（右角自右往左），相邻行 Δx=量化台阶、边界像素
-    #   去重层数=色阶；HRGN 物理锯齿基线，暂 advisory
+    #   轮廓几何（44238805907 轨迹×近景像素取证互证）：顶缘满宽贴屏，肩曲线自顶缘两端向下内收
+    #   （x0→16，近水平出发故 row0 光栅化边界≈11），y≥肩深后直边 x16，底角弧自 x16 扫到 x28；
+    #   曲线只有肩（y 0..7）与底角（y h-12..h），逐行扫首个 surface 列=曲线轨迹（右角自右往左），
+    #   相邻行 Δx=量化台阶、边界像素去重层数=色阶；HRGN 物理锯齿基线，暂 advisory
     $shoulderPx5d = [int][Math]::Ceiling(16 * $scale5d)
     $depthPx5d = [int][Math]::Ceiling(7 * $scale5d)
     $brPx5d = [int][Math]::Ceiling(12 * $scale5d)
@@ -6948,9 +6949,11 @@ try
         $bmp.Dispose()
         return $maxStep
     }
+    # 底角区宽 = 肩收进 16 + 弧扫出 12 + 余量（首版 brPx+6 截掉弧外半段，轨迹尾部 -1=出裁非无边）
+    $cornerW5d = $shoulderPx5d + $brPx5d + 8
     $stairShoulder5d = Trace-CurveStair $rect5d.Left $rect5d.Top ($shoulderPx5d + 6) ($depthPx5d + 2) 1 "左肩曲线"
-    $stairBl5d = Trace-CurveStair $rect5d.Left ($rect5d.Bottom - $brPx5d) ($brPx5d + 6) $brPx5d 1 "左底角弧"
-    $stairBr5d = Trace-CurveStair ($rect5d.Right - $brPx5d - 6) ($rect5d.Bottom - $brPx5d) ($brPx5d + 6) $brPx5d -1 "右底角弧"
+    $stairBl5d = Trace-CurveStair $rect5d.Left ($rect5d.Bottom - $brPx5d) $cornerW5d $brPx5d 1 "左底角弧"
+    $stairBr5d = Trace-CurveStair ($rect5d.Right - $cornerW5d) ($rect5d.Bottom - $brPx5d) $cornerW5d $brPx5d -1 "右底角弧"
     $stairMax5d = [Math]::Max($stairShoulder5d, [Math]::Max($stairBl5d, $stairBr5d))
     if ($stairMax5d -ge 3)
     {
