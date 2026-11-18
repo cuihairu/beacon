@@ -6884,18 +6884,34 @@ try
     }
     Write-Host "场景 AH5d① 通过：岛底角月牙=背后层（最大色距 $bottomDist5d ≤24）——region 底部镂空成立"
     # ② 底缘过渡带剖面：x=底边中点列，从黑面到窗外逐行采色分类（surface/bg/GRAY）
-    $bgBot5d = Get-AvgColor ($rect5d.Left - 30) ($rect5d.Bottom + 3) 2
-    $trans5d = 0
-    $prof5d = @()
+    # 背景参照=剖面末行（dy=+3，region 裁剪保证已出窗）同列取样：44250272756 桌面有横向结构
+    # （浏览器顶缘 y≈27 起的 51,51,51 横带 + 右侧浮层面板），跨列取参照会把异色混进来误判灰带。
+    $rowsBot5d = New-Object System.Collections.Generic.List[object]
     foreach ($dy in -4..3)
     {
-        $c = Get-AvgColor $midX5d ($rect5d.Bottom - 1 + $dy) 1
+        # List 显式收每行三通道（PS 数组字面量在 += 下会展平，List 免疫）
+        $cBot5d = Get-AvgColor $midX5d ($rect5d.Bottom - 1 + $dy) 1
+        [void]$rowsBot5d.Add($cBot5d)
+    }
+    $bgBot5d = $rowsBot5d[$rowsBot5d.Count - 1]
+    $bgRefUsable5d = ($bgBot5d[0] + $bgBot5d[1] + $bgBot5d[2]) -ge 30
+    $trans5d = 0
+    $prof5d = @()
+    for ($ri = 0; $ri -lt $rowsBot5d.Count; $ri++)
+    {
+        $c = $rowsBot5d[$ri]
         $lum = [int](0.2126 * $c[0] + 0.7152 * $c[1] + 0.0722 * $c[2])
         $bgd = ([Math]::Abs($c[0] - $bgBot5d[0]) + [Math]::Abs($c[1] - $bgBot5d[1]) + [Math]::Abs($c[2] - $bgBot5d[2]))
+        # 判定序：近黑=surface 本体（含 18,18,18 发丝 AA 行，与背景无关）→ 贴参照=bg → 亮=GRAY 计数
+        # → 余=unk（参照不可用且非近黑，分类无意义，不计灰带防假红）
         $kind = "surface"
-        if ($bgd -le 24) { $kind = "bg" }
-        elseif ($lum -ge 45) { $kind = "GRAY"; $trans5d++ }
-        $prof5d += ("y{0}={1}/{2}" -f $dy, ($c -join ','), $kind)
+        if (($c[0] + $c[1] + $c[2]) -ge 120)
+        {
+            if (($bgd -le 24) -and $bgRefUsable5d) { $kind = "bg" }
+            elseif ($lum -ge 45) { $kind = "GRAY"; $trans5d++ }
+            else { $kind = "unk" }
+        }
+        $prof5d += ("y{0}={1}/{2}" -f ($ri - 4), ($c -join ','), $kind)
     }
     Write-Host "AH5d② 底缘剖面（x=中点）：$($prof5d -join ' ')；灰带=$trans5d px（HRGN 硬边+1px 发丝内缘基线，逐像素 alpha 修复后硬断言 ≤1）"
     if ($trans5d -gt 2)
@@ -6906,17 +6922,23 @@ try
     #   轮廓几何（44238805907 轨迹×近景像素取证互证）：顶缘满宽贴屏，肩曲线自顶缘两端向下内收
     #   （x0→16，近水平出发故 row0 光栅化边界≈11），y≥肩深后直边 x16，底角弧自 x16 扫到 x28；
     #   曲线只有肩（y 0..7）与底角（y h-12..h），逐行扫首个 surface 列=曲线轨迹（右角自右往左），
-    #   相邻行 Δx=量化台阶、边界像素去重层数=色阶；HRGN 物理锯齿基线，暂 advisory
+    #   相邻行 Δx=量化台阶、边界像素去重层数=色阶；HRGN 物理锯齿基线，暂 advisory。
+    #   桌面结构免疫（44250272756 定谳）：CI 桌面非纯色（浏览器横带 51,51,51 + 浮层面板），背景参照
+    #   必须逐行外沿自洽，任何「单点探针当全局 bg」都会撞横向结构出垃圾轨迹。DPI1.0 基线=肩 11,13,15,
+    #   15,16,16,16,16,16（maxΔx=2 色阶=3）、左底角 16→24、右底角 20→12（maxΔx=2 色阶=3）。
     $shoulderPx5d = [int][Math]::Ceiling(16 * $scale5d)
     $depthPx5d = [int][Math]::Ceiling(7 * $scale5d)
     $brPx5d = [int][Math]::Ceiling(12 * $scale5d)
     function Trace-CurveStair([int] $zoneL, [int] $zoneT, [int] $zoneW, [int] $zoneH, [int] $dir, [string] $tag)
     {
-        $bgX = if ($dir -gt 0) { $zoneL - 30 } else { $zoneL + $zoneW + 30 }
-        $bgRef = Get-AvgColor $bgX ($zoneT + [int]($zoneH / 2)) 2
-        $bmp = New-Object System.Drawing.Bitmap $zoneW, $zoneH
+        # 背景参照=逐行外沿采样（44250272756 定谳：旧单点 bgRef 探针压在 y≈27 浏览器顶缘过渡带上，
+        # 5×5 平均把白 255 与灰 51 混成 ≈35，白像素 dist≈660 被误判 surface → 轨迹恒 0/35 垃圾；
+        # 逐行种子取窗外 3px 同行真实底色——垂直渐变/横带免疫）。截宽=区宽+7：左 3 列/右 4 列
+        # 只装种子（dir>0 取 col 0，dir<0 取 col zoneW+6），区内扫描列照旧 rx↔col rx+3。
+        # 近黑种子行（暗墙纸+黑岛不可分）跳过=该行不出现在轨迹，不发垃圾值。
+        $bmp = New-Object System.Drawing.Bitmap ($zoneW + 7), $zoneH
         $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $g.CopyFromScreen($zoneL, $zoneT, 0, 0, (New-Object System.Drawing.Size $zoneW, $zoneH))
+        $g.CopyFromScreen($zoneL - 3, $zoneT, 0, 0, (New-Object System.Drawing.Size ($zoneW + 7) $zoneH))
         $g.Dispose()
         $trace = @()
         $colors = @()
@@ -6924,13 +6946,18 @@ try
         {
             $xs = @(0..($zoneW - 1))
             if ($dir -lt 0) { [array]::Reverse($xs) }
+            $seedCol = if ($dir -gt 0) { 0 } else { $zoneW + 6 }
+            $seed = $bmp.GetPixel($seedCol, $ry)
             $fx = -1
             $fc = ""
-            foreach ($rx in $xs)
+            if (($seed.R + $seed.G + $seed.B) -ge 30)
             {
-                $p = $bmp.GetPixel($rx, $ry)
-                $bd = ([Math]::Abs($p.R - $bgRef[0]) + [Math]::Abs($p.G - $bgRef[1]) + [Math]::Abs($p.B - $bgRef[2]))
-                if ($bd -gt 24) { $fx = $rx; $fc = ("{0},{1},{2}" -f $p.R, $p.G, $p.B); break }
+                foreach ($rx in $xs)
+                {
+                    $p = $bmp.GetPixel($rx + 3, $ry)
+                    $bd = ([Math]::Abs($p.R - $seed.R) + [Math]::Abs($p.G - $seed.G) + [Math]::Abs($p.B - $seed.B))
+                    if ($bd -gt 24) { $fx = $rx; $fc = ("{0},{1},{2}" -f $p.R, $p.G, $p.B); break }
+                }
             }
             $trace += $fx
             $colors += $fc
