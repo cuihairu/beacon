@@ -246,6 +246,12 @@ public sealed partial class CapsuleWindow
     private double _lastBandScale = 1.0;
     private IReadOnlyList<IslandSurfaceOutline.Seg> _lastBandSegs = [];
 
+    /// <summary>TopmostGuard 注册面：边带窗句柄与存活态。哨兵每个前台/菜单事件先钉岛窗再钉边带，
+    /// 相对序（band 恒在岛正上层）才守得住——否则事件把岛钉回边带上方，内半环被岛体背板盖死
+    /// （44288775018 实证）。allowed 门控含存活位：边带失败自隐期间哨兵不放行，不把空带 Show 回来。</summary>
+    internal IntPtr EdgeBandHwnd => _edgeBand?.Handle ?? IntPtr.Zero;
+    internal bool EdgeBandAlive => _edgeBand is { } band && band.IsAlive;
+
     private void ApplyIslandRegion()
     {
         if (_hwnd == IntPtr.Zero || _appWindow is null)

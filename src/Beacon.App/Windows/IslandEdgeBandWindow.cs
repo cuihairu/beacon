@@ -191,6 +191,13 @@ internal sealed class IslandEdgeBandWindow : IDisposable
         }
     }
 
+    /// <summary>TopmostGuard 注册面：环带窗句柄（未建/已销毁回 Zero，哨兵对 Zero 天然跳过）。</summary>
+    internal IntPtr Handle => _hwnd;
+
+    /// <summary>TopmostGuard 门控面：环带当前确在显示。隐藏期不放行——哨兵不得把失败自隐的
+    /// 空带 Show 回来（IslandEdgeBandWindow 的静默退场契约）。</summary>
+    internal bool IsAlive => _shown && _hwnd != IntPtr.Zero && NativeMethods.IsWindow(_hwnd);
+
     public void Dispose()
     {
         if (_hwnd != IntPtr.Zero)
