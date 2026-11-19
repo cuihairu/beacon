@@ -325,6 +325,8 @@ public partial class App : Application
         // 胶囊窗懒建：访问器取现值，窗缺席回 Zero/不放行——哨兵对 Zero 句柄天然跳过（TopmostGuard 契约）
         // IsGuardVisible = 用户显隐意愿 且 非全屏避让中（岛在全屏前台时退场，哨兵不得把它 Show 回来）
         _topmostGuard.Watch(() => capsule?.Hwnd ?? IntPtr.Zero, () => capsule is { } cap && cap.IsGuardVisible);
+        // 边带紧随胶囊注册（同事件先钉岛再钉带）：环带必须恒在岛窗正上层，内半环才盖得住 region 硬切边
+        _topmostGuard.Watch(() => capsule?.EdgeBandHwnd ?? IntPtr.Zero, () => capsule is { } cap && cap.IsGuardVisible && cap.EdgeBandAlive);
         if (_pinnedHost is { } host)
         {
             _topmostGuard.Watch(() => host.Hwnd, () => true);
