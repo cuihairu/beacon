@@ -288,7 +288,10 @@ jobs:
 
       # 发布：nightly 通道删旧重建（publishedAt=本次 run）；版本 tag 通道只传资产、
       # 不删不重建——作者手写的 release 说明原样保留。两条通道共用发布后硬断言。
+      # 门=main 或版本 tag：分支 dispatch（spike 实验）只跑构建+视觉取证，公开交付面
+      # 不见未验收代码（红线：未验收二进制不上 Releases）。
       - name: Publish release assets
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

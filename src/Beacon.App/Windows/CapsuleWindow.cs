@@ -145,6 +145,10 @@ public sealed partial class CapsuleWindow : Window
                 {
                     UpdateSurfaceOutline();
                 }
+                if (_island && e.DidPositionChange)
+                {
+                    SyncEdgeBandPosition(); // 纯移动不走 region 重算：band 钉屏幕坐标必须跟挪
+                }
             };
         }
         Closed += (_, _) =>
@@ -154,6 +158,7 @@ public sealed partial class CapsuleWindow : Window
                 NativeMethods.UnhookWinEvent(_foregroundHook); // 防原生钩子悬挂在已销毁窗上
                 _foregroundHook = IntPtr.Zero;
             }
+            _edgeBand?.Dispose(); // 边带是独立原生窗：随岛窗销毁（孤儿悬挂防除）
         };
     }
 
@@ -286,11 +291,13 @@ public sealed partial class CapsuleWindow : Window
             if (!_ruleHidden)
             {
                 _appWindow.Show(); // 全屏避让中：保持退场，等前台退出全屏由钩子回场
+                _edgeBand?.Show(_hwnd); // 边带随岛体回场（重钉相对序；几何变化由下一拍 region 自愈）
             }
         }
         else
         {
             _appWindow.Hide();
+            _edgeBand?.Hide(); // 边带必须随岛体退场（独立原生窗不会跟窗隐藏）
         }
     }
 

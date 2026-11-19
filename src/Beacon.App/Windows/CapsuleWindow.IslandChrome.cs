@@ -237,6 +237,21 @@ public sealed partial class CapsuleWindow
     /// 同几何也要重设，region 已被摘）。</summary>
     private (int WinW, int WinH, int ChromeW, int ChromeH) _lastRegionKey;
 
+    /// <summary>岛边缘 alpha 边带窗（spike/island-alpha-edge）：ULW 逐像素 alpha 环带盖住 region
+    /// 硬切边。仅岛态存在，经典态隐藏；失败静默退场不扰岛体（IslandEdgeBandWindow）。</summary>
+    private IslandEdgeBandWindow? _edgeBand;
+
+    /// <summary>上次边带同步的 DPI 标度与轮廓段表：纯移动重钉（SyncEdgeBandPosition）时几何未变，
+    /// 沿用缓存；首拍 region 前为空（Count=0 即跳过）。</summary>
+    private double _lastBandScale = 1.0;
+    private IReadOnlyList<IslandSurfaceOutline.Seg> _lastBandSegs = [];
+
+    /// <summary>TopmostGuard 注册面：边带窗句柄与存活态。哨兵每个前台/菜单事件先钉岛窗再钉边带，
+    /// 相对序（band 恒在岛正上层）才守得住——否则事件把岛钉回边带上方，内半环被岛体背板盖死
+    /// （44288775018 实证）。allowed 门控含存活位：边带失败自隐期间哨兵不放行，不把空带 Show 回来。</summary>
+    internal IntPtr EdgeBandHwnd => _edgeBand?.Handle ?? IntPtr.Zero;
+    internal bool EdgeBandAlive => _edgeBand is { } band && band.IsAlive;
+
     private void ApplyIslandRegion()
     {
         if (_hwnd == IntPtr.Zero || _appWindow is null)
@@ -312,6 +327,14 @@ public sealed partial class CapsuleWindow
             IslandTrace($"region ok points={points.Count} client={clientWidthDips:0.#}x{clientHeightDips:0.#} offset={offsetX},{offsetY}");
             _lastRegionKey = key;
             EnsureTopmostBand();
+            // spike：alpha 边带随 region 同步（同一轮廓段表，GDI+ 真 AA；先钉 TOPMOST band 再插带）
+            SyncEdgeBand(scale, new NativeMethods.RECT
+            {
+                Left = origin.X,
+                Top = origin.Y,
+                Right = origin.X + (windowSize.Width - chromeWidth),
+                Bottom = origin.Y + (windowSize.Height - chromeHeight),
+            }, segs);
         }
         catch (Exception ex)
         {
@@ -322,6 +345,55 @@ public sealed partial class CapsuleWindow
     /// <summary>三次贝塞尔折线展平（GDI region 只吃多边形）：起点=已有末点，每段 Cubic 采样
     /// FlattenStepsPerCubic 步（曲线半径 7-12 DIP，24 步误差远小于 0.1 DIP，视觉连续）。</summary>
     private const int FlattenStepsPerCubic = 24;
+
+    /// <summary>边缘 alpha 边带同步（spike/island-alpha-edge）：region 应用成功后按同一轮廓重建
+    /// ULW 环带并插到岛窗正上层。边带自身任何异常静默退场（IslandEdgeBandWindow 内部也自兜），
+    /// 岛体 region 边缘永远保底——spike 面不破主线。</summary>
+    private void SyncEdgeBand(double scale, NativeMethods.RECT clientRect, IReadOnlyList<IslandSurfaceOutline.Seg> segs)
+    {
+        try
+        {
+            _edgeBand ??= new IslandEdgeBandWindow();
+            _lastBandScale = scale; // 纯移动重钉（SyncEdgeBandPosition）复用：region 去重键无位置，
+            _lastBandSegs = segs;   // 岛窗挪动不触发 ApplyIslandRegion，band 只能靠这里缓存的重钉
+            _edgeBand.Update(_hwnd, clientRect, scale, segs);
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"edge band sync FAILED\n{ex}");
+        }
+    }
+
+    /// <summary>纯移动重钉边带（AppWindow.Changed DidPositionChange）：band 位图钉的是屏幕坐标
+    /// （dst=clientRect−外扩），region 是窗相对坐标会跟窗走、band 不会——44288775018 实证：启动期
+    /// 岛窗 (378,0)→(370,−31)→(378,0) 弹跳，末段回挪不触发 region 重算，band 停在旧位，环带底缘
+    /// 整段压岛体黑面（黑对黑隐形）只漏 2px AA 斑，②③ 指标零收敛。几何未变，轮廓段表/DPI 沿用
+    /// 上次缓存；band 未同步过（segs 空）则无事可做。Update 重画位图+ULW+回钉 HWND_TOP 一并完成。</summary>
+    private void SyncEdgeBandPosition()
+    {
+        if (_appWindow is null || _lastBandSegs.Count == 0)
+        {
+            return;
+        }
+        try
+        {
+            var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            var windowSize = _appWindow.Size;
+            var origin = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out origin);
+            SyncEdgeBand(_lastBandScale, new NativeMethods.RECT
+            {
+                Left = origin.X,
+                Top = origin.Y,
+                Right = origin.X + (windowSize.Width - chromeWidth),
+                Bottom = origin.Y + (windowSize.Height - chromeHeight),
+            }, _lastBandSegs);
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"edge band reposition FAILED\n{ex}");
+        }
+    }
 
     private static void FlattenCubic(IslandSurfaceOutline.Cubic cubic, List<NativeMethods.POINT> points, double scale, int offsetX, int offsetY)
     {
@@ -362,6 +434,7 @@ public sealed partial class CapsuleWindow
         try
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            _edgeBand?.Hide(); // 经典态无边带（region 摘除同步）
             _lastRegionKey = default; // 同几何再切回岛也须重设（region 已被摘，去重键不能拦）
             EnsureTopmostBand();
         }
