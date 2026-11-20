@@ -6913,10 +6913,10 @@ try
         }
         $prof5d += ("y{0}={1}/{2}" -f ($ri - 4), ($c -join ','), $kind)
     }
-    Write-Host "AH5d② 底缘剖面（x=中点）：$($prof5d -join ' ')；灰带=$trans5d px（HRGN 硬边+1px 发丝内缘基线，逐像素 alpha 修复后硬断言 ≤1）"
-    if ($trans5d -gt 2)
+    Write-Host "AH5d② 底缘剖面（x=中点）：$($prof5d -join ' ')；灰带=$trans5d px（逐像素 alpha 环带后硬断言 ≤1，44308360326 绿基线=0）"
+    if ($trans5d -gt 1)
     {
-        Write-Host "::warning::岛底缘过渡灰带 $trans5d px（>2）——真机可见灰边基线（AH5d② advisory，随修复升硬门）"
+        throw "AH5d② 边缘过渡带断言失败：灰带 $trans5d px（>1）——修复单口径「4x 后边缘过渡带 ≤1px 无灰带」"
     }
     # ③ 曲线边楼梯度量（首版逐列扫首个非背景行作废：轮廓顶缘横贯全宽，全列恒命中 y0=顶缘本身）——
     #   轮廓几何（44238805907 轨迹×近景像素取证互证）：顶缘满宽贴屏，肩曲线自顶缘两端向下内收
@@ -6974,17 +6974,21 @@ try
         $lvl = ($colors | Where-Object { $_ -ne "" } | Select-Object -Unique).Count
         Write-Host ("AH5d③ {0}: maxΔx={1}px 色阶={2} 轨迹={3}" -f $tag, $maxStep, $lvl, ($trace -join ','))
         $bmp.Dispose()
-        return $maxStep
+        return [pscustomobject]@{ Max = $maxStep; Levels = $lvl }
     }
     # 底角区宽 = 肩收进 16 + 弧扫出 12 + 余量（首版 brPx+6 截掉弧外半段，轨迹尾部 -1=出裁非无边）
     $cornerW5d = $shoulderPx5d + $brPx5d + 8
     $stairShoulder5d = Trace-CurveStair $rect5d.Left $rect5d.Top ($shoulderPx5d + 6) ($depthPx5d + 2) 1 "左肩曲线"
     $stairBl5d = Trace-CurveStair $rect5d.Left ($rect5d.Bottom - $brPx5d) $cornerW5d $brPx5d 1 "左底角弧"
     $stairBr5d = Trace-CurveStair ($rect5d.Right - $cornerW5d) ($rect5d.Bottom - $brPx5d) $cornerW5d $brPx5d -1 "右底角弧"
-    $stairMax5d = [Math]::Max($stairShoulder5d, [Math]::Max($stairBl5d, $stairBr5d))
-    if ($stairMax5d -ge 3)
+    # 硬门（44308360326 后）：色阶≥4=逐像素 alpha 环带在场的直接证明（HRGN 时代基线=3；
+    # spike 绿基线=肩7/左弧9/右弧10）。maxΔx 不再作缺陷门：环带后它量的是真曲线斜率+AA 梯度
+    # （肩曲线陡段相邻行 Δx 可达 8，属几何而非锯齿）。
+    $stairMax5d = [Math]::Max($stairShoulder5d.Max, [Math]::Max($stairBl5d.Max, $stairBr5d.Max))
+    $stairMinLvl5d = [Math]::Min($stairShoulder5d.Levels, [Math]::Min($stairBl5d.Levels, $stairBr5d.Levels))
+    if ($stairMinLvl5d -lt 4)
     {
-        Write-Host "::warning::曲线边楼梯台阶 maxΔx=$stairMax5d px（≥3）——HRGN 量化锯齿超粗基线（AH5d③ advisory，随修复升硬门）"
+        throw "AH5d③ 边缘 AA 断言失败：曲线色阶 min=$stairMinLvl5d（<4，环带缺席/未生效=HRGN 硬边回归）——肩 $($stairShoulder5d.Levels)/左弧 $($stairBl5d.Levels)/右弧 $($stairBr5d.Levels)"
     }
     # ④ 四角+双边中点 4x 近景（NearestNeighbor=真实像素；人评并排对照素材，不进断言）
     function New-IslandRectCrop([int] $l, [int] $t, [int] $r, [int] $b)
@@ -7018,7 +7022,7 @@ try
     # ⑥ 边带窗几何真相（spike/island-alpha-edge）：FindWindow 类名直查 band 原生窗，rect/可见性
     #   与岛窗对表——band 钉屏幕坐标、跟挪靠 DidPositionChange 重钉（44288775018 实证：纯移动
     #   不走 region 重算致 band 停旧位，环带底缘黑对黑隐形只漏 2px AA）。此处一锤定音「band 与
-    #   岛是否同位」。advisory 先行，spike 验收后随 ②③ 一起升硬门。
+    #   岛是否同位」。已升硬门（44308360326 绿基线收口）。
     $bandHwnd5d = [WinEnum]::FindByClass("BeaconIslandEdgeBand")
     if ($bandHwnd5d -ne [IntPtr]::Zero)
     {
@@ -7030,7 +7034,22 @@ try
     }
     else
     {
-        Write-Host "AH5d⑥ band 窗未找到（BeaconIslandEdgeBand 类不在顶层窗=边带未建或已销毁）"
+        # 硬门：band 位图钉岛 clientRect−外扩（IslandEdgeBandWindow.BandMarginPx=4 物理px；
+        # 44308360326 绿基线逐值吻合）。偏移/尺寸差>1px=band 停旧位或跟挪失效（44288775018 病）。
+        $bandExpL5d = $rect5d.Left - 4
+        $bandExpT5d = $rect5d.Top - 4
+        $bandExpW5d = ($rect5d.Right - $rect5d.Left) + 8
+        $bandExpH5d = ($rect5d.Bottom - $rect5d.Top) + 8
+        $bandOff5d = [Math]::Max([Math]::Abs($bandRect5d.Left - $bandExpL5d), [Math]::Abs($bandRect5d.Top - $bandExpT5d))
+        $bandSz5d = [Math]::Max([Math]::Abs($bandW5d - $bandExpW5d), [Math]::Abs($bandH5d - $bandExpH5d))
+        if ((-not $bandVis5d) -or ($bandOff5d -gt 1) -or ($bandSz5d -gt 1))
+        {
+            throw "AH5d⑥ 边带窗几何断言失败：vis=$bandVis5d 偏移=${bandOff5d}px 尺寸差=${bandSz5d}px（期望 rect=$bandExpL5d,$bandExpT5d ${bandExpW5d}x${bandExpH5d} vis=True）"
+        }
+    }
+    else
+    {
+        throw "AH5d⑥ 边带窗未找到（BeaconIslandEdgeBand 不在顶层窗）——岛态边带必须存在且可见"
     }
     Write-Host "场景 AH5d 通过：底角月牙=背后层 + 过渡带/楼梯基线已记 + 6 件 4x 近景存档——边缘精度修复（逐像素 alpha）的取证面就绪"
     Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除/边缘精度——ISLAND-D3/D4、灰板修复与边缘精度 CI 视觉取证面"
