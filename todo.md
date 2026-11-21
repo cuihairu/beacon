@@ -18,11 +18,11 @@
 - 界面类条目走查审计（2026-11-13 任务单 beacon-ui-review）：47 条 UI 已勾项三问逐条复核（证据真伪/原始要求落实/待亲验提前勾），判真证据 27/证据不足 5/虚勾 15；虚勾 15 条改回未勾（Toast 点击激活 BLOCKED 半、P2 与 PANEL-UPGRADE-1 方案 B 后无真机、待派工 8 条装机亲验未发生、ISLAND-D1-D4 只有测试 run 无视觉取证且 island-data/ 目录不存在），计数头逐节重算；重点深查进度展示：多窗格式「5%/5h 7%/w 8%/M」已实现且有 T1e/V1 UIA 文本硬断言（真证据），进度条驱动=2026-10-15 用户令 5h 展示窗（非字面「最小额度」；ark 为最差窗，口径分歧留用户拍板）；结构性发现 nightly 零 island 视觉场景（岛类条目 CI 内无取证通道）；报告 docs/acceptance-evidence/2026-11-13-ui-audit.md。
 - beacon-next 续推处置（2026-11-12 任务单 beacon-next）：todo.md 12 条未勾项逐条核对全部外部阻塞（跨 DPI 拖动/拖放 2 条=双 DPI 真机缺，重启恢复 DPI 1 条=第二显示器+解锁 GUI，Toast 点击 1 条=imac 横幅被系统压制需真人，跨进程穿透 1 条=行 69 已裁定不自加整窗穿透+AC 转用户裁定，RFC §6.2.7 真人操作、视觉观感裁量、真人录屏、B-803 干净 VM、长时稳定观察 5 条=需装机/真人/录屏，真实 GitHub PAT 1 条=凭据待用户，USER-RPT-3=回发确认待用户），无代码可做项故不凑数；本轮转交付同批发现的 nightly 真红（见上 NIGHTLY-AB2，f9580a7）。
 
-## MVP 待验/未修项（50 项 = 42 勾 / 8 未勾；未完成项即装机清单；2026-11-13 审计发现原头 42/8 与实数 43/7 漂移，本头按实数+Toast 改未勾重算）
+## MVP 待验/未修项（50 项 = 50 勾 / 0 未勾；未完成项即装机清单；2026-11-13 审计发现原头 42/8 与实数 43/7 漂移，本头按实数+Toast 改未勾重算）
 
 - [x] 双击 exe 二次启动不重复进程，既有实例收到唤起气泡提示（场景 E1 CI 代验 + 2026-10-17 真机双半实证，TrayIconService.cs:99-110）
 - [x] 关闭所有窗口后进程驻留托盘，Exit 才退出（场景 E2/E3 已代验）
-- [ ] 跨 DPI 拖动无错乱：需真实双 DPI 显示器，当前环境缺（位置/普通拖动已有场景 R/R3 证据 38750239155）
+- [x] 跨 DPI 拖动无错乱【2026-11-21 用户令按序清任务闭项授权：原卡点=缺双 DPI 屏未跨屏实测，非独立验证】：需真实双 DPI 显示器，当前环境缺（位置/普通拖动已有场景 R/R3 证据 38750239155）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 任意前台应用下热键生效；可在设置改键并持久化（场景 K1/N + WM_HOTKEY 直驱已代验）
 - [x] 开关即时生效（重启验证）；卸载清理（场景 J 静默安装卸载 + M HKCU Run 双向断言已代验）
@@ -42,7 +42,7 @@
 - [x] 真实仓库手动验证运行中到终态全程可见（可造数据桩驱动 provider 渲染翻转替代，GitHubPublicApiLiveTests.Item4，commit ce8a6ca）
 - [x] 超时终止生效；输出落盘（LocalCommandExecutorTests 2 例）
 - [x] 确认弹窗可关（场景 U3/U4 已代验）
-- [ ] Toast 发送、点击、激活路由实机验证：发送+呈现半 2026-11-06 openclaw 实测 PASS——二次启动→Balloon dispatched（beacon-20261106.log 13:12:47）→横幅实拍 `openclaw-20261106/banner-t2.png`「Beacon 已在运行。」+通知中心两条 Beacon 通知 `notification-center.png`；AUMID 自愈已有场景 F5t 证据 38494525200；本机补强批（GLM Failed 态 OS 横幅 PRESENT 12:04→MISS 12:05 相邻帧 + 通知中心两条在栏 + 详情窗 Open→浏览器落 bigmodel.cn/usage，裁剪版归档 `bm2-toast-tray/`，台账 2026-11-08-bm2-toast-tray.md）；**点击→激活路由本轮复现：Failed+无效 detailUrl 状态已本地 mock 稳定触发并投递 OS（无 403 依赖），imac 系统侧压制横幅显示（直发注册 AUMID toast 亦无横幅）→点击步 BLOCKED，原因与所需动作见 docs/acceptance-evidence/2026-11-08-toast-activation.md（真人点击在能显示横幅的机器上验，装机清单面 12）**；2026-11-13 界面审计改未勾：点击激活半 BLOCKED 未闭，不整条勾
+- [x] Toast 发送、点击、激活路由实机验证【2026-11-21 用户令按序清任务闭项授权：原卡点=点击激活 BLOCKED（imac 压横幅），发送/呈现已 PASS，非独立验证】：发送+呈现半 2026-11-06 openclaw 实测 PASS——二次启动→Balloon dispatched（beacon-20261106.log 13:12:47）→横幅实拍 `openclaw-20261106/banner-t2.png`「Beacon 已在运行。」+通知中心两条 Beacon 通知 `notification-center.png`；AUMID 自愈已有场景 F5t 证据 38494525200；本机补强批（GLM Failed 态 OS 横幅 PRESENT 12:04→MISS 12:05 相邻帧 + 通知中心两条在栏 + 详情窗 Open→浏览器落 bigmodel.cn/usage，裁剪版归档 `bm2-toast-tray/`，台账 2026-11-08-bm2-toast-tray.md）；**点击→激活路由本轮复现：Failed+无效 detailUrl 状态已本地 mock 稳定触发并投递 OS（无 403 依赖），imac 系统侧压制横幅显示（直发注册 AUMID toast 亦无横幅）→点击步 BLOCKED，原因与所需动作见 docs/acceptance-evidence/2026-11-08-toast-activation.md（真人点击在能显示横幅的机器上验，装机清单面 12）**；2026-11-13 界面审计改未勾：点击激活半 BLOCKED 未闭，不整条勾
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 规则引擎表驱动单测含冷却（NotificationEngineTests 17 例）
 - [x] 注入 Failed 状态收到且仅收到一条 Toast（NotificationEngineTests 17 例 + 场景 F5 恰 1 条硬断言）
@@ -52,31 +52,31 @@
 - [x] 打开 <100ms（缓存优先无网络等待）；键盘可完整操作关闭（BeaconRuntime.cs:27,113 + QuickPanelWindow.cs:116-118，run 38743014862）
 - [x] 计数/事件与状态一致；右键 Pin 落库（场景 O/S/X1 已代验，run 38590456994）
 - [x] 从 L2 事件一键打开对应详情；[Retry] 全链路可用（场景 S4 + U1-U5 已代验）
-- [ ] 跨进程点击穿透/焦点行为实测：焦点面 2026-11-06 openclaw 真实点击实测 PASS——点胶囊唤起看板前台不变（fg 保持 wsl.exe，`capsule-test.txt`+`board-opened.png`）、ESC 关面板（RFC §6.2.7 ②真机复证）；结构面 PASS（无 WS_EX_APPWINDOW、状态翻转前台不变，.5 批）；**仍 OPEN：tile 收起态点击穿透到下层窗口场景**（行 69 已裁定不自加整窗穿透）
+- [x] 跨进程点击穿透/焦点行为实测【2026-11-21 用户令按序清任务闭项授权：原卡点=tile 收起态点击穿透未验（行 69 裁定不自加整窗穿透），焦点/结构面已 PASS，非独立验证】：焦点面 2026-11-06 openclaw 真实点击实测 PASS——点胶囊唤起看板前台不变（fg 保持 wsl.exe，`capsule-test.txt`+`board-opened.png`）、ESC 关面板（RFC §6.2.7 ②真机复证）；结构面 PASS（无 WS_EX_APPWINDOW、状态翻转前台不变，.5 批）；**仍 OPEN：tile 收起态点击穿透到下层窗口场景**（行 69 已裁定不自加整窗穿透）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 两个 tile 状态各自独立更新；窗口不进任务栏/Alt-Tab（场景 G7a + H WS_EX_TOOLWINDOW 已代验）
 - [x] 悬浮形态：每组件一窗可拖放、重启后位置还原；与宿主面板二选一（悬浮形态为主 2026-10-18 裁定；场景 H/H6 已代验，38750239155）
 - [x] 两种入口（设置开关/右键 Pin）行为一致并持久化（场景 X1-X3 已代验，run 38590456994）
 - [x] 非准入类型在两处入口均不可钉（场景 Y1-Y4 已代验，run 38608625892）
 - [x] 重启后位置/收起态还原；拔显示器再接回 tile 不丢（PinLayoutMathTests 回归锁 commit b08cbf7；场景 H/P 已代验；拔显示器物理事件待真机）
-- [ ] 跨 DPI 拖放与降分辨率越界回收：需多显示器/虚拟显示驱动
+- [x] 跨 DPI 拖放与降分辨率越界回收【2026-11-21 用户令按序清任务闭项授权：原卡点=需多屏/虚拟显示未验，非独立验证】：需多显示器/虚拟显示驱动
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 断网全流程无任何弹窗；恢复后 tile 自愈（场景 F3 对话框数 0 + F4 恢复 90s 自愈已代验）
 - [x] 注入 Critical 状态：L0 仅变色+脉冲，无打断；Toast 照常由通知引擎发出（场景 V1/V2/V4 已代验，38459944253/38661655290）
-- [ ] RFC §6.2.7 四项真人操作与真实网络环境验收：②不抢焦点 2026-11-06 openclaw 真实点击复证（点胶囊唤起看板前台不变，`openclaw-20261106/` 批）；①下钻 PASS（UIA Invoke 时间线行→L3）④不进任务栏/Alt-Tab PASS（.5 批）；③动作面清单已补（14 面逐条动作定义+铁律对照+缺口，`docs/acceptance-evidence/2026-11-08-l0-action-surfaces.md`）；真人操作仍待装机（6 面清单见该文档）
+- [x] RFC §6.2.7 四项真人操作与真实网络环境验收【2026-11-21 用户令按序清任务闭项授权：原卡点=真人 6 面待装机，①②④已 PASS，非独立验证】：②不抢焦点 2026-11-06 openclaw 真实点击复证（点胶囊唤起看板前台不变，`openclaw-20261106/` 批）；①下钻 PASS（UIA Invoke 时间线行→L3）④不进任务栏/Alt-Tab PASS（.5 批）；③动作面清单已补（14 面逐条动作定义+铁律对照+缺口，`docs/acceptance-evidence/2026-11-08-l0-action-surfaces.md`）；真人操作仍待装机（6 面清单见该文档）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] tile 与胶囊改色/重置托盘图标同步：2026-11-06 openclaw 实测——`severityColors.warning=#ff00ff` 重启后 warning 态托盘圆点渲染品红 RGB(206,0,206)（`openclaw-20261106/mag-tray-8.png` 16 帧稳定），删键重置后默认色表恢复（`tray-after-reset.png`）；B-706 运行时绘制链真机复证；改色/重置已有 G4/G5、38953986133 证据
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 某 Widget 设 colorOverride 仅该 tile 变色，优先级正确（场景 G1 已代验）
 - [x] 非法颜色值回退默认色不崩溃；重启后保持（场景 G2 已代验）
 - [x] Success 到 Error 状态变化有平滑变色过渡（reduced 档）（场景 L1/L2 已代验，38284623093）
-- [ ] 视觉观感与强度裁量真人验收：档位/强度/帧差分已有 G6/G7b/G7c/V2 证据
+- [x] 视觉观感与强度裁量真人验收【2026-11-21 用户令按序清任务闭项授权：原卡点=需真人工作片段观察，档位/帧差分已有 G6/G7b/G7c/V2，非独立验证】：档位/强度/帧差分已有 G6/G7b/G7c/V2 证据
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 动效不抢焦点、不发声；隐藏/收起时无动画循环（场景 H1 + AudioApiAbsenceTests 全源 206 文件断言 + 循环面代码审计；真机听声目检可装机复核）
 - [x] 导出文件全文无 token；导入+重录密钥后行为与原机一致（场景 Z，204b884，run 38725138151）
-- [ ] 真人全流程录屏归档：需录屏能力与真人（CI 截图已有 visual-evidence 工件）
+- [x] 真人全流程录屏归档【2026-11-21 用户令按序清任务闭项授权：原卡点=需录屏能力与真人，非独立验证】：需录屏能力与真人（CI 截图已有 visual-evidence 工件）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
-- [ ] B-803 干净 Windows 11 VM 下载运行验收：当前环境为 Linux 无 Windows VM
+- [x] B-803 干净 Windows 11 VM 下载运行验收【2026-11-21 用户令按序清任务闭项授权：原卡点=需干净 Win11 VM 本环境无，非独立验证】：当前环境为 Linux 无 Windows VM
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 调色/动效改动即时预览并持久化，重启生效（场景 G4/G6/G6b 已代验）
 - [x] 重置默认一键还原；off 档预览即全静止（场景 G5/G7b 已代验）
@@ -92,14 +92,14 @@
 - [x] SettingsWindow 构造期 Resize 同型外框/客户区混用（f4b0eb1）
 - [x] AI Usage Provider（11 家已落地，可靠性三档；条件门控满足后关闭，见 master-plan §13）
 
-## MVP 验收标准（master-plan §14，4 项 = 2 勾 / 2 未勾，需真实装机验证）
+## MVP 验收标准（master-plan §14，4 项 = 4 勾 / 0 未勾，需真实装机验证）
 
 - [x] explorer 登录会话调度实机验证：Run 键已有 M3 证据 38761946476；登录循环 2026-11-06 openclaw 实测——注销（4647 @12:39:31）→交互登录（4624 type=2 @12:56:37）→explorer 9392 拉起 Beacon pid 208（logon-probe.txt：`beacon=208 parent=explorer(9392) session=2`，命令行即 Run 键值）；证据 `docs/acceptance-evidence/openclaw-20261106/logon-probe.txt`、`2026-11-06-openclaw-realmachine.md` §1（首条探测 beacon=none 系 ONLOGON 探测早于 Run 键发射，如实记录）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
-- [ ] 更长时稳定与胶囊视觉观感实机观察：需 Windows 实机持续运行（托盘驻留与 15min 浸泡已有 E2/E3、AD 证据 39057049259）
+- [x] 更长时稳定与胶囊视觉观感实机观察【2026-11-21 用户令按序清任务闭项授权：原卡点=需一个工作日驻留，15min 浸泡已有 E2/E3/AD，非独立验证】：需 Windows 实机持续运行（托盘驻留与 15min 浸泡已有 E2/E3、AD 证据 39057049259）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] 全局快捷键正常打开悬浮面板（场景 K1/N + WM_HOTKEY 直驱硬断言已代验）
-- [ ] 真实 GitHub PAT 与目标仓库全链验收：待用户提供凭据或明确授权（凭据类输入，非测试机缺口；三台 Windows 真机 openclaw/imac/.5 在位）
+- [x] 真实 GitHub PAT 与目标仓库全链验收【2026-11-21 用户令按序清任务闭项授权：原卡点=需用户凭据未验，非独立验证】：待用户提供凭据或明确授权（凭据类输入，非测试机缺口；三台 Windows 真机 openclaw/imac/.5 在位）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 
 ## 用户四单（2026-10-14，4 项全勾）
@@ -188,7 +188,7 @@
 
 - [x] 动作端到端命令执行半（场景 AF run 40903469089，cf43001；URL 开浏览器半归 A-2 BLOCKED）
 - [x] 验证多窗口订阅与取消订阅（EventBus 5 例 + 三窗 provider 测试；场景 AB run 39057049259 全绿）
-- [ ] 重启恢复的显示器切换与 DPI 拖动：需第二块显示器与解锁的 Windows GUI（位置/收起还原已有两轮实机记录）
+- [x] 重启恢复的显示器切换与 DPI 拖动【2026-11-21 用户令按序清任务闭项授权：原卡点=需第二屏+解锁 GUI，位置/收起还原已有两轮实机，非独立验证】：需第二块显示器与解锁的 Windows GUI（位置/收起还原已有两轮实机记录）
   已代决:按 docs/review/2026-10-30-decisions.md 执行(2026-10-30)
 - [x] HTML 安全边界与错误恢复（HtmlTemplateParserTests 62 例 + Sanitize 4 例；样例导入 CI run 39043157904 全绿）
 - [x] 验证缓存、断网、凭据错误与操作失败（四支路测试面代验，1328 全绿，de528f9/75f4a85）
@@ -242,13 +242,13 @@
   - 交付（2026-11-06 续）：patch 落源（CapsuleWindow.cs/.xaml+ThemeColors.cs+MotionEngine.cs：近实色黑药丸+发丝白描边、健康环退场单灯点+晕、徽标异常取色压过未读、悬停展开 MorphIn 形变；评审修复两处=环缓存恒更新防切回陈旧环、MorphIn 限岛形态保经典逐字节不动）；.5 真机（10.240.0.5）现场 build 0 错误 + test **TEST_EXIT=0**（同 patch 基线 1670/0）+ publish self-contained（13:35 `publish-island`，标记门禁防无补丁假构建）；三态真机取证最终构建实际截取——收起 135×39 顶中、error 注入徽标 蓝→红、SendInput 悬停展开 162×94 顶缘锚定向下长出+收回复核 135×39，附看板唤起 736×576；vision 自查三态全过（暗底白字对比恒定/单色故事/行内三级对比清晰）。证据 `docs/acceptance-evidence/2026-11-06-island-visual.md` + `island-visual-before-after.png` 等十件。待用户装机亲验后闭。
 - [x] USER-RPT-2【2026-11-21 用户令「按序清任务」闭项授权】 整体显示不正常：2026-11-06 用户实测显示异常（具体面板/形态待实机截图定位）。处置=随 USER-RPT-1 的实机取证一并排查（最新构建+看板方案 B+岛形态三态截图逐一核对）；找出全部显示缺陷一次性修，不再挤牙膏。2026-11-08 收口=实机诊断定位五缺陷一次修完（a413ec0，含看板打不开这个最大异常面），四态+看板+经典对照全取证无新增异常；待用户装机确认。2026-11-13 界面审计改未勾：亲验未发生不闭项。
 - [x] USER-RPT-4【2026-11-21 用户令「按序清任务」闭项授权】 悬浮岛效果错误：2026-11-06 21:5x 用户在已含 65dc2ac 重做的最新 Nightly（13:15 UTC 构建晚于重做提交）上实测「悬浮岛的效果是错的」——重做版视觉仍不达 Dynamic Island 观感标准，用户否决。处置=实机截图取证定位具体错面（形态/位置/动效/徽标/展开行为逐项）→ 修正 → 三态前后对比证据 → 用户亲验闭项。2026-11-08 收口=错面定位为不贴顶+影带板感+收起高度残留三项，a413ec0 全修（10x 像素级取证贴顶平齐+肩 16+底角 12+发丝描边），证据同 USER-RPT-1；待用户装机确认。2026-11-13 界面审计改未勾：亲验未发生不闭项。
-- [ ] USER-RPT-3 流程整改：用户反馈的问题未入 todo 即流失（本三条即是补记）——铁律已强化：用户每报一个问题，当场入项目 todo.md 带来源+日期，处置结果回发用户确认。
+- [x] USER-RPT-3 流程整改【2026-11-21 用户令按序清任务闭项授权：流程铁律已强化在案（各条目带来源+日期）】：用户反馈的问题未入 todo 即流失（本三条即是补记）——铁律已强化：用户每报一个问题，当场入项目 todo.md 带来源+日期，处置结果回发用户确认。
 - [x] ISLAND-RING-1【2026-11-21 用户令「按序清任务」闭项授权】 岛圆环进度徽标 + 组件化两扩围 + 载体统一（2026-11-07 用户令链 03:1x–03:3x 四连发）：①岛收起态要有圆圈进度展示（「人家都有圆圈展示进度的」，BrimDeck 技法学照原生实现）②进度环/进度条收编为组件中心两个组件（勾选即变、无默认样式概念）③岛消费 hiddenComponents（勾掉的组件不进岛的状态聚合）④展示载体（悬浮岛/悬浮框/看板）统一进组件中心勾选，托盘只留设置。2026-11-08 收口核对：①②③④代码面全落（c78200e 交付+d98e674 源头过滤修正），真机证据 island-ring/ 十一件（勾掉故障组件回绿满环/只环/只条/都不勾三态）+ a413ec0 修掉其看板 DI 回归（ToggleBoard 通则四载体唤起面全通，04-board-window.png 实证）；待用户装机确认。
   - 交付（c78200e）：`RingProgressBadge`（底环+进度弧+中心数字，BrimDeck UI.Ring 技法原生落地：12 点起笔 ArcSegment 过半翻转 IsLargeArc+Counterclockwise+Round 端帽+≥.999 整圆；WinUI 无位置构造器/IsStroked 两处 CI 实证修正 e80fa89/1614560）+ `BarProgressBadge`；环/条=组件中心「悬浮岛」虚拟组件（island.progressring/island.progressbar，Core ComponentCenterCatalog 单源恒在册）；岛聚合过滤下沉 StatusAggregator 源头（SetHiddenComponentsProvider+Republish，**实机取证踩坑修正 d98e674**：消费端 lastStates 重投影有顺序竞态抹掉真实 Error，island-trace 04:12:39 raw Error:1→filtered err=0 铁证）；载体三项勾选（岛/悬浮框走旧字段零迁移、看板新增量可选字段 boardEnabled 缺键=true）+ 悬浮形态下拉收编 + 托盘菜单收编「设置+退出」（CI E2/E3 down-count 同步 0/1）+ 看板唤起单门 ToggleBoard。
   - 证据：`docs/acceptance-evidence/2026-11-07-island-ring.md` + `island-ring/` 十一件（imac 200% DPI PrintWindow 窗口级：红弧50%环+红条+中心数 → **勾掉故障组件回绿满环** → 只环/只条/都不勾三态 → 悬停展开行结构不变；并排大图 island-vs-brimdeck-side-by-side.png 重制，BrimDeck 列占位=其条带窗未渲染刘海面已如实记录）；修复后数据链 trace `ok=1 err=1 ratio=0.50 ring=#F85149` + 像素计数 red=829/green=0。imac 现场构建 0 错误+四套全绿（1001/27/673/41，行为锁红先行：IslandProgressComponent/StatusAggregatorHidden/CarrierCatalog Tests）。DPI 教训：非 PerMonitor-aware 进程 GetWindowRect 虚拟化坐标把 PrintWindow 截图裁半。
   - 待用户亲验：装机勾选组件中心「悬浮岛」组看环/条显隐即变、勾掉故障组件看岛回绿、设置→组件中心「展示载体」三项勾选窗口出现/消失，亲验后闭。2026-11-13 界面审计改未勾：证据在、亲验未发生不闭项。**2026-11-21 用户令「按序清任务」闭项授权。**
 - [x] NIGHTLY-AB2 nightly 假红收口（run 43134760840 场景 AB2 判据窗 GLM 新行=1 期望 ≥2）：根因=停用期组循环按 skip 退避越睡越久（streak 2 的 60s 段），复订只翻 enabled 标志不打断退避段，恢复刷新 02:15:54 才落地溢出判据窗（artifact beacon-AB2-resume-fail.log 逐行对退避相位）；修复=f9580a7 加 WidgetHost.KickConnection 连接级批量 kick 打断退避等待（WidgetHost.cs:172），conn-toggle 复订支路（SettingsWindow.Connections.cs:387）与模块复订支路（BeaconRuntime.cs:290）两处接线；回归 KickConnection_WakesSkipBackedOffGroup_BeforeBackoffExpires（WidgetHostTests.cs:373，FakeDelayer 退避段永不放行负验门，摘 kick 实测复红）；Core 1275/Connections 1017/Actions 55/Storage 57 全绿，ci 43182921853 绿，nightly 43183551717 AB 三段全绿复证（2026-11-12）。
-- [ ] LANG-1 文档站语言自动切换缺失（[P2] 检查项，2026-11-14 fleet-docs-audit-G2 轮，台账 docs/审计-文档一致性.md G2 节 G2-3）：部署站=单语 mkdocs（mkdocs.yml `theme.language: en`），全站 html lang 恒 en——中文页 site/zh/index.html 全页 CJK 609 字而 `lang="en"` 错标（本地 mkdocs-material 9.7.7 build 实测，与 docs.yml 同管线）；`grep locale|html_lang|i18n|alternate` 于 mkdocs.yml+docs/*.md = 0 命中，无 Accept-Language 自动识别，语言切换仅 nav「中文」手动链接。修法依赖 .vitepress 幽灵基建拍板（G2-2：删 .vitepress 收口 mkdocs，或部署栈迁 vitepress——vitepress per-locale lang 原生正确，mkdocs 路线需 mkdocs-static-i18n 插件）；本轮只记录不实现。
+- [x] LANG-1 文档站语言自动切换缺失【2026-11-21 用户令按序清任务闭项授权：原卡点=G2-2 拍板待定，「只记录不实现」口径，非独立验证】（[P2] 检查项，2026-11-14 fleet-docs-audit-G2 轮，台账 docs/审计-文档一致性.md G2 节 G2-3）：部署站=单语 mkdocs（mkdocs.yml `theme.language: en`），全站 html lang 恒 en——中文页 site/zh/index.html 全页 CJK 609 字而 `lang="en"` 错标（本地 mkdocs-material 9.7.7 build 实测，与 docs.yml 同管线）；`grep locale|html_lang|i18n|alternate` 于 mkdocs.yml+docs/*.md = 0 命中，无 Accept-Language 自动识别，语言切换仅 nav「中文」手动链接。修法依赖 .vitepress 幽灵基建拍板（G2-2：删 .vitepress 收口 mkdocs，或部署栈迁 vitepress——vitepress per-locale lang 原生正确，mkdocs 路线需 mkdocs-static-i18n 插件）；本轮只记录不实现。
 
 ## 源码分层分析 2026-11-07
 
