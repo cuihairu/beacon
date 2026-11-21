@@ -7031,9 +7031,6 @@ try
         $bandW5d = $bandRect5d.Right - $bandRect5d.Left
         $bandH5d = $bandRect5d.Bottom - $bandRect5d.Top
         Write-Host ("AH5d⑥ band rect={0},{1} {2}x{3} vis={4} exStyle=0x{5:X} | island rect={6},{7} {8}x{9}" -f $bandRect5d.Left, $bandRect5d.Top, $bandW5d, $bandH5d, $bandVis5d, [WinEnum]::ExStyleOf($bandHwnd5d), $rect5d.Left, $rect5d.Top, ($rect5d.Right - $rect5d.Left), ($rect5d.Bottom - $rect5d.Top))
-    }
-    else
-    {
         # 硬门：band 位图钉岛 clientRect−外扩（IslandEdgeBandWindow.BandMarginPx=4 物理px；
         # 44308360326 绿基线逐值吻合）。偏移/尺寸差>1px=band 停旧位或跟挪失效（44288775018 病）。
         $bandExpL5d = $rect5d.Left - 4
