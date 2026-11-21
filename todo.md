@@ -294,6 +294,10 @@
 
 - [ ] ISLAND-BACKDROP-1 岛态窗矩形内曲面外月牙区露灰蒙底（用户实测「岛周围一层灰色底板」）：方案 A（c4007ce 岛态摘 SystemBackdrop）被 CI 像素证伪（四角 765=3×255 满值=黑背板非壁纸，WinUI3 窗背板露底）；方案 B=SetWindowRgn 真镂空（a404049 窗裁曲面轮廓 + 2349493 region 量窗矩形 + 44d78ec 框架落定后重建+几何去重键防 SetWindowRgn 自触成环）；判据 AH5 三段=岛顶部肩月牙 vs 窗外同高参照 ≤24 / 经典四角 ≥40 / 回切岛 ≤24（fbcad6f+41da77d 修两重采样假红：外框顶出屏+客户区角点在轮廓多边形内、CI 桌面宿主终端窗占屏致底部背景非壁纸）；nightly 43898913432 全绿（AH3 组件下钻 Invoke 首绿 + AH5 三段 + 发布步 success），像素复核月牙=壁纸白、岛内部=GLM 环绿非黑；副产修复三件=Progman/WorkerW 免避让（9acfd0b，前台翻桌面岛隐没真机缺陷同根因）/ TOPMOST band 重钉（3906815，SetWindowRgn 降 band 症）/ 岛面 InvokePattern（d40e2a9，读屏可达性+取证通道兼修）；证据 docs/acceptance-evidence/island-backdrop-fix/；亮暗壁纸观感/运行时 10 次循环切换/切换瞬态闪烁/DWM 阴影观感待装机亲验
 
+## 岛视觉精度修复（2026-11-18 用户真机三瑕疵巡检单 beacon-island-visual-precision，1 项 CI 已取证 / 待装机亲验不闭项）
+
+- [ ] ISLAND-EDGE-1 悬浮岛边缘视觉精度（用户真机三瑕疵：透明或灰色底板残留、圆角不自然、强锯齿）：走首选路线 ULW 逐像素 alpha 环带窗（新增 IslandEdgeBandWindow，纯 Win32 分层窗沿岛轮廓外扩 4px 自绘黑环带，岛体窗 region 与 XAML 零改动；c566b2a/7a87dce/fb9afe7/b8f5396/96f0ba6/e70db22/4c84c48）；CI 两因连环定谳=band 位置陈旧（纯移动不触发 region 重算，e5c50b9 挂 DidPositionChange 跟挪并缓存几何段表/DPI）与 TopmostGuard 反压（哨兵把岛钉到 band 顶，21b3a58 把 band 注册为哨兵第二个 client 同事件先钉岛再钉带）；其间一轮被「黑对黑」陷阱洗白（陈旧 band 底缘核心段全宽直线恰压岛体黑面故隐形，只漏外沿 AA 行 2px 斑；z 序错与位置陈旧给出完全相同的斑，像素差必须换算到候选源各自理论落点核对几何全形）；AH5d 三 advisory 升硬门（28cd9de 升门 + 2db0e56 修悬空 else，PS 解析期合法只在 5.1 运行期炸）=底缘灰带≤1px / 曲线色阶≥4 / band 几何对齐岛 clientRect−4px；像素直证 AA=main 左缘 y2 硬跳 255×8,17,1（色阶 3）vs spike 连续灰阶 191,135,127,88,24,0（色阶 7）；nightly run 44855478510 全绿（head 2db0e56，Visual evidence 与场景 AH5d 双 success，实测灰带 0px、色阶 7/9/10、band rect=374,-4 276x40 对齐 island 378,0 268x32 偏移 0，发布步按门控 skipped）；用户真机三瑕疵亲验待装机（视觉条目 agent 不闭项）
+
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
 - [x] [M] DSL 动作 TTL 缓存感知配置变更（src/Beacon.App/Services/BeaconRuntime.cs:42-83）——连接列表变更不失效，注释与实际竞态面不符（96de3e3：JsonConfigurationStore 新增 ConnectionsVersion 代数（Upsert/Remove/ReplaceAll 递增、删不存在不增，Storage 测试 ConnectionsVersion_BumpsOnConnectionMutationsOnly）+ DslActions getter 版本不匹配即重算、代数未变才走 2s TTL，注释按实际双失效面重写；App 侧 getter 属 App 工程 Linux 不编译，CS 面人工核 + CI 编译门）
