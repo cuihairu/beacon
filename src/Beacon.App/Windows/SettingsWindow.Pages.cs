@@ -106,6 +106,10 @@ internal sealed partial class SettingsWindow
             return page;
         }
 
+        // SET-UX-04 四列表头（原型：组件 | 桌面 | 悬浮岛 | 设置）：列宽与行内 Grid 同像素值对齐；
+        // 岛组（末位、虚拟环/条两列行）在表头覆盖范围之外，不受影响。
+        page.Children.Add(BuildComponentCenterHeader());
+
         foreach (var group in groups)
         {
             page.Children.Add(SectionTitle($"{group.DisplayName}（{group.Items.Count}）"));
@@ -124,8 +128,184 @@ internal sealed partial class SettingsWindow
         return page;
     }
 
-    /// <summary>组件中心单行：勾选框 + 显示名/副题（类型键 · 钉选态）。勾选变化即时落库并联动 L0。</summary>
+    /// <summary>组件中心四列表头（SET-UX-04，2026-11-24 原型落地批2）：与行内 Grid 同列宽，
+    /// 岛组（末位、旧两列行）不在此口径内。</summary>
+    private UIElement BuildComponentCenterHeader()
+    {
+        var header = new Grid { ColumnSpacing = 10 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170, GridUnitType.Pixel) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160, GridUnitType.Pixel) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        foreach (var (column, text) in new[] { (1, "组件"), (2, "桌面"), (3, "悬浮岛"), (4, "设置") })
+        {
+            var cell = new TextBlock
+            {
+                Text = text,
+                FontSize = DesignTokens.FontCaption,
+                Foreground = new SolidColorBrush(ThemeColors.TextTertiary()),
+            };
+            Grid.SetColumn(cell, column);
+            header.Children.Add(cell);
+        }
+        header.Padding = new Thickness(0, 2, 0, 2);
+        return header;
+    }
+
+    /// <summary>组件中心单行（SET-UX-04，2026-11-24 原型落地批2）：四列「组件 | 桌面 | 悬浮岛 | 设置」。
+    /// 桌面/悬浮岛两列由 Core ComponentPlacement 单源判定（镜像 L0 宿主过滤链与岛渲染口径），
+    /// 状态主行按三档配色（绿=在位 / 灰=未就位 / 琥珀=需处理）+ 阻挡原因小字——组件中心行与桌面
+    /// 实况共用同一判定，不再各说各话。勾选框仍是全局显隐恢复入口（component-center-{id} 锚不变）；
+    /// 设置列：编辑样式（样式中心）/ 加入悬浮岛（白名单尾插，落库后岛列就地刷新）/ 打开数据来源
+    /// （来源已停用时直达模块页）。副题钉选态/隐藏态改由两列状态承接（不再重复一行文字）。</summary>
     private UIElement BuildComponentCenterRow(ComponentCenterItem item)
+    {
+        var widget = _runtime.Config.Widgets.FirstOrDefault(w => w.Id == item.WidgetId);
+        if (widget is null)
+        {
+            return BuildVirtualCenterRow(item); // 岛虚拟环/条不占桌面、不走去向判定（旧两列口径保留）
+        }
+
+        var app = _runtime.Config.App;
+        var descriptor = AllWidgetDescriptors().FirstOrDefault(d => d.Type == widget.Type);
+        var connection = _runtime.Config.Connections.FirstOrDefault(c => c.Id == widget.ConnectionId);
+        var desktop = ComponentPlacement.DescribeDesktop(widget, descriptor, app,
+            connectionEnabled: connection?.Enabled ?? true, // 缺连接不拦（宿主同口径，不算停用）
+            numericFloatingEnabled: app.NumericFloatingEnabled,
+            floatingMode: string.Equals(app.PinDisplayMode, "floating", StringComparison.OrdinalIgnoreCase));
+        var islandOn = StatusBarMode.Read(app) == StatusBarMode.Island;
+        var islandRank = app.IslandComponents.IndexOf(item.WidgetId) + 1;
+        var island = ComponentPlacement.DescribeIsland(app, item.WidgetId, islandOn, islandRank);
+
+        // 列0：全局显隐勾选（隐藏=全载体消失 + 退出聚合；取消隐藏即恢复）
+        var toggle = new CheckBox
+        {
+            IsChecked = !ComponentCenterCatalog.IsHidden(app, item.WidgetId),
+            MinWidth = 0,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"component-center-{item.WidgetId}");
+
+        // 列1：组件（显示名 + 类型键 · 来源）
+        var label = new TextBlock
+        {
+            Text = item.Label,
+            FontSize = DesignTokens.FontBody,
+            Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var subtitle = new TextBlock
+        {
+            Text = $"{item.TypeName} · {connection?.Id ?? "未连接来源"}",
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        var textColumn = new StackPanel { Spacing = 2 };
+        textColumn.Children.Add(label);
+        textColumn.Children.Add(subtitle);
+
+        // 列2/3：桌面 / 悬浮岛（状态主行 + 原因小字；TextWrapping 保证长原因不被截断）
+        var desktopText = new TextBlock
+        {
+            Text = DesktopStateLabel(desktop.State),
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(PlacementStateColor(desktop.State)),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        var desktopNote = new TextBlock
+        {
+            Text = desktop.Note,
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(ThemeColors.TextTertiary()),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(desktopText, $"component-desktop-state-{item.WidgetId}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(desktopNote, $"component-desktop-note-{item.WidgetId}");
+        var desktopColumn = new StackPanel { Spacing = 2 };
+        desktopColumn.Children.Add(desktopText);
+        desktopColumn.Children.Add(desktopNote);
+
+        var islandText = new TextBlock
+        {
+            Text = IslandStateLabel(island.State),
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(PlacementStateColor(island.State)),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        var islandNote = new TextBlock
+        {
+            Text = island.Note,
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(ThemeColors.TextTertiary()),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(islandText, $"component-island-state-{item.WidgetId}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(islandNote, $"component-island-note-{item.WidgetId}");
+        var islandColumn = new StackPanel { Spacing = 2 };
+        islandColumn.Children.Add(islandText);
+        islandColumn.Children.Add(islandNote);
+
+        // 列4：设置（编辑样式恒有；未上岛补「加入悬浮岛」；来源显式停用补「打开数据来源」直达模块页）
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Top };
+        var styleButton = new Button { Content = "编辑样式", Padding = new Thickness(8, 2, 8, 2) };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(styleButton, $"component-style-{item.WidgetId}");
+        styleButton.Click += (_, _) => OpenComponentStyleCenter(widget);
+        actions.Children.Add(styleButton);
+        if (island.State != ComponentPlacement.IslandOnboarded)
+        {
+            var onboardButton = new Button { Content = "加入悬浮岛", Padding = new Thickness(8, 2, 8, 2) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(onboardButton, $"component-onboard-{item.WidgetId}");
+            onboardButton.Click += (_, _) =>
+            {
+                SaveIslandOnboard(item.WidgetId, onboarded: true);
+                // 岛列就地刷新（不重建整页）：上岛后重跑 DescribeIsland 同一判定源
+                var rank = app.IslandComponents.IndexOf(item.WidgetId) + 1;
+                var refreshed = ComponentPlacement.DescribeIsland(app, item.WidgetId,
+                    StatusBarMode.Read(app) == StatusBarMode.Island, rank);
+                islandText.Text = IslandStateLabel(refreshed.State);
+                islandText.Foreground = new SolidColorBrush(PlacementStateColor(refreshed.State));
+                islandNote.Text = refreshed.Note;
+                actions.Children.Remove(onboardButton);
+            };
+            actions.Children.Add(onboardButton);
+        }
+        if (connection is { Enabled: false })
+        {
+            var sourceButton = new Button { Content = "打开数据来源", Padding = new Thickness(8, 2, 8, 2) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(sourceButton, $"component-source-{item.WidgetId}");
+            // 模块键=组件类型前缀（与 ModuleDescriptors「前缀=连接类型」约定同源）
+            sourceButton.Click += (_, _) => OpenModule(widget.Type.Split('.')[0]);
+            actions.Children.Add(sourceButton);
+        }
+
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170, GridUnitType.Pixel) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(160, GridUnitType.Pixel) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(toggle, 0);
+        Grid.SetColumn(textColumn, 1);
+        Grid.SetColumn(desktopColumn, 2);
+        Grid.SetColumn(islandColumn, 3);
+        Grid.SetColumn(actions, 4);
+        row.Children.Add(toggle);
+        row.Children.Add(textColumn);
+        row.Children.Add(desktopColumn);
+        row.Children.Add(islandColumn);
+        row.Children.Add(actions);
+        row.Padding = new Thickness(0, 2, 0, 2);
+
+        // 先取 IsChecked 再挂事件（构造期赋值不触发写路径；用户点击才落库）
+        toggle.Checked += (_, _) => SaveComponentVisibility(item.WidgetId, visible: true);
+        toggle.Unchecked += (_, _) => SaveComponentVisibility(item.WidgetId, visible: false);
+        return row;
+    }
+
+    /// <summary>岛虚拟环/条行（旧两列口径）：不占桌面、不走去向判定，勾选显隐直读（行为不变）。</summary>
+    private UIElement BuildVirtualCenterRow(ComponentCenterItem item)
     {
         var hidden = ComponentCenterCatalog.IsHidden(_runtime.Config.App, item.WidgetId);
         var toggle = new CheckBox
@@ -140,14 +320,14 @@ internal sealed partial class SettingsWindow
         {
             Text = item.Label,
             FontSize = DesignTokens.FontBody,
-            Foreground = new SolidColorBrush(ThemeColors.Label()),
+            Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         var subtitle = new TextBlock
         {
-            Text = $"{item.TypeName} · {(item.Pinned ? "已钉选" : "未钉选")}{(hidden ? " · 已隐藏" : "")}",
+            Text = $"{item.TypeName}{(hidden ? " · 已隐藏" : "")}",
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         var textColumn = new StackPanel { Spacing = 2 };
@@ -168,6 +348,39 @@ internal sealed partial class SettingsWindow
         toggle.Unchecked += (_, _) => SaveComponentVisibility(item.WidgetId, visible: false);
         return row;
     }
+
+    /// <summary>桌面列状态短句（封闭词表直配；完整原因由行内小字承接）。</summary>
+    private static string DesktopStateLabel(string state) => state switch
+    {
+        ComponentPlacement.DesktopShown => "已显示",
+        ComponentPlacement.DesktopUnpinned => "未钉选",
+        ComponentPlacement.DesktopUnsupported => "不支持钉选",
+        ComponentPlacement.DesktopGlobalHidden => "已隐藏",
+        ComponentPlacement.DesktopSourceDisabled => "来源已停用",
+        ComponentPlacement.DesktopNumericSuppressed => "数值总开关关闭",
+        _ => "未知",
+    };
+
+    /// <summary>悬浮岛列状态短句（封闭词表直配）。</summary>
+    private static string IslandStateLabel(string state) => state switch
+    {
+        ComponentPlacement.IslandOnboarded => "已上岛",
+        ComponentPlacement.IslandNotOnboarded => "未上岛",
+        ComponentPlacement.IslandOff => "岛未启用",
+        ComponentPlacement.IslandHidden => "已隐藏",
+        ComponentPlacement.IslandOverflows => "收起行溢出",
+        _ => "未知",
+    };
+
+    /// <summary>去向状态三档配色：绿=在位（桌面已显示/已上岛），琥珀=需处理（隐藏/来源停用/不支持），
+    /// 灰=未就位但属正常可配置态（未钉选/未上岛/岛未启用/溢出）。</summary>
+    private static global::Windows.UI.Color PlacementStateColor(string state) => state switch
+    {
+        ComponentPlacement.DesktopShown or ComponentPlacement.IslandOnboarded => ThemeColors.StatusOk(),
+        ComponentPlacement.DesktopGlobalHidden or ComponentPlacement.DesktopSourceDisabled
+            or ComponentPlacement.DesktopUnsupported or ComponentPlacement.IslandHidden => ThemeColors.StatusWarn(),
+        _ => ThemeColors.TextSecondary(),
+    };
 
     /// <summary>组件中心显隐落库（设置页唯一写入口）：Core SetVisible 单源改集 → SaveApp → PinsChanged
     /// 联动（App 侧既有路径重挂 L0 两宿主 ReloadTiles，隐藏/恢复即时生效）。</summary>
