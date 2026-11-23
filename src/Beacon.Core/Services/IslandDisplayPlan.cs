@@ -66,7 +66,8 @@ public static class IslandDisplayPlan
             {
                 continue; // 白名单里的陈旧 id / 组件中心勾掉的组件：跳过不占位（ISLAND-RING-1 口径）
             }
-            candidates.Add(WidgetFace(widget, states.TryGetValue(widgetId, out var state) ? state : null));
+            var state = states.TryGetValue(widgetId, out var snapshot) ? snapshot : null;
+            candidates.Add(WidgetFace(widget, state) with { Metric = MetricOf(state) });
         }
 
         var mode = NormalizeMode(app.IslandDisplayMode);
@@ -126,6 +127,50 @@ public static class IslandDisplayPlan
     /// <summary>计数文本裁决：未读优先、异常次之、全零不落字（与现环心数字逐字节同口径）。</summary>
     private static string CountText(int unread, int abnormal)
         => unread > 0 ? unread.ToString() : abnormal > 0 ? abnormal.ToString() : string.Empty;
+
+    // —— 收起面主读数（SET-UX-07 ②「来源短名、周期和主值」）：周期+主值成对取自同一键，
+    //    不拿 state.Progress 反推周期（Progress 与各窗键的对应关系 provider 私有，猜了会造假）。
+    //    窗序沿 QuotaWindows.Label 词汇（5h/周/月）；无窗键退单值 percent（http.quota 等）；
+    //    本机退 CPU 主值；全缺 = 空串（chip 只显标签，不造假值）。
+
+    /// <summary>收起面主读数：窗口键优先（窗标+值成对），退单值百分比，退本机 CPU 主值，全缺空串。</summary>
+    private static string MetricOf(WidgetState? state)
+    {
+        if (state is null || state.IsStale || !state.ConnectionHealthy)
+        {
+            return ""; // 占位面不造读数（与 Placeholder 同口径）
+        }
+        foreach (var (key, label) in WindowKeys)
+        {
+            if (state.Payload.TryGetValue(key, out var raw)
+                && double.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture, out var value)
+                && double.IsFinite(value))
+            {
+                return $"{label} {Format(value)}%";
+            }
+        }
+        if (state.Payload.TryGetValue("percent", out var percent)
+            && double.TryParse(percent, System.Globalization.CultureInfo.InvariantCulture, out var single)
+            && double.IsFinite(single))
+        {
+            return $"{Format(single)}%";
+        }
+        if (state.Payload.TryGetValue("cpu_percent", out var cpu)
+            && double.TryParse(cpu, System.Globalization.CultureInfo.InvariantCulture, out var cpuValue)
+            && double.IsFinite(cpuValue))
+        {
+            return $"CPU {Format(cpuValue)}%";
+        }
+        return "";
+    }
+
+    /// <summary>窗口键 → 窗标（序 5h → 周 → 月，窗标词汇与 QuotaWindows.Label 同源）。</summary>
+    private static readonly (string Key, string Label)[] WindowKeys =
+        [("rolling_percent", "5h"), ("weekly_percent", "周"), ("monthly_percent", "月")];
+
+    /// <summary>读数短格式：65 → "65"、45.5 → "45.5"（收起行宽度预算内，不猜精度）。</summary>
+    private static string Format(double value)
+        => Math.Round(value, 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 }
 
 /// <summary>岛聚合上下文：App 从聚合状态/通知计数采样后传入（App 侧只采样不决策）。</summary>
@@ -143,6 +188,7 @@ public sealed record IslandContext(
 /// <param name="Text">环/条=计数文本（全零空串）；chip=组件标签。</param>
 /// <param name="Summary">真实摘要（chip tooltip 用；虚拟面/占位面 null）。</param>
 /// <param name="Placeholder">true=零数据/断连/过期占位（App 画灰点淡字，不渲染真实数值）。</param>
+/// <param name="Metric">收起面主读数（SET-UX-07 ②：周期+主值成对，如「5h 65%」；无结构化值空串）。</param>
 public sealed record IslandFace(
     string WidgetId,
     string Kind,
@@ -150,7 +196,8 @@ public sealed record IslandFace(
     Severity Severity,
     string Text,
     string? Summary,
-    bool Placeholder);
+    bool Placeholder,
+    string Metric = "");
 
 /// <summary>岛收起态展示计划（Compute 输出）：Faces=本拍可见面（已按档裁窗）、
 /// OverflowCount=溢出池大小（Faces.Count+OverflowCount=候选总数）、Badge=轮播徽标、

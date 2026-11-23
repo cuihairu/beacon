@@ -343,7 +343,30 @@ public sealed partial class QuickPanelWindow
             TextWrapping = TextWrapping.Wrap, // BUG-2 口径：换行优先不省略
         };
         var main = new StackPanel { Spacing = 2 };
-        main.Children.Add(sourceChip);
+        if (string.IsNullOrEmpty(entry.Reading))
+        {
+            main.Children.Add(sourceChip);
+        }
+        else
+        {
+            // SET-UX-07 ③：事件时点读数（快照 payload 单源，WidgetValueHint.Structured）随来源 chip
+            // 同行——时间线保留事件发生时的读数，不随当前最差窗口漂移；无结构化值不渲染（不造数）。
+            var chipLine = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            chipLine.Children.Add(sourceChip);
+            chipLine.Children.Add(new TextBlock
+            {
+                Text = entry.Reading,
+                Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+                FontSize = DesignTokens.FontFootnote,
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            main.Children.Add(chipLine);
+        }
         main.Children.Add(summary);
         var row = new Grid { ColumnSpacing = 8 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

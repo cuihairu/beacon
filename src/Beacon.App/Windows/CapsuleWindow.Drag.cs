@@ -166,6 +166,23 @@ public sealed partial class CapsuleWindow
             panel.Children.Add(line);
         }
 
+        // SET-UX-07 ②：展开态溢出提示——展开上限 5 行，溢出行数可见可数（收起态溢出见岛计划
+        // OverflowCount，展开态由本行兜底口径对齐）；无溢出不占行（观感不变）。
+        if (_previewRows.Count > 5)
+        {
+            panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var overflow = new TextBlock
+            {
+                Text = $"另有 {_previewRows.Count - 5} 项",
+                FontSize = 11,
+                Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
+                Margin = new Thickness(0, 5, 0, 0),
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(overflow, "island-overflow-hint"); // CI：展开态溢出提示锚
+            Grid.SetRow(overflow, rows.Count);
+            panel.Children.Add(overflow);
+        }
+
         SourcePreview.Child = panel; // Border 装饰件只有 Child（Content 是 ContentControl 面）
     }
 

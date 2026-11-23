@@ -70,7 +70,9 @@ public sealed partial class CapsuleWindow
     }
 
     /// <summary>单面视图：环/条/灯点chip 三形（计划裁决，本方法只按形画）。环/条尺寸沿用
-    /// ISLAND-RING-1 口径（环 Ø22/弦2.5、条 56×5），chip=级别灯点+组件标签（摘要走 hover 预览）。</summary>
+    /// ISLAND-RING-1 口径（环 Ø22/弦2.5、条 56×5），chip=级别灯点+组件标签（摘要走 hover 预览）。
+    /// SET-UX-07 ②：条面带 Metric（周期+主值成对，如「5h 65%」）时补标签+读数——收起行保留
+    /// 来源短名/周期/主值；Metric 空（虚拟条/无结构化值）保持裸条原几何（既有像素取证不漂）。</summary>
     private FrameworkElement IslandFaceView(IslandFace face)
     {
         var color = _palette.SeverityColor(face.Severity);
@@ -79,10 +81,41 @@ public sealed partial class CapsuleWindow
         {
             "ring" => Components.RingProgressBadge.Build(IslandRingSize, IslandRingThickness,
                 face.Progress ?? 0, color, track, face.Text, ThemeColors.IslandText()),
+            "bar" when face.Metric.Length > 0 => BarFace(face, color, track),
             "bar" => Components.BarProgressBadge.Build(IslandBarWidth, IslandBarThickness,
                 face.Progress ?? 0, color, track),
             _ => ChipFace(face, color),
         };
+    }
+
+    /// <summary>数据条面（SET-UX-07 ②）：标签（来源短名）+ 主读数（如「5h 65%」）+ 进度条。</summary>
+    private FrameworkElement BarFace(IslandFace face, global::Windows.UI.Color color, global::Windows.UI.Color track)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        row.Children.Add(new TextBlock
+        {
+            Text = face.Text,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(ThemeColors.IslandText()),
+            MaxWidth = 72, // 标签截断不撑宽岛（读数优先可见）
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        row.Children.Add(new TextBlock
+        {
+            Text = face.Metric,
+            FontSize = 11,
+            Foreground = new SolidColorBrush(ThemeColors.IslandText()),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        row.Children.Add(Components.BarProgressBadge.Build(IslandBarWidth, IslandBarThickness,
+            face.Progress ?? 0, color, track));
+        return row;
     }
 
     /// <summary>灯点 chip 面：级别灯点（占位=空心描边+文字降透明度，不渲染真实数值）+ 组件标签。
@@ -109,6 +142,17 @@ public sealed partial class CapsuleWindow
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         });
+        if (face.Metric.Length > 0)
+        {
+            // SET-UX-07 ②：无进度组件（本机）收起面也带主读数（「CPU 12%」），标签不因读数挤没
+            row.Children.Add(new TextBlock
+            {
+                Text = face.Metric,
+                FontSize = 11,
+                Foreground = new SolidColorBrush(ThemeColors.IslandText()) { Opacity = 0.8 },
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+        }
         if (!string.IsNullOrEmpty(face.Summary))
         {
             ToolTipService.SetToolTip(row, face.Summary);

@@ -23,7 +23,8 @@ public sealed class IslandDisplayPlanTests
     }
 
     private static WidgetState State(string id, Severity severity = Severity.Info, double? progress = null,
-        bool stale = false, bool healthy = true, string summary = "运行中")
+        bool stale = false, bool healthy = true, string summary = "运行中",
+        IReadOnlyDictionary<string, string>? payload = null)
         => new()
         {
             WidgetId = id,
@@ -34,7 +35,11 @@ public sealed class IslandDisplayPlanTests
             Progress = progress,
             IsStale = stale,
             ConnectionHealthy = healthy,
+            Payload = payload ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
         };
+
+    private static Dictionary<string, string> PV(params (string Key, string Value)[] items)
+        => new(items.ToDictionary(item => item.Key, item => item.Value), StringComparer.OrdinalIgnoreCase);
 
     private static IslandContext Ctx(int unread = 0, int abnormal = 0, double okShare = 1.0)
         => new(unread, abnormal, okShare, Severity.Success);
@@ -317,6 +322,110 @@ public sealed class IslandDisplayPlanTests
 
         Assert.Equal(["w-2", "w-1"], candidates.Select(item => item.WidgetId));
         Assert.Equal("B", candidates[0].Label);
+    }
+
+    // —— 收起面主读数（SET-UX-07 ②「来源短名、周期和主值」） ——
+
+    [Fact]
+    public void Metric_QuotaRollingWindow_PairsWindowLabelWithValue()
+    {
+        var app = new AppConfig();
+        app.IslandComponents.Add("w-1");
+        var widgets = new[] { Widget("w-1", "kimi.coding", label: "Kimi") };
+        var states = new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("w-1", Severity.Warning, progress: 0.65,
+                payload: PV(("rolling_percent", "65.4"), ("weekly_percent", "38"))),
+        };
+
+        var face = Plan(app, widgets, states, Ctx()).Faces.Skip(2).Single();
+
+        Assert.Equal("bar", face.Kind);
+        Assert.Equal("5h 65.4%", face.Metric); // 周期+主值成对取自 rolling_percent 键（不拿 Progress 反推周期）
+    }
+
+    [Theory]
+    [InlineData("weekly_percent", "38", "周 38%")]
+    [InlineData("monthly_percent", "80", "月 80%")]
+    public void Metric_FallsThroughWindowKeysInOrder(string key, string value, string expected)
+    {
+        var app = new AppConfig();
+        app.IslandComponents.Add("w-1");
+        var widgets = new[] { Widget("w-1", "bigmodel.usage", label: "智谱") };
+        var states = new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("w-1", payload: PV((key, value), ("percent", "88"))),
+        };
+
+        var face = Plan(app, widgets, states, Ctx()).Faces.Skip(2).Single();
+
+        Assert.Equal(expected, face.Metric); // 窗序 5h→周→月；命中窗键即成对取值，不混单值键
+    }
+
+    [Fact]
+    public void Metric_SinglePercentOnly_ValueWithoutWindowLabel()
+    {
+        var app = new AppConfig();
+        app.IslandComponents.Add("w-1");
+        var widgets = new[] { Widget("w-1", "http.quota", label: "GLM 额度") };
+        var states = new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("w-1", payload: PV(("percent", "65"))),
+        };
+
+        var face = Plan(app, widgets, states, Ctx()).Faces.Skip(2).Single();
+
+        Assert.Equal("65%", face.Metric); // 无窗键退单值百分比（主值不带窗标——没窗就不编窗名）
+    }
+
+    [Fact]
+    public void Metric_MachineFallback_ReadsCpuMainValue()
+    {
+        var app = new AppConfig();
+        app.IslandComponents.Add("w-1");
+        var widgets = new[] { Widget("w-1", "machine.local", label: "本机") };
+        var states = new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("w-1", payload: PV(("cpu_percent", "12"), ("mem_percent", "44"))),
+        };
+
+        var face = Plan(app, widgets, states, Ctx()).Faces.Skip(2).Single();
+
+        Assert.Equal("chip", face.Kind); // Progress 恒 null → 灯点 chip 面（口径不变）
+        Assert.Equal("CPU 12%", face.Metric); // 主值=CPU（mem/disk 是并列，不抢主位）
+    }
+
+    [Fact]
+    public void Metric_NoStructuredValue_StaysEmpty()
+    {
+        var app = new AppConfig();
+        app.IslandComponents.Add("w-1");
+        var widgets = new[] { Widget("w-1", "github.pull_requests", label: "PR") };
+        var states = new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("w-1", payload: PV(("open_count", "3"))),
+        };
+
+        var face = Plan(app, widgets, states, Ctx()).Faces.Skip(2).Single();
+
+        Assert.Equal("", face.Metric); // 非百分比组件不造读数（chip 只显标签）
+    }
+
+    [Fact]
+    public void Metric_PlaceholderFace_StaysEmpty()
+    {
+        var app = new AppConfig();
+        app.IslandComponents.Add("w-1");
+        var widgets = new[] { Widget("w-1", "kimi.coding", label: "Kimi") };
+        var states = new Dictionary<string, WidgetState>
+        {
+            ["w-1"] = State("w-1", stale: true, payload: PV(("rolling_percent", "65"))),
+        };
+
+        var face = Plan(app, widgets, states, Ctx()).Faces.Skip(2).Single();
+
+        Assert.True(face.Placeholder);
+        Assert.Equal("", face.Metric); // 占位面不渲染真实数值（data_quality 口径）
     }
 
     // —— 持久化（config.json 同一单源，重启保留） ——

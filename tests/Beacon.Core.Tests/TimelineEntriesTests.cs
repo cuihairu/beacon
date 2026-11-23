@@ -30,6 +30,36 @@ public class TimelineEntriesTests
     public void Board_EmptyEvents_ReturnsEmpty()
         => Assert.Empty(TimelineEntries.Board([]));
 
+    // —— 事件时点读数（SET-UX-07 ③「时间线保留事件发生时的读数」） ——
+
+    [Fact]
+    public void Board_KeepsEventTimeReadingFromSnapshotPayload()
+    {
+        // 快照 payload 带该时刻的窗口读数：行面 Reading=结构化读数（WidgetValueHint.Structured 单源）
+        var quota = State("w-1", "kimi.coding", Severity.Warning, "Kimi") with
+        {
+            Payload = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["rolling_percent"] = "65.4",
+                ["weekly_percent"] = "38",
+            },
+        };
+        var rows = TimelineEntries.Board([new BoardEvent(DateTimeOffset.Now, quota, "Kimi")]);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("65.4%/5h 38%/w", row.Reading); // 事件时点读数（5h 65% / 周 38% 验收口径的载体）
+    }
+
+    [Fact]
+    public void Board_StatusOnlySnapshot_ReadingStaysNull()
+    {
+        // 纯状态组件：无结构化读数不渲染读数位（不拿摘要截断造读数——不造数口径）
+        var rows = TimelineEntries.Board([Event(1, "w-ci", "github.actions.runs", Severity.Success, "ci ok")]);
+
+        var row = Assert.Single(rows);
+        Assert.Null(row.Reading);
+    }
+
     [Fact]
     public void Board_OrdersNewestFirst_RegardlessOfInputOrder()
     {

@@ -35,6 +35,21 @@ public static class ComponentBindingEngine
             ["percent"] = (state, _) => state.Progress is { } raw
                 ? Math.Round(raw * 100).ToString(CultureInfo.InvariantCulture) + "%"
                 : null,
+            // SET-UX-07 多指标取数：payload 指定键（Args["key"]）的百分比直读（本机 CPU/内存/磁盘、
+            // 附加窗口键）。键缺失/非数值/非有限 = null（fail-closed 回空串，与 percent 同口径——
+            // 各来源分别处理缺失，一个键缺不拖累其他键）。键名由模板声明（树内 Args），不是猜的。
+            ["percent-of"] = (state, args) =>
+            {
+                var key = args is { } named && named.TryGetValue("key", out var name) ? name : null;
+                if (string.IsNullOrWhiteSpace(key)
+                    || !state.Payload.TryGetValue(key, out var raw)
+                    || !double.TryParse(raw, CultureInfo.InvariantCulture, out var value)
+                    || !double.IsFinite(value))
+                {
+                    return null;
+                }
+                return Math.Round(value, 1).ToString("0.#", CultureInfo.InvariantCulture) + "%";
+            },
         };
 
     /// <summary>受支持的状态字段名（Phase 4 模板解析期白名单校验同一张表，不另写第二份）。</summary>

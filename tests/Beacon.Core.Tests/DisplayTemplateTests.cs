@@ -27,8 +27,8 @@ public sealed class DisplayTemplateTests
     [Fact]
     public void Templates_have_unique_ids_with_default_first()
     {
-        Assert.Equal(5, DisplayTemplates.All.Count);
-        Assert.Equal(5, DisplayTemplates.All.Select(template => template.Id).Distinct().Count());
+        Assert.Equal(7, DisplayTemplates.All.Count); // bar/ring/number/pool/statusline/quotaline/metricgrid（SET-UX-07 起）
+        Assert.Equal(7, DisplayTemplates.All.Select(template => template.Id).Distinct().Count());
         Assert.Equal("bar", DisplayTemplates.All[0].Id); // 默认档在首，展示面默认选中项可稳定取
     }
 
@@ -52,9 +52,13 @@ public sealed class DisplayTemplateTests
     [Fact]
     public void Compatible_returns_all_when_progress_is_present()
     {
+        // dataKinds 未声明（null）回退当前值推断（旧口径）：有进度即全表放行——含 quotaline/metricgrid
+        // （旧口径不区分窗口能力，声明过的类型才按声明锁面，见 Capability_* 系列）。
         var ids = DisplayTemplates.Compatible(State(0.52)).Select(template => template.Id).ToHashSet();
-        Assert.Equal(5, ids.Count);
+        Assert.Equal(7, ids.Count);
         Assert.Contains("ring", ids);
+        Assert.Contains("quotaline", ids);
+        Assert.Contains("metricgrid", ids);
     }
 
     [Fact]
@@ -99,9 +103,11 @@ public sealed class DisplayTemplateTests
     }
 
     [Fact]
-    public void StatusLine_is_the_only_template_without_progress_requirement()
+    public void StatusLine_and_metricgrid_are_templates_without_progress_requirement()
     {
-        Assert.Equal(1, DisplayTemplates.All.Count(template => !template.RequiresProgress));
+        // SET-UX-07：metricgrid 走 payload 百分比键直读（percent-of），不依赖 state.Progress——
+        // 与 statusline 同为无进度门槛模板（WindowsOnly 能力门槛）。
+        Assert.Equal(2, DisplayTemplates.All.Count(template => !template.RequiresProgress));
         var root = Template("statusline").Build();
         var dotBinding = Assert.Single(root.Children[0].Bindings);
         Assert.Equal("severity", dotBinding.Field);
@@ -111,6 +117,111 @@ public sealed class DisplayTemplateTests
     [Fact]
     public void Percent_is_a_registered_selector_name()
         => Assert.Contains("percent", ComponentBindingEngine.SelectorNames);
+
+    // —— SET-UX-07 ①：percent-of 选择器（payload 指定键直读） ——
+
+    private static ComponentBinding PercentOf(string key) => new()
+    {
+        Field = "value",
+        Source = new ComponentBindingSource
+        {
+            Kind = ComponentBindingSource.KindSelector,
+            Ref = "percent-of",
+            Args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["key"] = key },
+        },
+    };
+
+    [Fact]
+    public void PercentOf_is_a_registered_selector_name()
+        => Assert.Contains("percent-of", ComponentBindingEngine.SelectorNames);
+
+    private static WidgetState StateWithPayload(params (string Key, string Value)[] items)
+        => State(0.9) with
+        {
+            Payload = new Dictionary<string, string>(
+                items.ToDictionary(item => item.Key, item => item.Value), StringComparer.OrdinalIgnoreCase),
+        };
+
+    [Fact]
+    public void PercentOf_reads_payload_key_and_formats_percent()
+    {
+        var state = StateWithPayload(("cpu_percent", "12"), ("rolling_percent", "65.4"));
+        Assert.Equal("12%", ComponentBindingEngine.ResolveBinding(PercentOf("cpu_percent"), state));
+        Assert.Equal("65.4%", ComponentBindingEngine.ResolveBinding(PercentOf("rolling_percent"), state));
+    }
+
+    [Fact]
+    public void PercentOf_fails_closed_on_missing_or_bad_keys()
+    {
+        var state = StateWithPayload(("junk_percent", "not-a-number"));
+        Assert.Equal("", ComponentBindingEngine.ResolveBinding(PercentOf("absent_key"), state)); // 缺键=空串
+        Assert.Equal("", ComponentBindingEngine.ResolveBinding(PercentOf("junk_percent"), state)); // 非数值=空串
+        Assert.Equal("", ComponentBindingEngine.ResolveBinding(PercentOf("cpu_percent"), null)); // 无状态=空串
+        var noKey = new ComponentBinding
+        {
+            Field = "value",
+            Source = new ComponentBindingSource { Kind = ComponentBindingSource.KindSelector, Ref = "percent-of" },
+        };
+        Assert.Equal("", ComponentBindingEngine.ResolveBinding(noKey, state)); // 未声明键=空串（不猜主键）
+    }
+
+    [Fact]
+    public void QuotaLine_builds_main_bar_plus_windows_caption()
+    {
+        var root = Template("quotaline").Build();
+        Assert.Equal("column", root.Type);
+        Assert.Equal(3, root.Children.Count);
+        var summary = Assert.Single(root.Children[0].Bindings);
+        Assert.Equal(("text", ComponentBindingSource.KindState, "summary"),
+            (summary.Field, summary.Source.Kind, summary.Source.Ref));
+        var progress = Assert.Single(root.Children[1].Bindings);
+        Assert.Equal("progress", progress.Field);
+        var windows = Assert.Single(root.Children[2].Bindings);
+        Assert.Equal(("text", ComponentBindingSource.KindSelector, "quota-windows"),
+            (windows.Field, windows.Source.Kind, windows.Source.Ref)); // 次窗口读数=quota-windows 聚合（单窗=空行不占位）
+    }
+
+    [Fact]
+    public void QuotaLine_gate_and_identify()
+    {
+        var template = Template("quotaline");
+        Assert.True(DisplayTemplates.CanApply(template, DisplayTemplateKinds.ProgressAndWindows, "tile", null).Ok);
+        Assert.False(DisplayTemplates.CanApply(template, DisplayTemplateKinds.ProgressOnly, "tile", null).Ok);
+        Assert.Contains("多窗口读数", DisplayTemplates.CanApply(template, DisplayTemplateKinds.ProgressOnly, "tile", null).Reason);
+        Assert.Equal("quotaline", DisplayTemplates.Identify(template.Build()));
+    }
+
+    [Fact]
+    public void MetricGrid_builds_three_percent_of_rows_with_missing_key_hiding()
+    {
+        var root = Template("metricgrid").Build();
+        Assert.Equal("column", root.Type);
+        Assert.Equal(3, root.Children.Count);
+        var keys = new[] { "cpu_percent", "mem_percent", "disk_percent" };
+        for (var index = 0; index < 3; index++)
+        {
+            var row = root.Children[index];
+            Assert.Equal("row", row.Type);
+            Assert.Equal($"has:payload.{keys[index]}", row.Props["when"]); // 缺键整行隐藏（各来源分别处理缺失）
+            var label = Assert.Single(row.Children[0].Bindings);
+            Assert.Equal(ComponentBindingSource.KindConst, label.Source.Kind); // 标签=字面量
+            var value = Assert.Single(row.Children[1].Bindings);
+            Assert.Equal(("value", ComponentBindingSource.KindSelector, "percent-of"),
+                (value.Field, value.Source.Kind, value.Source.Ref));
+            Assert.Equal(keys[index], value.Source.Args!["key"]); // 键由模板声明（行序=CPU/内存/磁盘）
+        }
+    }
+
+    [Fact]
+    public void MetricGrid_gate_and_identify()
+    {
+        var template = Template("metricgrid");
+        Assert.True(DisplayTemplates.CanApply(template, DisplayTemplateKinds.WindowsOnly, "tile", null).Ok);
+        Assert.False(DisplayTemplates.CanApply(template, DisplayTemplateKinds.StatusOnly, "tile", null).Ok);
+        Assert.Equal("metricgrid", DisplayTemplates.Identify(template.Build()));
+        var overridden = template.Build(new Dictionary<string, string> { ["width"] = "99" }); // 未知参数不猜
+        Assert.Equal("metricgrid", DisplayTemplates.Identify(overridden));
+    }
 
     [Fact]
     public void Percent_formats_progress_and_fails_closed_without_it()
@@ -281,10 +392,9 @@ public sealed class DisplayTemplateTests
         foreach (var template in DisplayTemplates.All)
         {
             var tree = template.Build();
-            Assert.NotEmpty(template.Parameters);
+            // 空参数表合法（SET-UX-07 metricgrid：定构多指标行，无旋钮）；已声明参数必须落到树内 Props。
             foreach (var (key, spec) in template.Parameters)
             {
-                // 参数键必须落在生成树某节点 Props 上（覆盖才有目标）
                 Assert.True(ContainsProp(tree, key), $"{template.Id}: 参数 {key} 未落到生成树任何 Props");
                 Assert.False(string.IsNullOrWhiteSpace(spec.Label));
             }

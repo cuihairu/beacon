@@ -14,8 +14,17 @@ public static class WidgetValueHint
     /// <summary>取 provider 主数值：按「显式文本 → 计数 → 多窗已用% → 单窗已用% → 套餐 → 金额 → token」优先级链。</summary>
     public static string Of(WidgetState state)
     {
-        var payload = state.Payload;
+        // 结构化读数单源（SET-UX-07 ③）：payload 侧优先级链抽为 Structured 供时间线事件时点读数复用；
+        // 无结构化值才落 state 侧兜底（stale / 摘要截断）——行为逐字节不变。
+        return Structured(state.Payload)
+            ?? (state.IsStale ? "stale" : null)
+            ?? (state.Summary.Length > 8 ? state.Summary[..7] + "…" : state.Summary);
+    }
 
+    /// <summary>payload 侧结构化读数（SET-UX-07 ③ 事件时点读数复用面）：与 Of 同优先级链，
+    /// 无任何结构化值 = null（调用方自行决定兜底；时间线对 null 不渲染读数位——不造数）。</summary>
+    public static string? Structured(IReadOnlyDictionary<string, string> payload)
+    {
         if (Text(payload, "value_text") is { } explicitValue)
         {
             return explicitValue; // provider 显式短文本（如 mimo 无额度口时的「无额度口」——模型数不得冒充额度）
@@ -90,11 +99,7 @@ public static class WidgetValueHint
         }
         // models（模型目录数）不再映射数值位：2026-10-10 用户令——模型数不是额度，不得占额度位
         // （mimo 无计数源时由 provider 显式给 value_text「无额度口」，模型数留在 Summary 次行）
-        if (state.IsStale)
-        {
-            return "stale";
-        }
-        return state.Summary.Length > 8 ? state.Summary[..7] + "…" : state.Summary;
+        return null; // 无结构化值：调用方兜底（Of 落 stale/摘要截断；时间线不渲染读数位）
     }
 
     /// <summary>取非空 payload 值；缺失/空串统一按「无此键」走下一优先级。</summary>

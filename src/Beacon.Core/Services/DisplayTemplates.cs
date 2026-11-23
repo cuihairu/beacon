@@ -90,6 +90,7 @@ public static class DisplayTemplates
 {
     private const string State = ComponentBindingSource.KindState;
     private const string Selector = ComponentBindingSource.KindSelector;
+    private const string Const = ComponentBindingSource.KindConst;
 
     /// <summary>模板声明：Id 稳定键 / Name 中文名 / Desc 一句话说明 / Requires 数据能力门槛 /
     /// Parameters 可调参数（生成器的参数覆盖表）/ MinTileHeightDips tile 面最小高 /
@@ -196,6 +197,28 @@ public static class DisplayTemplates
                     Leaf("statusdot", Props(("size", "10")), Bind("severity", State, "severity")),
                     Leaf("text", null, Bind("text", State, "summary"))),
                 "size", overrides)),
+        // SET-UX-07 ①「额度主窗口 + 次窗口摘要」：主窗口走 state.Progress 进度条（provider 已按
+        // 主窗口径产值），次窗口读数走 quota-windows 选择器（多窗聚合文本，单窗/全缺 = 空行不占位）。
+        new("quotaline", "额度多窗", "主窗口进度条 + 次窗口读数一行（多窗口额度源）",
+            DisplayTemplateKinds.ProgressAndWindows,
+            ParamMap(new TemplateParameter("width", "条宽", "slider", "220", 40, 320)),
+            48,
+            static overrides => WithParamOverrides(
+                Group("column", Props(("gap", "sm")),
+                    Leaf("text", null, Bind("text", State, "summary")),
+                    Leaf("progress", Props(("width", "220")), Bind("progress", State, "progress")),
+                    Leaf("text", Props(("size", "caption")), Bind("text", Selector, "quota-windows"))),
+                "width", overrides)),
+        // SET-UX-07 ①「资源主值 + 并列状态」：payload 百分比键直读（percent-of 选择器），
+        // 每行 when=has:payload.{key}——缺键行整行隐藏（各来源分别处理缺失，不渲染空壳行）。
+        new("metricgrid", "本机多指标", "CPU / 内存 / 磁盘三行并列读数（缺键行自动隐藏）",
+            DisplayTemplateKinds.WindowsOnly,
+            ParamMap(),
+            60,
+            static _ => Group("column", Props(("gap", "sm")),
+                MetricRow("CPU", "cpu_percent"),
+                MetricRow("内存", "mem_percent"),
+                MetricRow("磁盘", "disk_percent"))),
     ];
 
     /// <summary>按当前值筛选（旧口径回退面）：无状态或无百分比 → 只给不要求进度的模板。
@@ -411,4 +434,19 @@ public static class DisplayTemplates
             Field = field,
             Source = new ComponentBindingSource { Kind = kind, Ref = reference },
         };
+
+    /// <summary>带 Args 的绑定（SET-UX-07 percent-of 的 key 参数、const 字面量 value）。</summary>
+    private static ComponentBinding BindWith(string field, string kind, string reference, params (string Key, string Value)[] args)
+        => new()
+        {
+            Field = field,
+            Source = new ComponentBindingSource { Kind = kind, Ref = reference, Args = Props(args) },
+        };
+
+    /// <summary>单行指标（metricgrid 行工厂）：标签（const 字面量）+ 数值（percent-of 指定键），
+    /// 行级 when=has:payload.{key} 缺键整行隐藏（ComponentVisibility 同词汇）。</summary>
+    private static ComponentDescriptor MetricRow(string label, string key)
+        => Group("row", Props(("gap", "sm"), ("when", $"has:payload.{key}")),
+            Leaf("text", Props(("size", "caption")), BindWith("text", Const, "value", ("value", label))),
+            Leaf("metric", null, BindWith("value", Selector, "percent-of", ("key", key))));
 }

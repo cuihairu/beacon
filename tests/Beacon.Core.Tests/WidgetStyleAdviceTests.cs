@@ -26,14 +26,18 @@ public sealed class WidgetStyleAdviceTests
     };
 
     [Fact]
-    public void ProgressType_RecommendsRegistryOrderAndBlocksNothing()
+    public void ProgressType_RecommendsRegistryOrderAndBlocksWindowOnlyTemplates()
     {
         var advice = WidgetStyleAdvice.List(DisplayTemplateKinds.ProgressOnly, State(null));
         Assert.True(advice[0].Recommended);
         Assert.Equal("bar", advice[0].TemplateId); // 注册表序首位=横条=默认档
-        Assert.All(advice, row => Assert.True(row.Ok)); // 全兼容：无置灰行
-        Assert.All(advice, row => Assert.Null(row.Reason));
-        Assert.Equal(5, advice.Count); // bar/ring/number/pool/statusline 全列
+        Assert.All(advice.Take(5), row => Assert.True(row.Ok)); // bar/ring/number/pool/statusline 全兼容
+        Assert.All(advice.Take(5), row => Assert.Null(row.Reason));
+        Assert.Equal(7, advice.Count); // + quotaline/metricgrid（SET-UX-07）
+        Assert.False(advice[5].Ok); // quotaline 还要窗口能力（进度已具备，缺的只有窗口）
+        Assert.Contains("多窗口读数", advice[5].Reason!);
+        Assert.False(advice[6].Ok); // metricgrid 只要窗口能力
+        Assert.Contains("多窗口读数", advice[6].Reason!);
     }
 
     [Fact]
@@ -45,9 +49,11 @@ public sealed class WidgetStyleAdviceTests
         Assert.Single(ok); // 状态行唯一兼容
         Assert.Equal("statusline", ok[0].TemplateId);
         Assert.True(ok[0].Recommended);
-        Assert.Equal(4, blocked.Length); // 横条/圆环/数字卡/水位全部殿后
+        Assert.Equal(6, blocked.Length); // 进度四件+额度多窗殿后（点名无百分比），多指标殿后（点名无多窗口读数）
         Assert.All(blocked, row => Assert.False(row.Recommended));
-        Assert.All(blocked, row => Assert.Contains("百分比", row.Reason!)); // 原因点名无百分比
+        Assert.Equal(5, blocked.Count(row => row.Reason!.Contains("百分比"))); // bar/ring/number/pool/quotaline
+        var metricgrid = Assert.Single(blocked, row => row.Reason!.Contains("多窗口读数"));
+        Assert.Equal("metricgrid", metricgrid.TemplateId);
     }
 
     [Fact]
@@ -56,19 +62,23 @@ public sealed class WidgetStyleAdviceTests
         var advice = WidgetStyleAdvice.List(DisplayTemplateKinds.AmountOnly, State(0.5));
         // 有当前值也不放行（能力声明优先，「这次有值」≠「支持进度」）；原因点名缺的是百分比
         var blocked = advice.Where(row => !row.Ok).ToArray();
-        Assert.Equal(4, blocked.Length);
-        Assert.All(blocked, row => Assert.Contains("百分比", row.Reason!));
+        Assert.Equal(6, blocked.Length);
+        Assert.Equal(5, blocked.Count(row => row.Reason!.Contains("百分比")));
+        Assert.Single(blocked, row => row.Reason!.Contains("多窗口读数")); // metricgrid
         // 金额类的独有口吻在能力摘要（CapabilityNote）里——见下测试
     }
 
     [Fact]
-    public void WindowsOnlyType_BlockedLikeStatusType()
+    public void WindowsOnlyType_UnlocksMetricGrid()
     {
-        // 仅窗口（copilot/本机）：percent 选择器接通 payload 前不算 progress
+        // 仅窗口（copilot/本机）：SET-UX-07 percent-of 落地后多指标模板可按 payload 键直读；
+        // 进度样式仍锁（state.Progress 无值）。
         var advice = WidgetStyleAdvice.List(DisplayTemplateKinds.WindowsOnly, State(null));
         var ok = advice.Where(row => row.Ok).ToArray();
-        Assert.Single(ok);
+        Assert.Equal(2, ok.Length);
         Assert.Equal("statusline", ok[0].TemplateId);
+        Assert.Equal("metricgrid", ok[1].TemplateId);
+        Assert.Equal(5, advice.Count(row => !row.Ok)); // 进度四件+额度多窗
     }
 
     [Fact]

@@ -7,17 +7,15 @@ namespace Beacon.Connections.Tests;
 /// 必须与其 Provider 稳定产出的数据形状一致——能力契约是样式推荐/置灰原因的唯一真源，
 /// 声明漂移=推荐面说谎（要么推荐了渲染不出的样式，要么把能用的置灰），这里逐类型钉死防退化。
 /// 口径：progress=state.Progress 主值百分比；windows=payload 带标签并列百分比键；amount=余额金额；
-/// status=纯状态读数。percent 选择器接通 payload 前（SET-UX-07 待办）：payload 有百分比键但
-/// state.Progress 恒 null 的类型只声明 windows 不声明 progress——不给虚假的确定进度。
+/// status=纯状态读数。payload 有百分比键但 state.Progress 恒 null 的类型（copilot/machine.local）
+/// 只声明 windows 不声明 progress——进度条绑 state.Progress，键直读走 percent-of（SET-UX-07）各归各位。
 /// </summary>
 public sealed class WidgetCapabilityTests
 {
     [Fact]
     public void ProgressOnlyTypes_MatchProviderTruth()
     {
-        // state.Progress 持续产出的八类（单窗口/无并列窗口）
-        Assert.True(ArkWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressOnly), "ark.usage");
-        Assert.True(BigModelWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressOnly), "bigmodel.usage");
+        // state.Progress 持续产出、无并列窗口键的五类（单窗口）
         Assert.True(MiMoWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressOnly), "mimo.usage");
         Assert.True(QwenWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressOnly), "qwen.usage");
         Assert.True(SenseNovaWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressOnly), "sensenova.tokenplan");
@@ -26,10 +24,13 @@ public sealed class WidgetCapabilityTests
     }
 
     [Fact]
-    public void ProgressAndWindowsType_MatchesProviderTruth()
+    public void ProgressAndWindowsTypes_MatchProviderTruth()
     {
-        // kimi：state.Progress 最差窗主值 + 5h/周/套餐窗口并列读数
+        // state.Progress 主值 + 窗口并列读数（SET-UX-07 起实证扩展：bigmodel/ark payload 产
+        // rolling/weekly/monthly_percent 三窗键，见 05 时的「类型级稳定产出」口径——当时漏声明）
         Assert.True(KimiWidgetDescriptors.Coding.DataKinds.SetEquals(DisplayTemplateKinds.ProgressAndWindows), "kimi.coding");
+        Assert.True(BigModelWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressAndWindows), "bigmodel.usage");
+        Assert.True(ArkWidgetDescriptors.Usage.DataKinds.SetEquals(DisplayTemplateKinds.ProgressAndWindows), "ark.usage");
     }
 
     [Fact]
