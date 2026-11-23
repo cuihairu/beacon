@@ -30,7 +30,7 @@ public static class TimelineSeverity
         return value >= warnPercent ? Models.Severity.Warning : Models.Severity.Success;
     }
 
-    private static double? PercentOf(IReadOnlyDictionary<string, string> payload)
+    internal static double? PercentOf(IReadOnlyDictionary<string, string> payload)
     {
         if (payload.TryGetValue("percent", out var main)
             && double.TryParse(main, System.Globalization.CultureInfo.InvariantCulture, out var value))

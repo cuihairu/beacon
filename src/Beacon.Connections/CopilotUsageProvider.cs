@@ -190,6 +190,8 @@ public sealed class CopilotUsageProvider : IWidgetProvider
             ["plan"] = usage.PlanRaw,
             ["access_type_sku"] = usage.AccessTypeSku,
             ["usage_source"] = "api", // 档①官方口直连（官方扩展同款配额端点）
+            // 历史定色主键（2026-11-23 用户令：历史按快照自身百分比）：最差槽位已用 %
+            ["percent"] = worst.ToString("0.#", CultureInfo.InvariantCulture),
         };
         if (usage.ResetDate is string reset)
         {

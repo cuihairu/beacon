@@ -168,6 +168,9 @@ public sealed class NotificationEngine : IDisposable
             Title = state.Summary,
             Message = state.IsStale ? WidgetFeedback.LastUpdate(state.FetchedAt, withSeconds: true) : null,
             DetailUrl = state.DetailUrl,
+            // 冻结落库那一刻的已用百分比（2026-11-23 用户令：历史记录记录当时的百分比）——
+            // 详情页时间线/通知中心按此重算历史级别，不随当前最差窗口漂移；非额度组件为 null。
+            Percent = TimelineSeverity.PercentOf(state.Payload),
             Timestamp = _clock.UtcNow,
         };
         lock (_gate)

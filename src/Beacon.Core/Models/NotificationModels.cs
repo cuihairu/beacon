@@ -70,6 +70,8 @@ public sealed class NotificationRecord
     public required string Title { get; init; }
     public string? Message { get; init; }
     public string? DetailUrl { get; init; }
+    /// <summary>落库那一刻的已用百分比（null=非额度组件）；详情时间线/通知中心按此重算历史级别。</summary>
+    public double? Percent { get; init; }
     public required DateTimeOffset Timestamp { get; init; }
     public bool Read { get; set; }
 }
