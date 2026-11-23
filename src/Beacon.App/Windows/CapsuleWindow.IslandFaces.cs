@@ -174,8 +174,9 @@ public sealed partial class CapsuleWindow
         host.FaceClicked += RouteFaceClick;
         host.Children.Add(view);
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(host, $"island-face-{face.WidgetId}");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(host,
-            face.Text.Length > 0 ? $"{face.WidgetId} {face.Text}" : face.WidgetId);
+        // SET-UX-07 ②：可读名带主读数（「id 标签 5h 38%」）——读屏与取证同名直达周期+主值
+        var faceName = string.Join(" ", new[] { face.WidgetId, face.Text, face.Metric }.Where(part => part.Length > 0));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(host, faceName.Length > 0 ? faceName : face.WidgetId);
         return host;
     }
 
