@@ -224,7 +224,19 @@ public sealed partial class QuickPanelWindow
             var source = widget is null ? "·" : QuickPanelFilter.SourceKey(widget.Type); // 组件已删：来源位占位不挡行
             return new BoardEvent(evt.At, evt.State, source);
         }).ToList();
-        var entries = TimelineEntries.Board(events, _activeSource);
+        // 历史行按快照自身百分比重算级别（2026-11-23 用户令）：tray=当前最差，历史=时刻状态。
+        // 阈值实时读组件 config（与 provider 同默认：warn 60 / error 90）。
+        var entries = TimelineEntries.Board(events, _activeSource, thresholds: state =>
+        {
+            var config = _runtime.Config.FindWidget(state.WidgetId)?.Config;
+            double warn = 60, error = 90;
+            if (config is not null)
+            {
+                if (config.TryGetValue("warn_percent", out var warnRaw) && double.TryParse(warnRaw, System.Globalization.CultureInfo.InvariantCulture, out var w)) { warn = w; }
+                if (config.TryGetValue("error_percent", out var errorRaw) && double.TryParse(errorRaw, System.Globalization.CultureInfo.InvariantCulture, out var e)) { error = e; }
+            }
+            return (warn, error);
+        });
         RecentList.Items.Clear();
         for (var index = 0; index < entries.Count; index++)
         {

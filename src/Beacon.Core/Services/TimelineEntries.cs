@@ -45,7 +45,8 @@ public static class TimelineEntries
         IReadOnlyList<BoardEvent> events,
         string? activeSource = null,
         int max = BoardMaxEntries,
-        DateTimeOffset? now = null)
+        DateTimeOffset? now = null,
+        Func<WidgetState, (double Warn, double Error)>? thresholds = null)
     {
         var today = (now ?? DateTimeOffset.Now).ToLocalTime().Date;
         return events
@@ -58,9 +59,14 @@ public static class TimelineEntries
                 var time = local.Date == today
                     ? local.ToString("HH:mm:ss")
                     : local.ToString("MM-dd HH:mm");
+                // 历史行级别（2026-11-23 用户令）：按快照自身百分比重算那一刻的级别，
+                // 不随当前最差窗口漂移（tray 才是当前最差口径）；无阈值解析退快照原级别。
+                var severity = thresholds is { } resolve
+                    ? TimelineSeverity.Resolve(evt.State, resolve(evt.State).Warn, resolve(evt.State).Error)
+                    : evt.State.Severity;
                 return new BoardTimelineEntry(
                     time,
-                    evt.State.Severity,
+                    severity,
                     evt.Source,
                     evt.State.Summary,
                     evt.State.WidgetId,
