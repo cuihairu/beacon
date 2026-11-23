@@ -4692,8 +4692,13 @@ try
     }
     Write-Host "场景 W3 通过：点「全部」chip → 回全部（OVERVIEW 纯头）——再点取消链实证"
     # W4 贴边收起开关：off→config false，on→config true（开关可切换可落盘）
+    # SET-UX-03（2026-11-23 批1）：贴边收起移入「桌面显示」页——先导航 module-desktop 再找锚点
+    $w4DesktopRow = Find-UiaById $settings "module-desktop" 8
+    if (!$w4DesktopRow) { Save-FullScreenshot "W-FAIL-no-desktop-row.png"; throw "断言失败（场景 W4）：UIA 未找到模块行 module-desktop（桌面显示页缺失？）" }
+    Invoke-Uia $w4DesktopRow
+    Start-Sleep -Seconds 2
     $toggle = Find-UiaById $settings "edge-collapse-toggle" 8
-    if (!$toggle) { Save-FullScreenshot "W-FAIL-no-toggle.png"; throw "断言失败（场景 W4）：设置页未找到贴边收起开关 edge-collapse-toggle" }
+    if (!$toggle) { Save-FullScreenshot "W-FAIL-no-toggle.png"; throw "断言失败（场景 W4）：设置页未找到贴边收起开关 edge-collapse-toggle（桌面显示页）" }
     ($toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
     $offOk = $false
     $deadline = (Get-Date).AddSeconds(5)
@@ -4721,6 +4726,216 @@ catch
     Save-FullScreenshot "W-FAIL-unexpected.png"
     $failures.Add("场景 W：$($_.Exception.Message)")
     Write-Host "::error::场景 W 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 SU：设置改版三件事（SET-UX-01/02/03，2026-11-23 用户令原型落地批1）——
+# SU1 单项保存回归门：预置 pollIntervalSeconds=120（合法非预设档）→ 常规页频率框回读「自定义」
+#     → startup-toggle 翻转 → config launchOnStartup 翻转且 pollIntervalSeconds 恒 120
+#     （旧 SaveGeneral 全字段回写会把 120 洗回 0——SET-UX-01 的病灶本体，本场景即门）
+# SU2 状态条三选一：双关旧配置投影「关闭」→ island → config 双开+胶囊窗在场 → capsule →
+#     岛关胶囊开+窗保持 → off → 双关+窗退场；岛关后组件中心岛内容折叠（island-display-mode 不在树）
+# SU3 窗口与看板：数值总开关 off→numericFloatingEnabled=false；允许看板 off→boardEnabled=false；
+#     不透明度 RangeValue 0.85→uiOpacity=0.85（容差断言）；布局档 panel→pinDisplayMode=panel
+#     （模板种子 floating，选 panel 验证真实翻转；重启生效面装机复核）
+try
+{
+    Ensure-MockServer
+    Write-GConfig ""
+    $cfgPath = Join-Path $configDir "config.json"
+    (Get-Content $cfgPath -Raw -Encoding UTF8).Replace('"launchOnStartup": false', '"launchOnStartup": false, "pollIntervalSeconds": 120') | Set-Content -Path $cfgPath -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    Start-Sleep -Seconds 15
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SU-FAIL-no-settings.png"; throw "断言失败（场景 SU 前置）：设置窗未出现" }
+
+    # SU1：常规页（默认页）频率框自定义回读 + 单项保存回归门
+    $pollBox = Find-UiaById $settings "poll-interval-box" 10
+    if (!$pollBox) { Save-FullScreenshot "SU-FAIL-no-pollbox.png"; throw "断言失败（场景 SU1）：未找到 poll-interval-box" }
+    $pollSelection = Get-ComboSelectionName $pollBox
+    Save-FullScreenshot "SU1-general-poll-custom.png"
+    if ($pollSelection -notmatch "自定义")
+    {
+        throw "断言失败（场景 SU1）：频率框选中项「$pollSelection」不含「自定义」（120 秒合法旧值未回显）"
+    }
+    $startupToggle = Find-UiaById $settings "startup-toggle" 10
+    if (!$startupToggle) { Save-FullScreenshot "SU-FAIL-no-startup.png"; throw "断言失败（场景 SU1）：未找到 startup-toggle" }
+    ($startupToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    Start-Sleep -Seconds 2
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($appConfigJson.pollIntervalSeconds)" -ne "120")
+    {
+        Save-FullScreenshot "SU-FAIL-poll-washed.png"
+        throw "断言失败（场景 SU1）：改开机自启后 pollIntervalSeconds=$($appConfigJson.pollIntervalSeconds)（期望仍 120——全字段回写回归）"
+    }
+    if ("$($appConfigJson.launchOnStartup)" -ne "True")
+    {
+        throw "断言失败（场景 SU1）：launchOnStartup=$($appConfigJson.launchOnStartup)（期望 True——开关未落盘）"
+    }
+    Write-Host "场景 SU1 通过：120 秒自定义回读 + 改开机自启只写自己字段（pollIntervalSeconds 恒 120）——SET-UX-01 回归门"
+
+    # SU2：桌面显示页状态条三选一（投影初值：seed 双关 → off）
+    $desktopRow = Find-UiaById $settings "module-desktop" 10
+    if (!$desktopRow) { Save-FullScreenshot "SU-FAIL-no-desktop-row.png"; throw "断言失败（场景 SU2）：UIA 未找到模块行 module-desktop" }
+    Invoke-Uia $desktopRow
+    Start-Sleep -Seconds 2
+    $radioOff = Find-UiaById $settings "status-bar-off" 8
+    $radioIsland = Find-UiaById $settings "status-bar-island" 8
+    if (!$radioOff -or !$radioIsland)
+    {
+        Save-FullScreenshot "SU-FAIL-no-statusbar.png"
+        throw "断言失败（场景 SU2）：状态条三选一未找到（status-bar-off/island）"
+    }
+    $offSelected = ($radioOff.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Current.IsSelected
+    if (!$offSelected)
+    {
+        Save-FullScreenshot "SU-FAIL-projection-off.png"
+        throw "断言失败（场景 SU2）：双关旧配置投影应为「关闭」，实际 off 未选中"
+    }
+    Save-FullScreenshot "SU2-desktop-statusbar.png"
+    Write-Host "场景 SU2 投影通过：双关旧配置 → 状态条投影「关闭」（岛优先/胶囊其次读口径）"
+
+    # island 档 → config 双开 + 胶囊窗（岛形态）出现
+    ($radioIsland.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Seconds 3
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($appConfigJson.capsuleIsland)" -ne "True" -or "$($appConfigJson.showCapsule)" -ne "True")
+    {
+        Save-FullScreenshot "SU-FAIL-island-config.png"
+        throw "断言失败（场景 SU2）：选岛后 config capsuleIsland=$($appConfigJson.capsuleIsland)/showCapsule=$($appConfigJson.showCapsule)（期望 True/True——成组保存）"
+    }
+    $capsuleSeen = $false
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon Status").Count -ge 1) { $capsuleSeen = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$capsuleSeen)
+    {
+        Save-FullScreenshot "SU-FAIL-island-window.png"
+        throw "断言失败（场景 SU2）：选岛后未见胶囊窗「Beacon Status」（EnsureCapsule 建窗回归）"
+    }
+    Write-Host "场景 SU2 island 档通过：config 双开 + 岛窗在场"
+
+    # capsule 档 → 岛关胶囊开（同一窗回经典，窗不闪关）
+    $radioCapsule = Find-UiaById $settings "status-bar-capsule" 8
+    if (!$radioCapsule)
+    {
+        Save-FullScreenshot "SU-FAIL-no-capsule-radio.png"
+        throw "断言失败（场景 SU2）：未找到 status-bar-capsule"
+    }
+    ($radioCapsule.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Seconds 3
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($appConfigJson.capsuleIsland)" -ne "False" -or "$($appConfigJson.showCapsule)" -ne "True")
+    {
+        Save-FullScreenshot "SU-FAIL-capsule-config.png"
+        throw "断言失败（场景 SU2）：选胶囊后 config capsuleIsland=$($appConfigJson.capsuleIsland)/showCapsule=$($appConfigJson.showCapsule)（期望 False/True）"
+    }
+    if ([WinEnum]::VisibleHandlesByTitle("Beacon Status").Count -lt 1)
+    {
+        Save-FullScreenshot "SU-FAIL-capsule-window.png"
+        throw "断言失败（场景 SU2）：切经典后胶囊窗消失（同窗换形态语义回归）"
+    }
+    Write-Host "场景 SU2 capsule 档通过：岛关胶囊开 + 窗保持"
+
+    # off 档 → 双关 + 窗退场
+    ($radioOff.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Seconds 3
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($appConfigJson.capsuleIsland)" -ne "False" -or "$($appConfigJson.showCapsule)" -ne "False")
+    {
+        Save-FullScreenshot "SU-FAIL-off-config.png"
+        throw "断言失败（场景 SU2）：选关闭后 config capsuleIsland=$($appConfigJson.capsuleIsland)/showCapsule=$($appConfigJson.showCapsule)（期望 False/False）"
+    }
+    $capsuleGone = $false
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline)
+    {
+        if ([WinEnum]::VisibleHandlesByTitle("Beacon Status").Count -eq 0) { $capsuleGone = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$capsuleGone)
+    {
+        Save-FullScreenshot "SU-FAIL-off-window.png"
+        throw "断言失败（场景 SU2）：关闭后胶囊窗残留（关窗链回归）"
+    }
+    Write-Host "场景 SU2 off 档通过：双关 + 胶囊窗退场（SET-UX-02 三档全链）"
+
+    # SU2 附证：岛关后组件中心岛内容折叠（island-display-mode 不在 UIA 树）
+    $componentRow = Find-UiaById $settings "module-components" 8
+    if ($componentRow)
+    {
+        Invoke-Uia $componentRow
+        Start-Sleep -Seconds 2
+        $islandModeBox = Find-UiaById $settings "island-display-mode" 4
+        if ($islandModeBox)
+        {
+            Save-FullScreenshot "SU-FAIL-island-not-collapsed.png"
+            throw "断言失败（场景 SU2）：岛关闭后 island-display-mode 仍可见（岛内容折叠回归）"
+        }
+        Write-Host "场景 SU2 折叠通过：岛关闭 → 组件中心岛内容设置折叠（列表与顺序在 config 原样保留）"
+    }
+
+    # SU3：窗口与看板（回桌面显示页；模块行重取防 UIA 缓存失效）
+    $desktopRow2 = Find-UiaById $settings "module-desktop" 8
+    if (!$desktopRow2) { throw "断言失败（场景 SU3）：UIA 未找到模块行 module-desktop" }
+    Invoke-Uia $desktopRow2
+    Start-Sleep -Seconds 2
+    $numericToggle = Find-UiaById $settings "numeric-floating-toggle" 8
+    if (!$numericToggle) { Save-FullScreenshot "SU-FAIL-no-numeric.png"; throw "断言失败（场景 SU3）：未找到 numeric-floating-toggle" }
+    ($numericToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    Start-Sleep -Seconds 2
+    $boardToggle = Find-UiaById $settings "board-toggle" 8
+    if (!$boardToggle) { Save-FullScreenshot "SU-FAIL-no-board.png"; throw "断言失败（场景 SU3）：未找到 board-toggle" }
+    ($boardToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
+    Start-Sleep -Seconds 2
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($appConfigJson.numericFloatingEnabled)" -ne "False")
+    {
+        Save-FullScreenshot "SU-FAIL-numeric-config.png"
+        throw "断言失败（场景 SU3）：numericFloatingEnabled=$($appConfigJson.numericFloatingEnabled)（期望 False——数值总开关未落盘）"
+    }
+    if ("$($appConfigJson.boardEnabled)" -ne "False")
+    {
+        Save-FullScreenshot "SU-FAIL-board-config.png"
+        throw "断言失败（场景 SU3）：boardEnabled=$($appConfigJson.boardEnabled)（期望 False——看板开关未落盘）"
+    }
+    Write-Host "场景 SU3 开关对通过：数值总开关/允许看板关 → config 双 false（SET-UX-03①②）"
+
+    $opacitySlider = Find-UiaById $settings "desktop-opacity-slider" 8
+    if (!$opacitySlider) { Save-FullScreenshot "SU-FAIL-no-opacity.png"; throw "断言失败（场景 SU3）：未找到 desktop-opacity-slider" }
+    ($opacitySlider.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)).SetValue(0.85)
+    Start-Sleep -Seconds 2
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ([math]::Abs([double]$appConfigJson.uiOpacity - 0.85) -gt 0.001)
+    {
+        Save-FullScreenshot "SU-FAIL-opacity-config.png"
+        throw "断言失败（场景 SU3）：uiOpacity=$($appConfigJson.uiOpacity)（期望 0.85±0.001——不透明度未落盘）"
+    }
+    Write-Host "场景 SU3 不透明度通过：RangeValue 0.85 → config uiOpacity=0.85（SET-UX-03③；百分比读数装机目检）"
+
+    $layoutCombo = Find-UiaById $settings "desktop-layout-box" 8
+    if (!$layoutCombo) { Save-FullScreenshot "SU-FAIL-no-layout.png"; throw "断言失败（场景 SU3）：未找到 desktop-layout-box" }
+    Select-ComboItemById $settings $layoutCombo "layout-panel"
+    Start-Sleep -Seconds 2
+    $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($appConfigJson.pinDisplayMode)" -ne "panel")
+    {
+        Save-FullScreenshot "SU-FAIL-layout-config.png"
+        throw "断言失败（场景 SU3）：pinDisplayMode=$($appConfigJson.pinDisplayMode)（期望 panel——布局档未落盘）"
+    }
+    Write-Host "场景 SU3 布局通过：集中窗口档 → config pinDisplayMode=panel（种子 floating 真实翻转；重启生效面装机复核）"
+
+    Stop-Beacon
+    Write-Host "场景 SU 通过：SET-UX-01 单项保存回归门 + SET-UX-02 状态条三档全链 + SET-UX-03 窗口与看板四件"
+}
+catch
+{
+    Stop-Beacon
+    Save-FullScreenshot "SU-FAIL-unexpected.png"
+    $failures.Add("场景 SU：$($_.Exception.Message)")
+    Write-Host "::error::场景 SU 断言失败：$($_.Exception.Message)"
 }
 
 # —— 场景 X：Pin 双向全链（todo 行 55「右键 Pin 落库」+ 行 60「两入口一致并持久化」CI 代验）——

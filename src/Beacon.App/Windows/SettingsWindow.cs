@@ -41,11 +41,17 @@ internal sealed partial class SettingsWindow : Window
     private ComboBox _themeBox = null!;
     private ComboBox _languageBox = null!;
     private ComboBox _pollBox = null!;
-    private ComboBox _pinModeBox = null!; // 悬浮形态档（信息密集组件 panel|floating）：收编到组件中心「展示载体」区
     private ComboBox _islandModeBox = null!; // 岛收起态展示方式档（ISLAND-D1 single|stack|carousel）：岛组内
-    private Slider _opacitySlider = null!;
-    private ToggleSwitch _capsuleToggle = null!;
-    private ToggleSwitch _edgeCollapseToggle = null!;
+    private ToggleSwitch _edgeCollapseToggle = null!; // 贴边收起（SET-UX-03 移入桌面显示页「窗口与看板」区）
+    // 桌面显示页（SET-UX-01/02/03，2026-11-23 用户令原型落地批1）：状态条三档 + 窗口与看板区
+    private Microsoft.UI.Xaml.Controls.RadioButton _statusBarOff = null!; // 关闭（只保留托盘入口）
+    private Microsoft.UI.Xaml.Controls.RadioButton _statusBarCapsule = null!; // 右下角胶囊
+    private Microsoft.UI.Xaml.Controls.RadioButton _statusBarIsland = null!; // 顶部悬浮岛
+    private ComboBox _desktopLayoutBox = null!; // 桌面组件布局（panel|floating，重启生效；原「悬浮形态」档收编）
+    private ToggleSwitch _numericFloatingToggle = null!; // 在桌面显示数值和额度（NumericFloatingEnabled 原字段）
+    private ToggleSwitch _boardToggle = null!; // 允许打开看板（BoardEnabled 原字段）
+    private Slider _desktopOpacitySlider = null!; // 窗口不透明度（UiOpacity 原字段，移入本页）
+    private TextBlock _desktopOpacityValue = null!; // 不透明度百分比读数（NN% 实时随滑杆）
 
     private StackPanel _connectionList = null!;
     private ComboBox _connTypeBox = null!;
@@ -148,7 +154,8 @@ internal sealed partial class SettingsWindow : Window
     {
         _modules =
         [
-            new ModuleDef("general", "常规", "热键 · 自启 · 主题 · 胶囊", "\ue713", null),
+            new ModuleDef("general", "常规", "热键 · 自启 · 主题 · 语言 · 频率", "\ue713", null),
+            new ModuleDef("desktop", "桌面显示", "状态条 · 窗口与看板", "\ue7f4", null), // TVMonitor 字形（SET-UX-02/03 桌面显示统一入口）
             new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
             new ModuleDef("components", "组件中心", "全部组件按类型分组 · 勾选显隐", "\ue71d", null),
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),

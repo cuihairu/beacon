@@ -249,6 +249,7 @@ internal sealed partial class SettingsWindow
         var tint = module.Key switch
         {
             "general" => SeverityPalette.Rgb(255, 59, 130, 246), // 常规蓝 #3B82F6
+            "desktop" => SeverityPalette.Rgb(255, 6, 182, 212), // 桌面显示青 #06B6D4（TVMonitor 字形）
             "appearance" => SeverityPalette.Rgb(255, 168, 85, 247), // 外观紫 #A855F7
             "github" => SeverityPalette.Rgb(255, 36, 41, 47), // GitHub 墨黑 #24292F
             "jenkins" => SeverityPalette.Rgb(255, 211, 56, 51), // Jenkins 红 #D33833
@@ -318,6 +319,7 @@ internal sealed partial class SettingsWindow
         _rightHost.Content = module.Key switch
         {
             "general" => BuildGeneralPage(),
+            "desktop" => BuildDesktopPage(), // SET-UX-02/03：状态条三选一 + 窗口与看板（桌面显示统一入口）
             "appearance" => BuildAppearancePage(),
             "components" => BuildComponentCenterPage(),
             "actions" => BuildActionsPage(),

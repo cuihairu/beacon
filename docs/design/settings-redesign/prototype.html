@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beacon 设置原型</title>
+<style>
+:root{--desktop:#e7e8ed;--shell:#f5f5f8;--paper:#fff;--ink:#242531;--secondary:#565a69;--muted:#676b79;--line:#e3e4eb;--accent:#af234a;--accent-bg:#faeaf0;--good:#227251;--warn:#8b591b;--bad:#a8304b;--blue:#435bae;--blue-bg:#eef1fc;--radius:9px}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;padding:33px;color:var(--ink);background:var(--desktop);font:14px/1.5 "Segoe UI","Noto Sans CJK SC","Microsoft YaHei",sans-serif;letter-spacing:.005em}
+button,input,select{font:inherit;color:inherit}
+button,select{cursor:pointer}
+button{border:1px solid var(--line);border-radius:7px;background:var(--paper);padding:7px 12px;white-space:nowrap}
+button:hover,select:hover{background:#f6f6fa}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+button:disabled,select:disabled{opacity:.6;cursor:default} input[type=range]{accent-color:var(--accent)}
+h1,h2,h3,p{margin:0} h1{font-size:30px;line-height:1.2;letter-spacing:-.035em;font-weight:700} h2{font-size:17px;letter-spacing:-.012em} h3{font-size:14px}
+small,.muted{font-size:12px;color:var(--muted)} .quiet{color:var(--secondary)} .num{font-variant-numeric:tabular-nums}
+.app{width:min(1240px,100%);margin:auto;background:var(--paper);border-radius:12px;overflow:hidden;box-shadow:0 15px 38px #27293b1d}
+.titlebar{display:flex;align-items:center;justify-content:space-between;background:#f0f0f4;padding:0 17px;height:42px;border-bottom:1px solid var(--line);font-size:12px}
+.brand,.window-actions,.icon-text{display:flex;align-items:center;gap:9px}
+.brand img{width:15px;height:15px}.window-actions{gap:20px;color:var(--secondary)}
+.icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.55;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.window-actions .icon{width:12px;height:12px}
+.shell{display:grid;grid-template-columns:229px minmax(0,1fr);min-height:757px}
+aside{background:var(--shell);border-right:1px solid var(--line);padding:22px 13px;display:flex;flex-direction:column;gap:16px}
+.search{position:relative}.search .icon{position:absolute;top:10px;left:10px;width:15px;height:15px;color:var(--muted)}.search input{width:100%;height:35px;border:1px solid #dddee7;border-radius:7px;background:white;padding:5px 9px 5px 32px}.search input::placeholder{color:var(--muted)}
+nav{display:grid;gap:4px}.nav-btn{display:flex;align-items:center;gap:9px;text-align:left;background:transparent;border-color:transparent;padding:9px 11px;width:100%}
+.nav-btn[aria-current=true]{color:var(--accent);background:var(--accent-bg);font-weight:650}.nav-btn:hover{background:#eaeaf2}
+.nav-label{margin:13px 10px 4px;color:var(--muted);font-size:11px;font-weight:650}.sidebar-bottom{margin-top:auto;padding:9px 10px;color:var(--muted);font-size:11px}
+main{padding:29px 34px 24px;min-width:0}.page-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:21px}.page-head p{margin-top:7px;color:var(--secondary)}
+.link{color:var(--accent);border-color:transparent;background:transparent}.link:hover{background:var(--accent-bg)}.primary{color:white;background:var(--accent);border-color:var(--accent);font-weight:650}.primary:hover{background:#912044;border-color:#912044}
+.section{margin-top:19px}.section h2{margin-bottom:8px}.surface-choices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.choice,.style-choice{border:1px solid var(--line);border-radius:var(--radius);padding:11px;text-align:left;display:block;min-width:0;white-space:normal}
+.choice[aria-pressed=true],.style-choice[aria-pressed=true]{border-color:var(--accent);background:#fdf5f8;box-shadow:inset 0 0 0 .5px var(--accent)}
+.choice b,.style-choice b{display:block;margin-top:7px}.choice small,.style-choice small{display:block;margin-top:1px}
+.monitor{height:47px;border:1px solid #dfe1eb;background:#f0f1f7;border-radius:5px;position:relative}
+.monitor:after{content:"";position:absolute;width:32%;height:2px;border-radius:2px;background:#d9dbe7;bottom:5px;left:34%}
+.monitor .island,.monitor .capsule{position:absolute;height:9px;border-radius:3px;background:#333646}
+.monitor .island{top:3px;left:34%;width:32%}.monitor .capsule{right:9px;bottom:9px;width:22%}
+.monitor .island:before,.monitor .capsule:before{content:"";position:absolute;top:3px;left:5px;width:3px;height:3px;border-radius:50%;background:#f1a2b9}
+.block{border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.setting{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:9px 13px;min-height:49px}
+.setting+.setting{border-top:1px solid var(--line)}.setting small{display:block;margin-top:2px}
+.control{display:flex;align-items:center;gap:9px;white-space:nowrap} select{border:1px solid var(--line);border-radius:6px;padding:5px 9px;background:white}
+.toggle{appearance:none;width:35px;height:19px;border-radius:12px;border:1px solid #808391;background:white;position:relative;cursor:pointer;margin:0;flex:none}
+.toggle:after{content:"";position:absolute;left:3px;top:3px;width:11px;height:11px;border-radius:50%;background:#777989}
+.toggle:checked{background:var(--accent);border-color:var(--accent)}.toggle:checked:after{left:19px;background:#fff}
+.flag{display:inline-block;padding:2px 8px;border-radius:5px;background:#edeef3;color:#535668;font-size:11px;white-space:nowrap}
+.flag.good{background:#e9f4ed;color:var(--good)}.flag.warn{background:#fbf0dd;color:var(--warn)}.flag.blue{background:var(--blue-bg);color:var(--blue)}
+.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;font-size:13px}th,td{padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}th{background:#f5f5f8;color:#575b6b;font-weight:600;font-size:12px}tr:last-child td{border-bottom:0}td small{display:block}td:last-child{text-align:right}.table-wrap .link{padding:2px 6px}
+.row-stack{display:grid;gap:12px}.tabbar{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:17px}.tabbar button{border:none;border-radius:0;border-bottom:2px solid transparent;background:transparent;padding:8px 13px}.tabbar button[aria-pressed=true]{border-color:var(--accent);font-weight:650;color:var(--accent)}
+.style-grid{display:grid;grid-template-columns:minmax(200px,1fr) minmax(280px,1.24fr);gap:18px}.style-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.style-choice{min-height:94px}.style-choice .demo{height:29px;display:flex;align-items:center}.style-choice .bar{width:80%}
+.demo-value{font-size:19px;font-weight:700}.ring{width:25px;height:25px;border-radius:50%;background:conic-gradient(var(--accent) 65%,#ebdee5 0);position:relative;display:inline-grid;place-items:center;flex:none}.ring:after{content:"";width:17px;height:17px;border-radius:50%;background:#fff}.mini-ring{width:18px;height:18px;background:conic-gradient(#99d8b3 78%,#505363 0)}.mini-ring:after{width:12px;height:12px;background:#282a37}
+.pool{width:27px;height:27px;border-radius:50%;background:linear-gradient(to top,#ce5e81 65%,#eee4ea 65%);border:1px solid #e3c4d0}.log-dot,.dot{width:7px;height:7px;display:inline-block;border-radius:50%;background:var(--good);flex:none}.dot.warn{background:#d8a253}.dot.red,.log-dot{background:#c94b67}.dot.dim{background:#9699a7}
+.preview{border:1px solid var(--line);background:#f5f5f8;border-radius:10px;padding:15px;min-width:0}
+.preview-head,.between{display:flex;align-items:center;justify-content:space-between;gap:8px}.preview-head{margin-bottom:13px}.preview-head select{font-size:12px}.preview-content{min-height:174px;display:grid;align-content:center}.preview-note{margin-top:11px}.bar{height:7px;background:#ebe8ef;border-radius:8px;overflow:hidden}.bar i{display:block;height:100%;background:#ba4368;border-radius:inherit}.bar.neutral i{background:#5d6bb7}
+.metric{background:#fff;border:1px solid var(--line);border-radius:9px;padding:13px;display:grid;gap:7px}.metric strong{font-size:24px;line-height:1.18;letter-spacing:-.025em}.metric .secondary-row{border-top:1px solid var(--line);padding-top:7px;font-size:12px;color:var(--secondary)}
+.foot{margin-top:15px;min-height:43px;display:flex;align-items:center;gap:8px;justify-content:space-between}.buttons{display:flex;gap:7px}.foot [role=status]{font-size:12px;color:var(--good)}
+.source-layout{display:grid;grid-template-columns:208px minmax(0,1fr);gap:16px}.service-list{display:grid;gap:5px;padding:8px;align-self:start;background:var(--shell)}
+.service{display:grid;grid-template-columns:30px 1fr;gap:9px;text-align:left;align-items:center;padding:7px;border-color:transparent;background:transparent}.service[aria-pressed=true]{background:var(--accent-bg);color:var(--accent)}.service small{display:block}.service-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:6px;background:#edf0fa;color:#33458b;font-weight:700}.source-info{padding:14px}.source-info h2{margin-bottom:3px}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:13px 0 11px}.step{border-top:2px solid var(--line);padding-top:6px;color:var(--secondary);font-size:12px}.step.done{border-color:#79aa8e;color:var(--good)}.step.current{border-color:var(--accent);color:var(--accent);font-weight:650}
+.source-action{padding:12px;background:#f6f6fa;border-radius:7px}.source-action p{margin-top:4px}.source-action .between{margin-top:9px}.service-detail section+section{margin-top:15px}
+.event{display:grid;grid-template-columns:44px 9px minmax(0,1fr);gap:7px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:12px}.event:last-child{border-bottom:0}.event time{color:var(--muted);font-variant-numeric:tabular-nums}.event small{display:block}
+.surface-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}.surface-example{border:1px solid var(--line);border-radius:10px;padding:13px;min-width:0;display:grid;gap:9px;align-content:start}.surface-example h2{font-size:15px}.surface-example .metric{max-width:310px}.surface-example .between>small{white-space:nowrap}
+.island-stage{background:#eef0f7;border-radius:7px;min-height:97px;padding:9px;display:grid;justify-items:center;align-content:center;gap:6px}.island-preview{border-radius:15px;background:#282a37;color:#fbf9fc;display:flex;align-items:center;gap:8px;padding:5px 9px;font-size:11px}.island-preview small{color:#e2e4ee;font-size:11px}.island-preview .hint-count{background:#52566f;border-radius:5px;padding:0 5px}.island-expand{background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-size:11px;width:min(100%,290px)}
+.detail-table td,.detail-table th{padding:7px 8px;font-size:12px}.detail-table td:last-child{text-align:left}
+.context-strip{margin-top:9px;font-size:12px;color:var(--secondary);display:flex;gap:9px;align-items:baseline}
+[role=search] .results{position:absolute;z-index:10;left:0;right:-60px;top:40px;display:grid;background:white;padding:5px;border:1px solid var(--line);border-radius:7px;box-shadow:0 8px 20px #20233916}.results button{text-align:left;border:none;white-space:normal}.results p{padding:7px;color:var(--muted)}
+.field{display:block;margin:8px 0}.field input{border:1px solid var(--line);border-radius:6px;padding:6px;margin-left:8px}
+.inline-feedback{color:var(--good)}
+.data-examples{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.data-example{padding:10px 12px;border:1px solid var(--line);border-radius:8px;display:grid;gap:4px}
+.data-example strong{font-size:17px}.data-example .trend{width:70px;height:22px;fill:none;stroke:var(--blue);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:740px){.data-examples{grid-template-columns:1fr}}
+@media(max-width:980px){body{padding:14px}.shell{grid-template-columns:172px minmax(0,1fr)}main{padding:24px}aside{padding:16px 9px}.style-grid{grid-template-columns:1fr}.source-layout{grid-template-columns:153px minmax(0,1fr)}}
+@media(max-width:690px){body{padding:0}.app{border-radius:0}.shell{display:block}aside{border-right:0;border-bottom:1px solid var(--line);padding:10px;gap:6px}nav{grid-template-columns:repeat(3,1fr)}.nav-label,.sidebar-bottom{display:none}.nav-btn{padding:6px;font-size:12px}.search{max-width:310px}main{padding:16px}.page-head{align-items:start}.page-head h1{font-size:25px}.surface-grid,.source-layout{grid-template-columns:1fr}.service-list{grid-template-columns:repeat(2,minmax(0,1fr))}.choice{padding:6px}.choice b{font-size:12px}.setting{flex-wrap:wrap}.surface-example .between{align-items:baseline}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/></symbol>
+<symbol id="gear" viewBox="0 0 24 24"><path d="m9 4 .6-1h4.8l.6 3 2 .9 2.7-.8 2.4 4.2-2.1 2.1v2.2l2.1 2-2.4 4.2-2.9-.8-1.9 1-.6 2.9h-4.8l-.6-2.9-1.9-1-2.9.8L2 16.7l2.1-2v-2.2L2 10.4l2.4-4.2 2.7.8 2-.9z" transform="translate(1 0) scale(.9)"/><circle cx="11.8" cy="12" r="2.6"/></symbol>
+<symbol id="screen" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6m-3-4v4"/></symbol>
+<symbol id="palette" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 0-8 8h1.5a1.5 1.5 0 0 0 1-2.6l-.6-.5a1.4 1.4 0 0 1 1-2.4h2.6A2.5 2.5 0 0 0 20 12Z"/><path d="M8 10h.1M11 7h.1m4 2h.1M7.5 14h.1" stroke-width="2.8"/></symbol>
+<symbol id="plug" viewBox="0 0 24 24"><path d="M9 3v6m6-6v6m-8 0h10v3a5 5 0 0 1-10 0zm5 8v4"/></symbol>
+<symbol id="compare" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16M6 9h3m6 0h3m-3 4h3"/></symbol>
+<symbol id="edit" viewBox="0 0 24 24"><path d="m5 15-1 5 5-1 10-10-4-4zm8-8 4 4"/></symbol>
+<symbol id="more" viewBox="0 0 24 24"><path d="M5 12h.1m6.9 0h.1m6.9 0h.1" stroke-width="3"/></symbol>
+<symbol id="min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+<symbol id="max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></symbol>
+<symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12m0-12L6 18"/></symbol>
+</svg>
+<div class="app">
+  <header class="titlebar"><div class="brand"><img src="../../public/img/logo.svg" alt=""> Beacon 设置</div><div class="window-actions" aria-hidden="true"><svg class="icon"><use href="#min"/></svg><svg class="icon"><use href="#max"/></svg><svg class="icon"><use href="#close"/></svg></div></header>
+  <div class="shell">
+    <aside>
+      <div class="search" role="search"><svg class="icon" aria-hidden="true"><use href="#search"/></svg><input id="find" placeholder="搜索设置或服务" aria-label="搜索设置或服务" autocomplete="off"><div class="results" id="results" hidden></div></div>
+      <nav aria-label="设置导航">
+        <button class="nav-btn" data-go="general"><svg class="icon"><use href="#gear"/></svg>常规</button>
+        <button class="nav-btn" data-go="desktop"><svg class="icon"><use href="#screen"/></svg>桌面显示</button>
+        <button class="nav-btn" data-go="appearance"><svg class="icon"><use href="#palette"/></svg>外观</button>
+        <button class="nav-btn" data-go="sources"><svg class="icon"><use href="#plug"/></svg>数据来源</button>
+        <div class="nav-label">预览</div>
+        <button class="nav-btn" data-go="style"><svg class="icon"><use href="#edit"/></svg>单组件样式</button>
+        <button class="nav-btn" data-go="surfaces"><svg class="icon"><use href="#compare"/></svg>各处显示效果</button>
+        <div class="nav-label">维护</div>
+        <button class="nav-btn" data-go="advanced"><svg class="icon"><use href="#more"/></svg>备份与诊断</button>
+      </nav>
+      <div class="sidebar-bottom">设计原型 · 使用示例数据</div>
+    </aside>
+    <main>
+      <article id="desktop" data-page>
+        <header class="page-head"><div><h1>桌面显示</h1><p>选择显示窗口，再决定每个组件放在哪里。</p></div><button data-go="surfaces">查看显示效果</button></header>
+        <section class="section"><h2>桌面状态条</h2>
+          <div class="surface-choices" role="group" aria-label="桌面状态条">
+            <button class="choice" data-mode="off" aria-pressed="false"><div class="monitor"></div><b>关闭</b><small>只保留托盘入口</small></button>
+            <button class="choice" data-mode="capsule" aria-pressed="false"><div class="monitor"><i class="capsule"></i></div><b>右下角胶囊</b><small>显示整体状态</small></button>
+            <button class="choice" data-mode="island" aria-pressed="true"><div class="monitor"><i class="island"></i></div><b>顶部悬浮岛</b><small>可选显示的组件</small></button>
+          </div>
+        </section>
+        <section class="section"><h2>窗口与看板</h2><div class="block">
+          <div class="setting"><div><label for="window-layout"><b>桌面组件布局</b></label><small id="layout-help">切换到独立显示后，其余组件仍可留在集中面板。</small></div><div class="control"><span class="flag">重启后生效</span><select id="window-layout"><option>集中在一个窗口</option><option>支持的组件独立显示</option></select></div></div>
+          <div class="setting"><div><label for="numeric"><b>在桌面显示数值和额度</b></label><small>同时应用于集中面板和独立窗口。</small></div><input class="toggle" type="checkbox" id="numeric" checked></div>
+          <div class="setting"><div><label for="board"><b>允许打开看板</b></label><small id="board-help">可用 Ctrl + Alt + B、托盘菜单或悬浮岛打开。</small></div><input class="toggle" type="checkbox" id="board" checked></div>
+          <div class="setting"><label for="opacity"><b>窗口不透明度</b></label><div class="control"><input id="opacity" type="range" min="20" max="100" value="100"><output class="num" id="opacity-value" for="opacity">100%</output></div></div>
+          <div class="setting"><div><label for="edge"><b>面板贴边时收起</b></label><small>把桌面集中面板拖到屏幕边缘时收成细条。</small></div><input class="toggle" type="checkbox" id="edge" checked></div>
+        </div></section>
+        <section class="section"><div class="between"><h2>组件显示位置</h2><button class="link" data-go="sources">添加组件</button></div><div class="block table-wrap"><table>
+          <thead><tr><th>组件</th><th>桌面</th><th>悬浮岛</th><th><span class="muted">设置</span></th></tr></thead>
+          <tbody>
+            <tr><td><b>Kimi 额度</b><small>Kimi For Coding</small></td><td><span id="numeric-status" class="flag good">已显示</span></td><td><span id="island-status" class="flag good">已显示</span></td><td><button class="link" data-go="style">编辑样式</button></td></tr>
+            <tr><td><b>构建状态</b><small>GitHub Actions</small></td><td><span class="flag good">已显示</span></td><td><button class="link" id="add-island">加入悬浮岛</button></td><td></td></tr>
+            <tr><td><b>平台余额</b><small>DeepSeek</small></td><td><span id="balance-status" class="flag warn">来源尚未连接</span></td><td><span class="muted">未添加</span></td><td><button class="link" data-service-link="DeepSeek">打开数据来源</button></td></tr>
+          </tbody>
+        </table></div></section>
+        <section class="section" id="island-controls"><div class="setting block"><div><label for="island-mode"><b>悬浮岛收起时</b></label><small>只影响顶部悬浮岛。展开后可以查看其他组件。</small></div><select id="island-mode"><option>同时显示多项</option><option>只显示首项</option><option>轮流显示</option></select></div></section>
+      </article>
+      <article id="style" data-page hidden>
+        <header class="page-head"><div><h1>Kimi 额度 · 显示样式</h1><p>Kimi For Coding <span aria-hidden="true"> / </span> 5 小时与周额度</p></div><button data-go="desktop">返回桌面显示</button></header>
+        <div class="tabbar" role="group" aria-label="选择显示位置"><button data-style-place="桌面" aria-pressed="true">桌面</button><button data-style-place="看板状态行" aria-pressed="false">看板状态行</button><button data-style-place="详情" aria-pressed="false">详情</button></div>
+        <div class="style-grid">
+          <section><h2>样式</h2><p class="muted" id="style-inheritance">跟随默认样式</p><div class="style-list section" role="group" aria-label="样式选项">
+            <button class="style-choice" data-style="bar" aria-pressed="true"><span class="demo"><span class="bar"><i style="width:65%"></i></span></span><b>横向进度条</b><small>同时看比例和数值</small></button>
+            <button class="style-choice" data-style="ring" aria-pressed="false"><span class="demo"><span class="ring"></span></span><b>圆环</b><small>突出已用比例</small></button>
+            <button class="style-choice" data-style="number" aria-pressed="false"><span class="demo demo-value num">65%</span><b>数字卡</b><small>优先读精确值</small></button>
+            <button class="style-choice" data-style="pool" aria-pressed="false"><span class="demo"><span class="pool"></span></span><b>圆形水位</b><small>用水位表示比例</small></button>
+          </div><p class="context-strip"><span class="flag blue">百分比</span> 进度按已用比例显示。主窗口由来源规则决定。</p></section>
+          <section class="preview" aria-label="样式预览">
+            <div class="preview-head"><h2 id="preview-title">桌面预览</h2><label><span class="muted">数据状态</span> <select id="quality"><option>有效数据</option><option>暂未取得</option><option>离线</option><option>数据过期</option></select></label></div>
+            <div class="preview-content" id="style-preview"></div>
+            <p class="preview-note muted" id="style-help">共享同一份数据。应用只影响桌面的样式。</p>
+          </section>
+        </div>
+        <div class="foot"><span role="status" id="style-status"></span><div class="buttons"><button id="style-reset">恢复此处默认</button><button class="primary" id="style-apply">应用到桌面</button></div></div>
+        <section class="section"><h2>其他显示位置</h2><div class="setting block"><div><b>悬浮岛</b><small>使用较短的数值与周期标签，可在岛里设置显示顺序。</small></div><button class="link" data-go="surfaces">查看各处对照</button></div></section>
+      </article>
+      <article id="sources" data-page hidden>
+        <header class="page-head"><div><h1>数据来源</h1><p>添加连接、测试能否取数，然后添加要显示的组件。</p></div></header>
+        <div class="source-layout">
+          <section class="block service-list" aria-label="服务">
+            <button class="service" data-service="Kimi For Coding" aria-pressed="true"><span class="service-icon">K</span><span><b>Kimi For Coding</b><small>套餐额度</small></span></button>
+            <button class="service" data-service="GitHub" aria-pressed="false"><span class="service-icon">GH</span><span><b>GitHub</b><small>构建状态</small></span></button>
+            <button class="service" data-service="DeepSeek" aria-pressed="false"><span class="service-icon">DS</span><span><b>DeepSeek</b><small>平台余额</small></span></button>
+            <button class="service" data-service="本机资源" aria-pressed="false"><span class="service-icon">PC</span><span><b>本机资源</b><small>CPU、内存、网络</small></span></button>
+          </section>
+          <div class="service-detail">
+            <section class="block source-info"><div class="between"><h2 id="source-title">Kimi For Coding</h2><span id="source-status" class="flag good">测试成功</span></div><p class="muted" id="source-desc">读取 5 小时、周和套餐额度。</p><div id="source-steps" class="steps"></div><div id="source-action" class="source-action"></div></section>
+            <section><h2>此来源的组件</h2><div id="source-widgets" class="block"></div></section>
+            <section class="block"><div class="setting"><div><label id="source-refresh-label" for="refresh-choice"><b>此组件刷新频率</b></label><small id="refresh-help">继承默认刷新间隔 · 1 分钟</small></div><select id="refresh-choice"><option>继承默认</option><option>30 秒</option><option>1 分钟</option><option>5 分钟</option></select></div></section>
+          </div>
+        </div>
+      </article>
+      <article id="surfaces" data-page hidden>
+        <header class="page-head"><div><h1>同一组件在各处怎么显示</h1><p>Kimi 额度 <span aria-hidden="true"> / </span> 当前 5 小时已用 65%，周已用 38%</p></div><button data-go="style">调整桌面样式</button></header>
+        <div class="surface-grid">
+          <section class="surface-example"><div class="between"><h2>桌面组件</h2><small>显示主要读数</small></div>
+            <div class="metric"><div class="between"><b>Kimi 额度</b><span class="icon-text muted"><i class="dot"></i>正常</span></div><div class="between"><small>5 小时已用</small><strong class="num">65%</strong></div><div class="bar"><i style="width:65%"></i></div><div class="secondary-row between"><span>周已用</span><b class="num">38%</b></div></div>
+          </section>
+          <section class="surface-example"><div class="between"><h2>顶部悬浮岛</h2><small>扫读与展开</small></div>
+            <div class="island-stage"><div class="island-preview"><span class="mini-ring ring"></span><span>健康 78%</span><span>Kimi <small>5h</small> <b class="num">65%</b></span><span class="hint-count">另有 1 项</span></div><div class="island-expand between"><span><i class="dot"></i> &nbsp;Kimi 额度</span><b class="num">5h 65% · 周 38%</b></div></div><p class="muted">总体健康环与单项额度分别显示。</p>
+          </section>
+          <section class="surface-example"><div class="between"><h2>看板</h2><small>当前状态与历史事件</small></div>
+            <div class="between"><span class="icon-text"><i class="dot"></i><b>当前状态</b></span><span class="muted num">5 小时已用 65% · 正常</span></div>
+            <div><div class="event"><time>14:50</time><i class="dot"></i><span><b>Kimi 额度恢复正常</b><small>5 小时已用 65%</small></span></div><div class="event"><time>14:20</time><i class="log-dot"></i><span><b>Kimi 额度曾到达提醒阈值</b><small>5 小时已用 80% · 当时告警</small></span></div></div>
+          </section>
+          <section class="surface-example"><div class="between"><h2>组件详情</h2><small>最后更新 14:50</small></div>
+            <div class="block table-wrap"><table class="detail-table"><thead><tr><th>周期</th><th>已用</th><th>剩余</th><th>重置时间</th></tr></thead><tbody><tr><td>5 小时</td><td><b>65%</b></td><td>35%</td><td>今天 18:30</td></tr><tr><td>周额度</td><td><b>38%</b></td><td>62%</td><td>周一 09:00</td></tr></tbody></table></div><p class="muted">各周期独立计算。</p>
+          </section>
+        </div>
+        <section class="section"><h2>其他数据怎么显示</h2><div class="data-examples">
+          <div class="data-example"><small>无总额的金额 · DeepSeek 余额</small><strong class="num">¥420.50</strong><small>币种与数值一起显示</small></div>
+          <div class="data-example"><small>离散状态 · GitHub Actions</small><strong class="icon-text"><i class="dot red"></i>构建失败</strong><small>deploy-main · 14:32</small></div>
+          <div class="data-example"><small>多个指标 · 本机资源</small><div class="between"><strong class="num">CPU 28%</strong><svg class="trend" viewBox="0 0 72 24" role="img" aria-label="CPU 最近 10 分钟趋势"><path d="M2 19 10 14l7 3 8-9 8 3 8-1 7-5 8 6 7-5 7 5"/></svg></div><small>内存 62% · 网络 12 MB/s</small></div>
+        </div></section>
+      </article>
+      <article id="general" data-page hidden>
+        <header class="page-head"><div><h1>常规</h1><p>设置启动方式、看板快捷键和默认刷新间隔。</p></div></header>
+        <div class="block">
+          <div class="setting"><label for="startup"><b>登录 Windows 时启动 Beacon</b></label><input class="toggle" id="startup" type="checkbox" checked></div>
+          <div class="setting"><div><label for="hotkey"><b>打开看板的快捷键</b></label><small>例如 Ctrl + Alt + B</small></div><input id="hotkey" value="Ctrl + Alt + B"></div>
+          <div class="setting"><div><label for="language"><b>语言</b></label><small>应用于看板和托盘菜单。</small></div><select id="language"><option>跟随系统</option><option>中文</option><option>English</option></select></div>
+          <div class="setting"><div><label for="general-refresh"><b>默认刷新间隔</b></label><small>只影响未单独设置刷新间隔的组件。</small></div><select id="general-refresh"><option>使用各组件推荐间隔</option><option>15 秒</option><option>30 秒</option><option selected>1 分钟</option><option>自定义 · 2 分钟</option><option>5 分钟</option></select></div>
+        </div>
+      </article>
+      <article id="appearance" data-page hidden>
+        <header class="page-head"><div><h1>外观</h1><p>调整整体外观和未单独设置样式的额度组件。</p></div></header>
+        <div class="block">
+          <div class="setting"><label for="theme"><b>主题</b></label><div class="control"><span class="flag">重启后生效</span><select id="theme"><option>跟随系统</option><option>浅色</option><option>深色</option></select></div></div>
+          <div class="setting"><div><label for="default-style"><b>默认额度样式</b></label><small>对没有自定义样式的额度组件生效。</small></div><select id="default-style"><option>横向进度条</option><option>圆形水位</option><option>横向注水</option></select></div>
+          <div class="setting"><label for="density"><b>组件间距</b></label><select id="density"><option>常规</option><option>紧凑</option><option>宽松</option></select></div>
+          <div class="setting"><label for="motion"><b>动画</b></label><select id="motion"><option>减少持续动画</option><option>完整动画</option><option>关闭动画</option></select></div>
+        </div>
+        <details class="section"><summary>更多外观选项</summary><div class="setting"><label for="warning-color">告警颜色</label><input id="warning-color" type="color" value="#d29922"><label for="intensity">动画强度</label><input id="intensity" type="range" min="50" max="200" value="100"></div></details>
+      </article>
+      <article id="advanced" data-page hidden>
+        <header class="page-head"><div><h1>备份与诊断</h1><p>迁移配置和查找连接问题。</p></div></header>
+        <div class="block"><div class="setting"><div><b>导入与导出</b><small>备份组件、连接设置和桌面布局。迁移后重新录入密钥。</small></div></div><div class="setting"><div><b>诊断日志</b><small>检查连接、取数和渲染异常。</small></div></div></div>
+      </article>
+    </main>
+  </div>
+</div>
+<script>
+const one = (selector) => document.querySelector(selector);
+const all = (selector) => [...document.querySelectorAll(selector)];
+const pages = all('[data-page]');
+const valid = new Set(pages.map((page) => page.id));
+
+function go(page, focusId, updateHistory = true) {
+  if (!valid.has(page)) page = 'desktop';
+  pages.forEach((element) => { element.hidden = element.id !== page; });
+  all('.nav-btn').forEach((element) => element.setAttribute('aria-current', String(element.dataset.go === page)));
+  if (updateHistory) {
+    const url = new URL(location.href);
+    url.searchParams.set('view', page);
+    history.replaceState(null, '', url);
+  }
+  window.scrollTo(0, 0);
+  if (focusId) {
+    const element = document.getElementById(focusId);
+    element?.focus();
+    element?.scrollIntoView({block:'nearest'});
+  }
+}
+all('[data-go]').forEach((element) => element.addEventListener('click', () => go(element.dataset.go)));
+go(new URLSearchParams(location.search).get('view'), undefined, false);
+
+const settingIndex = [
+  ['窗口不透明度', '桌面显示', 'desktop', 'opacity', '透明度'],
+  ['面板贴边时收起', '桌面显示', 'desktop', 'edge', '贴边收起'],
+  ['组件显示位置', '桌面显示', 'desktop', 'add-island', '组件中心'],
+  ['默认刷新间隔', '常规', 'general', 'general-refresh', '检查频率 刷新频率 检测间隔'],
+  ['打开看板的快捷键', '常规', 'general', 'hotkey', '热键'],
+  ['默认额度样式', '外观', 'appearance', 'default-style', '进度条 额度显示方式'],
+  ['GitHub', '数据来源', 'sources', null, 'PR 构建'],
+  ['DeepSeek', '数据来源', 'sources', null, '余额'],
+  ['Kimi For Coding', '数据来源', 'sources', null, '额度'],
+];
+function renderResults() {
+  const query = one('#find').value.trim().toLowerCase();
+  const list = one('#results');
+  list.hidden = !query;
+  list.replaceChildren();
+  if (!query) return;
+  settingIndex.filter((entry) => entry.join(' ').toLowerCase().includes(query)).forEach(([title, group, page, id]) => {
+    const result = document.createElement('button');
+    result.textContent = title + ' · ' + group;
+    result.addEventListener('click', () => {
+      if (page === 'sources') selectService(title);
+      go(page, id);
+      one('#find').value = '';
+      renderResults();
+    });
+    list.append(result);
+  });
+  if (!list.children.length) {
+    const message = document.createElement('p');
+    message.textContent = '没有找到匹配的设置';
+    list.append(message);
+  }
+}
+one('#find').addEventListener('input', renderResults);
+one('#find').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') one('#results button')?.click();
+  if (event.key === 'Escape') { one('#find').value = ''; renderResults(); }
+});
+
+let mode = 'island';
+let buildOnIsland = false;
+function updateDesktop() {
+  one('#island-controls').hidden = mode !== 'island';
+  const island = one('#island-status');
+  island.textContent = mode === 'island' ? '已显示' : '已添加 · 悬浮岛关闭';
+  island.className = mode === 'island' ? 'flag good' : 'flag warn';
+  const numeric = one('#numeric-status');
+  numeric.textContent = one('#numeric').checked ? '已显示' : '已添加 · 数值显示已关闭';
+  numeric.className = one('#numeric').checked ? 'flag good' : 'flag warn';
+  one('#board-help').textContent = one('#board').checked ? '可用 ' + one('#hotkey').value + (mode === 'off' ? '或托盘菜单打开。' : '、托盘菜单或状态条打开。') : '看板已关闭，快捷键与托盘入口暂不可用。';
+  one('#add-island').textContent = buildOnIsland ? (mode === 'island' ? '已添加 · 点击移除' : '已添加 · 悬浮岛关闭') : '加入悬浮岛';
+  one('#opacity-value').textContent = one('#opacity').value + '%';
+}
+all('[data-mode]').forEach((button) => button.addEventListener('click', () => {
+  mode = button.dataset.mode;
+  all('[data-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+  updateDesktop();
+}));
+for (const id of ['numeric','board','opacity','hotkey']) one('#' + id).addEventListener('input', updateDesktop);
+one('#add-island').addEventListener('click', () => { buildOnIsland = !buildOnIsland; updateDesktop(); });
+
+let place = '桌面';
+let chosen = 'bar';
+const savedStyles = new Map();
+const names = {bar:'横向进度条',ring:'圆环',number:'数字卡',pool:'圆形水位'};
+function renderStyle() {
+  const quality = one('#quality').selectedIndex;
+  const saved = savedStyles.get(place);
+  all('[data-style-place]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.stylePlace === place)));
+  all('[data-style]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.style === chosen)));
+  one('#preview-title').textContent = place + '预览';
+  one('#style-apply').textContent = '应用到' + place;
+  one('#style-inheritance').textContent = saved ? '此处已单独设置 · ' + names[saved] : '跟随默认样式';
+  one('#style-help').textContent = '共享同一份数据。应用只影响' + place + '的样式。';
+  const condition = ['正常','暂未取得','离线','数据过期'][quality];
+  let visual = '';
+  if (quality) {
+    visual = '<div class="between"><small>5 小时已用</small><strong>—</strong></div><small>' + condition + '，等待可用数据后显示比例。</small>';
+  } else if (chosen === 'ring' || chosen === 'pool') {
+    visual = '<div class="between"><small>5 小时已用</small><span class="icon-text"><span class="' + chosen + '"></span><strong class="num">65%</strong></span></div>';
+  } else {
+    visual = '<div class="between"><small>5 小时已用</small><strong class="num">65%</strong></div>' + (chosen === 'bar' ? '<div class="bar"><i style="width:65%"></i></div>' : '');
+  }
+  const footer = quality ? '' : place === '详情'
+    ? '<div class="secondary-row between"><span>周已用 38% · 剩余 62%</span><span>周一 09:00 重置</span></div>'
+    : '<div class="secondary-row between"><span>周已用</span><b class="num">38%</b></div>';
+  one('#style-preview').innerHTML = '<div class="metric"><div class="between"><b>Kimi 额度</b><span class="icon-text muted"><i class="dot ' + (quality ? 'dim' : '') + '"></i>' + condition + '</span></div>' + visual + footer + '</div>';
+}
+all('[data-style-place]').forEach((button) => button.addEventListener('click', () => {
+  place = button.dataset.stylePlace;
+  chosen = savedStyles.get(place) || 'bar';
+  one('#style-status').textContent = '';
+  renderStyle();
+}));
+all('[data-style]').forEach((button) => button.addEventListener('click', () => { chosen = button.dataset.style; renderStyle(); }));
+one('#quality').addEventListener('change', renderStyle);
+one('#style-apply').addEventListener('click', () => {
+  savedStyles.set(place, chosen);
+  one('#style-status').textContent = '已应用到' + place;
+  renderStyle();
+});
+one('#style-reset').addEventListener('click', () => {
+  savedStyles.delete(place);
+  chosen = 'bar';
+  one('#style-status').textContent = '已恢复' + place + '的默认样式';
+  renderStyle();
+});
+
+const services = {
+  'Kimi For Coding': { desc:'读取 5 小时、周和套餐额度。', widget:'Kimi 额度', status:'测试成功', added:true, example:'5 小时已用 65% · 周已用 38%' },
+  GitHub: { desc:'读取构建状态和事件。', widget:'构建状态', status:'测试成功', added:true, example:'最近一次构建失败' },
+  DeepSeek: { desc:'读取开放平台余额。', widget:'平台余额', status:'未连接', added:false, example:'示例余额 ¥420.50' },
+  '本机资源': { desc:'读取本机 CPU、内存和磁盘数据。', widget:'本机资源', status:'测试成功', added:false, example:'CPU 28% · 内存 62%' },
+};
+const requestedService = new URLSearchParams(location.search).get('service');
+let serviceName = Object.hasOwn(services, requestedService) ? requestedService : 'Kimi For Coding';
+function selectService(name) {
+  if (!Object.hasOwn(services, name)) return;
+  serviceName = name;
+  const item = services[name];
+  all('[data-service]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.service === name)));
+  one('#source-title').textContent = name;
+  one('#source-desc').textContent = item.desc;
+  const status = one('#source-status');
+  status.textContent = item.status;
+  const ready = item.status === '测试成功';
+  const disconnected = item.status === '未连接';
+  status.className = 'flag ' + (ready ? 'good' : 'warn');
+  one('#source-steps').innerHTML = '<div class="step ' + (disconnected ? 'current' : 'done') + '">1. 添加连接</div><div class="step ' + (ready ? 'done' : disconnected ? '' : 'current') + '">2. 测试连接</div><div class="step ' + (ready ? 'current' : '') + '">3. 添加组件</div>';
+  one('#source-action').innerHTML = ready
+    ? '<b>推荐组件 · ' + item.widget + '</b><p class="muted">' + item.example + '</p><div class="between"><label class="muted">显示位置 <select id="new-placement"' + (item.added ? ' disabled' : '') + '><option>桌面和悬浮岛</option><option>仅桌面</option><option>仅悬浮岛</option></select></label><button class="primary" id="new-widget"' + (item.added ? ' disabled' : '') + '>' + (item.added ? '已添加' : '添加组件') + '</button></div>'
+    : disconnected
+      ? '<b>添加连接</b><p class="muted">使用原型测试连接。</p><div class="between"><span class="muted">默认服务地址</span><button class="primary" id="save-source">保存示例连接</button></div>'
+      : '<b>连接已保存</b><p class="muted">测试成功后可添加组件。</p><div class="between"><span class="muted">使用固定示例响应</span><button class="primary" id="test-source">测试连接</button></div>';
+  one('#new-widget')?.addEventListener('click', () => { item.added = true; item.placement = one('#new-placement').value; selectService(serviceName); });
+  one('#save-source')?.addEventListener('click', () => { item.status = '已保存待验证'; selectService(serviceName); });
+  one('#test-source')?.addEventListener('click', () => { item.status = '测试成功'; selectService(serviceName); });
+  if (name === 'DeepSeek') {
+    const balance = one('#balance-status');
+    const desktop = item.added && item.placement !== '仅悬浮岛';
+    balance.textContent = disconnected ? '来源尚未连接' : !ready ? '连接待验证' : desktop ? '已显示' : '未添加到桌面';
+    balance.className = 'flag ' + (desktop ? 'good' : 'warn');
+  }
+  one('#source-refresh-label b').textContent = item.added ? '此组件刷新频率' : '添加后的刷新频率';
+  one('#refresh-choice').value = item.refresh || '继承默认';
+  renderRefresh();
+  one('#source-widgets').innerHTML = item.added
+    ? '<div class="setting"><div><b>' + item.widget + '</b><small>' + (item.placement || (name === 'GitHub' ? '桌面' : '桌面和悬浮岛')) + '</small></div><span class="flag good">已添加</span></div>'
+    : '<div class="setting"><span class="muted">还没有组件</span></div>';
+}
+all('[data-service]').forEach((button) => button.addEventListener('click', () => selectService(button.dataset.service)));
+all('[data-service-link]').forEach((button) => button.addEventListener('click', () => { selectService(button.dataset.serviceLink); go('sources'); }));
+function renderRefresh() {
+  const global = one('#general-refresh').value;
+  const local = one('#refresh-choice').value;
+  one('#refresh-help').textContent = local === '继承默认' ? '继承默认刷新间隔 · ' + global : '此组件单独设置 · ' + local;
+}
+one('#general-refresh').addEventListener('change', renderRefresh);
+one('#refresh-choice').addEventListener('change', (event) => {
+  services[serviceName].refresh = event.target.value;
+  renderRefresh();
+});
+updateDesktop();
+renderStyle();
+selectService(serviceName);
+renderRefresh();
+</script>
+</body>
+</html>

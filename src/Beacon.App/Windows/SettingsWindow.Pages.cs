@@ -29,17 +29,17 @@ internal sealed partial class SettingsWindow
         var page = PageShell();
         page.Children.Add(SectionTitle("常规"));
         _hotkeyBox = new TextBox { Header = "全局热键（如 Ctrl+Alt+B）", Text = _runtime.Config.App.Hotkey, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
-        _hotkeyBox.LostFocus += (_, _) => SaveGeneral();
+        _hotkeyBox.LostFocus += (_, _) => SaveHotkey(); // SET-UX-01 单项保存：只写 Hotkey，不碰其他字段
         _startupToggle = new ToggleSwitch { Header = "开机自启", IsOn = _runtime.Config.App.LaunchOnStartup };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_startupToggle, "startup-toggle"); // UIA 取证：开机自启驱动
-        _startupToggle.Toggled += (_, _) => SaveGeneral();
+        _startupToggle.Toggled += (_, _) => SaveStartup(); // SET-UX-01 单项保存：只写 LaunchOnStartup
         _themeBox = new ComboBox { Header = "主题（重启生效）", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
         foreach (var item in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
         {
             _themeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
         }
         _themeBox.SelectedIndex = IndexOfTag(_themeBox, _runtime.Config.App.Theme);
-        _themeBox.SelectionChanged += (_, _) => SaveGeneral();
+        _themeBox.SelectionChanged += (_, _) => SaveTheme(); // SET-UX-01 单项保存；主题构造期锁死（App 构造器读），免广播
         // 界面语言（2026-10-14 用户单②）：看板/托盘即时生效（UiStrings.LanguageChanged 广播重画）；
         // 设置页存量中文文案暂未整体迁移（UiStrings 覆盖面记录在案）。语言名按惯例用本名不翻译。
         _languageBox = new ComboBox { Header = UiStrings.SettingsLanguage, Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
@@ -52,40 +52,28 @@ internal sealed partial class SettingsWindow
             _languageBox.Items.Add(languageItem);
         }
         _languageBox.SelectedIndex = IndexOfTag(_languageBox, _runtime.Config.App.Language);
-        _languageBox.SelectionChanged += (_, _) => SaveGeneral();
-        _opacitySlider = new Slider
-        {
-            Header = "界面透明度",
-            Minimum = 0.2, // UI/UX 审计：滑杆下限 0.4 与运行时 clamp(0.2,1.0) 不一致——配了 0.2 的用户滑杆一碰就跳回 0.4
-            Maximum = 1.0,
-            StepFrequency = 0.05,
-            Value = Math.Clamp(_runtime.Config.App.UiOpacity, 0.2, 1.0),
-            Width = 240,
-        };
-        _opacitySlider.ValueChanged += (_, _) => SaveGeneral();
-        _capsuleToggle = new ToggleSwitch { Header = "显示状态胶囊（L1）", IsOn = _runtime.Config.App.ShowCapsule };
-        _capsuleToggle.Toggled += (_, _) => SaveGeneral();
-        // 展示载体三项（悬浮岛/悬浮框/看板）已收编到 组件中心 → 展示载体（ISLAND-RING-1 扩围②，
-        // 2026-11-07 用户令「一个页面决定显示什么+用什么显示」）：本页只留经典胶囊总开关，岛/悬浮框
-        // 勾选在载体区（旧 config 字段继续用，行为与持久化向后兼容）。
-        // 贴边收起开关（2026-10-14 用户单③，默认开=保持已发布行为）：关=拖到屏幕边缘不再收成细条，
-        // 已收起的经 ApplySettingsEffects → ApplyEdgeCollapseSetting 立刻弹回
-        _edgeCollapseToggle = new ToggleSwitch { Header = UiStrings.SettingsEdgeCollapse, IsOn = _runtime.Config.App.EdgeCollapseEnabled };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_edgeCollapseToggle, "edge-collapse-toggle"); // UIA 取证：开关驱动
-        _edgeCollapseToggle.Toggled += (_, _) => SaveGeneral();
-        // 全局检查频率（2026-10-09 用户令）：组件级「检测间隔」优先，未设组件级的按此走；改后立即重建调度
+        _languageBox.SelectionChanged += (_, _) => SaveLanguage(); // SET-UX-01 单项保存：只写 Language
+        // 全局检查频率（2026-10-09 用户令）：组件级「检测间隔」优先，未设组件级的按此走；改后立即重建调度。
+        // SET-UX-01：预设外合法旧值（如 120 秒）补「自定义」项按原值回显——此前无档可选且全字段回写会把它洗回默认。
         _pollBox = new ComboBox { Header = "检查频率（未单独设置间隔的组件）", Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_pollBox, "poll-interval-box"); // UIA 取证：检查频率改动驱动
-        foreach (var item in new[] { ("0", "按组件档位（默认）"), ("15", "15 秒"), ("30", "30 秒"), ("60", "1 分钟"), ("300", "5 分钟") })
+        foreach (var preset in PollIntervalOptions.Presets)
         {
-            var pollItem = new ComboBoxItem { Content = item.Item2, Tag = item.Item1 };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pollItem, $"poll-{item.Item1}");
+            var pollItem = new ComboBoxItem { Content = preset.Label, Tag = preset.Seconds.ToString(CultureInfo.InvariantCulture) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(pollItem, $"poll-{preset.Seconds}");
             _pollBox.Items.Add(pollItem);
         }
-        _pollBox.SelectedIndex = IndexOfTag(_pollBox, _runtime.Config.App.PollIntervalSeconds > 0 ? _runtime.Config.App.PollIntervalSeconds.ToString(CultureInfo.InvariantCulture) : "0");
-        _pollBox.SelectionChanged += (_, _) => SaveGeneral();
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _opacitySlider, _capsuleToggle, _edgeCollapseToggle, _pollBox } });
-        page.Children.Add(Hint("悬浮岛/悬浮框/看板等展示载体已收编到「组件中心 → 展示载体」（勾选=出现、取消=消失，即时生效）；信息密集组件的悬浮形态（panel|floating）同页可调。"));
+        var configuredPoll = _runtime.Config.App.PollIntervalSeconds;
+        if (configuredPoll > 0 && !PollIntervalOptions.IsPreset(configuredPoll))
+        {
+            var customItem = new ComboBoxItem { Content = PollIntervalOptions.CustomLabel(configuredPoll), Tag = configuredPoll.ToString(CultureInfo.InvariantCulture) };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(customItem, "poll-custom");
+            _pollBox.Items.Add(customItem); // 自定义项在预设后追加，原值原样保留
+        }
+        _pollBox.SelectedIndex = IndexOfTag(_pollBox, configuredPoll > 0 ? configuredPoll.ToString(CultureInfo.InvariantCulture) : "0");
+        _pollBox.SelectionChanged += (_, _) => SavePoll(); // SET-UX-01 单项保存：只写 PollIntervalSeconds
+        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _pollBox } });
+        page.Children.Add(Hint("状态条（关闭/右下角胶囊/顶部悬浮岛）、窗口布局、看板入口、不透明度与贴边收起在「桌面显示」页（即时生效）；组件显隐与上岛在「组件中心」。"));
         page.Children.Add(BuildAboutSection());
         return page;
     }
@@ -102,23 +90,14 @@ internal sealed partial class SettingsWindow
         page.Children.Add(SectionTitle("组件中心"));
         page.Children.Add(Hint("按类型分组的全部可展示组件：勾选=显示到悬浮面板，取消=隐藏（即时生效、重启保留）。钉选与布局数据不受影响，重新勾选即恢复。"));
 
-        // —— 展示载体（收编四处散落开关：岛形态开关/数量悬浮窗开关/悬浮形态下拉/托盘零散入口）——
+        // —— 展示载体（SET-UX-02/03 收编进「桌面显示」页，2026-11-23 用户令原型落地批1）：
+        // 状态条三选一（关闭/右下角胶囊/顶部悬浮岛，投影 CapsuleIsland+ShowCapsule 成组保存）+
+        // 窗口与看板区（桌面组件布局=PinDisplayMode / 在桌面显示数值和额度=NumericFloatingEnabled /
+        // 允许打开看板=BoardEnabled / 不透明度 / 贴边收起）。本页不再放重复入口——此前两处开关
+        // 分管两字段，关岛可能露出右下角胶囊（SET-UX-02 问题面）。岛内容设置保留在本页岛组内，
+        // 岛未启用时折叠（BuildIslandSection 口径），列表与顺序在 config 里原样保留。
         page.Children.Add(SectionTitle("展示载体"));
-        page.Children.Add(Hint("用什么显示：悬浮岛 / 悬浮框 / 看板，勾选=出现、取消=消失（即时生效、重启保留）。共存规则（真实窗口架构）：三者是不同窗口，任意组合共存；唯一互斥面=悬浮岛与经典胶囊是同一胶囊窗的两种形态（岛勾选时经典让位，岛取消按「通用→显示状态胶囊」回经典或整体关闭）。看板是唤起式面板：关闭=热键/岛点击不可唤起且已开即收。"));
-        foreach (var carrier in CarrierCatalog.Carriers)
-        {
-            page.Children.Add(BuildCarrierRow(carrier));
-        }
-
-        // 信息密集组件（趋势图/灯组）的悬浮形态档收编至此（原「通用 → 悬浮形态」下拉，行为与持久化不变）
-        _pinModeBox = new ComboBox { Header = "悬浮形态（信息密集组件：重启生效）", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
-        foreach (var item in new[] { ("panel", "宿主面板（单窗多 tile）"), ("floating", "独立悬浮框（每组件一窗，任意拖放）") })
-        {
-            _pinModeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
-        }
-        _pinModeBox.SelectedIndex = IndexOfTag(_pinModeBox, _runtime.Config.App.PinDisplayMode);
-        _pinModeBox.SelectionChanged += (_, _) => SaveCarrierPinMode();
-        page.Children.Add(_pinModeBox);
+        page.Children.Add(Hint("载体入口已统一到「桌面显示」页：状态条三选一（关闭 / 右下角胶囊 / 顶部悬浮岛）+ 窗口与看板（桌面组件布局 / 在桌面显示数值和额度 / 允许打开看板 / 不透明度 / 贴边收起），全部即时生效。"));
 
         var groups = ComponentCenterCatalog.Group(_runtime.Config.Widgets);
         if (groups.Count == 0)
@@ -143,73 +122,6 @@ internal sealed partial class SettingsWindow
             }
         }
         return page;
-    }
-
-    /// <summary>载体行：勾选框 + 载体名/真实能力说明。勾选变化即时落库（CarrierCatalog 单源写旧
-    /// 字段/boardEnabled）并触发 SettingsApplied（建窗/关窗/岛↔经典切换走既有 ApplySettingsEffects）。</summary>
-    private UIElement BuildCarrierRow(CarrierItem carrier)
-    {
-        var enabled = carrier.Id switch
-        {
-            CarrierCatalog.CarrierIslandId => CarrierCatalog.IslandEnabled(_runtime.Config.App),
-            CarrierCatalog.CarrierFloatingId => CarrierCatalog.FloatingEnabled(_runtime.Config.App),
-            _ => CarrierCatalog.BoardEnabled(_runtime.Config.App),
-        };
-        var toggle = new CheckBox
-        {
-            IsChecked = enabled,
-            MinWidth = 0,
-            VerticalAlignment = VerticalAlignment.Top,
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"carrier-{carrier.Id}"); // UIA 取证：载体勾选驱动
-
-        var label = new TextBlock
-        {
-            Text = carrier.Label,
-            FontSize = DesignTokens.FontBody,
-            Foreground = new SolidColorBrush(ThemeColors.Label()),
-        };
-        var subtitle = new TextBlock
-        {
-            Text = carrier.Hint,
-            FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
-            TextWrapping = TextWrapping.Wrap,
-        };
-        var textColumn = new StackPanel { Spacing = 2 };
-        textColumn.Children.Add(label);
-        textColumn.Children.Add(subtitle);
-
-        var row = new Grid { ColumnSpacing = 10 };
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        Grid.SetColumn(toggle, 0);
-        Grid.SetColumn(textColumn, 1);
-        row.Children.Add(toggle);
-        row.Children.Add(textColumn);
-        row.Padding = new Thickness(0, 2, 0, 2);
-
-        // 先取 IsChecked 再挂事件（构造期赋值不触发写路径；用户点击才落库）
-        toggle.Checked += (_, _) => SaveCarrier(carrier.Id, visible: true);
-        toggle.Unchecked += (_, _) => SaveCarrier(carrier.Id, visible: false);
-        return row;
-    }
-
-    /// <summary>载体勾选落库（设置页唯一写入口）：CarrierCatalog 单源改旧字段/boardEnabled → SaveApp
-    /// → SettingsApplied（岛=EnsureCapsule/Close+形态切换、悬浮框=桌面零残留、看板=已开即收）。</summary>
-    private void SaveCarrier(string carrierId, bool visible)
-    {
-        CarrierCatalog.SetEnabled(_runtime.Config.App, carrierId, visible);
-        _runtime.Config.SaveApp();
-        SettingsApplied?.Invoke();
-    }
-
-    /// <summary>悬浮形态档落库（收编自通用页下拉）：PinDisplayMode 旧字段继续用，行为不变。</summary>
-    private void SaveCarrierPinMode()
-    {
-        _runtime.Config.App.PinDisplayMode = TagOf(_pinModeBox) ?? "panel";
-        _runtime.Config.SaveApp();
-        SettingsApplied?.Invoke();
     }
 
     /// <summary>组件中心单行：勾选框 + 显示名/副题（类型键 · 钉选态）。勾选变化即时落库并联动 L0。</summary>
@@ -268,10 +180,19 @@ internal sealed partial class SettingsWindow
 
     /// <summary>岛区（ISLAND-D1..D2，2026-11-09 用户令）：岛收起态展示方式三档（单组件常驻/多组件堆叠/
     /// 徽标+轮播，落 AppConfig.IslandDisplayMode）+ 虚拟环/条显隐（既有行，勾选口径不变）+
-    /// 全部真实组件的「上岛」勾选（AppConfig.IslandComponents 白名单，缺席=不上岛，列表序=上岛序）。</summary>
+    /// 全部真实组件的「上岛」勾选（AppConfig.IslandComponents 白名单，缺席=不上岛，列表序=上岛序）。
+    /// SET-UX-02：状态条未选「顶部悬浮岛」时整块折叠（Visibility 面不动配置——白名单列表与顺序
+    /// 在 config 原样保留，恢复岛后原样回来），留一行引导提示。</summary>
     private UIElement BuildIslandSection(ComponentCenterGroup group)
     {
         var panel = new StackPanel { Spacing = 4 };
+        var islandOn = StatusBarMode.Read(_runtime.Config.App) == StatusBarMode.Island;
+
+        if (!islandOn)
+        {
+            panel.Children.Add(Hint("悬浮岛未启用（桌面显示 → 桌面状态条选「顶部悬浮岛」后可配置岛收起态内容；下方设置已折叠，列表与顺序原样保留）。"));
+            return panel;
+        }
 
         _islandModeBox = new ComboBox
         {
@@ -483,21 +404,45 @@ internal sealed partial class SettingsWindow
         };
         return button;
     }
-    private void SaveGeneral()
+    // —— SET-UX-01 单项保存（2026-11-23 用户令原型落地批1）：每个控件只写自己的字段——
+    // 此前 SaveGeneral 全字段回写，预设外合法旧值（如 120 秒频率）在框里无档可选，改任意
+    // 无关项（开机自启/热键/语言）都会把它洗回默认。落盘与广播面不变（SaveApp + SettingsApplied；
+    // 主题构造期锁死免广播），无效值兜底沿用原口径（fail-safe 不炸设置页）。
+
+    private void SaveHotkey()
     {
-        var app = _runtime.Config.App;
-        app.Hotkey = _hotkeyBox.Text.Trim();
-        app.LaunchOnStartup = _startupToggle.IsOn;
-        app.Theme = TagOf(_themeBox) ?? "system";
-        app.PinDisplayMode = _runtime.Config.App.PinDisplayMode; // 悬浮形态档已收编到载体区（SaveCarrierPinMode 专写），此处保位不覆盖
-        app.UiOpacity = _opacitySlider.Value;
-        app.ShowCapsule = _capsuleToggle.IsOn;
-        app.EdgeCollapseEnabled = _edgeCollapseToggle.IsOn;
-        app.PollIntervalSeconds = int.TryParse(TagOf(_pollBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pollSeconds) && pollSeconds > 0 ? pollSeconds : 0;
-        app.Language = TagOf(_languageBox) ?? "";
-        UiStrings.SetLanguage(app.Language); // 语言切换即时广播（同值幂等）；看板/托盘下次取词即新语言
+        _runtime.Config.App.Hotkey = _hotkeyBox.Text.Trim();
+        _runtime.Config.SaveApp();
+        SettingsApplied?.Invoke(); // 热键重注册走 ApplySettingsEffects
+    }
+
+    private void SaveStartup()
+    {
+        _runtime.Config.App.LaunchOnStartup = _startupToggle.IsOn;
+        _runtime.Config.SaveApp();
+        SettingsApplied?.Invoke(); // 自启对齐走 ApplySettingsEffects → StartupService.SyncWith
+    }
+
+    private void SaveTheme()
+    {
+        _runtime.Config.App.Theme = TagOf(_themeBox) ?? "system";
+        _runtime.Config.SaveApp();
+        // 主题不广播（约束例外：构造期锁死，UI 标注「重启生效」；App 构造器读）
+    }
+
+    private void SaveLanguage()
+    {
+        _runtime.Config.App.Language = TagOf(_languageBox) ?? "";
+        UiStrings.SetLanguage(_runtime.Config.App.Language); // 语言切换即时广播（同值幂等）；看板/托盘下次取词即新语言
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke();
+    }
+
+    private void SavePoll()
+    {
+        _runtime.Config.App.PollIntervalSeconds = int.TryParse(TagOf(_pollBox), NumberStyles.Integer, CultureInfo.InvariantCulture, out var pollSeconds) && pollSeconds > 0 ? pollSeconds : 0;
+        _runtime.Config.SaveApp();
+        SettingsApplied?.Invoke(); // 频率变更重建调度走 ApplySettingsEffects（未变不动，避免全量重拉）
     }
     // —— 导入导出（B-802）：五份配置单文件（含自定义动作）；secrets 绝不入包，导入后按 credentialRef 提示重录 ——
 
