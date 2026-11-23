@@ -71,7 +71,7 @@ internal sealed partial class SettingsWindow
             _desktopLayoutBox.Items.Add(layoutItem);
         }
         _desktopLayoutBox.SelectedIndex = IndexOfTag(_desktopLayoutBox, _runtime.Config.App.PinDisplayMode);
-        _desktopLayoutBox.SelectionChanged += (_, _) => SaveDesktopLayout();
+        _desktopLayoutBox.SelectionChanged += (_, _) => SavePinDisplayMode();
         page.Children.Add(_desktopLayoutBox);
         page.Children.Add(Hint("切换到独立显示后，其余组件仍可留在集中面板。"));
 
@@ -217,8 +217,9 @@ internal sealed partial class SettingsWindow
         SettingsApplied?.Invoke();
     }
 
-    /// <summary>桌面组件布局（SET-UX-03①）：PinDisplayMode 原字段，重启生效（UI 已标注；不广播即时面）。</summary>
-    private void SaveDesktopLayout()
+    /// <summary>桌面组件布局（SET-UX-03①）：PinDisplayMode 原字段，重启生效（UI 已标注；不广播即时面）。
+    /// 命名避让 ComponentStyles.cs 既有 SaveDesktopLayout（组件实例布局保存器，partial 同类）。</summary>
+    private void SavePinDisplayMode()
     {
         _runtime.Config.App.PinDisplayMode = TagOf(_desktopLayoutBox) ?? "panel";
         _runtime.Config.SaveApp();
