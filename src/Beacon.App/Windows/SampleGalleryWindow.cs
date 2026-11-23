@@ -119,7 +119,9 @@ internal sealed class SampleGalleryWindow : Window
     private readonly Brush _hairline = new SolidColorBrush(SeverityPalette.Rgb(255, 48, 54, 61));
     private readonly Func<ComponentDescriptor, string>? _applyToSettings;
     private readonly Func<ComponentDescriptor, string, string>? _applyTargeted; // 定向模式（树根, 面）→ 反馈
-    private readonly Func<string>? _resetTargeted; // 定向模式「恢复传统渲染」→ 反馈
+    private readonly Func<string, string>? _resetTargeted; // 定向模式「恢复此处默认」回调（面）→ 反馈（SET-UX-06：只清选中位置）
+    private readonly Func<string, string?>? _surfaceStyleName; // 定向模式各面已设样式名（null=未单独设置，继承态显示用）
+    private readonly Action? _openIslandCenter; // 「打开组件中心对照」跳转（岛收起行不走样式树）
     private readonly string? _targetWidgetId; // 定向模式目标组件（null=通用工具箱；空状态也定向，评审 P0 断链修复）
     private readonly IReadOnlySet<string>? _dataKinds; // 类型级数据能力（评审 P1 语义描述，空=未声明回退当前值）
     private readonly DisplayTemplates.DisplayTemplate? _restoreTemplate; // 样式恢复：已存模板（评审 P0）
@@ -141,13 +143,17 @@ internal sealed class SampleGalleryWindow : Window
     private TextBlock _formHeader = null!;
     private TextBlock _feedback = null!;
     private TextBlock _previewCaption = null!;
+    private TextBlock _inheritanceCaption = null!; // 继承态行（跟随默认 / 此处已单独设置 · X；SET-UX-06）
+    private Button _applyButton = null!; // 应用按钮（文案随所选位置变化：应用到桌面 / 应用到看板状态行 / …）
 
     /// <param name="applyToSettings">「载入组件树编辑器」回调：推进设置页编辑器，返回反馈文案（✗ 前缀=失败）。</param>
     /// <param name="targetWidgetId">定向模式目标组件 Id（非 null 即定向——空状态/首取数前照常定向，
     /// 评审 P0 断链修复：模式由目标组件决定，不由状态有无决定）。</param>
     /// <param name="targetState">定向模式当前状态（可空：null=等待数据；预览随状态事件刷新）。</param>
     /// <param name="applyTargeted">定向模式应用回调（树根, 面）→ 反馈文案；与 targetWidgetId 成对传入。</param>
-    /// <param name="resetTargeted">定向模式「恢复传统渲染」回调（清空该组件全部展示样式）→ 反馈文案。</param>
+    /// <param name="resetTargeted">定向模式「恢复此处默认」回调（面）→ 反馈文案（SET-UX-06：只清选中位置，其余面保留）。</param>
+    /// <param name="surfaceStyleName">定向模式各面已设样式名查询（面 → 模板中文名/「自定义树」，null=未单独设置；SET-UX-06 继承态行）。</param>
+    /// <param name="openIslandCenter">「打开组件中心对照」回调（岛收起行不走样式树；可空=不显示跳转）。</param>
     /// <param name="restoreTemplateId">样式恢复：当前已存模板 Id（null=按能力筛选首项）。</param>
     /// <param name="restoreSurface">样式恢复：当前已存面（默认 tile）。</param>
     /// <param name="restoreRootJson">样式恢复：当前已存树 JSON（参数表单回填；null=无树）。</param>
@@ -159,7 +165,9 @@ internal sealed class SampleGalleryWindow : Window
         string? targetWidgetId = null,
         WidgetState? targetState = null,
         Func<ComponentDescriptor, string, string>? applyTargeted = null,
-        Func<string>? resetTargeted = null,
+        Func<string, string>? resetTargeted = null,
+        Func<string, string?>? surfaceStyleName = null,
+        Action? openIslandCenter = null,
         string? restoreTemplateId = null,
         string restoreSurface = "tile",
         string? restoreRootJson = null,
@@ -168,6 +176,8 @@ internal sealed class SampleGalleryWindow : Window
         _applyToSettings = applyToSettings;
         _applyTargeted = applyTargeted;
         _resetTargeted = resetTargeted;
+        _surfaceStyleName = surfaceStyleName;
+        _openIslandCenter = openIslandCenter;
         _targetWidgetId = targetWidgetId;
         _dataKinds = dataKinds;
         _targetState = targetState;
@@ -414,18 +424,19 @@ internal sealed class SampleGalleryWindow : Window
 
         var apply = new Button
         {
-            Content = IsTargeted ? "应用展示样式" : "载入组件树编辑器",
+            Content = IsTargeted ? $"应用到{SurfaceLabel(_applySurface)}" : "载入组件树编辑器", // SET-UX-06：文案随位置变
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         AutomationProperties.SetAutomationId(apply, "style-apply"); // CI：应用动作
+        _applyButton = apply;
         apply.Click += OnApplyToSettings;
         editor.Children.Add(apply);
         if (IsTargeted)
         {
-            // 恢复传统渲染（评审 P1）：清空该组件全部展示样式面，回传统渲染；反馈经 _feedback。
+            // 恢复此处默认（SET-UX-06，评审 P1 兜底收口）：只清当前选中位置，其余位置保留；反馈经 _feedback。
             var reset = new Button
             {
-                Content = "恢复传统渲染",
+                Content = "恢复此处默认",
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Margin = new Thickness(0, DesignTokens.Space6, 0, 0),
             };
@@ -500,7 +511,7 @@ internal sealed class SampleGalleryWindow : Window
         RefreshPreviewAndJson();
     }
 
-    /// <summary>恢复传统渲染（评审 P1 兜底）：清空全部展示样式面，组件回传统渲染口径。</summary>
+    /// <summary>恢复此处默认（SET-UX-06，评审 P1 兜底收口）：只清当前选中位置，其余位置保留。</summary>
     private void OnResetTargeted(object sender, RoutedEventArgs e)
     {
         if (_resetTargeted is null)
@@ -508,8 +519,9 @@ internal sealed class SampleGalleryWindow : Window
             Feedback("✗ 本窗未接入设置页（请从组件行「展示样式」进入）。", error: true);
             return;
         }
-        var message = _resetTargeted();
+        var message = _resetTargeted(_applySurface);
         Feedback(message, error: message.StartsWith('✗'));
+        RefreshInheritanceCaption(); // 清完即回「跟随默认样式」（继承态行与落盘态一致）
     }
 
     private string CatalogCaption()
@@ -566,6 +578,12 @@ internal sealed class SampleGalleryWindow : Window
         {
             var template = TemplateOf(_templateId);
             _formHeader.Text = $"样式 · {template.Name}";
+            // SET-UX-06 位置优先（2026-11-24 原型落地批2）：应用位置置顶（桌面/看板状态行/详情各面
+            // 独立设置），继承态紧随其下——先选「改哪里」，再看「当前是不是默认」。
+            _formHost.Children.Add(ComponentText.Caption("应用位置（各面独立设置）：", _muted));
+            _formHost.Children.Add(SurfacePicker());
+            _inheritanceCaption = ComponentText.Caption(InheritanceText(_applySurface), _muted);
+            _formHost.Children.Add(_inheritanceCaption);
             _formHost.Children.Add(ComponentText.Caption(template.Desc, _muted));
             foreach (var (key, spec) in template.Parameters)
             {
@@ -589,9 +607,18 @@ internal sealed class SampleGalleryWindow : Window
                 row.Children.Add(control);
                 _formHost.Children.Add(row);
             }
-            _formHost.Children.Add(SurfacePicker());
             _formHost.Children.Add(ComponentText.Caption(
-                "应用只改所选面，其余面保留；自由组合回设置页「组件树」编辑器。", _muted));
+                "应用只改所选位置，其余位置保留；自由组合回设置页「组件树」编辑器。", _muted));
+            if (_openIslandCenter is not null)
+            {
+                var islandLink = new HyperlinkButton
+                {
+                    Content = "悬浮岛收起行不走样式树（读摘要+级别）——打开组件中心对照",
+                    Padding = new Thickness(0),
+                };
+                islandLink.Click += (_, _) => _openIslandCenter();
+                _formHost.Children.Add(islandLink);
+            }
             return;
         }
 
@@ -731,12 +758,13 @@ internal sealed class SampleGalleryWindow : Window
         => DisplayTemplates.Match(id).FirstOrDefault()
             ?? DisplayTemplates.All.First(template => !template.RequiresProgress);
 
-    /// <summary>应用面选择（评审 P1：同一数据在 tile/row/detail 各面可各选样式）。</summary>
+    /// <summary>应用位置选择（评审 P1：同一数据在 tile/row/detail 各面可各选样式；SET-UX-06 位置优先
+    /// + 位置化命名）。锚 style-surface-box / style-surface-{tile|row|detail} 不变（CI 依赖）。</summary>
     private FrameworkElement SurfacePicker()
     {
-        var combo = new ComboBox { MinWidth = 120 };
+        var combo = new ComboBox { MinWidth = 150 };
         AutomationProperties.SetAutomationId(combo, "style-surface-box"); // CI：应用面选择
-        foreach (var (label, value) in new[] { ("悬浮 tile 面", "tile"), ("面板行 row 面", "row"), ("详情 detail 面", "detail") })
+        foreach (var (label, value) in new[] { ("桌面 tile", "tile"), ("看板状态行 row", "row"), ("详情 detail", "detail") })
         {
             var item = new ComboBoxItem { Content = label, Tag = value };
             AutomationProperties.SetAutomationId(item, $"style-surface-{value}"); // CI：Select-ComboItemById 候选锚
@@ -746,9 +774,44 @@ internal sealed class SampleGalleryWindow : Window
         combo.SelectionChanged += (_, _) =>
         {
             _applySurface = TagOf(combo);
+            UpdateApplyLabel(); // 应用按钮文案随位置变（应用到桌面 / 应用到看板状态行 / 应用到详情）
+            RefreshInheritanceCaption(); // 继承态行随位置刷新
             RefreshPreviewAndJson();
         };
         return combo;
+    }
+
+    /// <summary>位置词汇的 UI 名（封闭三面直配）。</summary>
+    private static string SurfaceLabel(string surface) => surface switch
+    {
+        "row" => "看板状态行",
+        "detail" => "详情",
+        _ => "桌面",
+    };
+
+    /// <summary>继承态行文案（SET-UX-06）：该位置已单独设置 → 「此处已单独设置 · 模板名/自定义树」；
+    /// 未设置 → 「跟随默认样式」。样式名经设置页单源查询（Identify 反解）。</summary>
+    private string InheritanceText(string surface)
+        => _surfaceStyleName?.Invoke(surface) is { } name
+            ? $"此处已单独设置 · {name}"
+            : "跟随默认样式";
+
+    private void RefreshInheritanceCaption()
+    {
+        // SurfacePicker 构造期 SelectedIndex 赋值会同步触发 SelectionChanged——此时本行尚未建，
+        // 空判跳过（建完后由 BuildForm 尾段赋初值，不依赖事件）。
+        if (_inheritanceCaption is not null)
+        {
+            _inheritanceCaption.Text = InheritanceText(_applySurface);
+        }
+    }
+
+    private void UpdateApplyLabel()
+    {
+        if (IsTargeted && _applyButton is not null)
+        {
+            _applyButton.Content = $"应用到{SurfaceLabel(_applySurface)}";
+        }
     }
 
     private void RefreshPreviewAndJson()
@@ -868,6 +931,7 @@ internal sealed class SampleGalleryWindow : Window
                 new Dictionary<string, string>(_paramValues, StringComparer.OrdinalIgnoreCase));
             var targetedMessage = _applyTargeted(tree, _applySurface);
             Feedback(targetedMessage, error: targetedMessage.StartsWith('✗'));
+            RefreshInheritanceCaption(); // 应用成功即翻「此处已单独设置 · X」（继承态行与落盘态一致）
             return;
         }
         if (_applyToSettings is null)

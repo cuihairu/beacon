@@ -238,12 +238,30 @@ internal sealed partial class SettingsWindow
             targetWidgetId: latest.Id,
             targetState: state,
             applyTargeted: (root, surface) => ApplyComponentDirect(latest.Id, root, surface),
-            resetTargeted: () => ApplyComponentReset(latest.Id),
+            resetTargeted: surface => ApplyComponentReset(latest.Id, surface), // SET-UX-06：恢复只清选中位置
+            surfaceStyleName: surface => SurfaceStyleName(latest.Id, surface), // SET-UX-06：继承态行
+            openIslandCenter: () => OpenModule("components"), // SET-UX-06：岛收起行不走样式树，对照在组件中心
             restoreTemplateId: restoreId,
             restoreSurface: restoreSurface,
             restoreRootJson: restoreRoot,
             dataKinds: descriptor?.DataKinds);
         _gallery.Activate();
+    }
+
+    /// <summary>某面已设样式名（SET-UX-06 继承态行数据源）：Identify 反解模板中文名，反解不出=
+    /// 「自定义树」（组件树编辑器产物）；面未设= null（画廊显示「跟随默认样式」）。按 Id 每次重取
+    /// 最新配置——应用/恢复后画廊再查即与落盘态一致。</summary>
+    private string? SurfaceStyleName(string widgetId, string surface)
+    {
+        var latest = _runtime.Config.FindWidget(widgetId);
+        if (latest?.Components is not { } components
+            || !components.TryGetValue(surface, out var root)
+            || root is null)
+        {
+            return null;
+        }
+        var id = DisplayTemplates.Identify(root);
+        return id is null ? "自定义树" : DisplayTemplates.Match(id).FirstOrDefault()?.Name ?? "自定义树";
     }
 
     /// <summary>反解组件当前已存展示样式（评审 P0 样式恢复）：按 tile→row→detail 顺序找首个
@@ -291,17 +309,26 @@ internal sealed partial class SettingsWindow
         return $"✓ 已应用展示样式到 {target.Id} 的 {surface} 面（其余面保留，即时重渲）；高级组合仍可走「组件树」编辑器。";
     }
 
-    /// <summary>组件中心定向模式「恢复传统渲染」回调（评审 P1 兜底）：清空该组件全部展示样式面
-    /// 回传统渲染；同样按 Id 重取最新配置（与 ApplyComponentDirect 同口径）。</summary>
-    private string ApplyComponentReset(string widgetId)
+    /// <summary>组件中心定向模式「恢复此处默认」回调（评审 P1 兜底；SET-UX-06 收口为按位置恢复）：
+    /// 只清所选面回传统渲染，其余面保留（tile/row/detail 各面独立口径与 ApplyComponentDirect 对称）；
+    /// 按 Id 重取最新配置（与 ApplyComponentDirect 同口径）。</summary>
+    private string ApplyComponentReset(string widgetId, string surface)
     {
         var target = _runtime.Config.FindWidget(widgetId);
         if (target is null)
         {
             return $"✗ 组件 {widgetId} 已不存在（未保存）。";
         }
-        ReplaceWidgetComponents(target, null);
-        PinsChanged?.Invoke(); // 展示面即时回传统渲染
-        return $"✓ 已恢复 {target.Id} 的传统渲染（全部展示样式面已清空，即时重渲）。";
+        var surfaces = new Dictionary<string, ComponentDescriptor>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, existing) in target.Components ?? new Dictionary<string, ComponentDescriptor>())
+        {
+            if (!string.Equals(key, surface, StringComparison.OrdinalIgnoreCase))
+            {
+                surfaces[key] = existing; // 仅清当前面：其余面保留（SET-UX-06 恢复默认只改选中位置）
+            }
+        }
+        ReplaceWidgetComponents(target, surfaces.Count > 0 ? surfaces : null);
+        PinsChanged?.Invoke(); // 该面展示即时回传统渲染
+        return $"✓ 已恢复 {target.Id} 的 {surface} 面默认渲染（仅该面清空，其余面保留，即时重渲）。";
     }
 }

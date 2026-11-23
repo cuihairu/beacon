@@ -6476,7 +6476,24 @@ try
         throw "断言失败（场景 AE3）：row 面落盘非圆环（root=$($rowTree.type)，ring 子节点缺席）"
     }
     Write-Host "场景 AE3（双面）通过：tile=数字卡 + row=圆环 双面并存（应用按 Id 重取最新）——G02/验收②"
-    # 恢复传统渲染（G10 兜底）：style-reset → 清面回传统渲染
+    # 按位置恢复（SET-UX-06）：当前选中面=row → style-reset 只清 row，tile（数字卡）必须保留
+    Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
+    $rowCleared = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.components -and $glmEntry.components.tile -and (!$glmEntry.components.row)) { $rowCleared = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (!$rowCleared)
+    {
+        Save-FullScreenshot "AE-FAIL-reset-row.png"
+        throw "断言失败（场景 AE3）：按位置恢复后 row 面未清或 tile 面被误清（SET-UX-06 恢复默认只改选中位置回归）"
+    }
+    Write-Host "场景 AE3（按位置恢复）通过：row 面清空 + tile 面保留——SET-UX-06"
+    # 切回 tile 面再恢复 → 全部面清空回传统渲染（G10 兜底保留）
+    Select-ComboItemById $gallery $surfaceCombo "style-surface-tile"
     Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
     $resetDone = $false
     $deadline = (Get-Date).AddSeconds(20)
@@ -6489,9 +6506,9 @@ try
     if (!$resetDone)
     {
         Save-FullScreenshot "AE-FAIL-reset.png"
-        throw "断言失败（场景 AE3）：恢复传统渲染后 widgets.json components 未清空——G10 兜底回归"
+        throw "断言失败（场景 AE3）：逐面恢复后 widgets.json components 未清空——G10 兜底回归"
     }
-    Write-Host "场景 AE3（重置）通过：components 清空回传统渲染——G10"
+    Write-Host "场景 AE3（重置）通过：逐面恢复后 components 清空回传统渲染——G10 + SET-UX-06"
     Remove-Item $aeModeFile -Force -ErrorAction SilentlyContinue # 还原默认 38% 态（不毒化后续场景）
     Stop-Beacon
     Write-Host "场景 AE 通过：空状态可配置 + 四态渲染 + 双面不互覆 + 槽位保外围 + 恢复/重置——展示样式能力闭环（验收 ①②③④）"
