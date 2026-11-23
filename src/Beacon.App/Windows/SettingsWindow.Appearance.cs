@@ -35,6 +35,9 @@ internal sealed partial class SettingsWindow
 
     private UIElement BuildAppearanceSection()
     {
+        // SET-UX-06 外观页口径：主面保留动效档位/额度显示方式/密度/逐族预览；颜色（级别色）与
+        // 强度（动效强度）收进「更多选项」折叠区——高频档不占主视线，锚点全部保留（UIA 取证口
+        // 不迁移，场景 G4/G5/G6 先展开 appearance-more-options 再找锚）。
         var palette = new StackPanel { Spacing = 6 };
         foreach (var key in new[] { "info", "success", "warning", "error", "critical", "offline" })
         {
@@ -78,6 +81,15 @@ internal sealed partial class SettingsWindow
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_motionIntensitySlider, "appearance-motion-intensity"); // UIA 取证：动效强度驱动
         _motionIntensitySlider.ValueChanged += (_, _) => SaveMotion();
+
+        var moreOptions = new Expander
+        {
+            Header = "更多选项（级别色与动效强度）",
+            Content = new StackPanel { Spacing = 8, Children = { palette, reset, _motionIntensitySlider } },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(moreOptions, "appearance-more-options"); // UIA 取证：折叠区展开驱动（G4/G5/G6 前置）
 
         // 2026-10-10 用户令「设置里让用户自己选表现方式，比如一开始的进度条」：额度显示方式全局可选。
         // 2026-10-11 用户令重设计后 bar 为默认（4 DIP 圆角条 + NN% 读数），标签按用户易读序排列：
@@ -132,9 +144,8 @@ internal sealed partial class SettingsWindow
         }
 
         var form = new StackPanel { Spacing = 8 };
-        form.Children.Add(palette);
-        form.Children.Add(reset);
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _motionModeBox, _motionIntensitySlider } });
+        form.Children.Add(_motionModeBox);
+        form.Children.Add(moreOptions); // SET-UX-06：颜色与强度收进折叠区（主面只留档位）
         form.Children.Add(_progressStyleBox);
         // 2026-10-22 评审 G10 口径声明：此档是「传统渲染」的全局额度表现（无展示样式面的组件）；
         // 组件行「展示样式」另选的面不受影响，想回传统渲染 = 组件中心「恢复传统渲染」。

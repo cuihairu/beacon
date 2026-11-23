@@ -1264,6 +1264,13 @@ function Invoke-Uia([System.Windows.Automation.AutomationElement] $element)
     ($element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke()
 }
 
+# 展开 Expander/折叠区（SET-UX-06：外观页级别色与动效强度收进「更多选项」折叠区后，
+# 取证锚仍在区内——先展开再找）。无该模式时抛异常由调用方场景 catch。
+function Expand-UiaElement([System.Windows.Automation.AutomationElement] $element)
+{
+    ($element.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+}
+
 function Find-SettingsWindow([int] $timeoutSec = 30)
 {
     $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Beacon 设置")
@@ -2487,6 +2494,11 @@ try
     Start-Sleep -Seconds 2
     $motionBox = Find-UiaById $settings "appearance-motion-mode-box" 10
     if (!$motionBox) { throw "断言失败（场景 G3）：UIA 未找到 appearance-motion-mode-box（锚点丢失？）" }
+    # SET-UX-06：级别色与动效强度收进「更多选项」折叠区——G4/G5/G6 锚先展开再找
+    $moreOptions = Find-UiaById $settings "appearance-more-options" 10
+    if (!$moreOptions) { throw "断言失败（场景 G4 前置）：UIA 未找到 appearance-more-options（折叠区锚点丢失？）" }
+    Expand-UiaElement $moreOptions
+    Start-Sleep -Seconds 1
     # G4 成功色改 #ff8800 → config 落盘 + tile 换橙。重绘由状态事件驱动（刷新 tick ≤15s 重发布），
     # 非保存即绘（38259426553 实证保存后 2s crop 橙 0px）——轮询 ≤20s 等下一渲染 tick
     $successBox = Find-UiaById $settings "appearance-color-success" 10
