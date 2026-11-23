@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -16,6 +17,9 @@ public static class CopilotWidgetDescriptors
         DisplayName = "GitHub Copilot 用量",
         PinSupported = true,
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
+        // SET-UX-05：各配额槽是 payload 带标签并列百分比（WindowsOnly）——percent 选择器接通
+        // payload 前（SET-UX-07）不算 progress，进度样式置灰不给虚假的确定进度。
+        DataKinds = DisplayTemplateKinds.WindowsOnly,
         SuggestedTier = RefreshTiers.Default, // 月度配额窗口（quota_reset_date），默认档足够
         Fields =
         [

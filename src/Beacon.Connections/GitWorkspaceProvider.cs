@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -15,6 +16,7 @@ public static class GitWorkspaceDescriptors
         DisplayName = "Git 仓库状态（↑↓ · 改 · stash）",
         PinSupported = true,
         FloatingOptIn = true, // 数值类：设置「数量悬浮窗」开关放行（2026-10-11 用户令默认开）
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：仓库状态读数，无百分比
         SuggestedTier = RefreshTiers.Default, // 每刷 3 次 git 子进程，60s 档够用（15s 档纯浪费）
         Fields =
         [

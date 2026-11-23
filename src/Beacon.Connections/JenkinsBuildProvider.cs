@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -16,6 +17,7 @@ public static class JenkinsWidgetDescriptors
         Type = BuildType,
         DisplayName = "Jenkins 构建状态",
         PinSupported = true, // 状态 tile：不出悬浮数值卡（数值/额度类才 FloatingOptIn，同 github.actions.runs 口径）
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：纯状态型（构建结果读数，无百分比）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -22,6 +23,7 @@ public static class HeraldWidgetDescriptors
         DisplayName = "Herald 未决事件（告警台账）",
         PinSupported = true,
         FloatingOptIn = true, // 数值类：设置「数量悬浮窗」开关放行（2026-10-11 用户令默认开）
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：事件台账读数，无百分比
         SuggestedTier = RefreshTiers.Default,
         Fields =
         [
@@ -36,6 +38,7 @@ public static class HeraldWidgetDescriptors
         DisplayName = "Herald 订阅源（RSS）",
         PinSupported = true,
         FloatingOptIn = true, // 未读数也是数值
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：订阅源读数，无百分比
         SuggestedTier = RefreshTiers.Default,
         Fields =
         [
@@ -51,6 +54,7 @@ public static class HeraldWidgetDescriptors
         DisplayName = "Herald 投递失败（送信台账）",
         PinSupported = true,
         FloatingOptIn = true, // 失败计数也是数值
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：投递台账读数，无百分比
         SuggestedTier = RefreshTiers.Default,
         Fields =
         [

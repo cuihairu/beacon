@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -16,6 +17,7 @@ public static class ClaudeWidgetDescriptors
         DisplayName = "Claude Code 用量（本机）",
         PinSupported = true,
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：token/花费是摘要读数，无百分比
         SuggestedTier = RefreshTiers.Static, // 本地文件统计：手动/打开面板时重算即可
         Fields =
         [

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net.NetworkInformation;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -16,6 +17,7 @@ public static class MachineWidgetDescriptors
         DisplayName = "本机网络（IP · 速率 · 流量）",
         PinSupported = true,
         FloatingOptIn = true, // 数值类：设置「数量悬浮窗」开关放行（2026-10-11 用户令默认开）
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：速率/流量是摘要读数，无百分比
         SuggestedTier = RefreshTiers.Machine,
         Fields =
         [
@@ -34,6 +36,9 @@ public static class MachineWidgetDescriptors
         DisplayName = "本机资源（CPU · 内存 · 磁盘）",
         PinSupported = true,
         FloatingOptIn = true, // 数值类：设置「数量悬浮窗」开关放行（2026-10-11 用户令默认开）
+        // SET-UX-05：CPU/内存/磁盘是 payload 带标签并列百分比（WindowsOnly）——percent 选择器
+        // 接通 payload 前（SET-UX-07）不算 progress，进度样式置灰不给虚假的确定进度。
+        DataKinds = DisplayTemplateKinds.WindowsOnly,
         SuggestedTier = RefreshTiers.Machine,
         Fields =
         [

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Beacon.Core.Abstractions;
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -16,6 +17,7 @@ public static class MoonshotWidgetDescriptors
         DisplayName = "Moonshot 余额（开放平台）",
         PinSupported = true,
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
+        DataKinds = DisplayTemplateKinds.AmountOnly, // SET-UX-05：只有余额金额，无百分比（不给虚假进度）
         SuggestedTier = RefreshTiers.Default,
         Fields =
         [

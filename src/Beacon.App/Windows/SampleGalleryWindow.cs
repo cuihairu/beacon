@@ -305,13 +305,22 @@ internal sealed class SampleGalleryWindow : Window
         }
         else
         {
-            foreach (var template in DisplayTemplates.Compatible(_dataKinds, _targetState))
+            // SET-UX-05（2026-11-24 原型落地批2）：全量模板上列——兼容项在前（首个=推荐档），
+            // 不兼容项殿后置灰并直显 CanApply 原因（不再静默剔除：为什么没有进度样式要看得见）。
+            foreach (var advice in WidgetStyleAdvice.List(_dataKinds, _targetState))
             {
+                var title = advice.Recommended ? $"{advice.Name} · 推荐" : advice.Name;
                 var line = new StackPanel { Spacing = 1 };
-                line.Children.Add(new TextBlock { Text = template.Name, FontSize = DesignTokens.FontBody, Foreground = _body });
-                line.Children.Add(new TextBlock { Text = template.Desc, FontSize = DesignTokens.FontCaption, Foreground = _muted, TextWrapping = TextWrapping.Wrap });
-                var item = new ListViewItem { Content = line, Tag = template.Id, Padding = new Thickness(8, 5, 8, 5) };
-                AutomationProperties.SetAutomationId(item, $"style-item-{template.Id}"); // CI：样式条目定位
+                line.Children.Add(new TextBlock { Text = title, FontSize = DesignTokens.FontBody, Foreground = _body });
+                line.Children.Add(new TextBlock
+                {
+                    Text = advice.Ok ? advice.Desc : $"不可用：{advice.Reason}",
+                    FontSize = DesignTokens.FontCaption,
+                    Foreground = _muted,
+                    TextWrapping = TextWrapping.Wrap,
+                });
+                var item = new ListViewItem { Content = line, Tag = advice.TemplateId, Padding = new Thickness(8, 5, 8, 5), IsEnabled = advice.Ok };
+                AutomationProperties.SetAutomationId(item, $"style-item-{advice.TemplateId}"); // CI：样式条目定位（置灰行也带锚，取证可读原因）
                 _catalogList.Items.Add(item);
             }
         }
@@ -509,14 +518,11 @@ internal sealed class SampleGalleryWindow : Window
         {
             return "12 个声明式组件类型（渲染注册表词汇）。";
         }
-        // 能力级判断（评审 G06）：类型产百分比就列全（空状态不降级）；未声明能力回退当前值推断。
-        var progressCapable = _dataKinds is not null
-            ? _dataKinds.Contains(DisplayTemplateKinds.Progress)
-            : _targetState?.Progress.HasValue == true;
-        return progressCapable
-            ? (_targetState is null ? "该组件类型有百分比数据——四种进度样式可选（当前等待数据，样式先应用、数据到了即显）。"
-                : "该组件有百分比数据——横条/圆环/数字卡/水位均可选。")
-            : "该组件无百分比数据——只列状态/摘要样式（不显虚假的确定进度）。";
+        // SET-UX-05：能力摘要单源（WidgetStyleAdvice.CapabilityNote）——按类型声明能力给一句说明，
+        // 置灰原因在条目行内直显，副题不再复述「有没有百分比」的二分口径。
+        return _targetState is null
+            ? $"{WidgetStyleAdvice.CapabilityNote(_dataKinds)}（当前等待数据，样式先应用、数据到了即显。）"
+            : WidgetStyleAdvice.CapabilityNote(_dataKinds);
     }
 
     private string PreviewCaptionText()

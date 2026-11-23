@@ -16,6 +16,7 @@ public static class HttpWidgetDescriptors
         Type = StatusType,
         DisplayName = "HTTP 状态（自定义接口）",
         PinSupported = true,
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：纯状态型（状态词映射读数，无百分比）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

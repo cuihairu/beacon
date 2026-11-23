@@ -16,7 +16,7 @@ public static class KimiWidgetDescriptors
         Type = CodingType,
         DisplayName = "Kimi For Coding 套餐余量",
         PinSupported = true,
-        DataKinds = DisplayTemplateKinds.ProgressOnly, // 类型级能力：产百分比（评审 P1 语义描述）
+        DataKinds = DisplayTemplateKinds.ProgressAndWindows, // SET-UX-05：主值百分比 + 5h/周窗口并列读数
         FloatingOptIn = true, // 数值/额度类：设置「数量悬浮窗」开关放行（默认开，2026-10-11 用户令）
         SuggestedTier = RefreshTiers.Ci,
         Fields =

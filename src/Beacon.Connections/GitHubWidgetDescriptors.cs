@@ -1,4 +1,5 @@
 using Beacon.Core.Models;
+using Beacon.Core.Services;
 
 namespace Beacon.Connections;
 
@@ -14,6 +15,7 @@ public static class GitHubWidgetDescriptors
         Type = PullRequestsType,
         DisplayName = "GitHub Pull Requests",
         PinSupported = true,
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：纯状态型（PR 列表读数，无百分比）
         SuggestedTier = RefreshTiers.Pr,
         Fields =
         [
@@ -28,6 +30,7 @@ public static class GitHubWidgetDescriptors
         Type = ActionsRunsType,
         DisplayName = "GitHub Actions Runs",
         PinSupported = true,
+        DataKinds = DisplayTemplateKinds.StatusOnly, // SET-UX-05：纯状态型（构建结果读数，无百分比）
         SuggestedTier = RefreshTiers.Ci,
         Fields =
         [

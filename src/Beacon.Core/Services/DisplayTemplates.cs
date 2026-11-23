@@ -2,11 +2,17 @@ using Beacon.Core.Models;
 
 namespace Beacon.Core.Services;
 
-/// <summary>数据能力词表（类型级稳定声明，评审 P1 语义描述）："progress" 百分比。
-/// 持有方是 WidgetTypeDescriptor.DataKinds；词表封闭，渲染/筛选只认这些键。</summary>
+/// <summary>数据能力词表（类型级稳定声明，评审 P1 语义描述；SET-UX-05 扩为四词）：
+/// "progress" 主值百分比（state.Progress）、"windows" 多窗口/多指标并列读数（payload 带标签的
+/// 百分比键，如 kimi 5h/周、本机 CPU/内存/磁盘）、"amount" 余额金额（无百分比）、"status" 纯状态
+/// （状态灯+摘要，无结构化数值）。持有方是 WidgetTypeDescriptor.DataKinds；词表封闭，渲染/筛选
+/// 只认这些键。声明口径=该类型稳定产出的数据形状，与「本次拉没拉到值」无关（CanApply 同口径）。</summary>
 public static class DisplayTemplateKinds
 {
     public const string Progress = "progress";
+    public const string Windows = "windows";
+    public const string Amount = "amount";
+    public const string Status = "status";
 
     public static IReadOnlySet<string> None { get; } = new HashSet<string>(StringComparer.Ordinal);
 
@@ -15,9 +21,41 @@ public static class DisplayTemplateKinds
         Progress,
     };
 
+    /// <summary>多窗口/多指标并列（主值百分比 + 若干带标签的窗口百分比）。</summary>
+    public static IReadOnlySet<string> ProgressAndWindows { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Progress,
+        Windows,
+    };
+
+    /// <summary>只有并列指标、主值百分比未入 state.Progress（copilot/本机：payload 里有带标签百分比，
+    /// percent 选择器接通 payload 前不算 progress——不给虚假的确定进度）。</summary>
+    public static IReadOnlySet<string> WindowsOnly { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Windows,
+    };
+
+    /// <summary>只有余额金额、无任何百分比（deepseek/moonshot 余额）。</summary>
+    public static IReadOnlySet<string> AmountOnly { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Amount,
+    };
+
+    /// <summary>纯状态型（状态灯+摘要，无结构化数值读数）。</summary>
+    public static IReadOnlySet<string> StatusOnly { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        Status,
+    };
+
     /// <summary>能力词中文名（诊断/反馈文案用；未认词表回原词）。</summary>
-    public static string Describe(string kind)
-        => kind == Progress ? "百分比" : kind;
+    public static string Describe(string kind) => kind switch
+    {
+        Progress => "百分比",
+        Windows => "多窗口读数",
+        Amount => "余额金额",
+        Status => "状态读数",
+        _ => kind,
+    };
 }
 
 /// <summary>模板可调参数声明（评审 P1 参数表单）：Key 即覆盖到生成树同名 Props 键的参数，
