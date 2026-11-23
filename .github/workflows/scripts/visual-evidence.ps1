@@ -7304,6 +7304,345 @@ catch
     Write-Host "::error::场景 AH 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 SF：组件中心去向与能力推荐 + 按位样式继承 + 多窗口读数（SET-UX-04/05/06/07，2026-10-20 巡检单批2 CI 代验）——
+# SF1 去向（04）：岛开（capsuleIsland=true、白名单仅 DS）→ 组件中心页 GLM 行桌面列「已显示」（seed
+#   pinned + 数值总开默认开 + 来源启用），岛列「未上岛」（白名单缺位——阻挡原因可见可读）；DS 岛列
+#   「已上岛」（rank 1 在位）。两列与 L0 宿主/岛渲染同一 ComponentPlacement 判定源的投影实证。
+# SF2 推荐（05）：GLM（progress+windows）画廊 7 模板全启用、恰一「· 推荐」（=横条）、零「不可用」；
+#   DS（amount）画廊仅状态行启用且即推荐档，其余 6 项置灰带「不可用：该组件无…」——不兼容不再静默
+#   剔除（画廊随宿主进程且无关窗锚，DS 段重启会话换目标）。
+# SF3 按位应用与继承（06）：应用位置先行——按钮文案随档变（应用到桌面 ↔ 应用到看板状态行）；继承态
+#   行「跟随默认样式」↔「此处已单独设置 · …」随所选面与落盘态双向翻（tile 未设恒跟随、row 应用后
+#   已单独设置）；恢复此处默认只清 row（tile 保留——面不互覆 AE3 已钉，此处钉继承行与落盘一致）。
+# SF4 多窗口读数（07）：岛面可读名带周期+主值（「5h 38%」→ 翻 error 档「5h 95%」，主值变更即绑定
+#   生效）；快速面板事件行带事件时点读数（「95%/5h 15%/w 61%/M」=快照 payload 三窗已用，非当前回填）。
+try
+{
+    $sfConnections = @'
+[
+  { "id": "zhipu", "type": "bigmodel", "endpoint": "http://127.0.0.1:18081/api/monitor/usage/quota/limit", "enabled": true },
+  { "id": "ds-main", "type": "deepseek", "endpoint": "http://127.0.0.1:18081", "credentialRef": "conn:ds-main", "enabled": true }
+]
+'@
+    Ensure-MockServer
+
+    # ===== SF1 去向 + SF2 GLM 推荐（同一设置窗会话）=====
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["deepseek.balance:ds"]'
+    $sfConnections | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SF-FAIL-no-settings.png"; throw "断言失败（场景 SF1）：--settings 启动 30s 内未见设置窗" }
+    $componentsRow = Find-UiaById $settings "module-components" 10
+    if (!$componentsRow) { Save-FullScreenshot "SF-FAIL-no-components-row.png"; throw "断言失败（场景 SF1）：UIA 未找到 module-components" }
+    Invoke-Uia $componentsRow
+    Start-Sleep -Seconds 2
+    $deskState = Find-UiaById $settings "component-desktop-state-bigmodel.usage:GLM" 10
+    $deskName = ""
+    if ($deskState) { try { $deskName = $deskState.Current.Name } catch { } }
+    if (!$deskState -or $deskName -notlike "已显示*")
+    {
+        Save-FullScreenshot "SF-FAIL-desktop-state.png"
+        throw "断言失败（场景 SF1）：GLM 桌面列状态非「已显示」（实际：$deskName）——去向判定与宿主实况脱钩"
+    }
+    $islandState = Find-UiaById $settings "component-island-state-bigmodel.usage:GLM" 8
+    $islandName = ""
+    if ($islandState) { try { $islandName = $islandState.Current.Name } catch { } }
+    if (!$islandState -or $islandName -notlike "*未上岛*")
+    {
+        Save-FullScreenshot "SF-FAIL-island-state.png"
+        throw "断言失败（场景 SF1）：GLM 岛列状态非「未上岛」（白名单缺位应可见可读；实际：$islandName）"
+    }
+    $dsIsland = Find-UiaById $settings "component-island-state-deepseek.balance:ds" 8
+    $dsIslandName = ""
+    if ($dsIsland) { try { $dsIslandName = $dsIsland.Current.Name } catch { } }
+    if (!$dsIsland -or $dsIslandName -notlike "*已上岛*")
+    {
+        Save-FullScreenshot "SF-FAIL-ds-island.png"
+        throw "断言失败（场景 SF1）：DS 岛列状态非「已上岛」（白名单 rank 1 应在位；实际：$dsIslandName）"
+    }
+    Save-FullScreenshot "SF1-component-center.png"
+    Write-Host "场景 SF1 通过：GLM 桌面「已显示」/岛「未上岛」、DS 岛「已上岛」——SET-UX-04 去向与阻挡原因同源投影"
+
+    # ===== SF2 GLM 画廊：7 模板全启用 + 恰一推荐 =====
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { Save-FullScreenshot "SF-FAIL-no-bigmodel-row.png"; throw "断言失败（场景 SF2）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    Invoke-Uia (Find-UiaById $settings "style-button-bigmodel.usage:GLM" 10)
+    $gallery = Find-GalleryWindow 15
+    if (!$gallery) { Save-FullScreenshot "SF-FAIL-no-glm-gallery.png"; throw "断言失败（场景 SF2）：GLM 样式中心 15s 未开" }
+    $galleryHandles = [WinEnum]::VisibleHandlesByTitle("Beacon · 组件中心")
+    foreach ($templateId in @("bar", "ring", "number", "pool", "statusline", "quotaline", "metricgrid"))
+    {
+        $item = Find-UiaById $gallery "style-item-$templateId" 6
+        if (!$item)
+        {
+            Save-FullScreenshot "SF-FAIL-missing-$templateId.png"
+            throw "断言失败（场景 SF2）：GLM 画廊缺 style-item-$templateId（progress+windows 应 7 模板全列）"
+        }
+        if (!$item.Current.IsEnabled)
+        {
+            Save-FullScreenshot "SF-FAIL-disabled-$templateId.png"
+            throw "断言失败（场景 SF2）：GLM（progress+windows）画廊 $templateId 被置灰——能力判定回归"
+        }
+    }
+    $glmTexts = @(Get-WindowUiaTexts $galleryHandles[0])
+    $glmRec = @($glmTexts | Where-Object { $_ -like "*· 推荐" })
+    if ($glmRec.Count -ne 1 -or $glmRec[0] -ne "横条 · 推荐")
+    {
+        Save-FullScreenshot "SF-FAIL-glm-recommend.png"
+        throw "断言失败（场景 SF2）：GLM 推荐标记数 $($glmRec.Count)（期望恰一「横条 · 推荐」）；实际：$($glmRec -join ' | ')"
+    }
+    if (@($glmTexts | Where-Object { $_ -like "不可用：*" }).Count -ne 0)
+    {
+        Save-FullScreenshot "SF-FAIL-glm-unavailable.png"
+        throw "断言失败（场景 SF2）：GLM 全兼容画廊出现「不可用」项——能力判定误伤"
+    }
+    Save-FullScreenshot "SF2-glm-gallery.png"
+    Write-Host "场景 SF2（GLM）通过：7 模板全启用、恰一「横条 · 推荐」、零不可用——SET-UX-05 能力推荐"
+    Stop-Beacon
+
+    # ===== SF2 DS 画廊：仅状态行启用即推荐，其余 6 项置灰带原因 =====
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SF-FAIL-no-settings-ds.png"; throw "断言失败（场景 SF2 DS）：--settings 启动 30s 内未见设置窗" }
+    $dsRow = Find-UiaById $settings "module-deepseek" 10
+    if (!$dsRow) { Save-FullScreenshot "SF-FAIL-no-deepseek-row.png"; throw "断言失败（场景 SF2 DS）：UIA 未找到 module-deepseek" }
+    Invoke-Uia $dsRow
+    Start-Sleep -Seconds 2
+    Invoke-Uia (Find-UiaById $settings "style-button-deepseek.balance:ds" 10)
+    $gallery = Find-GalleryWindow 15
+    if (!$gallery) { Save-FullScreenshot "SF-FAIL-no-ds-gallery.png"; throw "断言失败（场景 SF2 DS）：DS 样式中心 15s 未开" }
+    $galleryHandles = [WinEnum]::VisibleHandlesByTitle("Beacon · 组件中心")
+    $statusItem = Find-UiaById $gallery "style-item-statusline" 8
+    if (!$statusItem -or !$statusItem.Current.IsEnabled)
+    {
+        Save-FullScreenshot "SF-FAIL-ds-statusline.png"
+        throw "断言失败（场景 SF2 DS）：DS（amount）画廊状态行缺席或被置灰——唯一兼容项必须可用"
+    }
+    foreach ($templateId in @("bar", "ring", "number", "pool", "quotaline", "metricgrid"))
+    {
+        $item = Find-UiaById $gallery "style-item-$templateId" 6
+        if (!$item)
+        {
+            Save-FullScreenshot "SF-FAIL-ds-missing-$templateId.png"
+            throw "断言失败（场景 SF2 DS）：DS 画廊缺 style-item-$templateId（不兼容项要列全带原因，不得静默剔除）"
+        }
+        if ($item.Current.IsEnabled)
+        {
+            Save-FullScreenshot "SF-FAIL-ds-enabled-$templateId.png"
+            throw "断言失败（场景 SF2 DS）：DS（amount）画廊 $templateId 未置灰——能力门失效"
+        }
+    }
+    $dsTexts = @(Get-WindowUiaTexts $galleryHandles[0])
+    if (@($dsTexts) -notcontains "状态行 · 推荐")
+    {
+        Save-FullScreenshot "SF-FAIL-ds-recommend.png"
+        throw "断言失败（场景 SF2 DS）：DS 画廊未见「状态行 · 推荐」（唯一兼容项应即推荐档）；实际：$($dsTexts -join ' | ')"
+    }
+    $dsBlocked = @($dsTexts | Where-Object { $_ -like "不可用：该组件无*数据*" })
+    if ($dsBlocked.Count -ne 6)
+    {
+        Save-FullScreenshot "SF-FAIL-ds-blocked.png"
+        throw "断言失败（场景 SF2 DS）：DS 置灰原因小字数 $($dsBlocked.Count)（期望 6）；实际：$($dsBlocked -join ' | ')"
+    }
+    Save-FullScreenshot "SF2-ds-gallery.png"
+    Write-Host "场景 SF2（DS）通过：仅状态行启用即推荐、6 项置灰带「不可用：该组件无…」——SET-UX-05 能力筛选不静默"
+    Stop-Beacon
+
+    # ===== SF3 按位应用与继承行（SET-UX-06）=====
+    Write-GConfig "" "off" 1.0 # 岛关（本段只动画廊，免窗干扰）
+    $sfConnections | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SF-FAIL-no-settings3.png"; throw "断言失败（场景 SF3）：--settings 启动 30s 内未见设置窗" }
+    function Wait-GalleryText([IntPtr] $hwnd, [string] $needle, [int] $timeoutSec, [string] $stage)
+    {
+        $deadline = (Get-Date).AddSeconds($timeoutSec)
+        while ((Get-Date) -lt $deadline)
+        {
+            $texts = @(Get-WindowUiaTexts $hwnd)
+            if (@($texts | Where-Object { $_ -like "*$needle*" }).Count -gt 0) { return }
+            Start-Sleep -Milliseconds 500
+        }
+        Save-FullScreenshot "SF-FAIL-text-$stage.png"
+        throw "断言失败（场景 SF3 $stage）：画廊文本未见「$needle」；实际：$(@(Get-WindowUiaTexts $hwnd) -join ' | ')"
+    }
+    $bigRow = Find-UiaById $settings "module-bigmodel" 10
+    if (!$bigRow) { Save-FullScreenshot "SF-FAIL-no-bigmodel-row3.png"; throw "断言失败（场景 SF3）：UIA 未找到 module-bigmodel" }
+    Invoke-Uia $bigRow
+    Start-Sleep -Seconds 2
+    Invoke-Uia (Find-UiaById $settings "style-button-bigmodel.usage:GLM" 10)
+    $gallery = Find-GalleryWindow 15
+    if (!$gallery) { Save-FullScreenshot "SF-FAIL-no-gallery3.png"; throw "断言失败（场景 SF3）：GLM 样式中心 15s 未开" }
+    $galleryHandles = [WinEnum]::VisibleHandlesByTitle("Beacon · 组件中心")
+    $applyBtn = Find-UiaById $gallery "style-apply" 8
+    $applyName = ""
+    if ($applyBtn) { try { $applyName = $applyBtn.Current.Name } catch { } }
+    if ($applyName -ne "应用到桌面")
+    {
+        Save-FullScreenshot "SF-FAIL-apply-label.png"
+        throw "断言失败（场景 SF3）：初始应用按钮文案「$applyName」（期望「应用到桌面」——应用位置先行）"
+    }
+    Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "tile-follow"
+    $surfaceCombo = Find-UiaById $gallery "style-surface-box" 8
+    if (!$surfaceCombo) { Save-FullScreenshot "SF-FAIL-no-surface-combo.png"; throw "断言失败（场景 SF3）：UIA 未找到 style-surface-box" }
+    Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
+    $applyBtn = Find-UiaById $gallery "style-apply" 8
+    $applyName = ""
+    if ($applyBtn) { try { $applyName = $applyBtn.Current.Name } catch { } }
+    if ($applyName -ne "应用到看板状态行")
+    {
+        Save-FullScreenshot "SF-FAIL-apply-label-row.png"
+        throw "断言失败（场景 SF3）：切 row 后应用按钮文案「$applyName」（期望「应用到看板状态行」）"
+    }
+    Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "row-follow"
+    Invoke-StyleItemClick $galleryHandles[0] "style-item-ring" "样式 · 圆环"
+    Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
+    $rowApplied = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.components -and $glmEntry.components.row) { $rowApplied = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (!$rowApplied) { Save-FullScreenshot "SF-FAIL-row-not-saved.png"; throw "断言失败（场景 SF3）：看板状态行应用后 widgets.json components.row 未落盘" }
+    Wait-GalleryText $galleryHandles[0] "此处已单独设置" 10 "row-set"
+    Select-ComboItemById $gallery $surfaceCombo "style-surface-tile"
+    Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "tile-still-follow"
+    Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
+    Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
+    $rowCleared = $false
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
+        if ($glmEntry -and $glmEntry.components -and (!$glmEntry.components.row)) { $rowCleared = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (!$rowCleared) { Save-FullScreenshot "SF-FAIL-row-not-cleared.png"; throw "断言失败（场景 SF3）：恢复此处默认后 components.row 未清——恢复只改选中位置回归" }
+    Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "row-follow-again"
+    Save-FullScreenshot "SF3-per-surface-inheritance.png"
+    Write-Host "场景 SF3 通过：应用文案随位变（桌面↔看板状态行）+ 继承行双向翻（跟随默认 ↔ 此处已单独设置）+ 恢复只清 row——SET-UX-06"
+    Stop-Beacon
+
+    # ===== SF4 岛面主读数 + 看板事件行读数（SET-UX-07）=====
+    $sfModeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
+    Remove-Item $sfModeFile -Force -ErrorAction SilentlyContinue # 默认 38% 态起（不毒化读数断言）
+    Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM","deepseek.balance:ds"]'
+    $sfConnections | Set-Content -Path (Join-Path $configDir "connections.json") -Encoding UTF8
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") | Out-Null
+    $islandHandles = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+        if ($handles.Count -ge 1) { $islandHandles = $handles[0]; break }
+        Start-Sleep -Seconds 2
+    }
+    if ($islandHandles -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "SF-FAIL-no-island.png"
+        throw "断言失败（场景 SF4 前置）：capsuleIsland=true 未见「Beacon Status」岛窗"
+    }
+    $islandRoot = [System.Windows.Automation.AutomationElement]::FromHandle($islandHandles)
+    $faceName = ""
+    $deadline = (Get-Date).AddSeconds(90)
+    while ((Get-Date) -lt $deadline)
+    {
+        $face = Find-UiaById $islandRoot "island-face-bigmodel.usage:GLM" 3
+        if ($face)
+        {
+            try { $faceName = $face.Current.Name } catch { }
+            if ($faceName -like "*5h 38%") { break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    if ($faceName -notlike "*5h 38%")
+    {
+        Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles)) 6) "SF-FAIL-no-metric.png" 4
+        throw "断言失败（场景 SF4）：岛面可读名未见「5h 38%」（实际：$faceName）——收起行未保留周期+主值"
+    }
+    Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles)) 6) "SF4-island-metric.png" 4
+    Write-Host "场景 SF4（岛）通过：岛面可读名带「5h 38%」（周期+主值成对）"
+    Set-Content -Path $sfModeFile -Value "error" -Encoding ASCII # 主值变更（38→95）验证绑定跟着走
+    $faceName = ""
+    $deadline = (Get-Date).AddSeconds(120)
+    while ((Get-Date) -lt $deadline)
+    {
+        $face = Find-UiaById $islandRoot "island-face-bigmodel.usage:GLM" 3
+        if ($face)
+        {
+            try { $faceName = $face.Current.Name } catch { }
+            if ($faceName -like "*5h 95%") { break }
+        }
+        Start-Sleep -Seconds 3
+    }
+    if ($faceName -notlike "*5h 95%")
+    {
+        Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles)) 6) "SF-FAIL-metric-stale.png"
+        throw "断言失败（场景 SF4）：翻 error 档后岛面可读名未见「5h 95%」（实际：$faceName）——主值变更未跟随"
+    }
+    Write-Host "场景 SF4（变更）通过：主值 38%→95% 岛面读数跟随——绑定生效"
+    $via = "SendInput 和弦"
+    [WinEnum]::SendChord(0x11, 0x42, 0x12) # Ctrl+Alt+B（缺 Alt 恒不匹配，同场景 K 口径）
+    $panel = [IntPtr]::Zero
+    $deadline = (Get-Date).AddSeconds(3)
+    while ((Get-Date) -lt $deadline)
+    {
+        $handles = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+        if ($handles.Count -ge 1) { $panel = $handles[0]; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($panel -eq [IntPtr]::Zero)
+    {
+        $via = "WM_HOTKEY 直驱"
+        $msgWindow = [WinEnum]::FindByClass("BeaconMessageWindow")
+        if ($msgWindow -eq [IntPtr]::Zero) { $msgWindow = [WinEnum]::FindByClassMsgOnly("BeaconMessageWindow") }
+        if ($msgWindow -eq [IntPtr]::Zero) { throw "断言失败（场景 SF4）：托盘消息窗未找到" }
+        [WinEnum]::Post($msgWindow, 0x0312, [IntPtr]1, [IntPtr]0) # WM_HOTKEY, wParam=HotkeyId
+        $deadline = (Get-Date).AddSeconds(5)
+        while ((Get-Date) -lt $deadline)
+        {
+            $handles = [WinEnum]::VisibleHandlesByTitle("Beacon 快速面板")
+            if ($handles.Count -ge 1) { $panel = $handles[0]; break }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    if ($panel -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "SF-FAIL-no-panel.png"
+        throw "断言失败（场景 SF4）：热键触发后快速面板未出现（和弦与 WM_HOTKEY 双路）"
+    }
+    $boardTexts = @()
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline)
+    {
+        $boardTexts = @(Get-WindowUiaTexts $panel)
+        if (@($boardTexts) -contains "95%/5h 15%/w 61%/M") { break }
+        Start-Sleep -Seconds 2
+    }
+    if (@($boardTexts) -notcontains "95%/5h 15%/w 61%/M")
+    {
+        Save-FullScreenshot "SF-FAIL-no-reading.png"
+        throw "断言失败（场景 SF4）：快速面板未见事件时点读数「95%/5h 15%/w 61%/M」（三窗已用=快照 payload）；实际：$($boardTexts -join ' | ')"
+    }
+    Save-FullScreenshot "SF4-board-reading.png"
+    Write-Host "场景 SF4（看板）通过：事件行带事件时点读数（95%/5h 15%/w 61%/M，$via）——SET-UX-07 时间线快照读数"
+    Stop-Beacon
+    Remove-Item $sfModeFile -Force -ErrorAction SilentlyContinue
+    Write-Host "场景 SF 通过：去向与阻挡原因 + 能力推荐与置灰原因 + 按位应用继承恢复 + 岛面与看板多窗口读数——SET-UX-04/05/06/07 CI 视觉取证面"
+}
+catch
+{
+    Stop-Beacon
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Save-FullScreenshot "SF-FAIL-unexpected.png"
+    $failures.Add("场景 SF：$($_.Exception.Message)")
+    Write-Host "::error::场景 SF 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
