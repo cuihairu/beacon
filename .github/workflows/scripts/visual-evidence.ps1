@@ -1484,24 +1484,41 @@ function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId, [string] $expec
 
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
 {
-    # WinUI ComboBox 实跑坑（45303475375，场景 AE3 与 SF3 双红）：UIA Select 过的下拉重展偶发卡
-    # 「弹层已闭但 Expanded 态未落」→ Expand() 变 no-op，弹层压根不开，combo 子树与桌面根两域找全空。
-    # 先强制 Collapse 归零再展开（首次展开前本就 Collapsed，Collapse 为无害空操作）。
-    try { ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse() } catch { }
-    Start-Sleep -Milliseconds 800
-    ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
-    Start-Sleep -Seconds 1
-    $item = Find-UiaById $settings $itemId 8
-    if (!$item)
+    # WinUI ComboBox 实跑坑（45303475375/45319071005，AE3 连续两轮红）：UIA Select 过的下拉重展偶发卡
+    # 「弹层已闭但 Expanded 态未落」→ Expand() 变 no-op，弹层不开、combo 子树+桌面根两域找全空；单发
+    # Collapse 归零仍会漏——重取 combo 元素（弹层开合会换 peer，旧引用模式失联）+Collapse+展开+查找
+    # 整链 3 轮重试才稳（SF3 Select-SurfaceSteady 同构 3 连切全绿实证）。
+    foreach ($attempt in 1..3)
     {
-        # 展开弹层可能是独立 HWND：退回桌面根子树找
-        $item = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-            [System.Windows.Automation.TreeScope]::Descendants,
-            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $itemId)))
+        $comboId = ""
+        try { $comboId = $combo.Current.AutomationId } catch { }
+        $target = $combo
+        if ($comboId.Length -gt 0)
+        {
+            $refound = Find-UiaById $settings $comboId 4
+            if ($refound) { $target = $refound }
+        }
+        try { ($target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse() } catch { }
+        Start-Sleep -Milliseconds 800
+        ($target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+        Start-Sleep -Seconds 1
+        $item = Find-UiaById $settings $itemId 6
+        if (!$item)
+        {
+            # 展开弹层可能是独立 HWND：退回桌面根子树找
+            $item = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $itemId)))
+        }
+        if ($item)
+        {
+            ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+            Start-Sleep -Milliseconds 400
+            return
+        }
+        Start-Sleep -Seconds 2
     }
-    if (!$item) { throw "UIA 未找到下拉选项 $itemId（展开后仍未见）" }
-    ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
-    Start-Sleep -Milliseconds 400
+    throw "UIA 未找到下拉选项 $itemId（重取元素+Collapse 归零 3 轮重试仍未见）"
 }
 
 # 下拉当前选中项文本（SelectionPattern 首 selection 的 Name）——密度档回读断言用（场景 AA）
@@ -7473,39 +7490,8 @@ try
         Save-FullScreenshot "SF-FAIL-text-$stage.png"
         throw "断言失败（场景 SF3 $stage）：画廊文本未见「$needle」；实际：$(@(Get-WindowUiaTexts $hwnd) -join ' | ')"
     }
-    function Select-SurfaceSteady([System.Windows.Automation.AutomationElement] $root, [string] $itemId)
-    {
-        # SF3 实证（45290810531）：UIA Select 过的 ComboBox 重展偶发卡「弹层已闭但 Expanded 态未落」，
-        # Expand() 变 no-op → combo 子树与桌面根两域找全空。先强制 Collapse 归零再展开，3 轮重试
-        # （AE3 同位换面靠 style-reset+20s 轮询的长间隙蒙过；SF3 连续三连切必须自愈）。
-        foreach ($attempt in 1..3)
-        {
-            $combo = Find-UiaById $root "style-surface-box" 4
-            if ($combo)
-            {
-                try { ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse() } catch { }
-                Start-Sleep -Milliseconds 800
-                ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
-                Start-Sleep -Seconds 1
-                $item = Find-UiaById $root $itemId 6
-                if (!$item)
-                {
-                    $item = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
-                        [System.Windows.Automation.TreeScope]::Descendants,
-                        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $itemId)))
-                }
-                if ($item)
-                {
-                    ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
-                    Start-Sleep -Milliseconds 400
-                    return
-                }
-            }
-            Start-Sleep -Seconds 2
-        }
-        Save-FullScreenshot "SF-FAIL-surface-switch.png"
-        throw "断言失败（场景 SF3）：UIA 未找到下拉选项 $itemId（Collapse 归零重展 3 轮仍未见）"
-    }
+    # 换面驱动走共享 Select-ComboItemById（45319071005 起已收编 SF3 实证形态：重取元素+Collapse
+    # 归零+展开+3 轮重试——本地副本删除，单一实现）。
     $bigRow = Find-UiaById $settings "module-bigmodel" 10
     if (!$bigRow) { Save-FullScreenshot "SF-FAIL-no-bigmodel-row3.png"; throw "断言失败（场景 SF3）：UIA 未找到 module-bigmodel" }
     Invoke-Uia $bigRow
@@ -7523,7 +7509,7 @@ try
         throw "断言失败（场景 SF3）：初始应用按钮文案「$applyName」（期望「应用到桌面」——应用位置先行）"
     }
     Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "tile-follow"
-    Select-SurfaceSteady $gallery "style-surface-row"
+    Select-ComboItemById $gallery (Find-UiaById $gallery "style-surface-box" 8) "style-surface-row"
     $applyBtn = Find-UiaById $gallery "style-apply" 8
     $applyName = ""
     if ($applyBtn) { try { $applyName = $applyBtn.Current.Name } catch { } }
@@ -7545,9 +7531,9 @@ try
     }
     if (!$rowApplied) { Save-FullScreenshot "SF-FAIL-row-not-saved.png"; throw "断言失败（场景 SF3）：看板状态行应用后 widgets.json components.row 未落盘" }
     Wait-GalleryText $galleryHandles[0] "此处已单独设置" 10 "row-set"
-    Select-SurfaceSteady $gallery "style-surface-tile"
+    Select-ComboItemById $gallery (Find-UiaById $gallery "style-surface-box" 8) "style-surface-tile"
     Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "tile-still-follow"
-    Select-SurfaceSteady $gallery "style-surface-row"
+    Select-ComboItemById $gallery (Find-UiaById $gallery "style-surface-box" 8) "style-surface-row"
     Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
     $rowCleared = $false
     $deadline = (Get-Date).AddSeconds(20)
