@@ -7665,6 +7665,293 @@ catch
     Write-Host "::error::场景 SF 断言失败：$($_.Exception.Message)"
 }
 
+# —— 场景 SG：设置导航分组与字段搜索跳转（SET-UX-08，2026-10-20 巡检单批3 CI 代验）——
+# 左栏分组头（数据来源/备份与诊断，一级四入口无头）在树；字段索引（设置词+旧名）回车进页展开分组、
+# 滚动并聚焦控件本体：五路跳转链全走并断言 FocusedElement 的 AutomationId=目标锚
+# （透明度→desktop-opacity-slider / 检查频率→poll-interval-box / 贴边收起→edge-collapse-toggle /
+# GitHub→conn-save-button / 旧名「悬浮形态」→desktop-layout-box），模块级命中（组件中心）整页切换。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Ensure-MockServer
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SG-FAIL-no-settings.png"; throw "断言失败（场景 SG）：--settings 启动 30s 内未见设置窗" }
+    [WinEnum]::SetForeground([IntPtr]$settings.Current.NativeWindowHandle)
+    Start-Sleep -Milliseconds 500
+
+    function Invoke-SearchJump([System.Windows.Automation.AutomationElement] $root, [string] $query, [string] $expectAnchor, [string] $shot)
+    {
+        $box = Find-UiaById $root "settings-search" 8
+        if (!$box) { Save-FullScreenshot "$shot-FAIL-no-search.png"; throw "断言失败（场景 SG）：settings-search 缺失" }
+        ($box.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue($query)
+        Start-Sleep -Milliseconds 900
+        $box.SetFocus()
+        Start-Sleep -Milliseconds 300
+        [WinEnum]::SendVirtualKey(0x0D) # VK_RETURN——回车跳字段命中（进页 + 展开分组 + 滚动聚焦）
+        Start-Sleep -Seconds 3
+        $focusedId = ""
+        try { $focusedId = [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId } catch { }
+        Save-FullScreenshot "$shot.png"
+        if ($focusedId -ne $expectAnchor)
+        {
+            throw "断言失败（场景 SG）：搜索「$query」回车后焦点 AutomationId=$focusedId（期望 $expectAnchor）——字段跳转未落位"
+        }
+        Write-Host "场景 SG 跳转通过：「$query」→ $expectAnchor"
+    }
+
+    if (!(Find-UiaById $settings "nav-group-sources" 8)) { Save-FullScreenshot "SG-FAIL-no-group.png"; throw "断言失败（场景 SG）：nav-group-sources 不在 UIA 树——左栏「数据来源」分组头缺失" }
+    if (!(Find-UiaById $settings "nav-group-advanced" 8)) { Save-FullScreenshot "SG-FAIL-no-adv-group.png"; throw "断言失败（场景 SG）：nav-group-advanced 不在 UIA 树——「备份与诊断」分组头缺失" }
+    Write-Host "场景 SG 分组断言通过：数据来源/备份与诊断分组头在树（一级四入口无头）"
+    Invoke-SearchJump $settings "透明度" "desktop-opacity-slider" "SG-jump-opacity"
+    Invoke-SearchJump $settings "检查频率" "poll-interval-box" "SG-jump-poll"
+    Invoke-SearchJump $settings "贴边收起" "edge-collapse-toggle" "SG-jump-edge"
+    Invoke-SearchJump $settings "GitHub" "conn-save-button" "SG-jump-github"
+    Invoke-SearchJump $settings "悬浮形态" "desktop-layout-box" "SG-jump-oldname" # 旧名兼容
+    $sgBox = Find-UiaById $settings "settings-search" 8
+    ($sgBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("组件中心")
+    Start-Sleep -Milliseconds 900
+    $sgBox.SetFocus()
+    Start-Sleep -Milliseconds 300
+    [WinEnum]::SendVirtualKey(0x0D)
+    Start-Sleep -Seconds 3
+    if (!(Find-UiaById $settings "component-center-bigmodel.usage:GLM" 10)) { Save-FullScreenshot "SG-FAIL-components-page.png"; throw "断言失败（场景 SG）：搜索「组件中心」回车后未进组件中心页（GLM 行不在树）——模块级跳转回归" }
+    Save-FullScreenshot "SG-jump-components.png"
+    Write-Host "场景 SG 模块级跳转通过：「组件中心」→ 组件中心页"
+    ($sgBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("")
+    Start-Sleep -Milliseconds 600
+    if (!(Find-UiaById $settings "module-advanced" 6)) { throw "断言失败（场景 SG）：清词后 module-advanced 未回树——过滤复位回归" }
+    Stop-Beacon
+    Write-Host "场景 SG 通过：分组头 + 五路字段跳转聚焦 + 旧名兼容 + 模块级跳转 + 清词复原——SET-UX-08"
+}
+catch
+{
+    Stop-Beacon
+    Save-FullScreenshot "SG-FAIL-unexpected.png"
+    $failures.Add("场景 SG：$($_.Exception.Message)")
+    Write-Host "::error::场景 SG 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 SH：数据来源按接入状态组织（SET-UX-09，2026-10-20 巡检单批3 CI 代验）——
+# 连接行状态 chip 会话三拍：种子「已保存 · 待验证」→ 点测试（mock 18081 健康链）「✓ 测试通过」→
+# 快速添加区出现（桌面档可用 / 岛档随状态条未选岛置灰）；未测试不出快速添加（状态门）。
+# 添加后 widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）+ 添加钮禁用（重复提交防抖）
+# +「查看去向」直达组件中心该组件桌面去向行。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Ensure-MockServer
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SH-FAIL-no-settings.png"; throw "断言失败（场景 SH）：--settings 启动 30s 内未见设置窗" }
+    Invoke-Uia (Find-UiaById $settings "module-bigmodel" 10)
+    Start-Sleep -Seconds 2
+    $chip = Find-UiaById $settings "conn-state-zhipu" 10
+    if (!$chip) { Save-FullScreenshot "SH-FAIL-no-chip.png"; throw "断言失败（场景 SH）：conn-state-zhipu 不在 UIA 树——连接状态 chip 缺失" }
+    $chipText = ""
+    try { $chipText = $chip.Current.Name } catch { }
+    if ($chipText -notlike "*待验证*") { Save-FullScreenshot "SH-FAIL-chip-seed.png"; throw "断言失败（场景 SH）：种子态 chip=「$chipText」（期望含「已保存 · 待验证」）" }
+    Save-FullScreenshot "SH-chip-unverified.png"
+    if (Find-UiaById $settings "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-early-add.png"; throw "断言失败（场景 SH）：未测试就出快速添加按钮——接入状态门失效" }
+    Write-Host "场景 SH 种子态通过：chip「已保存 · 待验证」+ 未验证不出快速添加"
+    Invoke-Uia (Find-UiaById $settings "test-zhipu" 10)
+    Start-Sleep -Seconds 4
+    $chip2 = Find-UiaById $settings "conn-state-zhipu" 8
+    $chipText2 = ""
+    try { $chipText2 = $chip2.Current.Name } catch { }
+    if ($chipText2 -notlike "*测试通过*") { Save-FullScreenshot "SH-FAIL-chip-not-ok.png"; throw "断言失败（场景 SH）：测试后 chip=「$chipText2」（期望「✓ 测试通过」）——mock 健康链或 chip 刷新链回归" }
+    Save-FullScreenshot "SH-chip-ok.png"
+    $deskRadio = Find-UiaById $settings "source-pos-desktop" 8
+    if (!$deskRadio -or !$deskRadio.Current.IsEnabled) { Save-FullScreenshot "SH-FAIL-no-desktop-radio.png"; throw "断言失败（场景 SH）：桌面档缺失或不可用（GLM 组件 PinSupported=true 应可钉）" }
+    $islandRadio = Find-UiaById $settings "source-pos-island" 8
+    if ($islandRadio -and $islandRadio.Current.IsEnabled) { throw "断言失败（场景 SH）：岛档可用但状态条种子未选岛——位置门失效" }
+    $shWidgetsPath = Join-Path $configDir "widgets.json"
+    $widgetsBefore = @(Get-ConfigRecords $shWidgetsPath).Count
+    Invoke-Uia (Find-UiaById $settings "source-add-button" 8)
+    Start-Sleep -Seconds 3
+    $shRecords = @(Get-ConfigRecords $shWidgetsPath)
+    $added = @($shRecords | Where-Object { $_.id -eq "bigmodel.usage:zhipu" })
+    if ($added.Count -ne 1) { Save-FullScreenshot "SH-FAIL-no-widget.png"; throw "断言失败（场景 SH）：widgets.json 未落 bigmodel.usage:zhipu（count=$($added.Count)）——快速添加落盘链回归" }
+    if ("$($added[0].pinned)" -ne "True") { throw "断言失败（场景 SH）：快速添加组件 pinned=$($added[0].pinned)（期望 True——桌面档一键上板）" }
+    if ($shRecords.Count -ne ($widgetsBefore + 1)) { throw "断言失败（场景 SH）：组件数 $widgetsBefore→$($shRecords.Count)（期望恰 +1）" }
+    Write-Host "场景 SH 添加断言通过：widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）"
+    $addAfter = Find-UiaById $settings "source-add-button" 8
+    if ($addAfter -and $addAfter.Current.IsEnabled) { Save-FullScreenshot "SH-FAIL-add-still-enabled.png"; throw "断言失败（场景 SH）：添加后按钮仍可用——重复提交防抖缺失" }
+    Invoke-Uia (Find-UiaById $settings "source-goto-placement" 8)
+    Start-Sleep -Seconds 3
+    if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
+    Save-FullScreenshot "SH-goto-component-center.png"
+    Stop-Beacon
+    Write-Host "场景 SH 通过：chip 待验证→测试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
+}
+catch
+{
+    Stop-Beacon
+    Save-FullScreenshot "SH-FAIL-unexpected.png"
+    $failures.Add("场景 SH：$($_.Exception.Message)")
+    Write-Host "::error::场景 SH 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 SI：可读的刷新频率和继承（SET-UX-10，2026-10-20 巡检单批3 CI 代验）——
+# 种子 pollIntervalSeconds=300 + OVR 组件 refreshIntervalSeconds=120：组件行标签双口径人话——
+# GLM（无覆盖）「每 5 分钟 · 默认刷新间隔」（继承全局）、OVR「每 2 分钟 · 此组件刷新频率」（组件级
+# 覆盖）；向导继承链 hint + 全局框正名「默认刷新间隔」在页；驱动全局档 300→15 落盘（全局端可驱动）。
+try
+{
+    Write-GConfig "" "off" 1.0 $false $false $false "" "" ',{ "id": "bigmodel.usage:OVR", "type": "bigmodel.usage", "connectionId": "zhipu", "refreshTier": "ci", "refreshIntervalSeconds": 120, "pinned": true, "config": { "label": "OVR" } }'
+    Ensure-MockServer
+    $siCfgPath = Join-Path $configDir "config.json"
+    (Get-Content $siCfgPath -Raw -Encoding UTF8).Replace('"hotkey": "Ctrl+Alt+B",', '"hotkey": "Ctrl+Alt+B", "pollIntervalSeconds": 300,') | Set-Content -Path $siCfgPath -Encoding UTF8
+    $siSeed = Get-Content $siCfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($siSeed.pollIntervalSeconds)" -ne "300") { throw "断言失败（场景 SI 前置）：种子 pollIntervalSeconds=$($siSeed.pollIntervalSeconds)（期望 300）——注入失败" }
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SI-FAIL-no-settings.png"; throw "断言失败（场景 SI）：--settings 启动 30s 内未见设置窗" }
+
+    function Get-SiTexts([System.Windows.Automation.AutomationElement] $root)
+    {
+        $texts = @()
+        foreach ($t in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text))))
+        {
+            try { if ($t.Current.Name) { $texts += $t.Current.Name } } catch { }
+        }
+        return $texts
+    }
+
+    $siGeneral = @(Get-SiTexts $settings)
+    if (@($siGeneral | Where-Object { $_ -like "*组件覆盖优先*" }).Count -eq 0)
+    {
+        Save-FullScreenshot "SI-FAIL-no-poll-hint.png"
+        throw "断言失败（场景 SI）：常规页未见全局刷新间隔 hint（组件覆盖优先）——SET-UX-10 正名 hint 缺失"
+    }
+    Invoke-Uia (Find-UiaById $settings "module-bigmodel" 10)
+    Start-Sleep -Seconds 2
+    $siTexts = @(Get-SiTexts $settings)
+    if (@($siTexts | Where-Object { $_ -like "*bigmodel.usage:GLM · 每 5 分钟 · 默认刷新间隔*" }).Count -eq 0)
+    {
+        Save-FullScreenshot "SI-FAIL-glm-label.png"
+        throw "断言失败（场景 SI）：GLM 行标签未见「每 5 分钟 · 默认刷新间隔」（继承全局 300s）——行标签继承口径回归；实际：$(@($siTexts | Where-Object { $_ -like "*bigmodel.usage:GLM*" }) -join ' | ')"
+    }
+    if (@($siTexts | Where-Object { $_ -like "*bigmodel.usage:OVR · 每 2 分钟 · 此组件刷新频率*" }).Count -eq 0)
+    {
+        Save-FullScreenshot "SI-FAIL-ovr-label.png"
+        throw "断言失败（场景 SI）：OVR 行标签未见「每 2 分钟 · 此组件刷新频率」（组件级 120s 覆盖）——覆盖口径回归"
+    }
+    if (@($siTexts | Where-Object { $_ -like "*刷新继承：*" }).Count -eq 0)
+    {
+        Save-FullScreenshot "SI-FAIL-no-editor-hint.png"
+        throw "断言失败（场景 SI）：向导未见「刷新继承：」链路 hint——继承链不可读回归"
+    }
+    Save-FullScreenshot "SI-row-labels.png"
+    Write-Host "场景 SI 标签断言通过：GLM=每 5 分钟·默认刷新间隔 / OVR=每 2 分钟·此组件刷新频率 + 继承链 hint"
+    $siPollBox = Find-UiaById $settings "poll-interval-box" 10
+    if (!$siPollBox) { Save-FullScreenshot "SI-FAIL-no-pollbox.png"; throw "断言失败（场景 SI）：poll-interval-box 缺失" }
+    Select-ComboItemById $settings $siPollBox "poll-15"
+    Start-Sleep -Seconds 3
+    $siAfter = Get-Content $siCfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($siAfter.pollIntervalSeconds)" -ne "15")
+    {
+        Save-FullScreenshot "SI-FAIL-poll-drive.png"
+        throw "断言失败（场景 SI）：驱动 poll-15 后 config pollIntervalSeconds=$($siAfter.pollIntervalSeconds)（期望 15）——全局档落盘链回归"
+    }
+    Save-FullScreenshot "SI-poll-15.png"
+    Stop-Beacon
+    Write-Host "场景 SI 通过：行标签双口径人话 + 继承链 hint + 全局档 300→15 落盘——SET-UX-10"
+}
+catch
+{
+    Stop-Beacon
+    Save-FullScreenshot "SI-FAIL-unexpected.png"
+    $failures.Add("场景 SI：$($_.Exception.Message)")
+    Write-Host "::error::场景 SI 断言失败：$($_.Exception.Message)"
+}
+
+# —— 场景 SJ：生效反馈、快捷键错误（SET-UX-11，2026-10-20 巡检单批3 CI 代验）——
+# PS 先占 Ctrl+Alt+M（RegisterHotKey NULL hwnd）→ 热键框改 Ctrl+Alt+M → 注册失败可见：
+# 反馈行「注册失败」+ 框值回退 Ctrl+Alt+B + config 不被坏键洗掉（原有效绑定保留）。
+# 解除占用后改 Ctrl+Alt+J → 反馈「已生效」+ config 落 Ctrl+Alt+J（即时生效链）。
+try
+{
+    Write-GConfig "" "off" 1.0
+    Ensure-MockServer
+    $sjSource = @'
+using System;
+using System.Runtime.InteropServices;
+public static class SjHotkeyHolder
+{
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+    [DllImport("user32.dll")]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+}
+'@
+    Add-Type -TypeDefinition $sjSource
+    if (-not [SjHotkeyHolder]::RegisterHotKey([IntPtr]::Zero, 0x4D2, 0x3, 0x4D)) # MOD_CONTROL|MOD_ALT + VK_M
+    {
+        throw "断言失败（场景 SJ 前置）：PS 占位注册 Ctrl+Alt+M 失败（error $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error())）——占位面失效"
+    }
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $settings = Find-SettingsWindow 30
+    if (!$settings) { Save-FullScreenshot "SJ-FAIL-no-settings.png"; throw "断言失败（场景 SJ）：--settings 启动 30s 内未见设置窗" }
+    $hotkeyBox = Find-UiaById $settings "hotkey-box" 10
+    if (!$hotkeyBox) { Save-FullScreenshot "SJ-FAIL-no-hotkey-box.png"; throw "断言失败（场景 SJ）：hotkey-box 锚缺失" }
+    $sjToggleEl = Find-UiaById $settings "startup-toggle" 10
+    if (!$sjToggleEl) { throw "断言失败（场景 SJ）：startup-toggle 缺失（焦点挪走触发 LostFocus 保存）" }
+    $sjToggle = $sjToggleEl.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+    $sjBoxValue = $hotkeyBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+    # —— 失败链：目标键被 PS 占用 ——
+    $sjBoxValue.SetValue("Ctrl+Alt+M")
+    $sjToggle.Toggle() # 焦点挪走 → LostFocus → SaveHotkey → 试挂失败 → 原键保留 + 行内反馈
+    Start-Sleep -Seconds 3
+    Save-FullScreenshot "SJ-failed-feedback.png"
+    $sjFeedback = Find-UiaById $settings "hotkey-feedback" 8
+    $sjFb = ""
+    if ($sjFeedback) { try { $sjFb = $sjFeedback.Current.Name } catch { } }
+    if ($sjFb -notlike "*注册失败*")
+    {
+        throw "断言失败（场景 SJ）：热键反馈未见「注册失败」（实际：$sjFb）——失败不可见回归"
+    }
+    $sjBoxNow = $sjBoxValue.Current.Value
+    if ($sjBoxNow -ne "Ctrl+Alt+B")
+    {
+        throw "断言失败（场景 SJ）：失败后热键框值=$sjBoxNow（期望回退 Ctrl+Alt+B）——原有效绑定未保住"
+    }
+    $sjCfg = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($sjCfg.hotkey)" -ne "Ctrl+Alt+B")
+    {
+        throw "断言失败（场景 SJ）：config hotkey=$($sjCfg.hotkey)（期望保持 Ctrl+Alt+B）——坏键洗掉配置回归"
+    }
+    Write-Host "场景 SJ 失败链通过：占用态「注册失败」可见、框值与 config 均保持原键"
+    # —— 成功链：解除占用后 Ctrl+Alt+J ——
+    [SjHotkeyHolder]::UnregisterHotKey([IntPtr]::Zero, 0x4D2) | Out-Null
+    $sjBoxValue.SetValue("Ctrl+Alt+J")
+    $sjToggle.Toggle()
+    Start-Sleep -Seconds 3
+    Save-FullScreenshot "SJ-success-feedback.png"
+    $sjFeedback2 = Find-UiaById $settings "hotkey-feedback" 8
+    $sjFb2 = ""
+    if ($sjFeedback2) { try { $sjFb2 = $sjFeedback2.Current.Name } catch { } }
+    if ($sjFb2 -notlike "*已生效*")
+    {
+        throw "断言失败（场景 SJ）：成功反馈未见「已生效」（实际：$sjFb2）——生效反馈回归"
+    }
+    $sjCfg2 = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($sjCfg2.hotkey)" -ne "Ctrl+Alt+J")
+    {
+        throw "断言失败（场景 SJ）：config hotkey=$($sjCfg2.hotkey)（期望 Ctrl+Alt+J）——改键落盘链回归"
+    }
+    Stop-Beacon
+    Write-Host "场景 SJ 通过：占用失败可见 + 原键保留 + 成功即时生效——SET-UX-11"
+}
+catch
+{
+    Stop-Beacon
+    if ("SjHotkeyHolder" -as [type]) { [SjHotkeyHolder]::UnregisterHotKey([IntPtr]::Zero, 0x4D2) | Out-Null } # 占位键拆除（防泄给后续场景）
+    Save-FullScreenshot "SJ-FAIL-unexpected.png"
+    $failures.Add("场景 SJ：$($_.Exception.Message)")
+    Write-Host "::error::场景 SJ 断言失败：$($_.Exception.Message)"
+}
+
 # —— 场景 J：静默安装/卸载（todo 行 15 后半「卸载清理」CI 代验；需 Inno 产物先于本脚本产出）——
 try
 {
