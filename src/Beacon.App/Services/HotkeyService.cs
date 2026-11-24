@@ -4,10 +4,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Beacon.App.Services;
 
-/// <summary>全局热键（RFC §38）：RegisterHotKey 挂在消息窗口上，设置可改，冲突时注册失败。</summary>
+/// <summary>全局热键（RFC §38）：RegisterHotKey 挂在消息窗口上，设置可改，冲突时注册失败。
+/// SET-UX-11：失败保留原有效绑定——旧实现先 Unregister 再校验/试挂，无效输入或被占用会把能用的
+/// 热键摘没；现改为新键先试挂临时槽（id 2），成功才摘旧挂主槽，失败旧键原样保留。</summary>
 internal sealed class HotkeyService : IDisposable
 {
     private const int HotkeyId = 1;
+    private const int TempHotkeyId = 2; // SET-UX-11：试注册槽——新键可用性先在临时槽验证，不动主槽
 
     private readonly Win32MessageWindow _messageWindow;
     private readonly ILogger<HotkeyService> _logger;
@@ -25,22 +28,39 @@ internal sealed class HotkeyService : IDisposable
     /// <summary>当前生效热键文本。</summary>
     public string Current => _current;
 
-    /// <summary>注册/重注册热键（如 "Ctrl+Alt+B"）。失败（解析错误或被占用）返回 false。</summary>
+    /// <summary>注册/重注册热键（如 "Ctrl+Alt+B"）。失败（解析错误或被占用）返回 false 且旧键原样保留。</summary>
     public bool Register(string hotkey)
     {
-        Unregister();
+        // SET-UX-11：解析失败不再摘旧绑定（校验先于任何 Unregister）
         if (!TryParse(hotkey, out var modifiers, out var virtualKey))
         {
             _logger.LogWarning("Invalid hotkey string: {Hotkey}", hotkey);
             return false;
         }
-        if (!NativeMethods.RegisterHotKey(_messageWindow.Hwnd, HotkeyId, modifiers | NativeMethods.MOD_NOREPEAT, virtualKey))
+        if (string.Equals(hotkey, _current, StringComparison.OrdinalIgnoreCase))
+        {
+            return true; // 同键幂等：不重挂（免抖动窗口）
+        }
+        // 新键先试挂临时槽：失败=被占用/系统拒绝，旧键原样保留（原有效绑定不丢）
+        if (!NativeMethods.RegisterHotKey(_messageWindow.Hwnd, TempHotkeyId, modifiers | NativeMethods.MOD_NOREPEAT, virtualKey))
         {
             _logger.LogWarning(
-                "RegisterHotKey({Hotkey}) failed, error {Error}（可能与其他应用冲突）",
-                hotkey, Marshal.GetLastWin32Error());
+                "RegisterHotKey({Hotkey}) failed, error {Error}（可能与其他应用冲突；原热键 {Current} 保留）",
+                hotkey, Marshal.GetLastWin32Error(), _current);
             return false;
         }
+        // 新键可用：摘旧挂新（主槽）
+        NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, HotkeyId);
+        if (!NativeMethods.RegisterHotKey(_messageWindow.Hwnd, HotkeyId, modifiers | NativeMethods.MOD_NOREPEAT, virtualKey))
+        {
+            // 理论不可达（临时槽刚证可用、主槽同参数）；真发生=临时槽继续承载（消息路由两槽都认），热键不丢
+            _logger.LogWarning(
+                "RegisterHotKey({Hotkey}) primary slot re-register failed, error {Error}——temp slot carries it",
+                hotkey, Marshal.GetLastWin32Error());
+            _current = hotkey;
+            return true;
+        }
+        NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, TempHotkeyId);
         _current = hotkey;
         return true;
     }
@@ -48,12 +68,13 @@ internal sealed class HotkeyService : IDisposable
     public void Unregister()
     {
         NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, HotkeyId);
+        NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, TempHotkeyId);
         _current = string.Empty;
     }
 
     private void OnWindowMessage(uint message, IntPtr wParam, IntPtr lParam)
     {
-        if (message == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
+        if (message == NativeMethods.WM_HOTKEY && wParam.ToInt32() is HotkeyId or TempHotkeyId)
         {
             Triggered?.Invoke();
         }

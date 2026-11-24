@@ -37,6 +37,7 @@ internal sealed partial class SettingsWindow : Window
     private SampleGalleryWindow? _gallery; // 组件中心单实例（关于区入口）
 
     private TextBox _hotkeyBox = null!;
+    private TextBlock? _hotkeyFeedback; // SET-UX-11：热键注册结果控件旁反馈（常规页构建时赋值）
     private ToggleSwitch _startupToggle = null!;
     private ComboBox _themeBox = null!;
     private ComboBox _languageBox = null!;

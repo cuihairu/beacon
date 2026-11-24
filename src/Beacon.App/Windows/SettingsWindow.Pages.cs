@@ -29,7 +29,11 @@ internal sealed partial class SettingsWindow
         var page = PageShell();
         page.Children.Add(SectionTitle("常规"));
         _hotkeyBox = new TextBox { Header = "全局热键（如 Ctrl+Alt+B）", Text = _runtime.Config.App.Hotkey, Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_hotkeyBox, "hotkey-box"); // UIA 取证：热键驱动（SET-UX-11 场景 SJ）
         _hotkeyBox.LostFocus += (_, _) => SaveHotkey(); // SET-UX-01 单项保存：只写 Hotkey，不碰其他字段
+        // SET-UX-11：生效时机与影响面写在控件旁；失败反馈行紧贴热键框（修复入口=上方框，改完即再注册）
+        _hotkeyFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_hotkeyFeedback, "hotkey-feedback");
         _startupToggle = new ToggleSwitch { Header = "开机自启", IsOn = _runtime.Config.App.LaunchOnStartup };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_startupToggle, "startup-toggle"); // UIA 取证：开机自启驱动
         _startupToggle.Toggled += (_, _) => SaveStartup(); // SET-UX-01 单项保存：只写 LaunchOnStartup
@@ -73,7 +77,23 @@ internal sealed partial class SettingsWindow
         }
         _pollBox.SelectedIndex = IndexOfTag(_pollBox, configuredPoll > 0 ? configuredPoll.ToString(CultureInfo.InvariantCulture) : "0");
         _pollBox.SelectionChanged += (_, _) => SavePoll(); // SET-UX-01 单项保存：只写 PollIntervalSeconds
-        page.Children.Add(new StackPanel { Spacing = 10, Children = { _hotkeyBox, _startupToggle, _themeBox, _languageBox, _pollBox } });
+        page.Children.Add(new StackPanel
+        {
+            Spacing = 10,
+            Children =
+            {
+                _hotkeyBox,
+                Hint("全局热键即时生效（改完即重新注册）；被占用或无效时保留原热键，原因见下一行反馈。"),
+                _hotkeyFeedback!,
+                _startupToggle,
+                _themeBox,
+                _languageBox,
+                // SET-UX-11：语言覆盖面注明（看板/托盘即时，其余界面暂未全面迁移）
+                Hint("语言当前作用于看板与托盘（即时生效）；设置窗口等其余界面暂未全面翻译。"),
+                _pollBox,
+                Hint("默认刷新间隔即时重建调度；只对未单独设置刷新频率的组件生效，组件覆盖优先（组件向导设「此组件刷新频率」）。"),
+            },
+        });
         page.Children.Add(Hint("状态条（关闭/右下角胶囊/顶部悬浮岛）、窗口布局、看板入口、不透明度与贴边收起在「桌面显示」页（即时生效）；组件显隐与上岛在「组件中心」。"));
         page.Children.Add(BuildAboutSection());
         return page;
@@ -628,6 +648,25 @@ internal sealed partial class SettingsWindow
         _runtime.Config.App.Hotkey = _hotkeyBox.Text.Trim();
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke(); // 热键重注册走 ApplySettingsEffects
+    }
+
+    /// <summary>热键注册结果反馈（SET-UX-11，App 侧 ApplySettingsEffects 重挂后回调）：成功明示生效值；
+    /// 失败明示原因 + 原热键仍生效 + 修复入口（上方框改完即再注册），并把框回写为实际生效值
+    /// （config 已由 App 侧同步回写，框与存档一致）。窗口未开/页面未构建时静默（托盘气泡已覆盖）。</summary>
+    internal void ReportHotkeyState(bool ok, string attempted, string effective)
+    {
+        if (_hotkeyFeedback is null)
+        {
+            return;
+        }
+        Feedback(_hotkeyFeedback, ok
+            ? $"✓ 热键 {effective} 已生效（即时注册）。"
+            : $"✗ 热键 {attempted} 注册失败（被其他程序占用或格式无效），原热键 {effective} 仍生效——请在上方框更换后重试。",
+            error: !ok);
+        if (!ok)
+        {
+            _hotkeyBox.Text = effective;
+        }
     }
 
     private void SaveStartup()

@@ -356,10 +356,22 @@ public partial class App : Application
             var appConfig = runtime.Config.App;
             if (!string.IsNullOrWhiteSpace(appConfig.Hotkey) && appConfig.Hotkey != hotkey.Current)
             {
-                hotkey.Unregister();
-                if (!hotkey.Register(appConfig.Hotkey))
+                // SET-UX-11：失败保留原有效绑定——Register 内部先试挂临时槽，失败旧键原样（不再先 Unregister）；
+                // 失败时 config 回写为实际生效值（存档与绑定一致），原因与生效值反馈到设置页控件旁。
+                var attempted = appConfig.Hotkey;
+                if (hotkey.Register(appConfig.Hotkey))
                 {
-                    tray.ShowBalloon("Beacon", $"热键 {appConfig.Hotkey} 注册失败（可能被占用），可在设置中更换。", Infrastructure.NativeMethods.NIIF_WARNING);
+                    settingsWindow?.ReportHotkeyState(ok: true, attempted, hotkey.Current);
+                }
+                else
+                {
+                    if (hotkey.Current.Length > 0)
+                    {
+                        appConfig.Hotkey = hotkey.Current;
+                        runtime.Config.SaveApp();
+                    }
+                    tray.ShowBalloon("Beacon", $"热键 {attempted} 注册失败（可能被占用），原热键 {hotkey.Current} 仍生效，可在设置中更换。", Infrastructure.NativeMethods.NIIF_WARNING);
+                    settingsWindow?.ReportHotkeyState(ok: false, attempted, hotkey.Current);
                 }
             }
             Services.GetRequiredService<StartupService>().SyncWith(appConfig.LaunchOnStartup);
