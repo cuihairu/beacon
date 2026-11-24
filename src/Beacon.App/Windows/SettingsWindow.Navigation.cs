@@ -33,6 +33,10 @@ internal sealed partial class SettingsWindow
     private TextBox _searchBox = null!;
     private TextBlock _moduleHeader = null!;
     private ModuleDef? _firstFilterHit;
+    private SettingSearchEntry? _firstFieldHit; // SET-UX-08：字段级命中（回车优先于模块命中）
+    private string? _pendingAnchorId; // SET-UX-08：待聚焦锚（切页重建后延一拍，布局量出几何再聚焦）
+    private readonly Dictionary<string, TextBlock> _groupHeaders = []; // SET-UX-08：左栏分组头（组键 → 头控件）
+    private readonly Dictionary<string, List<string>> _groupMembers = []; // SET-UX-08：组键 → 成员模块键（过滤时决定头显隐）
     private double _splitterStartX;
     private double _splitterStartWidth;
     private string _selectedKey = "";
@@ -44,6 +48,59 @@ internal sealed partial class SettingsWindow
     /// 模块名（自动省略号）+开关不挤烂；上限 420 时 880 默认窗宽右栏仍 ≥420。</summary>
     private const double LeftColumnMin = 200;
     private const double LeftColumnMax = 420;
+
+    /// <summary>SET-UX-08 字段搜索条目：设置词 →（模块, 控件锚）。空锚 = 模块级命中（整页跳转）。</summary>
+    private sealed record SettingSearchEntry(string ModuleKey, string AnchorId, string[] Keywords);
+
+    /// <summary>SET-UX-08 搜索索引：覆盖实际设置词与旧名（悬浮形态/悬浮框/检查频率/检测间隔…）。
+    /// 匹配双向 Contains（词命中关键字或关键字命中词，忽略大小写）；回车按首个命中进页并聚焦控件。</summary>
+    private static readonly SettingSearchEntry[] SearchEntries =
+    [
+        new("general", "poll-interval-box", ["检查频率", "刷新频率", "默认刷新间隔", "刷新间隔", "检测间隔", "轮询间隔"]),
+        new("general", "hotkey-box", ["热键", "快捷键", "全局热键"]),
+        new("general", "startup-toggle", ["开机自启", "自启动", "开机启动"]),
+        new("general", "theme-box", ["主题", "深色", "浅色"]),
+        new("general", "language-box", ["语言", "翻译"]),
+        new("desktop", "desktop-layout-box", ["桌面组件布局", "组件布局", "悬浮形态", "集中面板", "独立显示"]),
+        new("desktop", "numeric-floating-toggle", ["数值和额度", "悬浮框", "数值悬浮框", "在桌面显示数值"]),
+        new("desktop", "board-toggle", ["允许打开看板", "看板入口", "看板"]),
+        new("desktop", "desktop-opacity-slider", ["透明度", "不透明度"]),
+        new("desktop", "edge-collapse-toggle", ["贴边收起", "贴边", "收起"]),
+        new("desktop", "status-bar-island", ["悬浮岛", "状态条", "顶部悬浮岛"]),
+        new("desktop", "status-bar-capsule", ["胶囊", "右下角胶囊"]),
+        new("appearance", "appearance-motion-mode-box", ["动效", "动画"]),
+        new("appearance", "appearance-motion-intensity", ["动效强度", "动画强度"]),
+        new("appearance", "appearance-color-info", ["级别色", "状态颜色", "颜色覆盖"]),
+        new("appearance", "appearance-density-box", ["密度"]),
+        new("appearance", "appearance-progress-style-box", ["额度显示方式", "进度条", "圆池", "注水桶", "水桶"]),
+        new("components", "", ["组件中心", "显隐", "上岛", "传统渲染", "组件树"]),
+        new("actions", "", ["自定义动作", "动作", "打包", "webhook"]),
+        new("advanced", "", ["导入", "导出", "备份", "诊断", "日志", "通知规则"]),
+        new("github", "conn-save-button", ["GitHub", "仓库", "拉取请求"]),
+        new("jenkins", "conn-save-button", ["Jenkins"]),
+        new("machine", "conn-save-button", ["本机", "CPU", "内存", "Git"]),
+        new("herald", "conn-save-button", ["Herald", "事件台账"]),
+        new("bigmodel", "conn-save-button", ["智谱", "GLM", "额度"]),
+        new("ark", "conn-save-button", ["火山方舟", "火山", "方舟"]),
+        new("claude", "conn-save-button", ["Claude"]),
+        new("kimi", "conn-save-button", ["Kimi"]),
+        new("moonshot", "conn-save-button", ["Moonshot"]),
+        new("deepseek", "conn-save-button", ["DeepSeek"]),
+        new("mimo", "conn-save-button", ["小米", "MiMo"]),
+        new("codex", "conn-save-button", ["Codex", "OpenAI"]),
+        new("copilot", "conn-save-button", ["Copilot"]),
+        new("opencode", "conn-save-button", ["OpenCode"]),
+        new("qwen", "conn-save-button", ["千问", "百炼", "通义"]),
+        new("sensenova", "conn-save-button", ["商汤", "SenseNova"]),
+        new("http", "conn-save-button", ["HTTP", "自定义接口", "状态接口"]),
+    ];
+
+    /// <summary>左栏分组（SET-UX-08）：Provider 模块归「数据来源」，动作/高级归「备份与诊断」；
+    /// 前四个一级入口（常规/桌面显示/外观/组件中心）不设头。null = 无分组。</summary>
+    private static string? GroupOf(ModuleDef module)
+        => module.ConnectionType is not null ? "sources"
+        : module.Key is "actions" or "advanced" ? "advanced"
+        : null;
 
     /// <summary>拖拽分隔条：6px 命中区 + 居中 3px 高亮线，按指针位移重设左栏列宽（DIP 同单位，无需 DPI 换算）。</summary>
     private Border BuildColumnSplitter()
@@ -130,13 +187,15 @@ internal sealed partial class SettingsWindow
         }
     }
 
-    /// <summary>设置搜索（用户令兜底③）：词命中模块 DisplayName/Subtitle/Key 任一即留行，其余收起；
-    /// 标题计数改「N/M 个模块」，首个命中记 _firstFilterHit 供回车跳转；空词全显复位。</summary>
+    /// <summary>设置搜索（用户令兜底③ + SET-UX-08）：词命中模块 DisplayName/Subtitle/Key 任一即留行，
+    /// 其余收起；字段索引（SearchEntries）另算命中数供回车跳控件；分组头在成员全被滤掉时隐藏；
+    /// 标题计数「N/M 个模块 · K 设置项」，首个命中记 _firstFilterHit/_firstFieldHit；空词全显复位。</summary>
     private void ApplyModuleFilter()
     {
         var query = _searchBox.Text.Trim();
         var hits = 0;
         _firstFilterHit = null;
+        _firstFieldHit = null;
         foreach (var module in _modules)
         {
             var match = query.Length == 0
@@ -153,9 +212,159 @@ internal sealed partial class SettingsWindow
                 _firstFilterHit ??= module;
             }
         }
+        var fieldHits = 0;
+        if (query.Length > 0)
+        {
+            foreach (var entry in SearchEntries)
+            {
+                if (entry.Keywords.Any(keyword => keyword.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || query.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+                {
+                    fieldHits++;
+                    _firstFieldHit ??= entry;
+                }
+            }
+        }
+        foreach (var (group, header) in _groupHeaders)
+        {
+            var anyVisible = _groupMembers.TryGetValue(group, out var members)
+                && members.Any(member => _moduleRows.TryGetValue(member, out var memberRow)
+                    && memberRow.Visibility == Visibility.Visible);
+            header.Visibility = query.Length == 0 || anyVisible ? Visibility.Visible : Visibility.Collapsed;
+        }
         _moduleHeader.Text = query.Length == 0
             ? $"配置中心 · {_modules.Count} 个模块"
-            : $"配置中心 · {hits}/{_modules.Count} 个模块匹配「{query}」";
+            : $"配置中心 · {hits}/{_modules.Count} 个模块匹配「{query}」"
+              + (fieldHits > 0 ? $" · {fieldHits} 设置项" : "");
+    }
+
+    /// <summary>SET-UX-08 搜索跳转：切到命中模块页，再按锚聚焦控件。右栏刚重建，聚焦步经
+    /// DispatcherQueue 延一拍——布局 pass 量出几何后 BringIntoView 才有正确落点。空锚只切页。</summary>
+    private void JumpToSetting(SettingSearchEntry entry)
+    {
+        var module = _modules.FirstOrDefault(m => m.Key == entry.ModuleKey);
+        if (module is null)
+        {
+            return;
+        }
+        SelectModule(module);
+        if (entry.AnchorId.Length == 0)
+        {
+            return; // 模块级命中（组件中心/动作/高级整页），无控件锚
+        }
+        _pendingAnchorId = entry.AnchorId;
+        DispatcherQueue.TryEnqueue(FocusPendingAnchor);
+    }
+
+    private void FocusPendingAnchor()
+    {
+        if (_pendingAnchorId is not { } anchorId)
+        {
+            return;
+        }
+        _pendingAnchorId = null;
+        FocusAnchor(anchorId);
+    }
+
+    /// <summary>SET-UX-08：按 AutomationId 在右栏视觉树定位控件，展开祖先折叠区（Expander）后
+    /// 滚动并聚焦。第一遍找不到（折叠 Expander 内容未在树上）先展开页内全部 Expander 再找。</summary>
+    private void FocusAnchor(string automationId)
+    {
+        if (_rightHost.Content is not DependencyObject root)
+        {
+            return;
+        }
+        var target = FindInVisualTree(root, automationId) ?? ExpandAllAndFind(root, automationId);
+        if (target is null)
+        {
+            return;
+        }
+        var expanded = false;
+        var parent = VisualTreeHelper.GetParent(target);
+        while (parent is not null)
+        {
+            if (parent is Expander { IsExpanded: false } expander)
+            {
+                expander.IsExpanded = true; // 目标在折叠区内：先展开，否则 BringIntoView 量不到几何
+                expanded = true;
+            }
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+        void FocusStep()
+        {
+            if (target is Control control)
+            {
+                control.Focus(Microsoft.UI.Xaml.FocusState.Keyboard);
+            }
+            target.StartBringIntoView();
+        }
+        if (expanded)
+        {
+            DispatcherQueue.TryEnqueue(FocusStep); // 展开动画/布局完成后再量几何
+        }
+        else
+        {
+            FocusStep();
+        }
+    }
+
+    /// <summary>视觉树 BFS：按 AutomationId 找 FrameworkElement（右栏单页规模小，无性能忧）。</summary>
+    private static FrameworkElement? FindInVisualTree(DependencyObject root, string automationId)
+    {
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(root);
+        while (queue.Count > 0)
+        {
+            var node = queue.Dequeue();
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (var i = 0; i < count; i++)
+            {
+                if (VisualTreeHelper.GetChild(node, i) is not DependencyObject child)
+                {
+                    continue;
+                }
+                if (child is FrameworkElement element
+                    && string.Equals(Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(element), automationId, StringComparison.Ordinal))
+                {
+                    return element;
+                }
+                queue.Enqueue(child);
+            }
+        }
+        return null;
+    }
+
+    private static FrameworkElement? ExpandAllAndFind(DependencyObject root, string automationId)
+    {
+        foreach (var expander in CollectExpanders(root))
+        {
+            expander.IsExpanded = true;
+        }
+        return FindInVisualTree(root, automationId);
+    }
+
+    private static List<Expander> CollectExpanders(DependencyObject root)
+    {
+        var result = new List<Expander>();
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(root);
+        while (queue.Count > 0)
+        {
+            var node = queue.Dequeue();
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (var i = 0; i < count; i++)
+            {
+                if (VisualTreeHelper.GetChild(node, i) is DependencyObject child)
+                {
+                    if (child is Expander expander)
+                    {
+                        result.Add(expander);
+                    }
+                    queue.Enqueue(child);
+                }
+            }
+        }
+        return result;
     }
 
     /// <summary>当前页作用域：Provider 页锁定连接类型与组件描述符；常规/外观/高级页为 null（全量）。</summary>
@@ -167,6 +376,8 @@ internal sealed partial class SettingsWindow
         _leftPanel.Children.Clear();
         _moduleRows.Clear();
         _moduleToggles.Clear();
+        _groupHeaders.Clear();
+        _groupMembers.Clear();
         _leftPanel.Children.Add(_moduleHeader = new TextBlock
         {
             // 2026-10-10 修：可见计数——用户要求列表条数一眼可见，不靠滚动到底确认
@@ -217,6 +428,27 @@ internal sealed partial class SettingsWindow
                 };
                 _moduleToggles[type] = toggle;
                 content.Children.Add(toggle);
+            }
+
+            // SET-UX-08：首个成员行前插分组头（数据来源 / 备份与诊断），一级四入口不设头
+            if (GroupOf(module) is { } group)
+            {
+                if (!_groupHeaders.TryGetValue(group, out var header))
+                {
+                    header = new TextBlock
+                    {
+                        Text = group == "sources" ? "数据来源" : "备份与诊断",
+                        FontSize = DesignTokens.FontFootnote,
+                        FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+                        Margin = new Thickness(10, 10, 0, 4),
+                    };
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(header, group == "sources" ? "nav-group-sources" : "nav-group-advanced");
+                    _groupHeaders[group] = header;
+                    _groupMembers[group] = [];
+                    _leftPanel.Children.Add(header);
+                }
+                _groupMembers[group].Add(module.Key);
             }
 
             var row = new Button

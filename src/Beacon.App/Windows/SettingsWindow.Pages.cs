@@ -38,6 +38,7 @@ internal sealed partial class SettingsWindow
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_startupToggle, "startup-toggle"); // UIA 取证：开机自启驱动
         _startupToggle.Toggled += (_, _) => SaveStartup(); // SET-UX-01 单项保存：只写 LaunchOnStartup
         _themeBox = new ComboBox { Header = "主题（重启生效）", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_themeBox, "theme-box"); // UIA 取证/搜索跳转锚（SET-UX-08 场景 SG）
         foreach (var item in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
         {
             _themeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
@@ -702,8 +703,10 @@ internal sealed partial class SettingsWindow
     private UIElement BuildImportExportSection()
     {
         var export = new Button { Content = "导出配置…" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(export, "export-config-button"); // UIA 取证/搜索跳转锚（SET-UX-08）
         export.Click += async (_, _) => await ExportAsync();
         var import = new Button { Content = "导入配置…" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(import, "import-config-button"); // UIA 取证/搜索跳转锚（SET-UX-08）
         import.Click += async (_, _) => await ImportAsync();
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { export, import } });

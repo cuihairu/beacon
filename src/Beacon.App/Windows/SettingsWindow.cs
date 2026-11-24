@@ -206,13 +206,22 @@ internal sealed partial class SettingsWindow : Window
         _searchBox.TextChanged += (_, _) => ApplyModuleFilter();
         _searchBox.KeyDown += (sender, e) =>
         {
-            if (e.Key is global::Windows.System.VirtualKey.Enter && _firstFilterHit is { } hit)
+            if (e.Key is not global::Windows.System.VirtualKey.Enter)
+            {
+                return;
+            }
+            // SET-UX-08：字段命中优先——进页后展开分组、滚动并聚焦到控件本体；无字段命中退模块跳转（旧口径）
+            if (_firstFieldHit is { } fieldHit)
+            {
+                JumpToSetting(fieldHit);
+            }
+            else if (_firstFilterHit is { } hit)
             {
                 SelectModule(hit);
-                if (sender is TextBox box)
-                {
-                    box.Focus(Microsoft.UI.Xaml.FocusState.Keyboard); // 跳转后焦点留在搜索框，可继续改词
-                }
+            }
+            if (sender is TextBox box)
+            {
+                box.Focus(Microsoft.UI.Xaml.FocusState.Keyboard); // 焦点先回搜索框；延一拍的 FocusAnchor 再挪到目标控件
             }
         };
         var leftColumn = new Grid();
