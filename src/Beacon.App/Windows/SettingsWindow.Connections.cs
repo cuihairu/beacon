@@ -24,6 +24,10 @@ internal sealed partial class SettingsWindow
 {
     // —— 连接：列表 + 表单 + 测试（B-801；token 只进 DPAPI） ——
 
+    // SET-UX-09：连接测试状态会话记录（不落盘——重启回「已保存 · 待验证」）：id → (状态, 明细)
+    private readonly Dictionary<string, (string State, string Detail)> _connectionTestStates = [];
+    private readonly Dictionary<string, TextBlock> _connectionStateLabels = []; // id → 行内状态 chip（行重建时清）
+
     /// <summary>连接表单。lockType 非空 = Provider 模块页（类型锁定，凭证/端点提示按类型定制）。</summary>
     private UIElement BuildConnectionEditor(string? lockType)
     {
@@ -137,6 +141,7 @@ internal sealed partial class SettingsWindow
             }
         }
         _runtime.Config.UpsertConnection(connection);
+        _connectionTestStates[id] = ("saved", ""); // SET-UX-09：改动后旧测试结论失效，回「待验证」
         ResetConnectionEditor();
         RebuildConnections();
         RefreshWidgetConnectionOptions(); // 保存连接后必须刷组件向导下拉——否则新建连接不出现在可选列表（用户实测「下拉空白」根因）
@@ -313,6 +318,7 @@ internal sealed partial class SettingsWindow
             return; // 常规/外观/高级页无连接区
         }
         _connectionList.Children.Clear();
+        _connectionStateLabels.Clear(); // SET-UX-09：行重建后旧 chip 引用作废
         foreach (var connection in _runtime.Config.Connections.Where(c => _scopeType is null || c.Type == _scopeType))
         {
             _connectionList.Children.Add(MakeConnectionRow(connection));
@@ -353,6 +359,12 @@ internal sealed partial class SettingsWindow
             FontSize = DesignTokens.FontSubtitle,
             VerticalAlignment = VerticalAlignment.Center,
         };
+
+        // SET-UX-09：行内状态 chip（会话级测试结论：待验证/通过/降级/失败）——接入状态一眼可辨
+        var stateChip = new TextBlock { FontSize = DesignTokens.FontFootnote, VerticalAlignment = VerticalAlignment.Center };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(stateChip, $"conn-state-{connection.Id}");
+        _connectionStateLabels[connection.Id] = stateChip;
+        ApplyConnectionStateChip(connection);
 
         // 单连接启停（Enabled 是 init-only：with 表达式替换后落库）
         var enabledToggle = new ToggleSwitch
@@ -437,7 +449,9 @@ internal sealed partial class SettingsWindow
         {
             _runtime.InvalidateWidgets(_runtime.Config.Widgets.Where(w => w.ConnectionId == connection.Id).Select(w => w.Id));
             _runtime.Config.RemoveConnection(connection.Id);
+            _connectionTestStates.Remove(connection.Id); // SET-UX-09：连接没了，会话结论一并清
             RebuildConnections();
+            RefreshSourceRecommend(); // 推荐区随连接集合重组（SET-UX-09）
             RebuildWidgets(); // ConnectionId 失联的组件如实展示
             RefreshWidgetConnectionOptions(); // 删除连接后下拉同步移除
             PinsChanged?.Invoke();
@@ -447,8 +461,31 @@ internal sealed partial class SettingsWindow
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
-            Children = { label, enabledToggle, test, edit, delete },
+            Children = { label, stateChip, enabledToggle, test, edit, delete },
         };
+    }
+
+    /// <summary>SET-UX-09：连接状态 chip 文案与颜色（会话级测试结论；未测过=「已保存 · 待验证」琥珀）。</summary>
+    private void ApplyConnectionStateChip(ConnectionConfig connection)
+    {
+        if (!_connectionStateLabels.TryGetValue(connection.Id, out var chip))
+        {
+            return;
+        }
+        var (state, detail) = _connectionTestStates.GetValueOrDefault(connection.Id, ("saved", ""));
+        chip.Text = state switch
+        {
+            "ok" => "✓ 测试通过",
+            "degraded" => $"△ 降级{detail}",
+            "failed" => $"✗ 测试失败{detail}",
+            _ => "已保存 · 待验证",
+        };
+        chip.Foreground = new SolidColorBrush(state switch
+        {
+            "ok" => SeverityPalette.Rgb(255, 63, 185, 80), // 绿（HTTP 品牌绿同源）
+            "failed" => SeverityPalette.Rgb(255, 248, 81, 73), // 红（Feedback error 同源）
+            _ => SeverityPalette.Rgb(255, 245, 158, 11), // 琥珀（待验证/降级）
+        });
     }
 
     private async Task TestConnectionAsync(ConnectionConfig connection)
@@ -465,6 +502,15 @@ internal sealed partial class SettingsWindow
             // Detail 原样透出：通用文案（「降级（限流等）」）吞掉真实原因（凭据格式/4xx 响应体/响应结构），
             // 用户无法判断「明明连上了却报降级」是哪一环——真实原因必须可见（2026-10-09 用户实测反馈）
             var detail = string.IsNullOrEmpty(result.Detail) ? "" : $"：{result.Detail}";
+            // SET-UX-09：会话状态落账（行内 chip 即时刷新 + 推荐区随结论重组）
+            _connectionTestStates[connection.Id] = health switch
+            {
+                ConnectionHealthState.Healthy => ("ok", ""),
+                ConnectionHealthState.Degraded => ("degraded", detail),
+                _ => ("failed", detail),
+            };
+            ApplyConnectionStateChip(connection);
+            RefreshSourceRecommend();
             Feedback(_connFeedback, health switch
             {
                 ConnectionHealthState.Healthy => $"✓ {connection.Id} 连接正常——在下方组件向导选该连接，或用「一键添加」即可上板。",
@@ -476,6 +522,9 @@ internal sealed partial class SettingsWindow
         }
         catch (Exception exception)
         {
+            _connectionTestStates[connection.Id] = ("failed", $"：{exception.Message}");
+            ApplyConnectionStateChip(connection);
+            RefreshSourceRecommend();
             Feedback(_connFeedback, $"✗ 测试失败：{exception.Message}", error: true);
         }
     }

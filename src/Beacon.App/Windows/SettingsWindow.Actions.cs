@@ -250,6 +250,8 @@ internal sealed partial class SettingsWindow
 
     // —— 页面：Provider 模块（GitHub / 智谱 GLM / 自定义 HTTP） ——
 
+    private StackPanel? _sourceRecommend; // SET-UX-09：下一步推荐区（测试状态驱动重建）
+
     private UIElement BuildProviderPage(ModuleDef module)
     {
         var type = module.ConnectionType!;
@@ -284,9 +286,12 @@ internal sealed partial class SettingsWindow
                 },
             },
         });
+        // SET-UX-09：页头直给能力一句话——用户不用先建连接才知道这页能读到什么
+        page.Children.Add(Hint(ProviderReads(type)));
 
         page.Children.Add(SectionTitle("连接"));
         _connectionList = new StackPanel { Spacing = 6 };
+        _connectionStateLabels.Clear(); // SET-UX-09：页面重建后旧 chip 引用作废
         foreach (var connection in connections)
         {
             _connectionList.Children.Add(MakeConnectionRow(connection));
@@ -296,6 +301,10 @@ internal sealed partial class SettingsWindow
             _connectionList.Children.Add(Hint(ProviderEmptyHint(type)));
         }
         page.Children.Add(_connectionList);
+        // SET-UX-09：下一步推荐区（行内测试点完就地重组；验证通过即出快速添加）
+        _sourceRecommend = new StackPanel { Spacing = 8 };
+        page.Children.Add(_sourceRecommend);
+        RefreshSourceRecommend();
         page.Children.Add(BuildConnectionEditor(type));
         page.Children.Add(_connFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_connFeedback, "conn-feedback"); // UIA 取证：测试反馈文本可硬断言
@@ -320,8 +329,161 @@ internal sealed partial class SettingsWindow
             page.Children.Add(quick);
         }
         page.Children.Add(_widgetFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap });
-        page.Children.Add(BuildComponentTreeEditor());
+        // SET-UX-09：组件树编辑器收进折叠区（高级语义；编辑器无既有 UIA 锚，折叠不影响取证）
+        page.Children.Add(new Expander
+        {
+            Header = "组件树（高级 · 声明式编辑）",
+            Content = BuildComponentTreeEditor(),
+            IsExpanded = false,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        });
         return page;
+    }
+
+    /// <summary>SET-UX-09：类型能力一句话（这页能读到什么数据），页头下方直给。</summary>
+    private static string ProviderReads(string type) => type switch
+    {
+        "github" => "能读到：Pull Requests 列表与检查状态、Actions 运行记录。",
+        "jenkins" => "能读到：Jenkins 任务最近构建状态与进度。",
+        "machine" => "能读到：本机 CPU/内存/网络、Git 仓库状态（零凭据零网络）。",
+        "herald" => "能读到：Herald 事件台账、订阅源健康与投递失败。",
+        "bigmodel" => "能读到：GLM Coding Plan 额度余量与 5h/周/月重置窗口。",
+        "ark" => "能读到：火山方舟 Coding Plan Pro 额度余量。",
+        "claude" => "能读到：本机 Claude Code 会话统计（零凭据）。",
+        "kimi" => "能读到：Kimi For Coding 套餐余量（5h/周窗口）。",
+        "moonshot" => "能读到：Moonshot 开放平台余额。",
+        "deepseek" => "能读到：DeepSeek 开放平台余额。",
+        "mimo" => "能读到：小米 MiMo 模型目录（官方用量口未开放）。",
+        "codex" => "能读到：本机 OpenAI Codex 会话统计（零凭据）。",
+        "copilot" => "能读到：Copilot 套餐配额与高级请求用量。",
+        "opencode" => "能读到：OpenCode Console Budgets 月度用量。",
+        "qwen" => "能读到：百炼 Token Plan 额度（需网关用量口）或模型目录。",
+        "sensenova" => "能读到：商汤 Token Plan 积分池余量（5h/7d）。",
+        "http" => "能读到：任意状态接口（状态词表/字段映射在组件向导里配）。",
+        _ => "能读到：连接对应的数据。",
+    };
+
+    /// <summary>SET-UX-09：数据来源「下一步」推荐区，按会话测试状态重组。未验证→引导点测试；
+    /// 失败→引导重试；通过/降级→快速添加（该类型首个免必填字段的组件 + 位置单选 + 上板）。
+    /// 全部控件带 UIA 锚（source-*），场景 SH 断言链：chip 待验证 → 测试 → chip 通过 → 添加 → 去向。</summary>
+    private void RefreshSourceRecommend()
+    {
+        if (_sourceRecommend is null)
+        {
+            return; // 非 Provider 页无推荐区
+        }
+        _sourceRecommend.Children.Clear();
+        var type = _scopeType;
+        if (type is null)
+        {
+            return;
+        }
+        var connections = _runtime.Config.Connections.Where(c => c.Type == type).ToList();
+        if (connections.Count == 0)
+        {
+            _sourceRecommend.Children.Add(Hint("下一步：在下方表单添加连接，保存后点行内「测试」验证。"));
+            return;
+        }
+        var untested = connections.Where(c => _connectionTestStates.GetValueOrDefault(c.Id).State is not "ok" and not "degraded" and not "failed")
+            .Select(c => c.Id).ToList(); // 补集口径：显式 saved（保存落账）也算待验证，清单不空括号
+        var failed = connections.Where(c => _connectionTestStates.GetValueOrDefault(c.Id).State == "failed").Select(c => c.Id).ToList();
+        var usable = connections.Where(c => _connectionTestStates.GetValueOrDefault(c.Id).State is "ok" or "degraded").ToList();
+        if (usable.Count == 0)
+        {
+            _sourceRecommend.Children.Add(Hint(failed.Count > 0
+                ? $"下一步：连接 {string.Join("、", failed)} 测试未通过——检查凭据/端点后点行内「测试」重试。"
+                : $"下一步：点连接行「测试」验证（{string.Join("、", untested)}），通过后可直接快速添加组件。"));
+            return;
+        }
+        var descriptor = _scopeDescriptors?.FirstOrDefault(d => d.Fields.All(f => !f.Required));
+        var app = _runtime.Config.App;
+        var islandOn = StatusBarMode.Read(app) == StatusBarMode.Island;
+        if (descriptor is null || (!descriptor.PinSupported && !islandOn))
+        {
+            _sourceRecommend.Children.Add(Hint("✓ 连接已验证——该来源的组件用下方组件向导添加（需必填字段或当前无可放位置）。"));
+            return;
+        }
+        var connection = usable[0];
+        _sourceRecommend.Children.Add(new TextBlock
+        {
+            Text = $"快速添加「{descriptor.DisplayName}」（连接 {connection.Id} 已验证）：",
+            FontSize = DesignTokens.FontBody,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        var desktopRadio = new Microsoft.UI.Xaml.Controls.RadioButton
+        {
+            Content = descriptor.PinSupported ? "钉到桌面" : "钉到桌面（该组件不支持钉选）",
+            IsEnabled = descriptor.PinSupported,
+            IsChecked = descriptor.PinSupported,
+            GroupName = "source-position",
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(desktopRadio, "source-pos-desktop");
+        var islandRadio = new Microsoft.UI.Xaml.Controls.RadioButton
+        {
+            Content = islandOn ? "加入顶部悬浮岛" : "加入顶部悬浮岛（状态条当前未选悬浮岛）",
+            IsEnabled = islandOn,
+            GroupName = "source-position",
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(islandRadio, "source-pos-island");
+        if (!descriptor.PinSupported)
+        {
+            islandRadio.IsChecked = islandOn;
+        }
+        _sourceRecommend.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 12,
+            Children = { desktopRadio, islandRadio },
+        });
+        var addButton = new Button { Content = $"添加 {descriptor.DisplayName}", HorizontalAlignment = HorizontalAlignment.Left };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(addButton, "source-add-button");
+        var recommendFeedback = new TextBlock { FontSize = DesignTokens.FontBody, Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 139, 148, 158)), TextWrapping = TextWrapping.Wrap };
+        addButton.Click += (_, _) =>
+        {
+            addButton.IsEnabled = false; // SET-UX-09：重复提交不重复创建（继续添加走向导/组件中心）
+            var toIsland = islandRadio.IsChecked == true;
+            var id = $"{descriptor.Type}:{connection.Id}";
+            for (var suffix = 2; _runtime.Config.FindWidget(id) is not null; suffix++)
+            {
+                id = $"{descriptor.Type}:{connection.Id}-{suffix}";
+            }
+            var config = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (descriptor.Fields.Any(f => f.Key == "label"))
+            {
+                config["label"] = connection.Id; // 额度卡显示名用连接 Id（一键语义：改名走向导）
+            }
+            _runtime.Config.UpsertWidget(new WidgetConfig
+            {
+                Id = id,
+                Type = descriptor.Type,
+                ConnectionId = connection.Id,
+                RefreshTier = descriptor.SuggestedTier,
+                Pinned = !toIsland, // 桌面位=钉选上板；岛位走 IslandComponents 白名单（不占桌面）
+                Config = config,
+            });
+            if (toIsland)
+            {
+                ComponentCenterCatalog.SetIslandOnboarded(_runtime.Config.App, id, onboarded: true);
+                _runtime.Config.SaveApp();
+            }
+            _runtime.ReloadWidgets([id]); // 挂载即拉数（与一键添加同口径：一次开即到位）
+            _runtime.Logger?.LogInformation("快速添加：组件 {Id}（连接 {ConnectionId}，{Placement}）。", id, connection.Id, toIsland ? "悬浮岛" : "桌面钉选");
+            RebuildWidgets();
+            Feedback(recommendFeedback, toIsland
+                ? $"✓ 组件 {id} 已加入悬浮岛，正在拉取（几秒内出数）。"
+                : $"✓ 组件 {id} 已钉到桌面，正在拉取（几秒内出数）。", error: false);
+            PinsChanged?.Invoke();
+            var gotoPlacement = new Button { Content = "查看去向（组件中心）", HorizontalAlignment = HorizontalAlignment.Left };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(gotoPlacement, "source-goto-placement");
+            gotoPlacement.Click += (_, _) =>
+            {
+                OpenModule("components");
+                FocusAnchor($"component-desktop-state-{id}"); // 直达该组件的桌面去向行（SET-UX-09 查看去向）
+            };
+            _sourceRecommend!.Children.Add(gotoPlacement);
+        };
+        _sourceRecommend.Children.Add(addButton);
+        _sourceRecommend.Children.Add(recommendFeedback);
     }
 
     /// <summary>绑定流捷径：GLM 连接就绪后一键建 bigmodel.usage 组件——直接钉选上板（白板三连根因之一：

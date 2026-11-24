@@ -35,6 +35,7 @@ internal sealed partial class SettingsWindow
     private ModuleDef? _firstFilterHit;
     private SettingSearchEntry? _firstFieldHit; // SET-UX-08：字段级命中（回车优先于模块命中）
     private string? _pendingAnchorId; // SET-UX-08：待聚焦锚（切页重建后延一拍，布局量出几何再聚焦）
+    private int _anchorRetries; // SET-UX-08：视觉树未就绪重试计数（上限 5 拍后放弃）
     private readonly Dictionary<string, TextBlock> _groupHeaders = []; // SET-UX-08：左栏分组头（组键 → 头控件）
     private readonly Dictionary<string, List<string>> _groupMembers = []; // SET-UX-08：组键 → 成员模块键（过滤时决定头显隐）
     private double _splitterStartX;
@@ -238,8 +239,7 @@ internal sealed partial class SettingsWindow
               + (fieldHits > 0 ? $" · {fieldHits} 设置项" : "");
     }
 
-    /// <summary>SET-UX-08 搜索跳转：切到命中模块页，再按锚聚焦控件。右栏刚重建，聚焦步经
-    /// DispatcherQueue 延一拍——布局 pass 量出几何后 BringIntoView 才有正确落点。空锚只切页。</summary>
+    /// <summary>SET-UX-08 搜索跳转：切到命中模块页，再按锚聚焦控件。空锚只切页。</summary>
     private void JumpToSetting(SettingSearchEntry entry)
     {
         var module = _modules.FirstOrDefault(m => m.Key == entry.ModuleKey);
@@ -252,7 +252,15 @@ internal sealed partial class SettingsWindow
         {
             return; // 模块级命中（组件中心/动作/高级整页），无控件锚
         }
-        _pendingAnchorId = entry.AnchorId;
+        FocusAnchor(entry.AnchorId);
+    }
+
+    /// <summary>SET-UX-08/09 聚焦入口：按 AutomationId 定位右栏控件并滚动聚焦。切页后调用安全——
+    /// 走延拍重试到视觉树就绪（Content 刚换时布局 pass 未跑，树可能还空）。</summary>
+    private void FocusAnchor(string automationId)
+    {
+        _pendingAnchorId = automationId;
+        _anchorRetries = 0;
         DispatcherQueue.TryEnqueue(FocusPendingAnchor);
     }
 
@@ -262,23 +270,31 @@ internal sealed partial class SettingsWindow
         {
             return;
         }
-        _pendingAnchorId = null;
-        FocusAnchor(anchorId);
+        if (_rightHost.Content is DependencyObject root)
+        {
+            var target = FindInVisualTree(root, anchorId) ?? ExpandAllAndFind(root, anchorId);
+            if (target is not null)
+            {
+                _pendingAnchorId = null;
+                _anchorRetries = 0;
+                FocusTarget(target);
+                return;
+            }
+        }
+        if (++_anchorRetries <= 5)
+        {
+            DispatcherQueue.TryEnqueue(FocusPendingAnchor); // 视觉树未就绪（布局没跑完），再等一拍
+        }
+        else
+        {
+            _pendingAnchorId = null; // 放弃：锚不在本页（不无限重试）
+            _anchorRetries = 0;
+        }
     }
 
-    /// <summary>SET-UX-08：按 AutomationId 在右栏视觉树定位控件，展开祖先折叠区（Expander）后
-    /// 滚动并聚焦。第一遍找不到（折叠 Expander 内容未在树上）先展开页内全部 Expander 再找。</summary>
-    private void FocusAnchor(string automationId)
+    /// <summary>SET-UX-08：展开祖先折叠区（Expander）后滚动并聚焦目标控件。</summary>
+    private void FocusTarget(FrameworkElement target)
     {
-        if (_rightHost.Content is not DependencyObject root)
-        {
-            return;
-        }
-        var target = FindInVisualTree(root, automationId) ?? ExpandAllAndFind(root, automationId);
-        if (target is null)
-        {
-            return;
-        }
         var expanded = false;
         var parent = VisualTreeHelper.GetParent(target);
         while (parent is not null)
