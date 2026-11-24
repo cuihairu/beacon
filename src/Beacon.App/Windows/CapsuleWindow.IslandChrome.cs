@@ -162,11 +162,35 @@ public sealed partial class CapsuleWindow
             return;
         }
 
-        var width = RootBorder.ActualWidth;
-        // 曲面高：收起态恒 32（窗口比曲面多出的 8 DIP 是阴影带，不进轮廓）；展开态铺满整窗（岛变高）
-        var height = SourcePreview.Visibility == Visibility.Visible
-            ? RootBorder.ActualHeight
-            : CapsuleIslandMath.HeightDips;
+        // 曲面尺寸量窗口客户区真相（物理像素→DIP，与 ApplyIslandRegion 同一真相源），不取布局回调
+        // 时的 RootBorder.Actual*——展开迁移期布局拍可先于窗口 Resize 到位（imac 真机 trace：
+        // outline 238x64 / root=238x93 的过期拍），region 已按窗真相裁满而曲面按旧尺寸画，region 内
+        // 曲面没盖到的部分露出 WinUI3 窗背板（浅色主题=白板，2026-11-25 用户真机「展开态露白板」
+        // 病灶之二）。收起态窗高恒 = 曲面高 32（Positioning 无阴影带口径），窗真相与旧特判同值。
+        double width;
+        double height;
+        if (_hwnd != IntPtr.Zero && _appWindow is not null)
+        {
+            var dpi = NativeMethods.GetDpiForWindow(_hwnd);
+            if (dpi <= 0)
+            {
+                dpi = 96;
+            }
+            var scale = dpi / 96.0;
+            var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            var windowSize = _appWindow.Size;
+            width = (windowSize.Width - chromeWidth) / scale;
+            height = (windowSize.Height - chromeHeight) / scale;
+        }
+        else
+        {
+            // 句柄未就绪的启动早期回退布局实测（旧口径）；收起态窗高未定时恒 32
+            width = RootBorder.ActualWidth;
+            height = SourcePreview.Visibility == Visibility.Visible
+                ? RootBorder.ActualHeight
+                : CapsuleIslandMath.HeightDips;
+        }
+
         if (!(width > 0) || !(height > 0))
         {
             return;

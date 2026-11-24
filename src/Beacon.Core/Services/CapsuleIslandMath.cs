@@ -5,15 +5,17 @@ namespace Beacon.Core.Services;
 /// <summary>
 /// 悬浮岛几何（USER-RPT-4，BrimDeck Notch 口径对拍重做）：岛=刘海式贴顶形态——
 /// 窗口顶缘恒贴屏幕顶（y=屏幕顶，永不下移、不持久化拖动 Y），水平居中 + 仅 X 偏移可持久化；
-/// 形态常量照抄 BrimDeck CollapsedLimits（shoulder 16、肩深 shoulder×7/16、底圆角 12、高 32）。
+/// 形态常量源自 BrimDeck CollapsedLimits（底圆角 12、高 32；肩 16 于 2026-11-25 归零，见 ShoulderDips）。
 /// 纯函数 Core 层（Core.Tests 锁口径）：CapsuleWindow 的岛形态启动恢复与拖动落点持久化共用。
 /// </summary>
 public static class CapsuleIslandMath
 {
-    /// <summary>肩部半径（BrimDeck CollapsedLimits.NotchShoulder）：顶缘向两侧外扩的过渡曲线宽。</summary>
-    public const double ShoulderDips = 16;
+    /// <summary>肩部半径：2026-11-25 归零（用户真机「展开态左右各露 38px 白色底板」）——旧 BrimDeck
+    /// NotchShoulder=16 的肩内收让窗口两侧各留全高 16 DIP 透明通道（region 外），浅色桌面/窗背板
+    /// 透进来读成白板。贴顶岛改全宽平齐板：肩 0=左右直边压窗缘，仅底两角圆角。</summary>
+    public const double ShoulderDips = 0;
 
-    /// <summary>肩深（BrimDeck IslandBorder.BuildOutline：shoulderDepth = shoulder × 7/16）。</summary>
+    /// <summary>肩深（BrimDeck IslandBorder.BuildOutline：shoulderDepth = shoulder × 7/16；肩 0 恒 0）。</summary>
     public const double ShoulderDepthDips = ShoulderDips * 7d / 16;
 
     /// <summary>底圆角（BrimDeck CollapsedLimits.NotchCorner）：岛底两角，顶两角恒 0（贴屏幕顶）。</summary>
@@ -23,7 +25,7 @@ public static class CapsuleIslandMath
     public const double HeightDips = 32;
 
     /// <summary>内容与岛两端的留白（BrimDeck CollapsedLimits.NotchInset=30——刘海形态按 Notch 口径，
-    /// 内容须同时避让肩部 16 + 底角 12 = 28，Notch 的 SurfaceWidth 取 max(30, 28) = 30；16 是 Capsule 形态的值，不适用贴顶岛）。</summary>
+    /// 内容须同时避让底角 12（肩归零前原 16+12=28，Notch 的 SurfaceWidth 取 max(30, 28) = 30；16 是 Capsule 形态的值，不适用贴顶岛）。</summary>
     public const double InsetDips = 30;
 
     /// <summary>最小曲面宽（BrimDeck CollapsedLimits.NotchWidthMin=72：形态自身所需，内容不够时靠内缩保形）。</summary>

@@ -1082,8 +1082,8 @@ function Save-Zoom([System.Drawing.Bitmap] $crop, [string] $name, [int] $zoom)
 }
 
 # AH5 岛灰板断言助手（屏上小区域均值色）：CopyFromScreen 取真实像素无压缩伪影。
-# 采样点贴窗角内缩 1px、span 2——100% DPI 下须全落在岛曲面外（底角 12px 圆、肩部 16px 弧的
-# 透明区，最坏采样点距底角圆心 13.4px > 12）：改 CapsuleIslandMath 半径须同步挪采样点。
+# 采样点贴窗角内缩 1px、span 2（经典态专用：经典 RootBorder 圆角外的窗底材质区；岛态月牙走
+# Get-CrescentMaxDistance——岛肩 2026-11-25 归零后岛态顶角已无弧外区）。
 function Get-AvgColor([int] $x, [int] $y, [int] $span)
 {
     $bmp = New-Object System.Drawing.Bitmap $span, $span
@@ -1108,11 +1108,10 @@ function Get-AvgColor([int] $x, [int] $y, [int] $span)
 # 「1, $b.Top」先并成数组→「int + Object[]」炸 op_Addition（43789102976 实证，本地复现）。
 function Get-CornerMaxDistance([IntPtr] $h, [int[]] $ref)
 {
-    # 采「弧外月牙」四点（客户区换屏幕坐标 + DIP×DPI）：窗矩形四角不可采——外框顶可负
-    # （贴顶窗 WINDOWEDGE 推到屏外，CopyFromScreen 采屏外恒黑）且轮廓顶缘横贯全宽、肩曲线
-    # 切向水平贴 y=0（客户区角点在多边形内=岛黑面）——run 43879288240 假 765 两案同根。
-    # 真弧外点：肩月牙 (4,5)/(w-5,5) DIP（y=5 处肩曲线 x≈15.9）；底角 (1,h-4)/(w-2,h-4) DIP
-    # （距底角圆心 (28,h-12) 28.2 > 半径 12 恒弧外）。region 生效=壁纸色（距≈0）、未生效=窗背板黑。
+    # 采经典态窗四角（客户区换屏幕坐标 + DIP×DPI）：窗矩形四角不可采——外框顶可负
+    # （贴顶窗 WINDOWEDGE 推到屏外，CopyFromScreen 采屏外恒黑）且圆角根处的角点在面外/面内两可
+    # ——run 43879288240 假 765 两案同根。点取 (4,5)/(w-5,5)/(1,h-4)/(w-2,h-4) DIP 贴角内缩，
+    # 经典无 region、RootBorder 圆角外露亚克力=大值即判据本体。
     $rect = [WinEnum]::ClientScreenRectOf($h)
     $scale = [WinEnum]::DpiScaleOf($h)
     $max = 0
@@ -1129,10 +1128,11 @@ function Get-CornerMaxDistance([IntPtr] $h, [int[]] $ref)
     return $max
 }
 
-# 岛态「弧外月牙透底」判据（CI 桌面特化版）：只采顶部肩月牙两点 (4,5)/(w-5,5) DIP——底部两角背后
-# 可能是 CI 桌面的宿主终端窗（深色非壁纸），与壁纸参照比会失真；参照改取窗外左右各 30px 的同高
-# 两点：与月牙背后是同一层背景，无论那层是壁纸还是窗都自洽。region 生效=月牙==同高参照（距≈0）、
-# 未生效=窗背板黑（距数百）。
+# 岛态「弧外月牙透底」判据（CI 桌面特化版）：采底部两角月牙 (1,h-4)/(w-2,h-4) DIP（距底角圆心
+# (12,h-12) 13.6 > 半径 12 恒弧外，AH5d① 同点已绿基线；2026-11-25 肩归零后顶部无弧外区——旧肩月牙
+# 采样点 (4,5)/(w-5,5) 已落岛面内）。角落背后可能是 CI 桌面的宿主终端窗（深色非壁纸），与壁纸参照比
+# 会失真；参照取窗外左右各 30px 的同高两点：与月牙背后是同一层背景，无论那层是壁纸还是窗都自洽。
+# region 生效=月牙==同高参照（距≈0）、未生效=窗背板黑（距数百）。
 function Get-CrescentMaxDistance([IntPtr] $h)
 {
     $rect = [WinEnum]::ClientScreenRectOf($h)
@@ -1140,8 +1140,8 @@ function Get-CrescentMaxDistance([IntPtr] $h)
     $max = 0
     $detail = @()
     foreach ($spec in @(
-            @(($rect.Left + [int](4 * $scale)), ($rect.Top + [int](5 * $scale)), ($rect.Left - 30)),
-            @(($rect.Right - [int](5 * $scale)), ($rect.Top + [int](5 * $scale)), ($rect.Right + 30))))
+            @(($rect.Left + [int](1 * $scale)), ($rect.Bottom - [int](4 * $scale)), ($rect.Left - 30)),
+            @(($rect.Right - [int](2 * $scale)), ($rect.Bottom - [int](4 * $scale)), ($rect.Right + 30))))
     {
         $c = Get-AvgColor $spec[0] $spec[1] 2
         $r = Get-AvgColor $spec[2] $spec[1] 2
@@ -6987,6 +6987,27 @@ try
     }
     Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 8) "AH-island-expanded.png" 3
     Write-Host "场景 AH1 通过：岛展开态在位（预览行长出，窗高 ≥1.6×收起基线）"
+    # AH1d 展开态侧板实着断言（2026-11-25 用户真机「展开态左右各露 38px 白色底板」CI 回归门）：
+    # 旧几何两病灶——肩 16 DIP 让窗口两侧各留全高透明通道（region 外，浅色桌面透进来=白板）+
+    # 轮廓量 RootBorder.Actual* 过期拍让 region 内露窗背板。修复后侧缘压窗缘：左右翼板（窗缘内
+    # 4 DIP、半高处，避开 3px 边带环与 30 DIP 内容区）必须是岛面本体近黑（三通道和 <90）；
+    # 肩/通道回归时该点透桌面（CI 桌面最暗横带 51,51,51 起步，和 ≥153）即红。
+    $flankRect = [WinEnum]::ClientScreenRectOf($islandHandles[0])
+    $flankScale = [WinEnum]::DpiScaleOf($islandHandles[0])
+    $flankY = $flankRect.Top + [int](($flankRect.Bottom - $flankRect.Top) / 2)
+    foreach ($flank in @(
+            @(($flankRect.Left + [int](4 * $flankScale)), '左'),
+            @(($flankRect.Right - [int](5 * $flankScale)), '右')))
+    {
+        $fc = Get-AvgColor $flank[0] $flankY 2
+        $fsum = [int]($fc[0] + $fc[1] + $fc[2])
+        if ($fsum -ge 90)
+        {
+            Save-FullScreenshot "AH-FAIL-flank-ink.png"
+            throw "断言失败（场景 AH1d）：展开态$($flank[1])翼板采到非岛面色 ($($fc -join ','))，三通道和 $fsum（期望 <90 近黑）——侧缘透明通道/露背板回归（真机白板病灶 CI 面）"
+        }
+        Write-Host "场景 AH1d $($flank[1])翼板采样=($($fc -join ',')) 和 $fsum <90——侧板实着（无透明通道）"
+    }
     # AH1a 真实指针进入：探针首展是程序化 ShowPreview 直调（不设 _hovered）——指针从未「进入」过岛时
     # 移出不构成 PointerExited（43662875796 实证：跳过这步移出后岛不收）。先真悬停进岛建立 enter 态
     #（岛已展开，ShowPreview 重入走「已可见」早退无害），随后的移出才是真实 enter→exit 序列
@@ -7145,8 +7166,9 @@ try
     }
     Stop-Beacon
     Write-Host "场景 AH3 通过：岛 GLM 面单击 → 看板开 + 智谱来源卡定位（组件级下钻链）"
-    # AH5 岛灰板修复取证（方案 B，2026-11-16：SetWindowRgn 真镂空）——岛态肩月牙（16 DIP 肩弧外）
-    # 应透到背后层（与窗外同高参照比，CI 桌面有宿主终端窗占屏、底部背景非壁纸故只采顶部两点）；
+    # AH5 岛灰板修复取证（方案 B，2026-11-16：SetWindowRgn 真镂空）——岛态底角月牙（12 DIP 底角
+    # 弧外；肩 2026-11-25 归零后弧外区只剩底两角）应透到背后层（与窗外同高参照比，CI 桌面有宿主
+    # 终端窗占屏、角落背景非壁纸故参照自洽取同高两点）；
     # 经典态四角恒=亚克力灰（无 region，RootBorder 圆角外露窗底材质）=经典观感保持（逐字节不动红线）。
     # 重启链三轮切换（岛→经典→岛）覆盖 region 摘/设多轮；10 次运行时循环与亮/暗壁纸真机观感待装机亲验。
     Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM"]'
@@ -7173,9 +7195,9 @@ try
             Copy-Item $trace (Join-Path $evidence "AH5-island-trace.txt") -Force
             Get-Content $trace -Tail 30 | ForEach-Object { Write-Host "trace: $_" }
         }
-        throw "断言失败（场景 AH5a）：岛态肩月牙与同高参照最大色距 $islandDist（期望 ≤24）——弧外区露窗背板非背后层（满值=黑板），SetWindowRgn 未裁出弧外区"
+        throw "断言失败（场景 AH5a）：岛态底角月牙与同高参照最大色距 $islandDist（期望 ≤24）——弧外区露窗背板非背后层（满值=黑板），SetWindowRgn 未裁出弧外区"
     }
-    Write-Host "场景 AH5a 通过：岛态肩月牙=背后层（最大色距 $islandDist ≤24）——region 真镂空成立"
+    Write-Host "场景 AH5a 通过：岛态底角月牙=背后层（最大色距 $islandDist ≤24）——region 真镂空成立"
     Stop-Beacon
     # AH5b 切经典：showCapsule=true 才建胶囊窗（EnsureCapsule 懒实例化口径），capsuleIsland=false
     Write-GConfig "" "off" 1.0 $false $true $false
@@ -7209,7 +7231,7 @@ try
     Save-FullScreenshot "AH5-reisland-transparent.png"
     if ($finalDist -gt 24)
     {
-        throw "断言失败（场景 AH5c）：回切岛态肩月牙与同高参照最大色距 $finalDist（期望 ≤24）——重挂后再摘仍有残留（满值=黑板，region 未重建）"
+        throw "断言失败（场景 AH5c）：回切岛态底角月牙与同高参照最大色距 $finalDist（期望 ≤24）——重挂后再摘仍有残留（满值=黑板，region 未重建）"
     }
     Write-Host "场景 AH5 通过：岛↔经典↔岛三轮切换无泄漏（岛月牙=背后层、经典四角=亚克力、回切岛=背后层）"
     # AH5d 岛边缘精度取证（2026-11-18 用户真机三瑕疵驱动：透明底板/圆角不自然/强锯齿，复用 AH5c 活岛窗）：
@@ -7278,15 +7300,13 @@ try
         throw "AH5d② 边缘过渡带断言失败：灰带 $trans5d px（>1）——修复单口径「4x 后边缘过渡带 ≤1px 无灰带」"
     }
     # ③ 曲线边楼梯度量（首版逐列扫首个非背景行作废：轮廓顶缘横贯全宽，全列恒命中 y0=顶缘本身）——
-    #   轮廓几何（44238805907 轨迹×近景像素取证互证）：顶缘满宽贴屏，肩曲线自顶缘两端向下内收
-    #   （x0→16，近水平出发故 row0 光栅化边界≈11），y≥肩深后直边 x16，底角弧自 x16 扫到 x28；
-    #   曲线只有肩（y 0..7）与底角（y h-12..h），逐行扫首个 surface 列=曲线轨迹（右角自右往左），
+    #   轮廓几何（44238805907 轨迹×近景像素取证互证 + 2026-11-25 肩归零改版）：顶缘满宽贴屏，
+    #   左右直边压窗缘全高，曲线只剩底两角（弧自窗角 x0 扫到 x12）；肩轨迹已废——旧肩区现为
+    #   实心黑面，轨迹恒常数=假信号。逐行扫首个 surface 列=曲线轨迹（右角自右往左），
     #   相邻行 Δx=量化台阶、边界像素去重层数=色阶；HRGN 物理锯齿基线，暂 advisory。
     #   桌面结构免疫（44250272756 定谳）：CI 桌面非纯色（浏览器横带 51,51,51 + 浮层面板），背景参照
-    #   必须逐行外沿自洽，任何「单点探针当全局 bg」都会撞横向结构出垃圾轨迹。DPI1.0 基线=肩 11,13,15,
-    #   15,16,16,16,16,16（maxΔx=2 色阶=3）、左底角 16→24、右底角 20→12（maxΔx=2 色阶=3）。
-    $shoulderPx5d = [int][Math]::Ceiling(16 * $scale5d)
-    $depthPx5d = [int][Math]::Ceiling(7 * $scale5d)
+    #   必须逐行外沿自洽，任何「单点探针当全局 bg」都会撞横向结构出垃圾轨迹。DPI1.0 基线=左底角
+    #   0→12、右底角 12→0（maxΔx=2 色阶=3；旧肩基线 11..16 与左底 16→24 随肩退役）。
     $brPx5d = [int][Math]::Ceiling(12 * $scale5d)
     function Trace-CurveStair([int] $zoneL, [int] $zoneT, [int] $zoneW, [int] $zoneH, [int] $dir, [string] $tag)
     {
@@ -7335,19 +7355,17 @@ try
         $bmp.Dispose()
         return [pscustomobject]@{ Max = $maxStep; Levels = $lvl }
     }
-    # 底角区宽 = 肩收进 16 + 弧扫出 12 + 余量（首版 brPx+6 截掉弧外半段，轨迹尾部 -1=出裁非无边）
-    $cornerW5d = $shoulderPx5d + $brPx5d + 8
-    $stairShoulder5d = Trace-CurveStair $rect5d.Left $rect5d.Top ($shoulderPx5d + 6) ($depthPx5d + 2) 1 "左肩曲线"
+    # 底角区宽 = 弧扫出 12 + 余量（首版 brPx+6 截掉弧外半段，轨迹尾部 -1=出裁非无边）
+    $cornerW5d = $brPx5d + 8
     $stairBl5d = Trace-CurveStair $rect5d.Left ($rect5d.Bottom - $brPx5d) $cornerW5d $brPx5d 1 "左底角弧"
     $stairBr5d = Trace-CurveStair ($rect5d.Right - $cornerW5d) ($rect5d.Bottom - $brPx5d) $cornerW5d $brPx5d -1 "右底角弧"
     # 硬门（44308360326 后）：色阶≥4=逐像素 alpha 环带在场的直接证明（HRGN 时代基线=3；
-    # spike 绿基线=肩7/左弧9/右弧10）。maxΔx 不再作缺陷门：环带后它量的是真曲线斜率+AA 梯度
-    # （肩曲线陡段相邻行 Δx 可达 8，属几何而非锯齿）。
-    $stairMax5d = [Math]::Max($stairShoulder5d.Max, [Math]::Max($stairBl5d.Max, $stairBr5d.Max))
-    $stairMinLvl5d = [Math]::Min($stairShoulder5d.Levels, [Math]::Min($stairBl5d.Levels, $stairBr5d.Levels))
+    # spike 绿基线=左弧9/右弧10）。maxΔx 不再作缺陷门：环带后它量的是真曲线斜率+AA 梯度。
+    $stairMax5d = [Math]::Max($stairBl5d.Max, $stairBr5d.Max)
+    $stairMinLvl5d = [Math]::Min($stairBl5d.Levels, $stairBr5d.Levels)
     if ($stairMinLvl5d -lt 4)
     {
-        throw "AH5d③ 边缘 AA 断言失败：曲线色阶 min=$stairMinLvl5d（<4，环带缺席/未生效=HRGN 硬边回归）——肩 $($stairShoulder5d.Levels)/左弧 $($stairBl5d.Levels)/右弧 $($stairBr5d.Levels)"
+        throw "AH5d③ 边缘 AA 断言失败：曲线色阶 min=$stairMinLvl5d（<4，环带缺席/未生效=HRGN 硬边回归）——左弧 $($stairBl5d.Levels)/右弧 $($stairBr5d.Levels)"
     }
     # ④ 四角+双边中点 4x 近景（NearestNeighbor=真实像素；人评并排对照素材，不进断言）
     function New-IslandRectCrop([int] $l, [int] $t, [int] $r, [int] $b)

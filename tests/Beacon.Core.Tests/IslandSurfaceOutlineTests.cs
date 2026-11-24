@@ -3,11 +3,11 @@ using Beacon.Core.Services;
 namespace Beacon.Core.Tests;
 
 /// <summary>IslandSurfaceOutline：岛单连续曲面轮廓（BrimDeck IslandBorder.BuildOutline 对拍口径）。
-/// 贴顶铁律：顶缘 (0,0)→(w,0) 横贯全宽、上两角 0；肩 16/肩深 7；底角 12；左右镜像。</summary>
+/// 贴顶铁律：顶缘 (0,0)→(w,0) 横贯全宽、上两角 0；肩 0（2026-11-25 白板收口）；底角 12；左右镜像。</summary>
 public sealed class IslandSurfaceOutlineTests
 {
-    private static double Shoulder => CapsuleIslandMath.ShoulderDips;      // 16
-    private static double Depth => CapsuleIslandMath.ShoulderDepthDips;    // 7
+    private static double Shoulder => CapsuleIslandMath.ShoulderDips;      // 0（2026-11-25 归零）
+    private static double Depth => CapsuleIslandMath.ShoulderDepthDips;    // 0
     private static double Bottom => CapsuleIslandMath.BottomRadiusDips;    // 12
 
     private static IReadOnlyList<IslandSurfaceOutline.Seg> Build(double w = 141, double h = 32)
@@ -33,22 +33,17 @@ public sealed class IslandSurfaceOutlineTests
     }
 
     [Fact]
-    public void Shoulder_ReachesBodyAtDepth()
+    public void Sides_RunFullHeight_NoShoulderChannels()
     {
-        // 右肩两段三次：第一段终点在 x = w - shoulder×0.82、y = depth×0.18；第二段终点在主体右缘 (w-shoulder, depth)
-        var segs = Build();
-        var s1 = Assert.IsType<IslandSurfaceOutline.Cubic>(segs[2]);
-        Assert.Equal(Shoulder, Depth * 16 / 7); // 肩深恒 = 肩×7/16（BrimDeck BuildOutline）
-        Assert.Equal(141 - Shoulder * 0.82, s1.To.X, 9);
-        Assert.Equal(Depth * 0.18, s1.To.Y, 9);
-        var s2 = Assert.IsType<IslandSurfaceOutline.Cubic>(segs[3]);
-        Assert.Equal(141 - Shoulder, s2.To.X, 9);
-        Assert.Equal(Depth, s2.To.Y, 9);
-        // 肩与直线边相切：两段控制点都落在顶缘 y=0 / 主体右缘 x=w-shoulder 上
-        Assert.Equal(0, s1.C1.Y);
-        Assert.Equal(0, s1.C2.Y);
-        Assert.Equal(141 - Shoulder, s2.C1.X);
-        Assert.Equal(141 - Shoulder, s2.C2.X);
+        // 2026-11-25 白板病灶收口：肩=0 后左右是压窗缘的全高直边（x=0 / x=w）——旧肩部内收会在
+        // 窗口两侧留全高 16 DIP 透明通道，浅色桌面透进来读成「展开态左右白色底板」。
+        // 曲线只剩底两角（肩部三次段缺席），直边一路铺到底角起点。
+        var segs = Build(141);
+        Assert.Equal(2, segs.OfType<IslandSurfaceOutline.Cubic>().Count()); // 底角 2，无肩部曲线
+        Assert.Equal(0, Depth);                                             // 肩深随肩归零
+        var lines = segs.OfType<IslandSurfaceOutline.Line>().Select(l => l.To).ToList();
+        Assert.Contains(new IslandSurfaceOutline.Point(141, 32 - Bottom), lines); // 右直边到底角起点
+        Assert.Contains(new IslandSurfaceOutline.Point(0, 32 - Bottom), lines);   // 左直边压窗缘
     }
 
     [Fact]
@@ -93,19 +88,18 @@ public sealed class IslandSurfaceOutlineTests
     [Fact]
     public void Contour_IsMirrorSymmetric()
     {
-        // 左右完全镜像（BrimDeck BuildOutline：左肩 = 右肩镜像后反向走一遍）。
-        // 按「带起点的曲线」比对：镜像后的右肩 S1 == 反向的左 S2，右 S2 == 反向左 S1，底角同理。
+        // 左右完全镜像。肩已归零（2026-11-25 白板收口），曲线只剩底两角——右底角 = 左底角镜像，
+        // 左右直边 x=0 / x=w 全高（Sides_RunFullHeight 另锁）。
         const double w = 141;
         var curves = Curves(Build(w));
-        Assert.Equal(6, curves.Count); // 右肩 2 + 底角 2 + 左肩 2
+        Assert.Equal(2, curves.Count); // 底角 2（肩 0：左右是直线段，不进曲线表）
 
-        AssertSame(Mirror(curves[0], w), Reverse(curves[5])); // 右 S1（顶缘→肩窝）↔ 左 S2
-        AssertSame(Mirror(curves[1], w), Reverse(curves[4])); // 右 S2（肩窝→主体）↔ 左 S1
-        AssertSame(Mirror(curves[2], w), Reverse(curves[3])); // 右底角 ↔ 左底角
+        AssertSame(Mirror(curves[0], w), Reverse(curves[1])); // 右底角 ↔ 左底角
 
-        // 口径抽查：右肩末点 = (w-肩, 肩深)；右底角终点 = (w-肩-底角, h)
-        Assert.Equal(new IslandSurfaceOutline.Point(w - Shoulder, Depth), curves[1].End);
-        Assert.Equal(new IslandSurfaceOutline.Point(w - Shoulder - Bottom, 32), curves[2].End);
+        // 口径抽查：右底角终点 = (w-底角, h)；起于右缘
+        Assert.Equal(new IslandSurfaceOutline.Point(w - Bottom, 32), curves[0].End);
+        Assert.Equal(w, curves[0].Start.X);
+        Assert.Equal(w, curves[0].C1.X);
     }
 
     /// <summary>段表 → 带起点的三次曲线列表（起点 = 上一段终点）。</summary>
@@ -162,13 +156,13 @@ public sealed class IslandSurfaceOutlineTests
     public void BottomCorner_IsClampedLikeBrimDeck()
     {
         // BrimDeck limit = min(h-肩深, h/2, (right-left)/2)：底角 12 在常规高度直接用 12；
-        // 低矮曲面（h=16）limit=min(12.5,8,(w-2×8)/2…) → 底角被压到 8，不越半高
+        // 低矮曲面（h=16）limit=min(16,8,20) → 底角被压到 8，不越半高（肩 0 后无肩深项）
         var tall = IslandSurfaceOutline.Build(141, 32, Shoulder, Bottom);
         var brCorner = tall.OfType<IslandSurfaceOutline.Cubic>().First(c => c.To.Y == 32);
         Assert.Equal(141 - Shoulder - Bottom, brCorner.To.X, 9);
 
         var low = IslandSurfaceOutline.Build(40, 16, Shoulder, Bottom);
-        var lowShoulder = Math.Min(Math.Min(Shoulder, 40d / 4), 16d / 2); // clamp 16 → min(10, 8) = 8
+        var lowShoulder = Math.Min(Math.Min(Shoulder, 40d / 4), 16d / 2); // 肩 0（旧 16 → min(10, 8) = 8）
         var lowLimit = Math.Min(Math.Min(16 - lowShoulder * IslandSurfaceOutline.ShoulderDepthRatio, 16d / 2),
             (40 - 2 * lowShoulder) / 2);
         var lowCorner = low.OfType<IslandSurfaceOutline.Cubic>().First(c => c.To.Y == 16);
@@ -179,7 +173,7 @@ public sealed class IslandSurfaceOutlineTests
     [Fact]
     public void NoShoulder_Case_IsSquareTopRectangle()
     {
-        // shoulder 请求 0：肩部三次段缺席，主体横贯全宽（仅底角圆角）
+        // shoulder 请求 0（= 生产口径，2026-11-25 起）：肩部三次段缺席，主体横贯全宽（仅底角圆角）
         var segs = IslandSurfaceOutline.Build(200, 32, 0, Bottom);
         Assert.DoesNotContain(segs, s => s is IslandSurfaceOutline.Cubic c && c.To.Y is > 0 and < 16 && c.To.X < 200 && c.To.X > 0);
         var top = Assert.IsType<IslandSurfaceOutline.Line>(segs[1]);

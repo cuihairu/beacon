@@ -76,11 +76,13 @@ public sealed class CapsuleIslandMathTests
     [Fact]
     public void Notch_Constants_MatchBrimDeckLimits()
     {
-        // BrimDeck CollapsedLimits：NotchShoulder=16、NotchCorner=12、BaseHeight=32、肩深=shoulder×7/16
-        Assert.Equal(16, CapsuleIslandMath.ShoulderDips);
+        // BrimDeck CollapsedLimits：NotchCorner=12、BaseHeight=32、肩深=shoulder×7/16。
+        // 肩 2026-11-25 归零（真机白板病灶：16 DIP 肩通道在浅色桌面读成「展开态左右白板」）——
+        // 贴顶岛=全宽平齐板，锁 0 防肩回归
+        Assert.Equal(0, CapsuleIslandMath.ShoulderDips);
         Assert.Equal(12, CapsuleIslandMath.BottomRadiusDips);
         Assert.Equal(32, CapsuleIslandMath.HeightDips);
-        Assert.Equal(7, CapsuleIslandMath.ShoulderDepthDips);
+        Assert.Equal(0, CapsuleIslandMath.ShoulderDepthDips);
         // 内缩按 Notch 口径 30（NotchInset；Capsule 的 16 不适用于贴顶岛），并锁 NotchWidthMin=72
         Assert.Equal(30, CapsuleIslandMath.InsetDips);
         Assert.Equal(72, CapsuleIslandMath.MinWidthDips);

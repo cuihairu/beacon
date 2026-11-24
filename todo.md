@@ -439,6 +439,14 @@
   - CI 验收面：AH5e 展开→收起迁移后 band 几何 ±1px 硬门 + 岛底条带 [3,20]px 全宽零外来墨已落（c6fbdb3），仅在 nightly 的 Visual evidence 跑；待 head≥18a1e8d 的 nightly 实跑取证。
   - 验收硬门槛：CI 像素断言新增「白条区域透出壁纸色」+ 底部月牙采样全覆盖；**用户装机亲验通过才闭项**，agent 自评无效（重复报障单，从严）。
 
+## 展开态白色底板（2026-11-25 用户真机截图报——岛窗口面问题第四单：灰底→EDGE-1 锯齿→BOTTOM 空白条→本条，修复必须走到用户亲验为止）
+
+- [ ] ISLAND-FLANK-1【2026-11-25 用户真机截图报障，已派 beacon 席执行中】展开态主岛左右两侧各露 38px 白色底板（用户原话定性；验收=CI 像素断言 + imac 真机截屏 + 用户 vision 亲验）。
+  - imac 真机取证（2026-11-25，deployed 2026.11.16+41da77d）：白板两成分——①肩 16 DIP 内收=设计性侧通道（窗 238 宽、黑面仅 206，通道全高 region 外），kill-test 证白=用户浅色桌面本体（上灰 221,227,233 / y≈79 下纯白）非 app 绘制；②展开迁移期 UpdateSurfaceOutlineCore 读 RootBorder.Actual* 过期拍（island-trace：outline 238x64 而 root=238x93），region 已按窗真相裁满、曲面按旧尺寸画，region 内露 WinUI3 窗背板（浅色主题=白）。XAML 41da77d↔HEAD 零差异，HEAD 同病。
+  - 修：ShoulderDips 16→0（CapsuleIslandMath——左右直边压窗缘全高，通道物理消失；收起窗高恒 32=Positioning 无阴影带口径，窗真相与旧特判同值）+ UpdateSurfaceOutlineCore 曲面尺寸改量窗客户区真相（物理像素→DIP，与 ApplyIslandRegion 同源，曲面恒铺满 region）+ Core 几何锁改肩 0 口径（Sides_RunFullHeight_NoShoulderChannels/镜像曲线 2 条/常量 0）。
+  - CI 验收面：AH1d 新增展开态侧板实着断言（左右翼板=窗缘内 4 DIP 半高处，三通道和 <90 近黑；肩/通道回归该点透桌面 ≥153 即红）；Get-CrescentMaxDistance 改底角月牙采样（AH5d① 同点，肩归零后顶部无弧外区）；AH5d③ 肩轨迹退役（旧肩区现恒黑面，轨迹恒常数=假信号），AA 硬门收窄到底两角。
+  - 验收硬门槛：CI 像素断言绿 + imac 真机截屏（展开态左右无白板）+ **用户 vision 亲验通过才闭项**（岛面问题第四单，从严）。
+
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
