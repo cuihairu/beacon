@@ -291,7 +291,12 @@ public sealed partial class CapsuleWindow : Window
             if (!_ruleHidden)
             {
                 _appWindow.Show(); // 全屏避让中：保持退场，等前台退出全屏由钩子回场
-                _edgeBand?.Show(_hwnd); // 边带随岛体回场（重钉相对序；几何变化由下一拍 region 自愈）
+                // 边带随岛体回场（重钉相对序；几何变化由下一拍 region 自愈）。经典态不放行：切走岛态后
+                // _edgeBand 已 Hide 但位图/缓存仍在，无门控重显会把旧岛轮廓挂在胶囊上（ISLAND-BOTTOM-1）
+                if (_island)
+                {
+                    _edgeBand?.Show(_hwnd);
+                }
             }
         }
         else

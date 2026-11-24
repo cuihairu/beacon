@@ -451,6 +451,8 @@ public sealed partial class CapsuleWindow
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
             _edgeBand?.Hide(); // 经典态无边带（region 摘除同步）
+            _lastBandSegs = []; // 缓存一并清零：经典态残留 segs 会让 SyncEdgeBandPosition 用旧岛轮廓
+                                // 走重钉（ISLAND-BOTTOM-1 经典态复现面）；Count=0 即无事可做
             _lastRegionKey = default; // 同几何再切回岛也须重设（region 已被摘，去重键不能拦）
             EnsureTopmostBand();
         }

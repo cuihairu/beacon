@@ -47,6 +47,9 @@ internal sealed class IslandEdgeBandWindow : IDisposable
     private IntPtr _classNamePtr;
     private IntPtr _hwnd;
     private bool _shown;
+    // ISLAND-BOTTOM-1：成功 ULW 过非空位图的标记。分层窗在无位图时 Show=未透明化空壳
+    // （真机「空白悬浮条」画像），回场重显与存活判据都不得放行无位图窗
+    private bool _hasFrame;
 
     public IslandEdgeBandWindow()
     {
@@ -155,6 +158,7 @@ internal sealed class IslandEdgeBandWindow : IDisposable
                 ReleaseDC(IntPtr.Zero, screenDc);
             }
 
+            _hasFrame = true; // 位图已上载（ISLAND-BOTTOM-1）：此后 Hide/Show 往返都仍有内容可显
             if (!_shown)
             {
                 ShowWindow(_hwnd, SW_SHOWNA);
@@ -174,10 +178,13 @@ internal sealed class IslandEdgeBandWindow : IDisposable
         }
     }
 
-    /// <summary>岛体回场时重显边带并重钉相对序（几何若在隐藏期变化，下一拍 ApplyIslandRegion 自愈）。</summary>
+    /// <summary>岛体回场时重显边带并重钉相对序（几何若在隐藏期变化，下一拍 ApplyIslandRegion 自愈）。
+    /// 无位图（从未成功 ULW）即原样返回：分层窗在没有位图时 ShowWindow=未透明化空壳窗，
+    /// 正是 2026-11-24 真机「空白悬浮条」画像（ISLAND-BOTTOM-1）——空帧自隐、岛态切走后的
+    /// 回场 Show 一律不放行，位图由下一拍 ApplyIslandRegion→Update 重上。</summary>
     public void Show(IntPtr islandHwnd)
     {
-        if (_hwnd == IntPtr.Zero || !NativeMethods.IsWindow(_hwnd))
+        if (_hwnd == IntPtr.Zero || !NativeMethods.IsWindow(_hwnd) || !_hasFrame)
         {
             return;
         }
@@ -202,9 +209,10 @@ internal sealed class IslandEdgeBandWindow : IDisposable
     /// <summary>TopmostGuard 注册面：环带窗句柄（未建/已销毁回 Zero，哨兵对 Zero 天然跳过）。</summary>
     internal IntPtr Handle => _hwnd;
 
-    /// <summary>TopmostGuard 门控面：环带当前确在显示。隐藏期不放行——哨兵不得把失败自隐的
-    /// 空带 Show 回来（IslandEdgeBandWindow 的静默退场契约）。</summary>
-    internal bool IsAlive => _shown && _hwnd != IntPtr.Zero && NativeMethods.IsWindow(_hwnd);
+    /// <summary>TopmostGuard 门控面：环带当前确在显示且确有内容。隐藏期或从未上载位图都不放行——
+    /// 哨兵不得把失败自隐/无位图的空带 Show 回来（IslandEdgeBandWindow 的静默退场契约，
+    /// ISLAND-BOTTOM-1 空壳窗门控）。</summary>
+    internal bool IsAlive => _shown && _hasFrame && _hwnd != IntPtr.Zero && NativeMethods.IsWindow(_hwnd);
 
     public void Dispose()
     {

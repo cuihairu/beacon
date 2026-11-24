@@ -80,7 +80,12 @@ public sealed partial class CapsuleWindow
         else
         {
             _appWindow.Show();
-            _edgeBand?.Show(_hwnd); // 边带随岛体回场
+            // 边带随岛体回场。经典态不放行：_ruleHidden 可能残留岛态期的 true（岛→经典切换后
+            // 本方法恒算 hide=false），无门控重显会把 _edgeBand 的旧岛位图挂在胶囊上（ISLAND-BOTTOM-1）
+            if (_island)
+            {
+                _edgeBand?.Show(_hwnd);
+            }
         }
     }
 
