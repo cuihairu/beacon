@@ -372,7 +372,8 @@ internal sealed partial class SettingsWindow
             IsOn = connection.Enabled,
             OnContent = "",
             OffContent = "",
-            Margin = new Thickness(0, 0, 4, 0),
+            Margin = new Thickness(8, 0, 0, 0), // SET-UX-ROW-1：与模块行开关同口径
+            MinWidth = 40, // WinUI 默认开关轨宽：整列开关等宽→右缘同一直线
             VerticalAlignment = VerticalAlignment.Center,
         };
         // UIA 取证/CI 入口（行 193 订阅重建链）：与 pin-toggle 同口径（ToggleSwitch 自带 peer）
@@ -457,12 +458,33 @@ internal sealed partial class SettingsWindow
             PinsChanged?.Invoke();
         };
 
-        return new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            Children = { label, stateChip, enabledToggle, test, edit, delete },
-        };
+        // SET-UX-ROW-1：行容器改 Grid（* 文字 / Auto 开关 / Auto 按钮组）。横向 StackPanel 不约束子项
+        // 宽度——连接 id 长时把开关与按钮挤出可视区；开关列与按钮列都是 Auto 且宽度恒定，整列开关
+        // 右缘同一直线。文字与状态 chip 再分一层：label 必须在星号列里才真正出省略号，chip 右贴星列
+        // 不随 id 长短漂移（chip 与 label 同列横排会一起被无约束的 StackPanel 带着伸长）。
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var textColumn = new Grid();
+        textColumn.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        textColumn.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(stateChip, 1);
+        textColumn.Children.Add(label);
+        textColumn.Children.Add(stateChip);
+        Grid.SetColumn(textColumn, 0);
+        row.Children.Add(textColumn);
+        Grid.SetColumn(enabledToggle, 1);
+        row.Children.Add(enabledToggle);
+        Grid.SetColumn(test, 2);
+        row.Children.Add(test);
+        Grid.SetColumn(edit, 3);
+        row.Children.Add(edit);
+        Grid.SetColumn(delete, 4);
+        row.Children.Add(delete);
+        return row;
     }
 
     /// <summary>SET-UX-09：连接状态 chip 文案与颜色（会话级测试结论；未测过=「已保存 · 待验证」琥珀）。</summary>

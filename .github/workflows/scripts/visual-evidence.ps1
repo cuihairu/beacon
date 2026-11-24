@@ -1916,6 +1916,53 @@ try
         if (!(Find-UiaById $settings "module-$key" 8)) { throw "断言失败（场景 D）：UIA 未找到模块行 module-$key——左栏模块列表缺失" }
     }
     Write-Host "模块行断言通过：16 个模块 UIA 全部可达"
+    # ①b SET-UX-ROW-1（2026-11-24 用户真机报「开关没有统一位置，文字会挤压开关」）：模块行已改
+    # Grid 三星列（Auto 图标 / * 文字 / Auto 开关）——两道硬门：带开关的模块行开关右缘极差 ≤1px
+    # （方差=0 面：开关列 Auto 右贴+MinWidth 定宽，整列右缘须同一直线）；每行开关完整可见（右缘
+    # ≤行右缘−7：Button 右 padding 8 + 1px 取整容差）——长副标题不再能把开关挤出可视区。
+    # ScrollIntoView 逐行先滚进视口再取矩形（视口外行 BoundingRectangle 可空/NaN，38619441591）。
+    $row1ToggleRights = @()
+    foreach ($key in @("github","bigmodel","ark","claude","kimi","deepseek","mimo","codex","copilot","opencode","qwen","http"))
+    {
+        $row1Row = Find-UiaById $settings "module-$key" 8
+        if (!$row1Row) { throw "断言失败（SET-UX-ROW-1）：UIA 未找到模块行 module-$key" }
+        try { ($row1Row.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() } catch { }
+        Start-Sleep -Milliseconds 250
+        $row1Switch = Find-UiaById $row1Row "module-toggle-$key" 4
+        if (!$row1Switch)
+        {
+            Save-FullScreenshot "ROW1-FAIL-no-toggle-$key.png"
+            throw "断言失败（SET-UX-ROW-1）：module-$key 行内未找到 module-toggle-$key——开关锚点缺失或行结构回归"
+        }
+        $row1Rect = $null
+        try { $row1Rect = $row1Switch.Current.BoundingRectangle } catch { }
+        $row1RowRect = $null
+        try { $row1RowRect = $row1Row.Current.BoundingRectangle } catch { }
+        # 单行布尔判定（行尾运算符续行是本脚本首例不引入；NaN 恒 false 会把断言洗白成通过，必须显式硬门）
+        $row1RectOk = ($null -ne $row1Rect) -and (-not $row1Rect.IsEmpty) -and (-not [double]::IsNaN($row1Rect.X)) -and (-not [double]::IsNaN($row1Rect.Width))
+        $row1RowOk = ($null -ne $row1RowRect) -and (-not $row1RowRect.IsEmpty) -and (-not [double]::IsNaN($row1RowRect.X)) -and (-not [double]::IsNaN($row1RowRect.Width))
+        if ((!$row1RectOk) -or (!$row1RowOk))
+        {
+            Save-FullScreenshot "ROW1-FAIL-nan-rect-$key.png"
+            throw "断言失败（SET-UX-ROW-1）：module-$key 行/开关 BoundingRectangle 空/NaN——虚拟化未实化或窗隐藏"
+        }
+        $row1Right = [int]($row1Rect.X + $row1Rect.Width)
+        $row1RowRight = [int]($row1RowRect.X + $row1RowRect.Width)
+        if (($row1Right + 7) -gt $row1RowRight)
+        {
+            Save-FullScreenshot "ROW1-FAIL-squeezed-$key.png"
+            throw "断言失败（SET-UX-ROW-1）：module-$key 开关右缘 $row1Right 越过行右缘 $row1RowRight−7——文字挤压开关回归（真机报障面）"
+        }
+        $row1ToggleRights += $row1Right
+    }
+    $row1Spread = $row1ToggleRights | Measure-Object -Maximum -Minimum
+    $row1Delta = [int]($row1Spread.Maximum - $row1Spread.Minimum)
+    if ($row1Delta -gt 1)
+    {
+        Save-FullScreenshot "ROW1-FAIL-misaligned.png"
+        throw "断言失败（SET-UX-ROW-1）：模块行开关右缘极差 ${row1Delta}px（期望 ≤1）：$($row1ToggleRights -join ',')——开关列未对齐（真机「开关没有统一位置」面）"
+    }
+    Write-Host "SET-UX-ROW-1 模块行断言通过：12 开关右缘极差 ${row1Delta}px，全部完整可见（右缘 $($row1ToggleRights -join ',')）"
     # ② 左栏可滚到底：最后一个模块「高级」进入可见区（IsOffscreen=false）——常驻滚动条功能性证明
     $leftHost = Find-UiaById $settings "settings-left-host" 8
     if (!$leftHost) { throw "断言失败（场景 D）：UIA 未找到 settings-left-host——左栏 ScrollViewer 缺失" }
@@ -2132,6 +2179,46 @@ try
     if (!$row) { throw "UIA 未找到模块行 module-general" }
     Invoke-Uia $row
     Start-Sleep -Seconds 2
+    # SET-UX-ROW-1②：连接行开关同门（label/stateChip/enabledToggle 同构横排，本单同批改 Grid
+    # 星号列）——常规页 _scopeType=null 列出全部连接，6 个 conn-toggle 右缘极差 ≤1px（星号列右界
+    # 恒定+开关 MinWidth 定宽）且完整可见（右缘 ≤ 设置窗右缘−8）。
+    $row1ConnRights = @()
+    foreach ($connId in @("ark-main","kimi-main","mimo-main","ds-main","qwen-main","ark-e2e"))
+    {
+        $row1ConnSwitch = Find-UiaById $settings "conn-toggle-$connId" 6
+        if (!$row1ConnSwitch)
+        {
+            Save-FullScreenshot "ROW1-FAIL-no-conn-toggle-$connId.png"
+            throw "断言失败（SET-UX-ROW-1）：常规页未找到 conn-toggle-$connId——连接行开关缺失（连接列表未全量展示？）"
+        }
+        $row1ConnRect = $null
+        try { $row1ConnRect = $row1ConnSwitch.Current.BoundingRectangle } catch { }
+        $row1WinRect = $null
+        try { $row1WinRect = $settings.Current.BoundingRectangle } catch { }
+        # 单行布尔判定 + NaN 显式硬门（NaN 恒 false 会把断言洗白成通过）
+        $row1ConnOk = ($null -ne $row1ConnRect) -and (-not $row1ConnRect.IsEmpty) -and (-not [double]::IsNaN($row1ConnRect.X)) -and (-not [double]::IsNaN($row1ConnRect.Width))
+        $row1WinOk = ($null -ne $row1WinRect) -and (-not $row1WinRect.IsEmpty) -and (-not [double]::IsNaN($row1WinRect.Right))
+        if ((!$row1ConnOk) -or (!$row1WinOk))
+        {
+            Save-FullScreenshot "ROW1-FAIL-nan-conn-rect-$connId.png"
+            throw "断言失败（SET-UX-ROW-1）：conn-toggle-$connId 或设置窗 BoundingRectangle 空/NaN"
+        }
+        $row1ConnRight = [int]($row1ConnRect.X + $row1ConnRect.Width)
+        if ($row1ConnRight -gt ([int]$row1WinRect.Right - 8))
+        {
+            Save-FullScreenshot "ROW1-FAIL-conn-squeezed-$connId.png"
+            throw "断言失败（SET-UX-ROW-1）：conn-toggle-$connId 右缘 $row1ConnRight 贴/越设置窗右缘 $([int]$row1WinRect.Right)−8——长连接名挤压开关回归"
+        }
+        $row1ConnRights += $row1ConnRight
+    }
+    $row1ConnSpread = $row1ConnRights | Measure-Object -Maximum -Minimum
+    $row1ConnDelta = [int]($row1ConnSpread.Maximum - $row1ConnSpread.Minimum)
+    if ($row1ConnDelta -gt 1)
+    {
+        Save-FullScreenshot "ROW1-FAIL-conn-misaligned.png"
+        throw "断言失败（SET-UX-ROW-1）：连接行开关右缘极差 ${row1ConnDelta}px（期望 ≤1）：$($row1ConnRights -join ',')——开关列未对齐"
+    }
+    Write-Host "SET-UX-ROW-1 连接行断言通过：6 开关右缘极差 ${row1ConnDelta}px，全部完整可见（右缘 $($row1ConnRights -join ',')）"
     $pollBox = Find-UiaById $settings "poll-interval-box" 10
     if (!$pollBox) { throw "UIA 未找到 poll-interval-box（检查频率设置项缺失？）" }
     Save-FullScreenshot "D-general-poll-interval.png"

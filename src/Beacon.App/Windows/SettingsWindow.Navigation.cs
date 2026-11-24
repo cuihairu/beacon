@@ -413,17 +413,28 @@ internal sealed partial class SettingsWindow
         });
         foreach (var module in _modules)
         {
-            var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-            content.Children.Add(MakeModuleIcon(module));
-            var nameStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
-            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = DesignTokens.FontSubtitle, TextTrimming = TextTrimming.CharacterEllipsis }); // 200 窄列不挤烂（用户规格 min 200）
+            // SET-UX-ROW-1：行容器改 Grid 三列（Auto 图标 / * 文字 / Auto 开关）。横向 StackPanel 不约束
+            // 子项宽度——文字长时 nameStack 无限伸长把开关挤出可视区，副标题长短不一又让各列开关
+            // 右缘漂移；星号列才是 TextTrimming 真正生效的宽度约束。
+            var content = new Grid();
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var icon = MakeModuleIcon(module);
+            icon.VerticalAlignment = VerticalAlignment.Center; // 列宽 Auto，纵轴不拉伸（色块高度不变）
+            Grid.SetColumn(icon, 0);
+            content.Children.Add(icon);
+            var nameStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch };
+            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = DesignTokens.FontSubtitle, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap }); // 200 窄列不挤烂（用户规格 min 200）
             nameStack.Children.Add(new TextBlock
             {
                 Text = module.Subtitle,
                 FontSize = DesignTokens.FontFootnote,
                 Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
             });
+            Grid.SetColumn(nameStack, 1);
             content.Children.Add(nameStack);
 
             if (module.ConnectionType is { } type)
@@ -433,7 +444,8 @@ internal sealed partial class SettingsWindow
                     OnContent = "",
                     OffContent = "",
                     IsOn = TypeEnabled(type),
-                    Margin = new Thickness(6, 0, 0, 0),
+                    Margin = new Thickness(8, 0, 0, 0), // SET-UX-ROW-1：与连接行同口径
+                    MinWidth = 40, // WinUI 默认开关轨宽：整列开关等宽→右缘同一直线
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 toggle.Toggled += (_, _) =>
@@ -451,6 +463,8 @@ internal sealed partial class SettingsWindow
                     PinsChanged?.Invoke(); // 2026-10-09 修:模块停用/启用必须重建 L0(悬浮窗/宿主)——漏发导致停用后悬浮框不消失
                 };
                 _moduleToggles[type] = toggle;
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"module-toggle-{module.Key}"); // UIA 取证/CI 入口（SET-UX-ROW-1 开关列对齐断言锚）
+                Grid.SetColumn(toggle, 2); // 开关列 Auto 右贴：行右缘锚点统一
                 content.Children.Add(toggle);
             }
 
