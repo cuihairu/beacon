@@ -210,6 +210,7 @@ internal sealed partial class SettingsWindow : Window
             {
                 return;
             }
+            ApplyModuleFilter(); // 兜底重算命中：ValuePattern.SetValue 偶发不触发 TextChange 时不至于空跳
             // SET-UX-08：字段命中优先——进页后展开分组、滚动并聚焦到控件本体；无字段命中退模块跳转（旧口径）
             if (_firstFieldHit is { } fieldHit)
             {

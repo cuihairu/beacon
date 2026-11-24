@@ -35,7 +35,8 @@ internal sealed partial class SettingsWindow
     private ModuleDef? _firstFilterHit;
     private SettingSearchEntry? _firstFieldHit; // SET-UX-08：字段级命中（回车优先于模块命中）
     private string? _pendingAnchorId; // SET-UX-08：待聚焦锚（切页重建后延一拍，布局量出几何再聚焦）
-    private int _anchorRetries; // SET-UX-08：视觉树未就绪重试计数（上限 5 拍后放弃）
+    private int _anchorRetries; // SET-UX-08：视觉树未就绪重试计数（150ms×20 拍 ≈3s 上限后放弃）
+    private DispatcherTimer? _anchorFocusTimer; // SET-UX-08：锚聚焦重试泵（TryEnqueue 突发全在同批排空、跨不过布局帧——45356987498 实证，改定时器）
     private readonly Dictionary<string, TextBlock> _groupHeaders = []; // SET-UX-08：左栏分组头（组键 → 头控件）
     private readonly Dictionary<string, List<string>> _groupMembers = []; // SET-UX-08：组键 → 成员模块键（过滤时决定头显隐）
     private double _splitterStartX;
@@ -256,40 +257,47 @@ internal sealed partial class SettingsWindow
     }
 
     /// <summary>SET-UX-08/09 聚焦入口：按 AutomationId 定位右栏控件并滚动聚焦。切页后调用安全——
-    /// 走延拍重试到视觉树就绪（Content 刚换时布局 pass 未跑，树可能还空）。</summary>
+    /// 走 150ms 定时重试到视觉树就绪（Content 刚换时布局 pass 未跑，树可能还空；
+    /// TryEnqueue 突发重试全在同一 dispatcher 批次排空、跨不过布局帧，run 45356987498 SG 实证）。</summary>
     private void FocusAnchor(string automationId)
     {
         _pendingAnchorId = automationId;
         _anchorRetries = 0;
-        DispatcherQueue.TryEnqueue(FocusPendingAnchor);
+        _anchorFocusTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _anchorFocusTimer.Tick -= FocusPendingAnchor;
+        _anchorFocusTimer.Tick += FocusPendingAnchor;
+        _anchorFocusTimer.Start();
     }
 
-    private void FocusPendingAnchor()
+    private void FocusPendingAnchor(object? sender, object e)
     {
-        if (_pendingAnchorId is not { } anchorId)
+        // Tick 与 TryEnqueue 同骑派发循环，异常无系统级路由——同 OnWindowSizeSaveTick 走 RunGuarded
+        DispatcherQueueGuard.RunGuarded(() =>
         {
-            return;
-        }
-        if (_rightHost.Content is DependencyObject root)
-        {
-            var target = FindInVisualTree(root, anchorId) ?? ExpandAllAndFind(root, anchorId);
-            if (target is not null)
+            if (_pendingAnchorId is not { } anchorId)
             {
-                _pendingAnchorId = null;
-                _anchorRetries = 0;
-                FocusTarget(target);
+                _anchorFocusTimer?.Stop();
                 return;
             }
-        }
-        if (++_anchorRetries <= 5)
-        {
-            DispatcherQueue.TryEnqueue(FocusPendingAnchor); // 视觉树未就绪（布局没跑完），再等一拍
-        }
-        else
-        {
-            _pendingAnchorId = null; // 放弃：锚不在本页（不无限重试）
-            _anchorRetries = 0;
-        }
+            if (_rightHost.Content is DependencyObject root)
+            {
+                var target = FindInVisualTree(root, anchorId) ?? ExpandAllAndFind(root, anchorId);
+                if (target is not null)
+                {
+                    _anchorFocusTimer?.Stop();
+                    _pendingAnchorId = null;
+                    _anchorRetries = 0;
+                    FocusTarget(target);
+                    return;
+                }
+            }
+            if (++_anchorRetries > 20)
+            {
+                _anchorFocusTimer?.Stop(); // 放弃：锚不在本页（150ms×20 ≈3s 上限，不无限重试）
+                _pendingAnchorId = null;
+                _anchorRetries = 0;
+            }
+        });
     }
 
     /// <summary>SET-UX-08：展开祖先折叠区（Expander）后滚动并聚焦目标控件。</summary>
