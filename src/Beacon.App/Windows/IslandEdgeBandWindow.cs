@@ -114,6 +114,14 @@ internal sealed class IslandEdgeBandWindow : IDisposable
             }
             var (inked, maxAlpha) = CountInk(bmp); // 取证面：DrawPath 后位图若近乎空，问题在绘制侧而非 ULW
             CapsuleWindow.IslandTraceShared($"edge band ink count={inked} maxA={maxAlpha} of {bmpW * bmpH}");
+            if (inked == 0)
+            {
+                // 空帧门（ISLAND-BOTTOM-1）：路径退化/全透明帧不许 ULW+Show 挂出无内容带——
+                // 「失败自隐」契约按零墨同口径处理（此前空帧也会 Show，IsAlive 门控把空带当活带放行）
+                CapsuleWindow.IslandTraceShared("edge band empty ink → hide（ISLAND-BOTTOM-1 空帧门）");
+                Hide();
+                return;
+            }
             Premultiply(bmp); // ULW AC_SRC_ALPHA 要求预乘 alpha（GDI+ 位图是非预乘 BGRA）
 
             var dst = new NativeMethods.POINT { X = clientRect.Left - BandMarginPx, Y = clientRect.Top - BandMarginPx };

@@ -242,9 +242,11 @@ public sealed partial class CapsuleWindow
     private IslandEdgeBandWindow? _edgeBand;
 
     /// <summary>上次边带同步的 DPI 标度与轮廓段表：纯移动重钉（SyncEdgeBandPosition）时几何未变，
-    /// 沿用缓存；首拍 region 前为空（Count=0 即跳过）。</summary>
+    /// 沿用缓存；首拍 region 前为空（Count=0 即跳过）。_lastBandClientPx=当前 segs 对应的客户区
+    /// 物理尺寸——重钉前对表，几何变了就拒绝旧 segs（ISLAND-BOTTOM-1 脱同步守卫）。</summary>
     private double _lastBandScale = 1.0;
     private IReadOnlyList<IslandSurfaceOutline.Seg> _lastBandSegs = [];
+    private (int W, int H) _lastBandClientPx;
 
     /// <summary>TopmostGuard 注册面：边带窗句柄与存活态。哨兵每个前台/菜单事件先钉岛窗再钉边带，
     /// 相对序（band 恒在岛正上层）才守得住——否则事件把岛钉回边带上方，内半环被岛体背板盖死
@@ -356,6 +358,7 @@ public sealed partial class CapsuleWindow
             _edgeBand ??= new IslandEdgeBandWindow();
             _lastBandScale = scale; // 纯移动重钉（SyncEdgeBandPosition）复用：region 去重键无位置，
             _lastBandSegs = segs;   // 岛窗挪动不触发 ApplyIslandRegion，band 只能靠这里缓存的重钉
+            _lastBandClientPx = (clientRect.Right - clientRect.Left, clientRect.Bottom - clientRect.Top);
             _edgeBand.Update(_hwnd, clientRect, scale, segs);
         }
         catch (Exception ex)
@@ -368,7 +371,8 @@ public sealed partial class CapsuleWindow
     /// （dst=clientRect−外扩），region 是窗相对坐标会跟窗走、band 不会——44288775018 实证：启动期
     /// 岛窗 (378,0)→(370,−31)→(378,0) 弹跳，末段回挪不触发 region 重算，band 停在旧位，环带底缘
     /// 整段压岛体黑面（黑对黑隐形）只漏 2px AA 斑，②③ 指标零收敛。几何未变，轮廓段表/DPI 沿用
-    /// 上次缓存；band 未同步过（segs 空）则无事可做。Update 重画位图+ULW+回钉 HWND_TOP 一并完成。</summary>
+    /// 上次缓存；几何已变（_lastBandClientPx 对表不符）则拒绝旧 segs、改走全量重算（ISLAND-BOTTOM-1
+    /// 脱同步守卫）；band 未同步过（segs 空）则无事可做。Update 重画位图+ULW+回钉 HWND_TOP 一并完成。</summary>
     private void SyncEdgeBandPosition()
     {
         if (_appWindow is null || _lastBandSegs.Count == 0)
@@ -379,6 +383,18 @@ public sealed partial class CapsuleWindow
         {
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
+            var clientW = windowSize.Width - chromeWidth;
+            var clientH = windowSize.Height - chromeHeight;
+            if ((clientW, clientH) != _lastBandClientPx)
+            {
+                // 几何已变而 band 缓存未跟上（ISLAND-BOTTOM-1 脱同步守卫）：展开→收起当拍
+                // DidSizeChange 里 ApplyIslandRegion 读 Size 可能仍旧值 → 去重键误命中 → region+band
+                // 重算整跳过且无重试，随后纯移动事件若再用旧 segs 重钉，展开轮廓的空心描边就悬在
+                // 收起岛底下（2026-11-24 用户真机「岛底下空白悬浮条」画像）。拒绝旧几何，走全量重算。
+                IslandTrace("band reposition geometry stale → full resync");
+                UpdateSurfaceOutline();
+                return;
+            }
             var origin = new NativeMethods.POINT { X = 0, Y = 0 };
             NativeMethods.ClientToScreen(_hwnd, out origin);
             SyncEdgeBand(_lastBandScale, new NativeMethods.RECT
