@@ -422,6 +422,15 @@
 
 - [x] ISLAND-EDGE-1【2026-11-21 用户令「按序清任务」闭项授权】 悬浮岛边缘视觉精度（用户真机三瑕疵：透明或灰色底板残留、圆角不自然、强锯齿）：走首选路线 ULW 逐像素 alpha 环带窗（新增 IslandEdgeBandWindow，纯 Win32 分层窗沿岛轮廓外扩 4px 自绘黑环带，岛体窗 region 与 XAML 零改动；c566b2a/7a87dce/fb9afe7/b8f5396/96f0ba6/e70db22/4c84c48）；CI 两因连环定谳=band 位置陈旧（纯移动不触发 region 重算，e5c50b9 挂 DidPositionChange 跟挪并缓存几何段表/DPI）与 TopmostGuard 反压（哨兵把岛钉到 band 顶，21b3a58 把 band 注册为哨兵第二个 client 同事件先钉岛再钉带）；其间一轮被「黑对黑」陷阱洗白（陈旧 band 底缘核心段全宽直线恰压岛体黑面故隐形，只漏外沿 AA 行 2px 斑；z 序错与位置陈旧给出完全相同的斑，像素差必须换算到候选源各自理论落点核对几何全形）；AH5d 三 advisory 升硬门（28cd9de 升门 + 2db0e56 修悬空 else，PS 解析期合法只在 5.1 运行期炸）=底缘灰带≤1px / 曲线色阶≥4 / band 几何对齐岛 clientRect−4px；像素直证 AA=main 左缘 y2 硬跳 255×8,17,1（色阶 3）vs spike 连续灰阶 191,135,127,88,24,0（色阶 7）；nightly run 44855478510 全绿（head 2db0e56，Visual evidence 与场景 AH5d 双 success，实测灰带 0px、色阶 7/9/10、band rect=374,-4 276x40 对齐 island 378,0 268x32 偏移 0，发布步按门控 skipped）；用户真机三瑕疵亲验待装机（视觉条目 agent 不闭项）；合并后 main 头 086c145 = 2db0e56 + todo.md 4 行（纯台账），而 2db0e56^{tree}=b84fcb9 与已验 run 的 head 5bb308a^{tree} 逐字节同（rebase 只换 hash 不换树）→ 首个 main nightly 代码/workflow 内容即已验内容，无新风险面
 
+## 悬浮岛底部残留 + 空白悬浮条（2026-11-24 用户真机报——岛窗口面问题用户已多次报障：灰底→EDGE-1 锯齿→本条，修复必须走到用户亲验为止）
+
+- [ ] ISLAND-BOTTOM-1【2026-11-24 用户真机截图报障，已派 beacon 席执行中】悬浮岛底部边缘没处理干净 + 桌面出现一个空白悬浮条（用户原话「悬浮岛底下没有处理干净，还有一个空白的悬浮条」）。
+  - 用户截图 vision 定性（2026-11-24）：空白条=纯白不透明、大圆角胶囊、与主岛同排分离、无任何内容——**未透明化的空壳窗口**（ULW alpha 整帧失效），非描边带内容残留；主岛底部边缘收起态截图看是干净的，残留疑在展开态/其他 DPI。
+  - 取证三方向：① IslandEdgeBandWindow.Update 位图清零/alpha 预乘路径（Windows/IslandEdgeBandWindow.cs）；② 空帧 Show 门控哨兵（CapsuleWindow.IslandChrome.cs:251 注释段是否真堵住空帧 Show）；③ 白条在经典胶囊态是否复现（判岛态专属还是共用窗口路径）。
+  - 修复方向按取证定：底部残边=ULW 逐像素 alpha 整岛化或 Rgn 内收 1px+XAML alpha 边缘带补偿（根治路线见 skill 记录）；空白条=修门控与位图失效逻辑。
+  - 验收硬门槛：CI 像素断言新增「白条区域透出壁纸色」+ 底部月牙采样全覆盖；**用户装机亲验通过才闭项**，agent 自评无效（重复报障单，从严）。
+
+
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
 - [x] [M] DSL 动作 TTL 缓存感知配置变更（src/Beacon.App/Services/BeaconRuntime.cs:42-83）——连接列表变更不失效，注释与实际竞态面不符（96de3e3：JsonConfigurationStore 新增 ConnectionsVersion 代数（Upsert/Remove/ReplaceAll 递增、删不存在不增，Storage 测试 ConnectionsVersion_BumpsOnConnectionMutationsOnly）+ DslActions getter 版本不匹配即重算、代数未变才走 2s TTL，注释按实际双失效面重写；App 侧 getter 属 App 工程 Linux 不编译，CS 面人工核 + CI 编译门）
