@@ -1484,6 +1484,11 @@ function Invoke-StyleItemClick([IntPtr] $hwnd, [string] $itemId, [string] $expec
 
 function Select-ComboItemById([System.Windows.Automation.AutomationElement] $settings, [System.Windows.Automation.AutomationElement] $combo, [string] $itemId)
 {
+    # WinUI ComboBox 实跑坑（45303475375，场景 AE3 与 SF3 双红）：UIA Select 过的下拉重展偶发卡
+    # 「弹层已闭但 Expanded 态未落」→ Expand() 变 no-op，弹层压根不开，combo 子树与桌面根两域找全空。
+    # 先强制 Collapse 归零再展开（首次展开前本就 Collapsed，Collapse 为无害空操作）。
+    try { ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse() } catch { }
+    Start-Sleep -Milliseconds 800
     ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
     Start-Sleep -Seconds 1
     $item = Find-UiaById $settings $itemId 8
@@ -7549,7 +7554,7 @@ try
     while ((Get-Date) -lt $deadline)
     {
         $glmEntry = Get-ConfigRecords (Join-Path $configDir "widgets.json") | Where-Object { $_.id -eq "bigmodel.usage:GLM" }
-        if ($glmEntry -and $glmEntry.components -and (!$glmEntry.components.row)) { $rowCleared = $true; break }
+            if ($glmEntry -and ($null -eq $glmEntry.components -or !$glmEntry.components.row)) { $rowCleared = $true; break }
         Start-Sleep -Seconds 1
     }
     if (!$rowCleared) { Save-FullScreenshot "SF-FAIL-row-not-cleared.png"; throw "断言失败（场景 SF3）：恢复此处默认后 components.row 未清——恢复只改选中位置回归" }
