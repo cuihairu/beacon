@@ -428,6 +428,9 @@
   - 用户截图 vision 定性（2026-11-24）：空白条=纯白不透明、大圆角胶囊、与主岛同排分离、无任何内容——**未透明化的空壳窗口**（ULW alpha 整帧失效），非描边带内容残留；主岛底部边缘收起态截图看是干净的，残留疑在展开态/其他 DPI。
   - 取证三方向：① IslandEdgeBandWindow.Update 位图清零/alpha 预乘路径（Windows/IslandEdgeBandWindow.cs）；② 空帧 Show 门控哨兵（CapsuleWindow.IslandChrome.cs:251 注释段是否真堵住空帧 Show）；③ 白条在经典胶囊态是否复现（判岛态专属还是共用窗口路径）。
   - 修复方向按取证定：底部残边=ULW 逐像素 alpha 整岛化或 Rgn 内收 1px+XAML alpha 边缘带补偿（根治路线见 skill 记录）；空白条=修门控与位图失效逻辑。
+  - 取证①②③结论（2026-11-24）：① 位图清零/预乘路径本身正确（CountInk/Premultiply 逐像素 alpha 无误），空壳成因不在绘制侧；② 空帧门（6f52775）只堵住 Update 自身路径——两处回场 Show（CapsuleWindow.SetVisible、FullscreenAvoidance 避让回场）无门控，分层窗从未成功 ULW 时 ShowWindow 即未透明化空壳窗，正是真机「纯白不透明胶囊条」；③ 经典胶囊态可复现（SetVisible 回场路径与岛态共用，_ruleHidden 残留岛态 true 时恒进回场分支），非岛态专属。
+  - 修（18a1e8d）：IslandEdgeBandWindow 增 _hasFrame（仅成功 ULW 非空位图后置位），Show 无位图原样返回、IsAlive 同步要求 _hasFrame（TopmostGuard 不再把空壳钉回可见）；两处回场 Show 加 _island 门；RestoreWindowRegion 清 _lastBandSegs 缓存（经典态 SyncEdgeBandPosition 不再用旧岛轮廓重钉）。
+  - CI 验收面：AH5e 展开→收起迁移后 band 几何 ±1px 硬门 + 岛底条带 [3,20]px 全宽零外来墨已落（c6fbdb3），仅在 nightly 的 Visual evidence 跑；待 head≥18a1e8d 的 nightly 实跑取证。
   - 验收硬门槛：CI 像素断言新增「白条区域透出壁纸色」+ 底部月牙采样全覆盖；**用户装机亲验通过才闭项**，agent 自评无效（重复报障单，从严）。
 
 
