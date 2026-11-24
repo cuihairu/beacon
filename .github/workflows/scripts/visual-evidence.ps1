@@ -7321,6 +7321,67 @@ try
         throw "AH5d⑥ 边带窗未找到（BeaconIslandEdgeBand 不在顶层窗）——岛态边带必须存在且可见"
     }
     Write-Host "场景 AH5d 通过：底角月牙=背后层 + 过渡带/楼梯基线已记 + 6 件 4x 近景存档——边缘精度修复（逐像素 alpha）的取证面就绪"
+    # ⑦ AH5e 展开→收起迁移后 band 复验（ISLAND-BOTTOM-1，2026-11-24 用户真机「悬浮岛底下没处理干净，
+    #   还有一个空白的悬浮条」）：迁移是 band 脱同步唯一窗口——DidSizeChange 当拍 ApplyIslandRegion 读
+    #   Size 仍旧值 → region 去重键误命中 → region+band 重算整跳过且无重试（收起态 RootBorder.SizeChanged
+    #   兜底不触发：Border 实际高早已是 32）；随后的纯移动事件若用旧 segs 重钉，展开轮廓的空心描边就悬在
+    #   收起岛底下=真机所见空白条。稳态 ⑥ 查不出，迁移后必查两门：真指针进→出（AH1 同款 SendInput 纯移动）
+    #   → band rect=岛 clientRect−4 ±1px 复硬门（ULW 窗尺寸=位图尺寸，停旧位/旧几何必现形）→ 岛底下条带
+    #   [bottom+3, bottom+20]px 全宽扫描零外来墨（逐行窗外两点自洽参照，横向桌面结构免疫；+3 起步避开
+    #   band 自身 3px 描边的外沿 AA 尾）。
+    $islandHandles5e = [WinEnum]::VisibleHandlesByTitle("Beacon Status")
+    if ($islandHandles5e.Count -lt 1) { Save-FullScreenshot "AH5e-FAIL-no-island.png"; throw "断言失败（AH5e 前置）：岛窗不在" }
+    $rect5e = [WinEnum]::RectOf($islandHandles5e[0])
+    $cxE5 = [int](($rect5e.Left + $rect5e.Right) / 2)
+    $cyE5 = [int](($rect5e.Top + $rect5e.Bottom) / 2)
+    [WinEnum]::MoveMouse($cxE5, $cyE5)
+    Start-Sleep -Seconds 3
+    [WinEnum]::MoveMouse(30, 600)
+    Start-Sleep -Seconds 3
+    $rect5e = [WinEnum]::RectOf($islandHandles5e[0])
+    if (($rect5e.Bottom - $rect5e.Top) -gt [int]($collapsedPx * 1.5))
+    {
+        Save-FullScreenshot "AH5e-FAIL-not-collapsed.png"
+        throw "AH5e 前置失败：迁移后岛未收（高 $($rect5e.Bottom - $rect5e.Top)px vs 基线 $collapsedPx）——PointerExited 收起链失效"
+    }
+    $bandHwnd5e = [WinEnum]::FindByClass("BeaconIslandEdgeBand")
+    if ($bandHwnd5e -eq [IntPtr]::Zero)
+    {
+        Save-FullScreenshot "AH5e-FAIL-no-band.png"
+        throw "AH5e band 迁移复验失败：BeaconIslandEdgeBand 窗不在——展开→收起后边带自隐未回场"
+    }
+    $bandRect5e = [WinEnum]::RectOf($bandHwnd5e)
+    $expL5e = $rect5e.Left - 4
+    $expT5e = $rect5e.Top - 4
+    $expW5e = ($rect5e.Right - $rect5e.Left) + 8
+    $expH5e = ($rect5e.Bottom - $rect5e.Top) + 8
+    $off5e = [Math]::Max([Math]::Abs($bandRect5e.Left - $expL5e), [Math]::Abs($bandRect5e.Top - $expT5e))
+    $sz5e = [Math]::Max([Math]::Abs(($bandRect5e.Right - $bandRect5e.Left) - $expW5e), [Math]::Abs(($bandRect5e.Bottom - $bandRect5e.Top) - $expH5e))
+    if ($off5e -gt 1 -or $sz5e -gt 1)
+    {
+        Save-FullScreenshot "AH5e-FAIL-band-stale.png"
+        throw "AH5e band 迁移复验失败：偏移=${off5e}px 尺寸差=${sz5e}px（期望 rect=$expL5e,$expT5e ${expW5e}x${expH5e}）——展开→收起后 band 脱同步（真机「岛底下空白条」CI 面）"
+    }
+    $stripInk5e = 0
+    for ($dy5e = 3; $dy5e -le 20; $dy5e += 2)
+    {
+        $y5e = $rect5e.Bottom + $dy5e
+        $lRef5e = Get-AvgColor ($rect5e.Left - 30) $y5e 2
+        $rRef5e = Get-AvgColor ($rect5e.Right + 30) $y5e 2
+        for ($x5e = ($rect5e.Left - 8); $x5e -le ($rect5e.Right + 8); $x5e += 8)
+        {
+            $p5e = Get-AvgColor $x5e $y5e 1
+            $dl5e = [Math]::Abs($p5e[0] - $lRef5e[0]) + [Math]::Abs($p5e[1] - $lRef5e[1]) + [Math]::Abs($p5e[2] - $lRef5e[2])
+            $dr5e = [Math]::Abs($p5e[0] - $rRef5e[0]) + [Math]::Abs($p5e[1] - $rRef5e[1]) + [Math]::Abs($p5e[2] - $rRef5e[2])
+            if (($dl5e -gt 24) -and ($dr5e -gt 24)) { $stripInk5e++ }
+        }
+    }
+    if ($stripInk5e -gt 0)
+    {
+        Save-FullScreenshot "AH5e-FAIL-strip-ink.png"
+        throw "AH5e 岛底条带断言失败：外来墨 $stripInk5e 像素（期望 0）——岛底下残留层（真机「空白悬浮条」CI 面）"
+    }
+    Write-Host "场景 AH5e 通过：展开→收起迁移后 band 几何复验 ±1px + 岛底条带 [3,20]px 全宽零外来墨——ISLAND-BOTTOM-1"
     Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除/边缘精度——ISLAND-D3/D4、灰板修复与边缘精度 CI 视觉取证面"
 }
 catch
