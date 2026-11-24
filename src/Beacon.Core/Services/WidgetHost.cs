@@ -160,18 +160,17 @@ public sealed class WidgetHost : IAsyncDisposable
         }
     }
 
-    /// <summary>全局检查频率（设置「检查频率」，0=按档位策略表）：组件级检测间隔优先，未设组件级的按全局走。</summary>
+    /// <summary>刷新频率继承（SET-UX-10 归一「默认刷新间隔/此组件刷新频率」）：优先级组件覆盖 >
+    /// 全局默认间隔 > 档位策略表，收编 RefreshIntervalResolver 单源（与设置页展示同实现）。</summary>
     private void RegisterWidgets()
     {
-        var globalPoll = _config.App.PollIntervalSeconds > 0
-            ? TimeSpan.FromSeconds(_config.App.PollIntervalSeconds)
-            : (TimeSpan?)null;
+        var globalPoll = _config.App.PollIntervalSeconds;
         foreach (var widget in _config.Widgets)
         {
-            // 组件级检测间隔覆盖（设置页「检测间隔」）：null=按刷新档策略表
-            TimeSpan? intervalOverride = widget.RefreshIntervalSeconds is { } seconds && seconds > 0
+            // 覆盖间隔：null=调度器按刷新档策略表走（manual 档=不自动刷新）
+            TimeSpan? intervalOverride = RefreshIntervalResolver.EffectiveOverrideSeconds(widget.RefreshIntervalSeconds, globalPoll) is { } seconds
                 ? TimeSpan.FromSeconds(seconds)
-                : globalPoll;
+                : null;
             _scheduler.Register(new WidgetRegistration(widget.Id, widget.ConnectionId, widget.RefreshTier, intervalOverride));
         }
     }

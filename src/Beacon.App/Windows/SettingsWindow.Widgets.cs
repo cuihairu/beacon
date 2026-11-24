@@ -55,7 +55,8 @@ internal sealed partial class SettingsWindow
             _widgetTierBox.Items.Add(new ComboBoxItem { Content = label, Tag = tier });
         }
         // 检测间隔覆盖（拍板：频率要可设）——不选=按刷新档默认；秒数落 WidgetConfig.RefreshIntervalSeconds
-        _widgetIntervalBox = new ComboBox { Header = "检测间隔（可选）", Width = 150 };
+        // SET-UX-10 正名：「检测间隔」→「此组件刷新频率」（继承链组件级一环，组件行标签同名展示）。
+        _widgetIntervalBox = new ComboBox { Header = "此组件刷新频率（不选=按继承）", Width = 200 };
         foreach (var (tag, label) in new[] { ("", "跟随刷新档"), ("30", "30 秒"), ("60", "1 分钟"), ("120", "2 分钟"), ("300", "5 分钟"), ("900", "15 分钟"), ("3600", "1 小时") })
         {
             var item = new ComboBoxItem { Content = label, Tag = tag };
@@ -73,6 +74,9 @@ internal sealed partial class SettingsWindow
 
         var form = new StackPanel { Spacing = 8, Padding = new Thickness(0, 4, 0, 0) };
         form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _widgetTypeBox, _widgetConnectionBox, _widgetTierBox, _widgetIntervalBox } });
+        // SET-UX-10：继承链与「手动刷新 vs 运行期退避」写进向导（文案与 RefreshIntervalResolver/调度一致）
+        form.Children.Add(Hint("刷新继承：此组件刷新频率 > 全局默认刷新间隔（常规页） > 刷新档；「手动刷新」档只在你点刷新时拉取。" +
+            "拉取连续失败时运行期会指数退避重试，恢复后回到配置节拍——退避不是配置频率。"));
         form.Children.Add(_widgetFields);
         form.Children.Add(_widgetColorBox);
         form.Children.Add(_widgetPinBox);
@@ -262,8 +266,8 @@ internal sealed partial class SettingsWindow
         var missingConnection = _runtime.Config.Connections.All(c => c.Id != widget.ConnectionId);
         var label = new TextBlock
         {
-            Text = $"{widget.Id} · {widget.RefreshTier}"
-                   + (widget.RefreshIntervalSeconds is { } seconds ? $" · {seconds}s" : "")
+            // SET-UX-10：行标签展示继承结论（来源+周期人话），与 RefreshIntervalResolver/调度同实现
+            Text = $"{widget.Id} · {RefreshIntervalResolver.Describe(widget.RefreshIntervalSeconds, _runtime.Config.App.PollIntervalSeconds, widget.RefreshTier)}"
                    + (widget.Pinned ? " · 已钉" : "")
                    + (widget.ColorOverride is { } color ? $" · 覆盖 {color}" : "")
                    + (missingConnection ? " · 连接缺失" : ""),

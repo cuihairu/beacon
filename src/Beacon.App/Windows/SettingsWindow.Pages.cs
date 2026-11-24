@@ -55,7 +55,8 @@ internal sealed partial class SettingsWindow
         _languageBox.SelectionChanged += (_, _) => SaveLanguage(); // SET-UX-01 单项保存：只写 Language
         // 全局检查频率（2026-10-09 用户令）：组件级「检测间隔」优先，未设组件级的按此走；改后立即重建调度。
         // SET-UX-01：预设外合法旧值（如 120 秒）补「自定义」项按原值回显——此前无档可选且全字段回写会把它洗回默认。
-        _pollBox = new ComboBox { Header = "检查频率（未单独设置间隔的组件）", Width = 240, HorizontalAlignment = HorizontalAlignment.Left };
+        // SET-UX-10 正名：「检查频率」→「默认刷新间隔」（与组件行「此组件刷新频率」同一套继承词汇）。
+        _pollBox = new ComboBox { Header = "默认刷新间隔（未单独设置的组件）", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_pollBox, "poll-interval-box"); // UIA 取证：检查频率改动驱动
         foreach (var preset in PollIntervalOptions.Presets)
         {
