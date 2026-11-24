@@ -1500,7 +1500,9 @@ function Select-ComboItemById([System.Windows.Automation.AutomationElement] $set
         }
         try { ($target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse() } catch { }
         Start-Sleep -Milliseconds 800
-        ($target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+        # Expand/Select 与 Collapse 同样容错（45356987498 AE3 实证：上轮选中弹层拆除竞态下 peer
+        # 短暂不挂 ExpandCollapse/SelectionItem → "Unsupported Pattern" 裸抛炸穿场景，3 轮重试形同虚设）
+        try { ($target.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand() } catch { }
         Start-Sleep -Seconds 1
         $item = Find-UiaById $settings $itemId 6
         if (!$item)
@@ -1512,13 +1514,17 @@ function Select-ComboItemById([System.Windows.Automation.AutomationElement] $set
         }
         if ($item)
         {
-            ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
-            Start-Sleep -Milliseconds 400
-            return
+            try
+            {
+                ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+                Start-Sleep -Milliseconds 400
+                return
+            }
+            catch { } # peer 模式短暂缺席：落到底部再睡，下一轮重取元素重试
         }
         Start-Sleep -Seconds 2
     }
-    throw "UIA 未找到下拉选项 $itemId（重取元素+Collapse 归零 3 轮重试仍未见）"
+    throw "UIA 未找到下拉选项 $itemId（重取元素+模式容错 3 轮重试仍未见/未选中）"
 }
 
 # 下拉当前选中项文本（SelectionPattern 首 selection 的 Name）——密度档回读断言用（场景 AA）
@@ -7844,6 +7850,10 @@ try
     }
     Save-FullScreenshot "SI-row-labels.png"
     Write-Host "场景 SI 标签断言通过：GLM=每 5 分钟·默认刷新间隔 / OVR=每 2 分钟·此组件刷新频率 + 继承链 hint"
+    # 标签断言停在 bigmodel 页——poll-interval-box 只在 general 页（Find-UiaById 只搜当前页树，
+    # 45356987498 SI 红即停错页找不到锚），切回常规页再驱动全局档
+    Invoke-Uia (Find-UiaById $settings "module-general" 10)
+    Start-Sleep -Seconds 2
     $siPollBox = Find-UiaById $settings "poll-interval-box" 10
     if (!$siPollBox) { Save-FullScreenshot "SI-FAIL-no-pollbox.png"; throw "断言失败（场景 SI）：poll-interval-box 缺失" }
     Select-ComboItemById $settings $siPollBox "poll-15"
