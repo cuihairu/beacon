@@ -6,7 +6,8 @@ namespace Beacon.App.Services;
 
 /// <summary>全局热键（RFC §38）：RegisterHotKey 挂在消息窗口上，设置可改，冲突时注册失败。
 /// SET-UX-11：失败保留原有效绑定——旧实现先 Unregister 再校验/试挂，无效输入或被占用会把能用的
-/// 热键摘没；现改为新键先试挂临时槽（id 2），成功才摘旧挂主槽，失败旧键原样保留。</summary>
+/// 热键摘没；现改为新键先试挂临时槽（id 2）证可用，再摘临时槽与旧键、挂主槽（同窗同组合双槽
+/// 会被系统拒 1409，临时槽不可与主槽并存），失败旧键原样保留。</summary>
 internal sealed class HotkeyService : IDisposable
 {
     private const int HotkeyId = 1;
@@ -49,18 +50,25 @@ internal sealed class HotkeyService : IDisposable
                 hotkey, Marshal.GetLastWin32Error(), _current);
             return false;
         }
-        // 新键可用：摘旧挂新（主槽）
+        // 试挂证可用：先摘临时槽再换主槽——同一窗口同组合挂双槽会被系统拒（1409，run 45381459081
+        // 日志实证：temp 槽不清就挂主槽必撞自己），顺序必须 temp 摘 → 主摘 → 主挂
+        NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, TempHotkeyId);
         NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, HotkeyId);
         if (!NativeMethods.RegisterHotKey(_messageWindow.Hwnd, HotkeyId, modifiers | NativeMethods.MOD_NOREPEAT, virtualKey))
         {
-            // 理论不可达（临时槽刚证可用、主槽同参数）；真发生=临时槽继续承载（消息路由两槽都认），热键不丢
+            // 极窄竞态（试挂通过后他进程抢注同组合）：回滚旧键保底，不静默丢绑定
             _logger.LogWarning(
-                "RegisterHotKey({Hotkey}) primary slot re-register failed, error {Error}——temp slot carries it",
+                "RegisterHotKey({Hotkey}) primary slot re-register failed, error {Error}",
                 hotkey, Marshal.GetLastWin32Error());
-            _current = hotkey;
-            return true;
+            var previous = _current;
+            _current = string.Empty;
+            if (previous.Length > 0 && TryParse(previous, out var prevModifiers, out var previousKey) &&
+                NativeMethods.RegisterHotKey(_messageWindow.Hwnd, HotkeyId, prevModifiers | NativeMethods.MOD_NOREPEAT, previousKey))
+            {
+                _current = previous; // 旧键抢回：绑定不丢，仅本次改键失败
+            }
+            return false;
         }
-        NativeMethods.UnregisterHotKey(_messageWindow.Hwnd, TempHotkeyId);
         _current = hotkey;
         return true;
     }
@@ -74,7 +82,7 @@ internal sealed class HotkeyService : IDisposable
 
     private void OnWindowMessage(uint message, IntPtr wParam, IntPtr lParam)
     {
-        if (message == NativeMethods.WM_HOTKEY && wParam.ToInt32() is HotkeyId or TempHotkeyId)
+        if (message == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
             Triggered?.Invoke();
         }
