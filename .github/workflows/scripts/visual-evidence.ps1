@@ -7468,6 +7468,39 @@ try
         Save-FullScreenshot "SF-FAIL-text-$stage.png"
         throw "断言失败（场景 SF3 $stage）：画廊文本未见「$needle」；实际：$(@(Get-WindowUiaTexts $hwnd) -join ' | ')"
     }
+    function Select-SurfaceSteady([System.Windows.Automation.AutomationElement] $root, [string] $itemId)
+    {
+        # SF3 实证（45290810531）：UIA Select 过的 ComboBox 重展偶发卡「弹层已闭但 Expanded 态未落」，
+        # Expand() 变 no-op → combo 子树与桌面根两域找全空。先强制 Collapse 归零再展开，3 轮重试
+        # （AE3 同位换面靠 style-reset+20s 轮询的长间隙蒙过；SF3 连续三连切必须自愈）。
+        foreach ($attempt in 1..3)
+        {
+            $combo = Find-UiaById $root "style-surface-box" 4
+            if ($combo)
+            {
+                try { ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Collapse() } catch { }
+                Start-Sleep -Milliseconds 800
+                ($combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
+                Start-Sleep -Seconds 1
+                $item = Find-UiaById $root $itemId 6
+                if (!$item)
+                {
+                    $item = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+                        [System.Windows.Automation.TreeScope]::Descendants,
+                        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $itemId)))
+                }
+                if ($item)
+                {
+                    ($item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+                    Start-Sleep -Milliseconds 400
+                    return
+                }
+            }
+            Start-Sleep -Seconds 2
+        }
+        Save-FullScreenshot "SF-FAIL-surface-switch.png"
+        throw "断言失败（场景 SF3）：UIA 未找到下拉选项 $itemId（Collapse 归零重展 3 轮仍未见）"
+    }
     $bigRow = Find-UiaById $settings "module-bigmodel" 10
     if (!$bigRow) { Save-FullScreenshot "SF-FAIL-no-bigmodel-row3.png"; throw "断言失败（场景 SF3）：UIA 未找到 module-bigmodel" }
     Invoke-Uia $bigRow
@@ -7485,9 +7518,7 @@ try
         throw "断言失败（场景 SF3）：初始应用按钮文案「$applyName」（期望「应用到桌面」——应用位置先行）"
     }
     Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "tile-follow"
-    $surfaceCombo = Find-UiaById $gallery "style-surface-box" 8
-    if (!$surfaceCombo) { Save-FullScreenshot "SF-FAIL-no-surface-combo.png"; throw "断言失败（场景 SF3）：UIA 未找到 style-surface-box" }
-    Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
+    Select-SurfaceSteady $gallery "style-surface-row"
     $applyBtn = Find-UiaById $gallery "style-apply" 8
     $applyName = ""
     if ($applyBtn) { try { $applyName = $applyBtn.Current.Name } catch { } }
@@ -7509,9 +7540,9 @@ try
     }
     if (!$rowApplied) { Save-FullScreenshot "SF-FAIL-row-not-saved.png"; throw "断言失败（场景 SF3）：看板状态行应用后 widgets.json components.row 未落盘" }
     Wait-GalleryText $galleryHandles[0] "此处已单独设置" 10 "row-set"
-    Select-ComboItemById $gallery $surfaceCombo "style-surface-tile"
+    Select-SurfaceSteady $gallery "style-surface-tile"
     Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "tile-still-follow"
-    Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
+    Select-SurfaceSteady $gallery "style-surface-row"
     Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
     $rowCleared = $false
     $deadline = (Get-Date).AddSeconds(20)
