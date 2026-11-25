@@ -1128,26 +1128,38 @@ function Get-CornerMaxDistance([IntPtr] $h, [int[]] $ref)
     return $max
 }
 
-# 岛态「弧外月牙透底」判据（CI 桌面特化版）：采底部两角月牙 (1,h-4)/(w-2,h-4) DIP（距底角圆心
-# (12,h-12) 13.6 > 半径 12 恒弧外，AH5d① 同点已绿基线；2026-11-25 肩归零后顶部无弧外区——旧肩月牙
-# 采样点 (4,5)/(w-5,5) 已落岛面内）。角落背后可能是 CI 桌面的宿主终端窗（深色非壁纸），与壁纸参照比
-# 会失真；参照取窗外左右各 30px 的同高两点：与月牙背后是同一层背景，无论那层是壁纸还是窗都自洽。
-# region 生效=月牙==同高参照（距≈0）、未生效=窗背板黑（距数百）。
+# 岛态「弧外月牙透底」判据（CI 桌面特化版）：采底部两角月牙的最外沿单像素——角对角线偏移 1/2 px 的
+# (Left+1,Bottom-1)/(Left+2,Bottom-2) 与 (Right-1,Bottom-1)/(Right-2,Bottom-2)，取每角较清的一点。
+# 为何不用旧点 (1,h-4)/(w-2,h-4)+span2：4 DIP 距底那行月牙只剩 3px 宽，2×2 取色框跨到弧边 AA 上，
+# 255+0 混出 125/149 灰（run 45495474490 实测 距375/距447 假红）——截图复核同点单像素=255 纯背景、
+# 弧界在其外 3px。span1 单像素 + 每角两点取较清=抗 arc 离散化左右不对称（54 点策略化后左角弧界在角内
+# 5px、右角 2.5px），又不会把断言洗白：region 未裁出时两角四点全黑，较清者仍数百。
+# 参照取窗外左右各 30px 的同高两点（角落背后可能是 CI 桌面宿主终端窗，与壁纸比会失真；与月牙背后同层
+# 背景则无论壁纸还是窗都自洽）。region 生效=月牙==同高参照（距≈0）、未生效=窗背板黑（距数百）。
 function Get-CrescentMaxDistance([IntPtr] $h)
 {
     $rect = [WinEnum]::ClientScreenRectOf($h)
     $scale = [WinEnum]::DpiScaleOf($h)
     $max = 0
     $detail = @()
-    foreach ($spec in @(
-            @(($rect.Left + [int](1 * $scale)), ($rect.Bottom - [int](4 * $scale)), ($rect.Left - 30)),
-            @(($rect.Right - [int](2 * $scale)), ($rect.Bottom - [int](4 * $scale)), ($rect.Right + 30))))
+    # 每条 = @(锚定方向, 窗外同高参照 X)；方向 1=左底角、-1=右底角（DIP 偏移逐条内乘 DPI 比例）
+    foreach ($side in @(@(1, ($rect.Left - 30)), @(-1, ($rect.Right + 30))))
     {
-        $c = Get-AvgColor $spec[0] $spec[1] 2
-        $r = Get-AvgColor $spec[2] $spec[1] 2
-        $d = ([Math]::Abs($c[0] - $r[0]) + [Math]::Abs($c[1] - $r[1]) + [Math]::Abs($c[2] - $r[2]))
-        Write-Host "月牙采样 ($($spec[0]),$($spec[1]))=$($c -join ',') vs 同高参照 ($($spec[2]),$($spec[1]))=$($r -join ',') 距$d"
-        if ($d -gt $max) { $max = $d }
+        $dir = $side[0]
+        $refX = $side[1]
+        $best = -1
+        foreach ($off in @(1, 2))
+        {
+            $x = $rect.Left + [int]($off * $scale)
+            if ($dir -lt 0) { $x = $rect.Right - [int]($off * $scale) }
+            $y = $rect.Bottom - [int]($off * $scale)
+            $c = Get-AvgColor $x $y 1
+            $r = Get-AvgColor $refX $y 1
+            $d = ([Math]::Abs($c[0] - $r[0]) + [Math]::Abs($c[1] - $r[1]) + [Math]::Abs($c[2] - $r[2]))
+            Write-Host "月牙采样 底角偏移$off ($x,$y)= $($c -join ',') vs 同高参照 ($refX,$y)= $($r -join ',') 距$d"
+            if ($best -lt 0 -or $d -lt $best) { $best = $d }
+        }
+        if ($best -gt $max) { $max = $best }
     }
     return $max
 }
@@ -2180,17 +2192,32 @@ try
     Invoke-Uia $row
     Start-Sleep -Seconds 2
     # SET-UX-ROW-1②：连接行开关同门（label/stateChip/enabledToggle 同构横排，本单同批改 Grid
-    # 星号列）——常规页 _scopeType=null 列出全部连接，6 个 conn-toggle 右缘极差 ≤1px（星号列右界
-    # 恒定+开关 MinWidth 定宽）且完整可见（右缘 ≤ 设置窗右缘−8）。
+    # 星号列）——连接区只在 Provider 页构建（_connectionList 于 BuildProviderPage 创建，常规/外观/
+    # 高级页无连接区），且按页 _scopeType 过滤只列本家连接，故断言必须逐 Provider 页取本页 conn-toggle：
+    # 5 家各 1 行 + ark 页 save-flow 新增 ark-e2e 共 6 个 conn-toggle 右缘极差 ≤1px（星号列右界恒定+
+    # 开关 MinWidth 定宽）且完整可见（右缘 ≤ 设置窗右缘−8）。
     $row1ConnRights = @()
-    foreach ($connId in @("ark-main","kimi-main","mimo-main","ds-main","qwen-main","ark-e2e"))
+    foreach ($row1Page in @(
+        @{ module = "ark"; conn = "ark-main" },
+        @{ module = "ark"; conn = "ark-e2e" },
+        @{ module = "kimi"; conn = "kimi-main" },
+        @{ module = "mimo"; conn = "mimo-main" },
+        @{ module = "deepseek"; conn = "ds-main" },
+        @{ module = "qwen"; conn = "qwen-main" }))
     {
+        $row1ConnModule = Find-UiaById $settings "module-$($row1Page.module)" 10
+        if (!$row1ConnModule) { throw "断言失败（SET-UX-ROW-1）：UIA 未找到模块行 module-$($row1Page.module)" }
+        Invoke-Uia $row1ConnModule
+        Start-Sleep -Seconds 2
+        $connId = $row1Page.conn
         $row1ConnSwitch = Find-UiaById $settings "conn-toggle-$connId" 6
         if (!$row1ConnSwitch)
         {
             Save-FullScreenshot "ROW1-FAIL-no-conn-toggle-$connId.png"
-            throw "断言失败（SET-UX-ROW-1）：常规页未找到 conn-toggle-$connId——连接行开关缺失（连接列表未全量展示？）"
+            throw "断言失败（SET-UX-ROW-1）：$($row1Page.module) 页未找到 conn-toggle-$connId——连接行开关缺失（连接区未构建？）"
         }
+        try { ($row1ConnSwitch.GetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern)).ScrollIntoView() } catch { }
+        Start-Sleep -Milliseconds 250
         $row1ConnRect = $null
         try { $row1ConnRect = $row1ConnSwitch.Current.BoundingRectangle } catch { }
         $row1WinRect = $null
@@ -2219,6 +2246,11 @@ try
         throw "断言失败（SET-UX-ROW-1）：连接行开关右缘极差 ${row1ConnDelta}px（期望 ≤1）：$($row1ConnRights -join ',')——开关列未对齐"
     }
     Write-Host "SET-UX-ROW-1 连接行断言通过：6 开关右缘极差 ${row1ConnDelta}px，全部完整可见（右缘 $($row1ConnRights -join ',')）"
+    # 逐 Provider 页取完连接行后当前页仍是 qwen——检查频率项在常规页，先切回再找锚点
+    $row = Find-UiaById $settings "module-general" 10
+    if (!$row) { throw "断言失败（场景 D）：连接行断言后未找到模块行 module-general" }
+    Invoke-Uia $row
+    Start-Sleep -Seconds 2
     $pollBox = Find-UiaById $settings "poll-interval-box" 10
     if (!$pollBox) { throw "UIA 未找到 poll-interval-box（检查频率设置项缺失？）" }
     Save-FullScreenshot "D-general-poll-interval.png"
