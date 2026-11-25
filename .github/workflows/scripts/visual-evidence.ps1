@@ -6383,14 +6383,15 @@ try
     # 覆盖的每个日期分别读；起点前缀长度只对首日文件裁。
     $adFiles = @()
     $adSlice = ''
-    $adDay = $adDay0
-    while ($adDay -le (Get-Date))
+    $adDay = $adDay0.Date # 按日历日走（不是 +24h：基线 23:58+24h=次日 23:58 已越过读取时刻 00:13，
+    # 次日文件永远走不到——首版实现实证）。前缀裁剪同样按 .Date 对表：$len0 只对基线当天的文件有意义。
+    while ($adDay -le (Get-Date).Date)
     {
         $adF = Join-Path (Join-Path $configDir "logs") ("beacon-" + $adDay.ToString("yyyyMMdd") + ".log")
         if (-not (Test-Path $adF)) { $adDay = $adDay.AddDays(1); continue }
         $adFiles += $adF
         $adTxt = Get-Content $adF -Raw -Encoding UTF8
-        if ($adDay -eq $adDay0 -and ($adTxt.Length -ge $len0)) { $adTxt = $adTxt.Substring($len0) }
+        if ($adDay -eq $adDay0.Date -and ($adTxt.Length -ge $len0)) { $adTxt = $adTxt.Substring($len0) }
         $adSlice += $adTxt
         $adDay = $adDay.AddDays(1)
     }
