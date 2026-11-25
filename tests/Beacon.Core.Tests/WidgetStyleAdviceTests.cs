@@ -115,4 +115,40 @@ public sealed class WidgetStyleAdviceTests
         Assert.Equal("状态读数", DisplayTemplateKinds.Describe(DisplayTemplateKinds.Status));
         Assert.Equal("bogus", DisplayTemplateKinds.Describe("bogus")); // 未认词表回原词
     }
+
+    // —— SET-UX-ROW-2：切应用位置=清单跟着变（用户报「有些根本不是对应显示方式选项」）——
+
+    [Fact]
+    public void RowSurface_BlocksTallTemplatesWithReason()
+    {
+        // 看板状态行=单行紧凑带：行高预算 40 DIP，超预算模板置灰带原因（不再静默剔除）。
+        // 口径含 CI 实证——AE3/SF3 在 row 面套圆环(34)并断言落盘，故 34 级单行族不得被挡。
+        var advice = WidgetStyleAdvice.List(DisplayTemplateKinds.ProgressOnly, State(null), "row");
+        var ok = advice.Where(row => row.Ok).ToArray();
+        Assert.Equal(4, ok.Length); // 单行族全在：横条(32)/圆环(34)/水位(34)/状态行(32)
+        Assert.Equal("bar", ok[0].TemplateId);
+        Assert.True(ok[0].Recommended); // 推荐档仍取注册表序首位兼容项
+        Assert.Equal("statusline", ok[3].TemplateId);
+        var blocked = advice.Where(row => !row.Ok).ToArray();
+        Assert.Equal(3, blocked.Length);
+        Assert.All(blocked, row => Assert.Contains("超看板状态行预算", row.Reason!)); // 数字卡/额度多窗/多指标
+    }
+
+    [Fact]
+    public void TileSurface_KeepsTallTemplatesCompatible()
+    {
+        // 桌面 tile 面不受紧凑行预算约束：同一组件切回桌面，被行高预算挡住的三件恢复可用
+        var advice = WidgetStyleAdvice.List(DisplayTemplateKinds.ProgressOnly, State(null), "tile");
+        Assert.All(advice.Take(5), row => Assert.True(row.Ok));
+        Assert.DoesNotContain(advice, row => row.Reason is { } reason && reason.Contains("超看板状态行预算"));
+    }
+
+    [Fact]
+    public void DetailSurface_HasNoRowHeightBudget()
+    {
+        // 详情面=全尺寸呈现，行高预算不适用；口径与 tile 同（仅能力维度）
+        var detail = WidgetStyleAdvice.List(DisplayTemplateKinds.ProgressOnly, State(null), "detail");
+        Assert.Equal(5, detail.Count(row => row.Ok));
+        Assert.DoesNotContain(detail, row => row.Reason is { } reason && reason.Contains("超看板状态行预算"));
+    }
 }

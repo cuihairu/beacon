@@ -7748,6 +7748,23 @@ try
         Save-FullScreenshot "SF-FAIL-apply-label-row.png"
         throw "断言失败（场景 SF3）：切 row 后应用按钮文案「$applyName」（期望「应用到看板状态行」）"
     }
+    # SET-UX-ROW-2：样式清单随所选应用面过滤——紧凑单行带挡多行结构（数字卡 48 DIP 置灰）、
+    # 放行单行族（圆环 34 DIP 可用）。AE3 亦在同面套圆环，故可用集合必须是「面相关」的。
+    $numberOnRow = Find-UiaById $gallery "style-item-number" 8
+    $ringOnRow = Find-UiaById $gallery "style-item-ring" 8
+    if (!$numberOnRow -or !$ringOnRow)
+    {
+        Save-FullScreenshot "SF-FAIL-row-filter-anchors.png"
+        throw "断言失败（场景 SF3）：切 row 后缺数字卡/圆环样式条目锚（清单未按所选面重建？）"
+    }
+    $numberEnabledOnRow = $false; $ringEnabledOnRow = $true
+    try { $numberEnabledOnRow = $numberOnRow.Current.IsEnabled } catch { }
+    try { $ringEnabledOnRow = $ringOnRow.Current.IsEnabled } catch { }
+    if ($numberEnabledOnRow -or !$ringEnabledOnRow)
+    {
+        Save-FullScreenshot "SF-FAIL-row-filter.png"
+        throw "断言失败（场景 SF3）：row 面样式适用性未随所选面变（数字卡 enabled=$numberEnabledOnRow 期望置灰；圆环 enabled=$ringEnabledOnRow 期望可用）——SET-UX-ROW-2"
+    }
     Wait-GalleryText $galleryHandles[0] "跟随默认样式" 10 "row-follow"
     Invoke-StyleItemClick $galleryHandles[0] "style-item-ring" "样式 · 圆环"
     Invoke-Uia (Find-UiaById $gallery "style-apply" 8)

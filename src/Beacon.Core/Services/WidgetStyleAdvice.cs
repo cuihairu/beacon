@@ -20,15 +20,19 @@ public static class WidgetStyleAdvice
         bool Recommended,
         string? Reason);
 
-    /// <summary>按能力给全量模板的建议表（兼容优先、不兼容殿后；tile 面口径，与画廊主列表一致）。</summary>
-    public static IReadOnlyList<StyleAdvice> List(IReadOnlySet<string>? dataKinds, WidgetState? state)
+    /// <summary>按能力给全量模板的建议表（兼容优先、不兼容殿后）。<paramref name="surface"/> 默认 tile，
+    /// 与画廊主列表口径一致；传 row/detail 即按该面适用性过滤（SET-UX-ROW-2：切位置=清单跟着变）。</summary>
+    public static IReadOnlyList<StyleAdvice> List(
+        IReadOnlySet<string>? dataKinds,
+        WidgetState? state,
+        string surface = "tile")
     {
         List<StyleAdvice> applicable = [];
         List<StyleAdvice> blocked = [];
         var recommended = true;
         foreach (var template in DisplayTemplates.All)
         {
-            var verdict = DisplayTemplates.CanApply(template, dataKinds, "tile", state);
+            var verdict = DisplayTemplates.CanApply(template, dataKinds, surface, state);
             if (verdict.Ok)
             {
                 applicable.Add(new StyleAdvice(template.Id, template.Name, template.Desc, Ok: true, recommended, null));

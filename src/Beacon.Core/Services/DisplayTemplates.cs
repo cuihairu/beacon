@@ -92,6 +92,12 @@ public static class DisplayTemplates
     private const string Selector = ComponentBindingSource.KindSelector;
     private const string Const = ComponentBindingSource.KindConst;
 
+    /// <summary>看板状态行紧凑带的行高预算（DIP，2026-11-25 用户令 SET-UX-ROW-2）：模板声明的最小行高
+    /// 超出即不适用该面。口径取 40 的依据是 CI 实证（取证场景 AE3/SF3 在 row 面套用圆环并断言落盘
+    /// 通过）——单行族（横条 32 / 圆环 34 / 水位 34 / 状态行 32）行内可承载；被挡的是 48/60 的多行
+    /// 结构（数字卡/额度多窗/本机多指标），紧凑单行带塞不下。</summary>
+    public const double RowSurfaceHeightBudgetDips = 40;
+
     /// <summary>模板声明：Id 稳定键 / Name 中文名 / Desc 一句话说明 / Requires 数据能力门槛 /
     /// Parameters 可调参数（生成器的参数覆盖表）/ MinTileHeightDips tile 面最小高 /
     /// Builder 生成树根（每次调用新实例，参数覆盖在返回前就地生效）。</summary>
@@ -241,6 +247,14 @@ public static class DisplayTemplates
         if (surface is not ("tile" or "row" or "detail"))
         {
             return TemplateCompatibility.No($"不支持的面：{surface}（仅 tile / row / detail）");
+        }
+        if (surface == "row" && template.MinTileHeightDips > RowSurfaceHeightBudgetDips)
+        {
+            // SET-UX-ROW-2：面维度适用性——高度超预算的模板对紧凑行不适用，置灰带原因（不再静默剔除）。
+            return TemplateCompatibility.No(
+                $"该样式最小行高 {template.MinTileHeightDips.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                + $" DIP 超看板状态行预算 {RowSurfaceHeightBudgetDips.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+                + " DIP（紧凑单行带不放多行结构：大数字/多窗摘要/并列指标）");
         }
         var missing = template.Requires
             .Where(required => dataKinds is null

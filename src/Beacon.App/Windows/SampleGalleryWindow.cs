@@ -144,6 +144,7 @@ internal sealed class SampleGalleryWindow : Window
     private TextBlock _feedback = null!;
     private TextBlock _previewCaption = null!;
     private TextBlock _inheritanceCaption = null!; // 继承态行（跟随默认 / 此处已单独设置 · X；SET-UX-06）
+    private TextBlock _catalogCaption = null!; // 清单副题（能力摘要 + 应用面过滤口径；切位置须刷新）
     private Button _applyButton = null!; // 应用按钮（文案随所选位置变化：应用到桌面 / 应用到看板状态行 / …）
 
     /// <param name="applyToSettings">「载入组件树编辑器」回调：推进设置页编辑器，返回反馈文案（✗ 前缀=失败）。</param>
@@ -299,7 +300,8 @@ internal sealed class SampleGalleryWindow : Window
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = _heading,
         });
-        catalog.Children.Add(ComponentText.Caption(CatalogCaption(), _muted));
+        _catalogCaption = ComponentText.Caption(CatalogCaption(), _muted);
+        catalog.Children.Add(_catalogCaption);
 
         _catalogList = new ListView { IsItemClickEnabled = true, Height = 452 };
         AutomationProperties.SetAutomationId(_catalogList, "style-catalog-list");
@@ -317,22 +319,7 @@ internal sealed class SampleGalleryWindow : Window
         {
             // SET-UX-05（2026-11-24 原型落地批2）：全量模板上列——兼容项在前（首个=推荐档），
             // 不兼容项殿后置灰并直显 CanApply 原因（不再静默剔除：为什么没有进度样式要看得见）。
-            foreach (var advice in WidgetStyleAdvice.List(_dataKinds, _targetState))
-            {
-                var title = advice.Recommended ? $"{advice.Name} · 推荐" : advice.Name;
-                var line = new StackPanel { Spacing = 1 };
-                line.Children.Add(new TextBlock { Text = title, FontSize = DesignTokens.FontBody, Foreground = _body });
-                line.Children.Add(new TextBlock
-                {
-                    Text = advice.Ok ? advice.Desc : $"不可用：{advice.Reason}",
-                    FontSize = DesignTokens.FontCaption,
-                    Foreground = _muted,
-                    TextWrapping = TextWrapping.Wrap,
-                });
-                var item = new ListViewItem { Content = line, Tag = advice.TemplateId, Padding = new Thickness(8, 5, 8, 5), IsEnabled = advice.Ok };
-                AutomationProperties.SetAutomationId(item, $"style-item-{advice.TemplateId}"); // CI：样式条目定位（置灰行也带锚，取证可读原因）
-                _catalogList.Items.Add(item);
-            }
+            PopulateStyleCatalog(_applySurface);
         }
         _catalogList.ItemClick += OnCatalogItemClicked;
         // ItemClick 依赖完整指针语义：合成输入（CI SendInput）只翻选中位不触发该事件（run 40560895375
@@ -532,9 +519,11 @@ internal sealed class SampleGalleryWindow : Window
         }
         // SET-UX-05：能力摘要单源（WidgetStyleAdvice.CapabilityNote）——按类型声明能力给一句说明，
         // 置灰原因在条目行内直显，副题不再复述「有没有百分比」的二分口径。
-        return _targetState is null
+        var capability = _targetState is null
             ? $"{WidgetStyleAdvice.CapabilityNote(_dataKinds)}（当前等待数据，样式先应用、数据到了即显。）"
             : WidgetStyleAdvice.CapabilityNote(_dataKinds);
+        // SET-UX-ROW-2：清单是「能力 + 应用面」双维度筛选，副题把面口径也讲明（切位置=清单跟着变）
+        return $"{capability} 清单按「{SurfaceLabel(_applySurface)}」适用性过滤——超出该面高度预算的样式置灰并给原因。";
     }
 
     private string PreviewCaptionText()
@@ -564,6 +553,56 @@ internal sealed class SampleGalleryWindow : Window
             {
                 _catalogList.SelectedItem = item;
                 return;
+            }
+        }
+    }
+
+    /// <summary>定向模式样式清单填充（SET-UX-05 + SET-UX-ROW-2 面维度）：按「类型数据能力 + 应用面」
+    /// 给全量模板上列——兼容项在前（首个=推荐档），不兼容项殿后置灰并直显 CanApply 原因（不再静默
+    /// 剔除：为什么该位置没有某个样式要看得见）。清 Items 重建，是切位置重列的单一入口。</summary>
+    private void PopulateStyleCatalog(string surface)
+    {
+        _catalogList.Items.Clear();
+        foreach (var advice in WidgetStyleAdvice.List(_dataKinds, _targetState, surface))
+        {
+            var title = advice.Recommended ? $"{advice.Name} · 推荐" : advice.Name;
+            var line = new StackPanel { Spacing = 1 };
+            line.Children.Add(new TextBlock { Text = title, FontSize = DesignTokens.FontBody, Foreground = _body });
+            line.Children.Add(new TextBlock
+            {
+                Text = advice.Ok ? advice.Desc : $"不可用：{advice.Reason}",
+                FontSize = DesignTokens.FontCaption,
+                Foreground = _muted,
+                TextWrapping = TextWrapping.Wrap,
+            });
+            var item = new ListViewItem { Content = line, Tag = advice.TemplateId, Padding = new Thickness(8, 5, 8, 5), IsEnabled = advice.Ok };
+            AutomationProperties.SetAutomationId(item, $"style-item-{advice.TemplateId}"); // CI：样式条目定位（置灰行也带锚，取证可读原因）
+            _catalogList.Items.Add(item);
+        }
+    }
+
+    /// <summary>切应用位置时按该面适用性重列清单（SET-UX-ROW-2：切位置=清单跟着变）。当前模板对该面
+    /// 不适用时落到首个可用项——表单/预览/应用按钮随之指向合法目标，不留「点了应用才报错」的死位。</summary>
+    private void RefreshStyleCatalog()
+    {
+        if (!IsTargeted)
+        {
+            return;
+        }
+        PopulateStyleCatalog(_applySurface);
+        if (_catalogCaption is not null)
+        {
+            _catalogCaption.Text = CatalogCaption(); // 副题带「按该面适用性过滤」口径，随位置改
+        }
+        if (_catalogList.SelectedItem is not ListViewItem { IsEnabled: true })
+        {
+            foreach (var item in _catalogList.Items)
+            {
+                if (item is ListViewItem { IsEnabled: true })
+                {
+                    _catalogList.SelectedItem = item;
+                    break;
+                }
             }
         }
     }
@@ -773,7 +812,14 @@ internal sealed class SampleGalleryWindow : Window
         combo.SelectedIndex = IndexOfTag(combo, _applySurface);
         combo.SelectionChanged += (_, _) =>
         {
+            var previousSurface = _applySurface;
             _applySurface = TagOf(combo);
+            // SET-UX-ROW-2：真切面才重列清单（构造期 SelectedIndex 赋值只置当前面，不重建——
+            // 建期重建会清掉恢复流预填的选中位）。
+            if (!string.Equals(previousSurface, _applySurface, StringComparison.Ordinal))
+            {
+                RefreshStyleCatalog();
+            }
             UpdateApplyLabel(); // 应用按钮文案随位置变（应用到桌面 / 应用到看板状态行 / 应用到详情）
             RefreshInheritanceCaption(); // 继承态行随位置刷新
             RefreshPreviewAndJson();
