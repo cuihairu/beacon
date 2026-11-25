@@ -6715,7 +6715,7 @@ try
     # 双面应用（验收②/G02）：同一会话切面 row=圆环再应用 → 双面并存
     $surfaceCombo = Find-UiaById $gallery "style-surface-box" 8
     if (!$surfaceCombo) { throw "断言失败（场景 AE3）：UIA 未找到 style-surface-box（锚点丢失？）" }
-    Select-ComboItemById $gallery $surfaceCombo "style-surface-row"
+    Select-ComboItemById $gallery (Find-UiaById $gallery "style-surface-box" 8) "style-surface-row" # 面切后 BuildForm 重建整表单 → combo peer 换代，缓存引用会失效
     Invoke-StyleItemClick $galleryHandles[0] "style-item-ring" "样式 · 圆环"
     Invoke-Uia (Find-UiaById $gallery "style-apply" 8)
     $twoFaces = $false
@@ -6757,7 +6757,7 @@ try
     }
     Write-Host "场景 AE3（按位置恢复）通过：row 面清空 + tile 面保留——SET-UX-06"
     # 切回 tile 面再恢复 → 全部面清空回传统渲染（G10 兜底保留）
-    Select-ComboItemById $gallery $surfaceCombo "style-surface-tile"
+    Select-ComboItemById $gallery (Find-UiaById $gallery "style-surface-box" 8) "style-surface-tile" # 面切已重列清单换 peer，每次现取（SF3 同款，6760 旧引用三连红 45601056698）
     Invoke-Uia (Find-UiaById $gallery "style-reset" 8)
     $resetDone = $false
     $deadline = (Get-Date).AddSeconds(20)
@@ -7587,10 +7587,13 @@ try
         throw "AH5e band 迁移复验失败：BeaconIslandEdgeBand 窗不在——展开→收起后边带自隐未回场"
     }
     $bandRect5e = [WinEnum]::RectOf($bandHwnd5e)
-    $expL5e = $rect5e.Left - 4
-    $expT5e = $rect5e.Top - 4
-    $expW5e = ($rect5e.Right - $rect5e.Left) + 8
-    $expH5e = ($rect5e.Bottom - $rect5e.Top) + 8
+    # band 钉在岛 clientRect（ULW dst=client−4），而 RectOf 是含 3px 不可见 resize 边框的外框
+    # （ChromeSizePx，无边框 presenter 仍留边框）——用外框算期望恒偏 3/6px，与 AH5d⑥ 的 client 口径对齐
+    $client5e = [WinEnum]::ClientScreenRectOf($islandHandles5e[0])
+    $expL5e = $client5e.Left - 4
+    $expT5e = $client5e.Top - 4
+    $expW5e = ($client5e.Right - $client5e.Left) + 8
+    $expH5e = ($client5e.Bottom - $client5e.Top) + 8
     $off5e = [Math]::Max([Math]::Abs($bandRect5e.Left - $expL5e), [Math]::Abs($bandRect5e.Top - $expT5e))
     $sz5e = [Math]::Max([Math]::Abs(($bandRect5e.Right - $bandRect5e.Left) - $expW5e), [Math]::Abs(($bandRect5e.Bottom - $bandRect5e.Top) - $expH5e))
     if ($off5e -gt 1 -or $sz5e -gt 1)
@@ -8140,8 +8143,22 @@ try
         return $texts
     }
 
-    $siGeneral = @(Get-SiTexts $settings)
-    if (@($siGeneral | Where-Object { $_ -like "*组件覆盖优先*" }).Count -eq 0)
+    # 首拍就绪门：Find-SettingsWindow 命中窗名即返回，右栏 XAML 可能尚未进 UIA 树
+    # （45601056698 实测启动 1.5s 内树为空、客户区未绘制）——逐拍重取，口径同 Find-UiaById
+    $siGeneral = @()
+    $siHintReady = $false
+    $siDeadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $siDeadline)
+    {
+        $siGeneral = @(Get-SiTexts $settings)
+        if (@($siGeneral | Where-Object { $_ -like "*组件覆盖优先*" }).Count -gt 0)
+        {
+            $siHintReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$siHintReady)
     {
         Save-FullScreenshot "SI-FAIL-no-poll-hint.png"
         throw "断言失败（场景 SI）：常规页未见全局刷新间隔 hint（组件覆盖优先）——SET-UX-10 正名 hint 缺失"
