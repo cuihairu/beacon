@@ -1136,9 +1136,22 @@ function Get-CornerMaxDistance([IntPtr] $h, [int[]] $ref)
 # 5px、右角 2.5px），又不会把断言洗白：region 未裁出时两角四点全黑，较清者仍数百。
 # 参照取窗外左右各 30px 的同高两点（角落背后可能是 CI 桌面宿主终端窗，与壁纸比会失真；与月牙背后同层
 # 背景则无论壁纸还是窗都自洽）。region 生效=月牙==同高参照（距≈0）、未生效=窗背板黑（距数百）。
+# 采样前须等窗位/宽静止：岛宽是内容测量值，启动与 status 变化会重排（run 45495474490 trace 实证
+# 0.29s 内 client=249x32→339x32、dst=411→338→333，采样正撞在半途）——窗还在挪时 1px 点采到的是
+# 移动中的弧边 AA 而非月牙（距 375/447 假红的另一半根因）。等 400ms 稳定，封顶 6s 防死循环。
 function Get-CrescentMaxDistance([IntPtr] $h)
 {
     $rect = [WinEnum]::ClientScreenRectOf($h)
+    $settled = $false
+    $deadline = (Get-Date).AddSeconds(6)
+    while (-not $settled -and (Get-Date) -lt $deadline)
+    {
+        $again = [WinEnum]::ClientScreenRectOf($h)
+        $settled = ($again.Left -eq $rect.Left) -and ($again.Right -eq $rect.Right) -and ($again.Bottom -eq $rect.Bottom)
+        if (-not $settled) { $rect = $again }
+        Start-Sleep -Milliseconds 200
+    }
+    if (-not $settled) { Write-Host "警告：底角月牙采样前窗位未稳定（封顶 6s），按当前 rect 采" }
     $scale = [WinEnum]::DpiScaleOf($h)
     $max = 0
     $detail = @()
