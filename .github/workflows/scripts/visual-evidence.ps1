@@ -676,7 +676,7 @@ function Start-MockServer
         # NN% 文本轮询可锚
         $bigmodelP20 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":20,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":15,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
         $bigmodelP60 = '{"data":{"level":"pro","limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":60,"nextResetTime":1771000000000},{"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":10,"nextResetTime":1772000000000},{"type":"TIME_LIMIT","unit":5,"number":1,"percentage":20,"nextResetTime":0}]}}'
-        # 档位文件：内容 "error"=95% / "p0"=0% / "p52"=52% / "p100"=100% / "p20"=20% / "p60"=60%，空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
+        # 档位文件：内容 "error"=95% / "p0"=0% / "p52"=52% / "p100"=100% / "p20"=20% / "p60"=60% / "fail"=HTTP 500（场景 SH 失败→重试链），空/缺 = 38% 态（场景侧 Set-Content / Remove-Item 切换）
         $modeFile = Join-Path $env:TEMP "beacon-mock-mode.txt"
         $kimi = '{"usage":{"limit":1000,"used":300,"remaining":700,"resetTime":"2026-10-13"},"limits":[{"window":{"duration":5,"timeUnit":"HOUR"},"detail":{"limit":200,"remaining":150,"resetTime":"2026-10-09T18:00"}}],"user":{"membership":{"level":"pro"}}}'
         $deepseek = '{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"420.50","granted_balance":"20.00","topped_up_balance":"400.50"}]}'
@@ -706,14 +706,23 @@ function Start-MockServer
                     "/api/monitor/usage/quota/limit" {
                         $mode = ""
                         try { $mode = (Get-Content $modeFile -Raw -ErrorAction Stop).Trim() } catch { }
-                        # 38% 健康链 / 95% Error 链 / 0%-52%-100% 四态链 / 20%-60% 水族箱三态链按档位文件翻转
-                        $body = if ($mode -eq "error") { $bigmodelError }
-                            elseif ($mode -eq "p0") { $bigmodelP0 }
-                            elseif ($mode -eq "p52") { $bigmodelP52 }
-                            elseif ($mode -eq "p100") { $bigmodelP100 }
-                            elseif ($mode -eq "p20") { $bigmodelP20 }
-                            elseif ($mode -eq "p60") { $bigmodelP60 }
-                            else { $bigmodel }
+                        # 38% 健康链 / 95% Error 链 / 0%-52%-100% 四态链 / 20%-60% 水族箱三态链按档位文件翻转；
+                        # fail 档回 HTTP 500（场景 SH 失败链：chip 落「✗ 测试失败」，重试前不解锁快速添加）
+                        if ($mode -eq "fail")
+                        {
+                            $ctx.Response.StatusCode = 500
+                            $body = '{"error":"mock-injected-failure"}'
+                        }
+                        else
+                        {
+                            $body = if ($mode -eq "error") { $bigmodelError }
+                                elseif ($mode -eq "p0") { $bigmodelP0 }
+                                elseif ($mode -eq "p52") { $bigmodelP52 }
+                                elseif ($mode -eq "p100") { $bigmodelP100 }
+                                elseif ($mode -eq "p20") { $bigmodelP20 }
+                                elseif ($mode -eq "p60") { $bigmodelP60 }
+                                else { $bigmodel }
+                        }
                     }
                     "/user/balance" { $body = $deepseek }
                     "/v1/models" { $body = $mimo }
@@ -7999,7 +8008,8 @@ catch
 # 左栏分组头（数据来源/备份与诊断，一级四入口无头）在树；字段索引（设置词+旧名）回车进页展开分组、
 # 滚动并聚焦控件本体：五路跳转链全走并断言 FocusedElement 的 AutomationId=目标锚
 # （透明度→desktop-opacity-slider / 检查频率→poll-interval-box / 贴边收起→edge-collapse-toggle /
-# GitHub→conn-save-button / 旧名「悬浮形态」→desktop-layout-box），模块级命中（组件中心）整页切换。
+# GitHub→conn-save-button / 旧名「悬浮形态」→desktop-layout-box），模块级命中（组件中心）整页切换；
+# 清词复原断头行回「N 个模块」非过滤形态，无结果词断「0/N 个模块匹配」+ 模块行全滤除。
 try
 {
     # 状态条播岛档（SET-UX-ROW-3）：关闭档下桌面悬浮设置整区隐藏（只留看板开关），
@@ -8050,11 +8060,24 @@ try
     if (!(Find-UiaById $settings "component-center-bigmodel.usage:GLM" 10)) { Save-FullScreenshot "SG-FAIL-components-page.png"; throw "断言失败（场景 SG）：搜索「组件中心」回车后未进组件中心页（GLM 行不在树）——模块级跳转回归" }
     Save-FullScreenshot "SG-jump-components.png"
     Write-Host "场景 SG 模块级跳转通过：「组件中心」→ 组件中心页"
+    # 清词复原 + 无结果档（SET-UX-08，2026-11-26 补 CI 门）：
+    # 清词 → module-advanced 回树 + 头行回「N 个模块」非过滤形态；
+    # 无结果词 → 头行报「0/N 个模块匹配」+ 模块行全滤除（module-github 离树）。
     ($sgBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("")
     Start-Sleep -Milliseconds 600
     if (!(Find-UiaById $settings "module-advanced" 6)) { throw "断言失败（场景 SG）：清词后 module-advanced 未回树——过滤复位回归" }
+    $sgCleared = Get-WindowUiaTexts ([IntPtr]$settings.Current.NativeWindowHandle)
+    if (!($sgCleared | Where-Object { $_ -match '^配置中心 · \d+ 个模块$' })) { Save-FullScreenshot "SG-FAIL-clear-header.png"; throw "断言失败（场景 SG）：清词后头行未回「N 个模块」非过滤形态——计数头回归" }
+    Write-Host "场景 SG 清词复原通过：module-advanced 回树 + 头行回非过滤形态"
+    ($sgBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("绝不匹配的设置词XYZQ")
+    Start-Sleep -Milliseconds 900
+    $sgNoHit = Get-WindowUiaTexts ([IntPtr]$settings.Current.NativeWindowHandle)
+    if (!($sgNoHit | Where-Object { $_ -match '^配置中心 · 0/\d+ 个模块匹配' })) { Save-FullScreenshot "SG-FAIL-no-result-header.png"; throw "断言失败（场景 SG）：无结果档头行未见「0/N 个模块匹配」——过滤计数回归" }
+    if (Find-UiaById $settings "module-github" 3) { Save-FullScreenshot "SG-FAIL-no-result-row.png"; throw "断言失败（场景 SG）：无结果档 module-github 仍在树——模块行未滤除" }
+    Save-FullScreenshot "SG-no-result.png"
+    Write-Host "场景 SG 无结果档通过：0/N 匹配头行 + 模块行全滤除"
     Stop-Beacon
-    Write-Host "场景 SG 通过：分组头 + 五路字段跳转聚焦 + 旧名兼容 + 模块级跳转 + 清词复原——SET-UX-08"
+    Write-Host "场景 SG 通过：分组头 + 五路字段跳转聚焦 + 旧名兼容 + 模块级跳转 + 清词复原 + 无结果档——SET-UX-08"
 }
 catch
 {
@@ -8065,10 +8088,10 @@ catch
 }
 
 # —— 场景 SH：数据来源按接入状态组织（SET-UX-09，2026-10-20 巡检单批3 CI 代验）——
-# 连接行状态 chip 会话三拍：种子「已保存 · 待验证」→ 点测试（mock 18081 健康链）「✓ 测试通过」→
-# 快速添加区出现（桌面档可用 / 岛档随状态条未选岛置灰）；未测试不出快速添加（状态门）。
-# 添加后 widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）+ 添加钮禁用（重复提交防抖）
-# +「查看去向」直达组件中心该组件桌面去向行。
+# 连接行状态 chip 会话四拍：种子「已保存 · 待验证」→ fail 档注入 500「✗ 测试失败」（失败不解锁
+# 快速添加）→ 删档重测=重试成功「✓ 测试通过」→ 快速添加区出现（桌面档可用 / 岛档随状态条未选岛置灰）；
+# 未测试/未通过不出快速添加（状态门）。添加后 widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）
+# + 添加钮禁用（重复提交防抖）+「查看去向」直达组件中心该组件桌面去向行。
 try
 {
     Write-GConfig "" "off" 1.0
@@ -8086,7 +8109,20 @@ try
     Save-FullScreenshot "SH-chip-unverified.png"
     if (Find-UiaById $settings "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-early-add.png"; throw "断言失败（场景 SH）：未测试就出快速添加按钮——接入状态门失效" }
     Write-Host "场景 SH 种子态通过：chip「已保存 · 待验证」+ 未验证不出快速添加"
+    # 失败档（SET-UX-09 补 CI 门，2026-11-26）：mock 注入 500 → chip「✗ 测试失败」+ 失败不解锁快速添加
+    Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "fail" -Encoding ASCII
     Invoke-Uia (Find-UiaById $settings "test-zhipu" 10)
+    Start-Sleep -Seconds 4
+    $chipFail = Find-UiaById $settings "conn-state-zhipu" 8
+    $chipFailText = ""
+    try { $chipFailText = $chipFail.Current.Name } catch { }
+    if ($chipFailText -notlike "*测试失败*") { Save-FullScreenshot "SH-FAIL-chip-not-failed.png"; throw "断言失败（场景 SH）：500 注入后 chip=「$chipFailText」（期望含「✗ 测试失败」）——失败链回归" }
+    Save-FullScreenshot "SH-chip-failed.png"
+    if (Find-UiaById $settings "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-add-after-fail.png"; throw "断言失败（场景 SH）：测试失败后快速添加按钮已出——失败态不应解锁添加" }
+    Write-Host "场景 SH 失败档通过：chip「✗ 测试失败」+ 失败不解锁快速添加"
+    # 重试档：mock 回健康档（删档位文件=38% 默认）再测——「失败后重试成功」映射到下一步（下方 ✓ 链）
+    Remove-Item (Join-Path $env:TEMP "beacon-mock-mode.txt") -Force -ErrorAction SilentlyContinue
+    Invoke-Uia (Find-UiaById $settings "test-zhipu" 8)
     Start-Sleep -Seconds 4
     $chip2 = Find-UiaById $settings "conn-state-zhipu" 8
     $chipText2 = ""
@@ -8114,7 +8150,7 @@ try
     if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
     Save-FullScreenshot "SH-goto-component-center.png"
     Stop-Beacon
-    Write-Host "场景 SH 通过：chip 待验证→测试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
+    Write-Host "场景 SH 通过：chip 待验证→失败→重试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
 }
 catch
 {
