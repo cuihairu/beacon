@@ -153,12 +153,14 @@
   - **怎么做** 模板注册表补面适用性维度（模板声明适用 tile/row/detail 哪些面，或按几何约束如 MinTileHeightDips 推导）；WidgetStyleAdvice.List 增加面参数，清单按「数据能力 + 当前所选面」双过滤；对该面不适用的模板置灰并给原因（沿用「不可用：…」文案口径），真正不支持的不可点；面切换时清单即时刷新。
   - **怎么验证** UIA：同一夹具切三档应用面断言 style-item-* 可用集合随之变化、置灰行原因可读；选 tile 专属模板在 row 面断言不可应用；装机亲验各面行高与裁切。
   - **红线** 只动过滤与标注，不改模板树生成与渲染语义；本机编不了 App，Core 全绿 + CI 编译/断言绿为门；视觉项待装机亲验闭项。
+  - **证据** 2cc66a2：DisplayTemplates 增面高度预算 RowSurfaceHeightBudgetDips=40（口径取 CI 实证：单行族 32-34DIP 行内可承载、48/60DIP 多行结构塞不下）；WidgetStyleAdvice.List 增 surface 参按「数据能力+当前面」双过滤；SampleGalleryWindow.PopulateStyleCatalog 七行全建、IsEnabled=advice.Ok（面外超预算置灰带原因）、面切换 RefreshStyleCatalog 重选首可用；UIA 锚 style-item-* 不变；Core 测试 1418/1418 全绿；场景 SF3 断言「row 面 number 条目置灰+圆环可用」；各面行高与裁切待装机亲验。
 
 - [ ] **SET-UX-ROW-3 [P1] 桌面显示页按状态条选档联动显隐（2026-11-25 用户报）**
   - **问题** 桌面显示页状态条三选一切到「关闭」或「右下角胶囊」后，「窗口与看板」区仍五项全显：桌面组件布局/数值悬浮框/面板贴边收起是悬浮岛（面板与独立窗）家族专属（PinnedHostWindow/FloatingHostWindow 消费），窗口不透明度作用于悬浮面与胶囊（App.xaml.cs:316 四宿主同值）——选「关闭」时这些项与当前形态无关，选「胶囊」时岛家族项也不适用（原型静态稿本身未做显隐，属用户新提出的交互要求）。
   - **怎么做** BuildDesktopPage 按 StatusBarMode 条件渲染：关闭=悬浮面整区隐藏只留看板开关；胶囊=隐藏岛家族三项；岛=全显；SaveStatusBarMode 已有广播链，切档后重建本页（保持滚动位与焦点不丢）。
   - **怎么验证** UIA 三档各断言可见控件集合（关闭档 desktop-layout-box/numeric-floating-toggle/edge-collapse-toggle/desktop-opacity-slider 不在 UIA 树；胶囊档仅岛家族三项不在；岛档全在）且切回原档全显恢复；CI 场景 D 增补断言或单开场景。
   - **红线** 只动显隐与页重建，不改各设置项自身语义与保存链；本机编不了 App，Core 全绿 + CI 编译/断言绿为门；视觉项待装机亲验闭项。
+  - **证据** 本批（待 commit hash）：BuildDesktopPage 三档条件渲染（关闭=只留 board-toggle + 隐藏原因 Hint；胶囊=隐藏岛家族三项、不透明度+看板仍留；岛=五项全显）、未建控件显式置 null；SaveStatusBarMode 延后一拍重建本页并还原滚动位/焦点；CI 场景 W4 种子关闭档断言四项在树外+看板在树、切岛档回树；SU2 三档显隐集合逐档断言+切档后重取失效 radio；SU3 先切岛档再走四件；SG 种子播岛档保三路字段跳转锚点；Core 1418/1418 + ParseFile 0 错；视觉观感待装机亲验。
 
 ## MVP 待验/未修项（50 项 = 50 勾 / 0 未勾；未完成项即装机清单；2026-11-13 审计发现原头 42/8 与实数 43/7 漂移，本头按实数+Toast 改未勾重算）
 

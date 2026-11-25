@@ -57,34 +57,47 @@ internal sealed partial class SettingsWindow
         choices.Children.Add(_statusBarIsland);
         page.Children.Add(choices);
 
-        // —— 窗口与看板 ——
+        // —— 窗口与看板（SET-UX-ROW-3：按状态条选档联动显隐——摆的项都是当前形态真有作用的）——
         page.Children.Add(SectionTitle("窗口与看板"));
-
-        // ① 桌面组件布局（PinDisplayMode 原字段：panel=集中在一个窗口 / floating=支持的组件独立显示）。
-        // 悬浮形态档自组件中心收编至此正名：它是桌面布局档，不是载体开关；重启生效（ApplySettingsEffects 不重建宿主形态）。
-        _desktopLayoutBox = new ComboBox { Header = "桌面组件布局（重启后生效）", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_desktopLayoutBox, "desktop-layout-box"); // UIA 取证：布局档驱动
-        foreach (var item in new[] { ("panel", "集中在一个窗口"), ("floating", "支持的组件独立显示") })
+        // 岛=五项全显；胶囊=岛家族三项（布局/数值/贴边）无桌面悬浮组件可作用，隐藏；
+        // 关闭=只留看板开关（无任何悬浮面，连不透明度都无从作用）。切档重建本页（SaveStatusBarMode
+        // 延后一拍）即得新集合，本方法只做纯条件渲染（SET-UX-01 页面构造零写入）。
+        var island = mode == StatusBarMode.Island;
+        if (island)
         {
-            var layoutItem = new ComboBoxItem { Content = item.Item2, Tag = item.Item1 };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(layoutItem, $"layout-{item.Item1}");
-            _desktopLayoutBox.Items.Add(layoutItem);
-        }
-        _desktopLayoutBox.SelectedIndex = IndexOfTag(_desktopLayoutBox, _runtime.Config.App.PinDisplayMode);
-        _desktopLayoutBox.SelectionChanged += (_, _) => SavePinDisplayMode();
-        page.Children.Add(_desktopLayoutBox);
-        page.Children.Add(Hint("切换到独立显示后，其余组件仍可留在集中面板。"));
+            // ① 桌面组件布局（PinDisplayMode 原字段：panel=集中在一个窗口 / floating=支持的组件独立显示）。
+            // 悬浮形态档自组件中心收编至此正名：它是桌面布局档，不是载体开关；重启生效（ApplySettingsEffects 不重建宿主形态）。
+            _desktopLayoutBox = new ComboBox { Header = "桌面组件布局（重启后生效）", Width = 260, HorizontalAlignment = HorizontalAlignment.Left };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_desktopLayoutBox, "desktop-layout-box"); // UIA 取证：布局档驱动
+            foreach (var item in new[] { ("panel", "集中在一个窗口"), ("floating", "支持的组件独立显示") })
+            {
+                var layoutItem = new ComboBoxItem { Content = item.Item2, Tag = item.Item1 };
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(layoutItem, $"layout-{item.Item1}");
+                _desktopLayoutBox.Items.Add(layoutItem);
+            }
+            _desktopLayoutBox.SelectedIndex = IndexOfTag(_desktopLayoutBox, _runtime.Config.App.PinDisplayMode);
+            _desktopLayoutBox.SelectionChanged += (_, _) => SavePinDisplayMode();
+            page.Children.Add(_desktopLayoutBox);
+            page.Children.Add(Hint("切换到独立显示后，其余组件仍可留在集中面板。"));
 
-        // ② 在桌面显示数值和额度（NumericFloatingEnabled 原字段正名）：同时闸集中面板与独立窗的数值类组件
-        //     （WidgetDisplayPolicy.IsNumericSuppressed 两宿主同口径）。
-        _numericFloatingToggle = new ToggleSwitch { Header = "在桌面显示数值和额度", IsOn = _runtime.Config.App.NumericFloatingEnabled };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_numericFloatingToggle, "numeric-floating-toggle"); // UIA 取证：数值总开关驱动
-        _numericFloatingToggle.Toggled += (_, _) => SaveNumericFloating();
-        page.Children.Add(_numericFloatingToggle);
-        page.Children.Add(Hint("同时应用于集中面板和独立窗口。"));
+            // ② 在桌面显示数值和额度（NumericFloatingEnabled 原字段正名）：同时闸集中面板与独立窗的数值类组件
+            //     （WidgetDisplayPolicy.IsNumericSuppressed 两宿主同口径）。
+            _numericFloatingToggle = new ToggleSwitch { Header = "在桌面显示数值和额度", IsOn = _runtime.Config.App.NumericFloatingEnabled };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_numericFloatingToggle, "numeric-floating-toggle"); // UIA 取证：数值总开关驱动
+            _numericFloatingToggle.Toggled += (_, _) => SaveNumericFloating();
+            page.Children.Add(_numericFloatingToggle);
+            page.Children.Add(Hint("同时应用于集中面板和独立窗口。"));
+        }
+        else
+        {
+            // 未建的控件显式置 null——重建后不留旧页实例（保存链只从活控件来，但宁可不留可能触到的旧引用）
+            _desktopLayoutBox = null!;
+            _numericFloatingToggle = null!;
+        }
 
         // ③ 允许打开看板（BoardEnabled 原字段收编至此）：关=热键/托盘/岛点击不可唤起且已开即收。
         // 提示当前热键与可用入口（热键改动后本页重建时刷新——SelectModule 每次重建右栏）。
+        // 三档都在（看板是独立窗，与状态条形态无关）。
         _boardToggle = new ToggleSwitch { Header = "允许打开看板", IsOn = _runtime.Config.App.BoardEnabled };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_boardToggle, "board-toggle"); // UIA 取证：看板开关驱动
         _boardToggle.Toggled += (_, _) => SaveBoardEnabled();
@@ -93,36 +106,56 @@ internal sealed partial class SettingsWindow
         page.Children.Add(Hint($"可用 {boardHotkey}、托盘菜单或悬浮岛打开。"));
 
         // ④ 窗口不透明度（UiOpacity 原字段移入本页）：百分比读数实时随滑杆，改动即时生效。
-        _desktopOpacityValue = new TextBlock
+        // 作用于悬浮面与胶囊（App 侧四宿主同值），关闭档已无任何悬浮面 → 该档不摆。
+        if (mode != StatusBarMode.Off)
         {
-            Text = $"{(int)Math.Round(Math.Clamp(_runtime.Config.App.UiOpacity, 0.2, 1.0) * 100)}%",
-            FontSize = DesignTokens.FontBody,
-            Foreground = new SolidColorBrush(ThemeColors.Label()),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        _desktopOpacitySlider = new Slider
+            _desktopOpacityValue = new TextBlock
+            {
+                Text = $"{(int)Math.Round(Math.Clamp(_runtime.Config.App.UiOpacity, 0.2, 1.0) * 100)}%",
+                FontSize = DesignTokens.FontBody,
+                Foreground = new SolidColorBrush(ThemeColors.Label()),
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            _desktopOpacitySlider = new Slider
+            {
+                Header = "窗口不透明度",
+                Minimum = 0.2, // 与运行时 clamp(0.2,1.0) 同口径（UI/UX 审计：上下限不一致滑杆一碰就跳）
+                Maximum = 1.0,
+                StepFrequency = 0.05,
+                Value = Math.Clamp(_runtime.Config.App.UiOpacity, 0.2, 1.0),
+                Width = 240,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_desktopOpacitySlider, "desktop-opacity-slider"); // UIA 取证：不透明度驱动
+            _desktopOpacitySlider.ValueChanged += (_, _) => SaveDesktopOpacity();
+            var opacityRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+            opacityRow.Children.Add(_desktopOpacitySlider);
+            opacityRow.Children.Add(_desktopOpacityValue);
+            page.Children.Add(opacityRow);
+        }
+        else
         {
-            Header = "窗口不透明度",
-            Minimum = 0.2, // 与运行时 clamp(0.2,1.0) 同口径（UI/UX 审计：上下限不一致滑杆一碰就跳）
-            Maximum = 1.0,
-            StepFrequency = 0.05,
-            Value = Math.Clamp(_runtime.Config.App.UiOpacity, 0.2, 1.0),
-            Width = 240,
-        };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_desktopOpacitySlider, "desktop-opacity-slider"); // UIA 取证：不透明度驱动
-        _desktopOpacitySlider.ValueChanged += (_, _) => SaveDesktopOpacity();
-        var opacityRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-        opacityRow.Children.Add(_desktopOpacitySlider);
-        opacityRow.Children.Add(_desktopOpacityValue);
-        page.Children.Add(opacityRow);
+            _desktopOpacitySlider = null!;
+            _desktopOpacityValue = null!;
+        }
 
         // ⑤ 面板贴边时收起（EdgeCollapseEnabled 原字段移入本页；AutomationId 沿用 W4 场景锚点）。
         // 注明只作用于集中面板（独立悬浮窗无贴边收起语义）。
-        _edgeCollapseToggle = new ToggleSwitch { Header = UiStrings.SettingsEdgeCollapse, IsOn = _runtime.Config.App.EdgeCollapseEnabled };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_edgeCollapseToggle, "edge-collapse-toggle"); // UIA 取证：开关驱动（场景 W4 锚点不变）
-        _edgeCollapseToggle.Toggled += (_, _) => SaveEdgeCollapse();
-        page.Children.Add(_edgeCollapseToggle);
-        page.Children.Add(Hint("把桌面集中面板拖到屏幕边缘时收成细条（只作用于集中面板；独立悬浮窗不收起）。"));
+        if (island)
+        {
+            _edgeCollapseToggle = new ToggleSwitch { Header = UiStrings.SettingsEdgeCollapse, IsOn = _runtime.Config.App.EdgeCollapseEnabled };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_edgeCollapseToggle, "edge-collapse-toggle"); // UIA 取证：开关驱动（场景 W4 锚点不变）
+            _edgeCollapseToggle.Toggled += (_, _) => SaveEdgeCollapse();
+            page.Children.Add(_edgeCollapseToggle);
+            page.Children.Add(Hint("把桌面集中面板拖到屏幕边缘时收成细条（只作用于集中面板；独立悬浮窗不收起）。"));
+        }
+        else
+        {
+            _edgeCollapseToggle = null!;
+            // 隐藏原因直显（不静默消失）：切回顶部悬浮岛即恢复
+            page.Children.Add(Hint(mode == StatusBarMode.Capsule
+                ? "当前「右下角胶囊」档没有桌面悬浮组件，桌面组件布局/数值开关/贴边收起已隐藏；切回「顶部悬浮岛」即恢复。"
+                : "当前「关闭」档没有任何悬浮窗，桌面悬浮相关设置已隐藏；切回「顶部悬浮岛」或「右下角胶囊」即恢复。"));
+        }
 
         return page;
     }
@@ -209,12 +242,34 @@ internal sealed partial class SettingsWindow
     // —— 桌面显示页落库（全部 SaveApp + SettingsApplied 广播；布局下拉除外——重启生效面） ——
 
     /// <summary>状态条选档（SET-UX-02）：StatusBarMode 成组保存两旧字段 → 广播（EnsureCapsule/Close、
-    /// SetIslandMode 形态切换走既有 ApplySettingsEffects，即时生效）。</summary>
+    /// SetIslandMode 形态切换走既有 ApplySettingsEffects，即时生效）。SET-UX-ROW-3：切档后「窗口与看板」
+    /// 区的显隐随档变，故重建本页——延后一拍（EnqueueGuarded）出 Checked 事件后再换树，事件返回途中
+    /// 拆树会拆掉正在派发的 radio；滚动位还原、焦点回新档 radio（旧焦点控件已随旧树拆掉）。</summary>
     private void SaveStatusBarMode(string mode)
     {
         StatusBarMode.Apply(_runtime.Config.App, mode);
         _runtime.Config.SaveApp();
         SettingsApplied?.Invoke();
+        var offset = _rightHost.VerticalOffset;
+        this.DispatcherQueue.EnqueueGuarded(() =>
+        {
+            _rightHost.Content = BuildDesktopPage();
+            _rightHost.UpdateLayout();
+            _rightHost.ChangeView(null, offset, null, true);
+            FocusStatusBarRadio(mode);
+        });
+    }
+
+    /// <summary>切档重建后把焦点还给新档的选档 radio（用户下一击就是点别的档，焦点不丢）。</summary>
+    private void FocusStatusBarRadio(string mode)
+    {
+        var target = mode switch
+        {
+            StatusBarMode.Island => _statusBarIsland,
+            StatusBarMode.Capsule => _statusBarCapsule,
+            _ => _statusBarOff,
+        };
+        target?.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
     }
 
     /// <summary>桌面组件布局（SET-UX-03①）：PinDisplayMode 原字段，重启生效（UI 已标注；不广播即时面）。

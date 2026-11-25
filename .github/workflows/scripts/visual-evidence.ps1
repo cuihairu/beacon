@@ -4869,8 +4869,28 @@ try
     if (!$w4DesktopRow) { Save-FullScreenshot "W-FAIL-no-desktop-row.png"; throw "断言失败（场景 W4）：UIA 未找到模块行 module-desktop（桌面显示页缺失？）" }
     Invoke-Uia $w4DesktopRow
     Start-Sleep -Seconds 2
+    # SET-UX-ROW-3：本块种子=状态条关闭档（capsuleIsland/showCapsule 双关）→「窗口与看板」只留看板开关，
+    # 桌面悬浮四项应在树外；切「顶部悬浮岛」档（SaveStatusBarMode 延后一拍重建本页）岛家族锚点回树，
+    # 开关断言随之继续——三档显隐集合在此一并钉死。
+    foreach ($w4HiddenAnchor in @("desktop-layout-box", "numeric-floating-toggle", "desktop-opacity-slider", "edge-collapse-toggle"))
+    {
+        if (Find-UiaById $settings $w4HiddenAnchor 3)
+        {
+            Save-FullScreenshot "W-FAIL-off-tier-not-hidden.png"
+            throw "断言失败（场景 W4）：关闭档 $w4HiddenAnchor 仍在 UIA 树（桌面悬浮设置未随状态条档隐藏）——SET-UX-ROW-3"
+        }
+    }
+    if (!(Find-UiaById $settings "board-toggle" 4))
+    {
+        Save-FullScreenshot "W-FAIL-off-tier-no-board.png"
+        throw "断言失败（场景 W4）：关闭档看板开关 board-toggle 缺席（该档只隐藏桌面悬浮项，看板开关仍须可改）——SET-UX-ROW-3"
+    }
+    $w4IslandRadio = Find-UiaById $settings "status-bar-island" 8
+    if (!$w4IslandRadio) { Save-FullScreenshot "W-FAIL-no-island-radio.png"; throw "断言失败（场景 W4）：未找到 status-bar-island" }
+    ($w4IslandRadio.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Seconds 3
     $toggle = Find-UiaById $settings "edge-collapse-toggle" 8
-    if (!$toggle) { Save-FullScreenshot "W-FAIL-no-toggle.png"; throw "断言失败（场景 W4）：设置页未找到贴边收起开关 edge-collapse-toggle（桌面显示页）" }
+    if (!$toggle) { Save-FullScreenshot "W-FAIL-no-toggle.png"; throw "断言失败（场景 W4）：切岛档后未找到贴边收起开关 edge-collapse-toggle（桌面显示页；岛档应全显）" }
     ($toggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
     $offOk = $false
     $deadline = (Get-Date).AddSeconds(5)
@@ -4889,7 +4909,7 @@ try
         Start-Sleep -Milliseconds 400
     }
     if (!$onOk) { Save-FullScreenshot "W-FAIL-toggle-on.png"; throw "断言失败（场景 W4）：开关置开后 config.json 无 edgeCollapseEnabled=true——开关回切未落盘" }
-    Write-Host "场景 W4 通过：贴边收起开关可切换且落盘（edgeCollapseEnabled false→true）"
+    Write-Host "场景 W4 通过：贴边收起开关可切换且落盘（edgeCollapseEnabled false→true）+ 关闭档桌面悬浮四项在树外、切岛档回树（SET-UX-ROW-3）"
     Stop-Beacon
 }
 catch
@@ -4965,6 +4985,20 @@ try
     }
     Save-FullScreenshot "SU2-desktop-statusbar.png"
     Write-Host "场景 SU2 投影通过：双关旧配置 → 状态条投影「关闭」（岛优先/胶囊其次读口径）"
+    # SET-UX-ROW-3：关闭档=悬浮面整区隐藏只留看板开关（四项在树外、board-toggle 在树）
+    foreach ($suOffHidden in @("desktop-layout-box", "numeric-floating-toggle", "desktop-opacity-slider", "edge-collapse-toggle"))
+    {
+        if (Find-UiaById $settings $suOffHidden 3)
+        {
+            Save-FullScreenshot "SU-FAIL-off-tier.png"
+            throw "断言失败（场景 SU2）：关闭档 $suOffHidden 仍在 UIA 树（悬浮面设置应整区隐藏）——SET-UX-ROW-3"
+        }
+    }
+    if (!(Find-UiaById $settings "board-toggle" 4))
+    {
+        Save-FullScreenshot "SU-FAIL-off-tier-board.png"
+        throw "断言失败（场景 SU2）：关闭档 board-toggle 不在树（该档只留看板开关，须可改）——SET-UX-ROW-3"
+    }
 
     # island 档 → config 双开 + 胶囊窗（岛形态）出现
     ($radioIsland.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
@@ -4988,6 +5022,15 @@ try
         throw "断言失败（场景 SU2）：选岛后未见胶囊窗「Beacon Status」（EnsureCapsule 建窗回归）"
     }
     Write-Host "场景 SU2 island 档通过：config 双开 + 岛窗在场"
+    # SET-UX-ROW-3：切岛档重建本页（SaveStatusBarMode 延后一拍）→ 岛家族五项全显（旧引用已失效，锚一律重取）
+    foreach ($suIslandShown in @("desktop-layout-box", "numeric-floating-toggle", "desktop-opacity-slider", "edge-collapse-toggle", "board-toggle"))
+    {
+        if (!(Find-UiaById $settings $suIslandShown 4))
+        {
+            Save-FullScreenshot "SU-FAIL-island-tier.png"
+            throw "断言失败（场景 SU2）：岛档 $suIslandShown 不在树（切档重建后岛家族五项应全显）——SET-UX-ROW-3"
+        }
+    }
 
     # capsule 档 → 岛关胶囊开（同一窗回经典，窗不闪关）
     $radioCapsule = Find-UiaById $settings "status-bar-capsule" 8
@@ -5010,8 +5053,32 @@ try
         throw "断言失败（场景 SU2）：切经典后胶囊窗消失（同窗换形态语义回归）"
     }
     Write-Host "场景 SU2 capsule 档通过：岛关胶囊开 + 窗保持"
+    # SET-UX-ROW-3：胶囊档=岛家族三项（布局/数值/贴边）无桌面悬浮组件可作用→隐藏；不透明度作用于胶囊仍留；看板三档都在
+    foreach ($suCapsuleHidden in @("desktop-layout-box", "numeric-floating-toggle", "edge-collapse-toggle"))
+    {
+        if (Find-UiaById $settings $suCapsuleHidden 3)
+        {
+            Save-FullScreenshot "SU-FAIL-capsule-tier.png"
+            throw "断言失败（场景 SU2）：胶囊档 $suCapsuleHidden 仍在树（岛家族项应随档隐藏）——SET-UX-ROW-3"
+        }
+    }
+    foreach ($suCapsuleShown in @("desktop-opacity-slider", "board-toggle"))
+    {
+        if (!(Find-UiaById $settings $suCapsuleShown 4))
+        {
+            Save-FullScreenshot "SU-FAIL-capsule-tier-shown.png"
+            throw "断言失败（场景 SU2）：胶囊档 $suCapsuleShown 不在树（该档仍须可改）——SET-UX-ROW-3"
+        }
+    }
 
     # off 档 → 双关 + 窗退场
+    # SET-UX-ROW-3：上段切胶囊已重建本页，开头取的 $radioOff 已失效——重取后再选（陈引用 Select 抛 stale 不是真失败）
+    $radioOff = Find-UiaById $settings "status-bar-off" 8
+    if (!$radioOff)
+    {
+        Save-FullScreenshot "SU-FAIL-no-off-radio.png"
+        throw "断言失败（场景 SU2）：off 档重取未找到 status-bar-off"
+    }
     ($radioOff.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
     Start-Sleep -Seconds 3
     $appConfigJson = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -5054,6 +5121,12 @@ try
     if (!$desktopRow2) { throw "断言失败（场景 SU3）：UIA 未找到模块行 module-desktop" }
     Invoke-Uia $desktopRow2
     Start-Sleep -Seconds 2
+    # SET-UX-ROW-3：SU2 末态=关闭档，桌面悬浮设置整区隐藏；切回「顶部悬浮岛」档（延后一拍重建本页）
+    # 五项全显后再做四件断言——同一把路径也证「切回原档全显恢复」。
+    $su3IslandRadio = Find-UiaById $settings "status-bar-island" 8
+    if (!$su3IslandRadio) { Save-FullScreenshot "SU-FAIL-no-island-radio.png"; throw "断言失败（场景 SU3）：未找到 status-bar-island" }
+    ($su3IslandRadio.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Seconds 3
     $numericToggle = Find-UiaById $settings "numeric-floating-toggle" 8
     if (!$numericToggle) { Save-FullScreenshot "SU-FAIL-no-numeric.png"; throw "断言失败（场景 SU3）：未找到 numeric-floating-toggle" }
     ($numericToggle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)).Toggle()
@@ -5100,7 +5173,7 @@ try
     Write-Host "场景 SU3 布局通过：集中窗口档 → config pinDisplayMode=panel（种子 floating 真实翻转；重启生效面装机复核）"
 
     Stop-Beacon
-    Write-Host "场景 SU 通过：SET-UX-01 单项保存回归门 + SET-UX-02 状态条三档全链 + SET-UX-03 窗口与看板四件"
+    Write-Host "场景 SU 通过：SET-UX-01 单项保存回归门 + SET-UX-02 状态条三档全链 + SET-UX-03 窗口与看板四件 + SET-UX-ROW-3 三档显隐集合"
 }
 catch
 {
@@ -7919,7 +7992,9 @@ catch
 # GitHub→conn-save-button / 旧名「悬浮形态」→desktop-layout-box），模块级命中（组件中心）整页切换。
 try
 {
-    Write-GConfig "" "off" 1.0
+    # 状态条播岛档（SET-UX-ROW-3）：关闭档下桌面悬浮设置整区隐藏（只留看板开关），
+    # 本段三路字段跳转的锚点（透明度/贴边收起/悬浮形态）都在岛档全显集合里。
+    Write-GConfig "" "off" 1.0 $false $false $true
     Ensure-MockServer
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow 30
