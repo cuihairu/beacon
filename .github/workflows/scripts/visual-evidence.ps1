@@ -256,6 +256,12 @@ public static class WinEnum
     {
         SetWindowPos(h, IntPtr.Zero, x, y, 0, 0, 0x0004u | 0x0001u | 0x0010u); // SWP_NOZORDER|SWP_NOSIZE|SWP_NOACTIVATE——移位不改叠层不抢焦点
     }
+    // 窄窗档驱动（SET-UX-08）：外框缩到指定物理像素。SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE——
+    // 不挪位不改叠层不抢焦点；恢复原尺寸由调用方回灌 GetWindowRect 快照
+    public static void ResizeTo(IntPtr h, int cx, int cy)
+    {
+        SetWindowPos(h, IntPtr.Zero, 0, 0, cx, cy, 0x0004u | 0x0002u | 0x0010u);
+    }
     private const uint MouseDown = 0x0002;
     private const uint MouseUp = 0x0004;
 
@@ -729,6 +735,20 @@ function Start-MockServer
                     "/mimo/usage" { $body = $mimoUsage }
                     "/compatible-mode/v1/models" { $body = $qwenModels }
                     "/qwen/usage" { $body = $qwenUsage }
+                    "/auth-required" {
+                        # 缺凭据链（场景 SH）：无 Authorization 头即 401——HttpEndpoint 映射 Unauthorized，
+                        # chip 落「✗ 测试失败：HTTP 认证失败」；带任意凭据则 200（正向面留给真机）
+                        $authHdr = $ctx.Request.Headers["Authorization"]
+                        if ([string]::IsNullOrEmpty($authHdr))
+                        {
+                            $ctx.Response.StatusCode = 401
+                            $body = '{"error":"auth-required"}'
+                        }
+                        else
+                        {
+                            $body = '{"ok":true}'
+                        }
+                    }
                     "/repos/cuihairu/beacon/actions/workflows/ci.yml/runs" { $body = $ghRuns }
                     "/repos/cuihairu/beacon/actions/runs/12345/rerun-failed-jobs" {
                         # POST 回执留痕（场景 U）：marker 文件 = 服务端真收到重跑请求的硬证据
@@ -8009,7 +8029,8 @@ catch
 # 滚动并聚焦控件本体：五路跳转链全走并断言 FocusedElement 的 AutomationId=目标锚
 # （透明度→desktop-opacity-slider / 检查频率→poll-interval-box / 贴边收起→edge-collapse-toggle /
 # GitHub→conn-save-button / 旧名「悬浮形态」→desktop-layout-box），模块级命中（组件中心）整页切换；
-# 清词复原断头行回「N 个模块」非过滤形态，无结果词断「0/N 个模块匹配」+ 模块行全滤除。
+# 清词复原断头行回「N 个模块」非过滤形态，无结果词断「0/N 个模块匹配」+ 模块行全滤除；
+# 窄窗 600px（ResizeTo 外框驱动）搜索/过滤/清词全链照常后恢复原尺寸。
 try
 {
     # 状态条播岛档（SET-UX-ROW-3）：关闭档下桌面悬浮设置整区隐藏（只留看板开关），
@@ -8076,8 +8097,27 @@ try
     if (Find-UiaById $settings "module-github" 3) { Save-FullScreenshot "SG-FAIL-no-result-row.png"; throw "断言失败（场景 SG）：无结果档 module-github 仍在树——模块行未滤除" }
     Save-FullScreenshot "SG-no-result.png"
     Write-Host "场景 SG 无结果档通过：0/N 匹配头行 + 模块行全滤除"
+    # 窄窗档（SET-UX-08，2026-11-26 补 CI 门）：外框缩到 600 物理像素（config 记忆下限同口径）→
+    # 搜索框仍在树 + 过滤链（有结果计数头 + 行滤除 + 清词复原）照常走 → 恢复原尺寸。
+    $sgHwnd = [IntPtr]$settings.Current.NativeWindowHandle
+    $sgRectBefore = [WinEnum]::RectOf($sgHwnd)
+    [WinEnum]::ResizeTo($sgHwnd, 600, 640)
+    Start-Sleep -Seconds 2
+    $sgNarrowBox = Find-UiaById $settings "settings-search" 8
+    if (!$sgNarrowBox) { Save-FullScreenshot "SG-FAIL-narrow-no-search.png"; throw "断言失败（场景 SG）：窄窗 600px 下 settings-search 不在树——窄窗搜索链断裂" }
+    ($sgNarrowBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("透明度")
+    Start-Sleep -Milliseconds 900
+    $sgNarrowTexts = Get-WindowUiaTexts ([IntPtr]$settings.Current.NativeWindowHandle)
+    if (!($sgNarrowTexts | Where-Object { $_ -match '^配置中心 · 1/\d+ 个模块匹配' })) { Save-FullScreenshot "SG-FAIL-narrow-header.png"; throw "断言失败（场景 SG）：窄窗下过滤计数头未见 1/N 匹配——窄窗过滤链回归" }
+    ($sgNarrowBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("")
+    Start-Sleep -Milliseconds 600
+    if (!(Find-UiaById $settings "module-advanced" 6)) { throw "断言失败（场景 SG）：窄窗清词后 module-advanced 未回树——窄窗复位回归" }
+    Save-FullScreenshot "SG-narrow-window.png"
+    [WinEnum]::ResizeTo($sgHwnd, ($sgRectBefore.Right - $sgRectBefore.Left), ($sgRectBefore.Bottom - $sgRectBefore.Top))
+    Start-Sleep -Milliseconds 800
+    Write-Host "场景 SG 窄窗档通过：600px 窗搜索/过滤/清词全链照常 + 尺寸已恢复"
     Stop-Beacon
-    Write-Host "场景 SG 通过：分组头 + 五路字段跳转聚焦 + 旧名兼容 + 模块级跳转 + 清词复原 + 无结果档——SET-UX-08"
+    Write-Host "场景 SG 通过：分组头 + 五路字段跳转聚焦 + 旧名兼容 + 模块级跳转 + 清词复原 + 无结果档 + 窄窗档——SET-UX-08"
 }
 catch
 {
@@ -8088,13 +8128,20 @@ catch
 }
 
 # —— 场景 SH：数据来源按接入状态组织（SET-UX-09，2026-10-20 巡检单批3 CI 代验）——
-# 连接行状态 chip 会话四拍：种子「已保存 · 待验证」→ fail 档注入 500「✗ 测试失败」（失败不解锁
-# 快速添加）→ 删档重测=重试成功「✓ 测试通过」→ 快速添加区出现（桌面档可用 / 岛档随状态条未选岛置灰）；
+# 连接行状态 chip 会话五拍：种子「已保存 · 待验证」→ authprobe（自定义 HTTP 无凭据）测连接撞 mock 401
+# 「✗ 测试失败：HTTP 认证失败」→ fail 档注入 500「✗ 测试失败」（两档失败均不解锁快速添加）→
+# 删档重测=重试成功「✓ 测试通过」→ 快速添加区出现（桌面档可用 / 岛档随状态条未选岛置灰）；
 # 未测试/未通过不出快速添加（状态门）。添加后 widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）
 # + 添加钮禁用（重复提交防抖）+「查看去向」直达组件中心该组件桌面去向行。
 try
 {
     Write-GConfig "" "off" 1.0
+    # 缺凭据探针（SET-UX-09 补 CI 门，2026-11-26）：无 credentialRef 的 http 连接 + mock /auth-required
+    # 无头即 401 → chip「✗ 测试失败：HTTP 认证失败」。WriteAllText 落盘（Set-Content UTF8 带 BOM 会被 JsonDocument 拒读）
+    $shConnsPath = Join-Path $configDir "connections.json"
+    $shConnsText = (Get-Content $shConnsPath -Raw -Encoding UTF8).Replace(']', ',{ "id": "authprobe", "type": "http", "endpoint": "http://127.0.0.1:18081/auth-required", "enabled": true }]')
+    [System.IO.File]::WriteAllText($shConnsPath, $shConnsText)
+    if (@(Get-ConfigRecords $shConnsPath | Where-Object { $_.id -eq "authprobe" }).Count -ne 1) { throw "断言失败（场景 SH 前置）：authprobe 连接种子未落 connections.json" }
     Ensure-MockServer
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow 30
@@ -8109,7 +8156,22 @@ try
     Save-FullScreenshot "SH-chip-unverified.png"
     if (Find-UiaById $settings "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-early-add.png"; throw "断言失败（场景 SH）：未测试就出快速添加按钮——接入状态门失效" }
     Write-Host "场景 SH 种子态通过：chip「已保存 · 待验证」+ 未验证不出快速添加"
+    # 缺凭据档（SET-UX-09，2026-11-26 补 CI 门）：authprobe（自定义 HTTP，无凭据）测连接 → mock 401 →
+    # HttpEndpoint 认证失败链 → chip「✗ 测试失败：HTTP 认证失败」；失败态仍不解锁快速添加。
+    Invoke-Uia (Find-UiaById $settings "module-http" 10)
+    Start-Sleep -Seconds 2
+    Invoke-Uia (Find-UiaById $settings "test-authprobe" 10)
+    Start-Sleep -Seconds 4
+    $chipAuth = Find-UiaById $settings "conn-state-authprobe" 8
+    $chipAuthText = ""
+    try { $chipAuthText = $chipAuth.Current.Name } catch { }
+    if ($chipAuthText -notlike "*认证失败*") { Save-FullScreenshot "SH-FAIL-chip-not-auth.png"; throw "断言失败（场景 SH）：缺凭据探针 chip=「$chipAuthText」（期望含「认证失败」）——401 映射链回归" }
+    Save-FullScreenshot "SH-chip-authfail.png"
+    if (Find-UiaById $settings "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-add-after-auth.png"; throw "断言失败（场景 SH）：缺凭据失败后快速添加按钮已出——失败态解锁面回归" }
+    Write-Host "场景 SH 缺凭据档通过：authprobe 无凭据 401 →「认证失败」可见 + 不解锁"
     # 失败档（SET-UX-09 补 CI 门，2026-11-26）：mock 注入 500 → chip「✗ 测试失败」+ 失败不解锁快速添加
+    Invoke-Uia (Find-UiaById $settings "module-bigmodel" 10) # 缺凭据档切走了页面，先回智谱页再驱 zhipu
+    Start-Sleep -Seconds 2
     Set-Content -Path (Join-Path $env:TEMP "beacon-mock-mode.txt") -Value "fail" -Encoding ASCII
     Invoke-Uia (Find-UiaById $settings "test-zhipu" 10)
     Start-Sleep -Seconds 4
