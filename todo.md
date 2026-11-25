@@ -160,7 +160,7 @@
   - **怎么做** BuildDesktopPage 按 StatusBarMode 条件渲染：关闭=悬浮面整区隐藏只留看板开关；胶囊=隐藏岛家族三项；岛=全显；SaveStatusBarMode 已有广播链，切档后重建本页（保持滚动位与焦点不丢）。
   - **怎么验证** UIA 三档各断言可见控件集合（关闭档 desktop-layout-box/numeric-floating-toggle/edge-collapse-toggle/desktop-opacity-slider 不在 UIA 树；胶囊档仅岛家族三项不在；岛档全在）且切回原档全显恢复；CI 场景 D 增补断言或单开场景。
   - **红线** 只动显隐与页重建，不改各设置项自身语义与保存链；本机编不了 App，Core 全绿 + CI 编译/断言绿为门；视觉项待装机亲验闭项。
-  - **证据** 本批（待 commit hash）：BuildDesktopPage 三档条件渲染（关闭=只留 board-toggle + 隐藏原因 Hint；胶囊=隐藏岛家族三项、不透明度+看板仍留；岛=五项全显）、未建控件显式置 null；SaveStatusBarMode 延后一拍重建本页并还原滚动位/焦点；CI 场景 W4 种子关闭档断言四项在树外+看板在树、切岛档回树；SU2 三档显隐集合逐档断言+切档后重取失效 radio；SU3 先切岛档再走四件；SG 种子播岛档保三路字段跳转锚点；Core 1418/1418 + ParseFile 0 错；视觉观感待装机亲验。
+  - **证据** 1ab67ae：BuildDesktopPage 三档条件渲染（关闭=只留 board-toggle + 隐藏原因 Hint；胶囊=隐藏岛家族三项、不透明度+看板仍留；岛=五项全显）、未建控件显式置 null；SaveStatusBarMode 延后一拍重建本页并还原滚动位/焦点；CI 场景 W4 种子关闭档断言四项在树外+看板在树、切岛档回树；SU2 三档显隐集合逐档断言+切档后重取失效 radio；SU3 先切岛档再走四件；SG 种子播岛档保三路字段跳转锚点；Core 1418/1418 + ParseFile 0 错；视觉观感待装机亲验。
 
 ## MVP 待验/未修项（50 项 = 50 勾 / 0 未勾；未完成项即装机清单；2026-11-13 审计发现原头 42/8 与实数 43/7 漂移，本头按实数+Toast 改未勾重算）
 
