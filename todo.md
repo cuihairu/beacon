@@ -107,7 +107,7 @@
   - **问题** 全局额度样式与实例覆盖并存，现有「恢复传统渲染」会清空该组件全部展示面。
   - **怎么做** 先选「桌面 / 看板状态行 / 详情」，再选样式。标明跟随默认、单独设置或自定义布局。预览使用同一数据；应用和恢复默认只改当前选中的位置。悬浮岛跳到其专用内容设置。外观页保留主题、全局额度样式、间距、动画，颜色和强度放入更多选项。
   - **怎么验证** 同组件三处使用不同样式及附加来源，改或恢复桌面后对比其他两处树和绑定。改全局样式时只影响继承者。检查切换预览、窄窗标题和数值的裁切、浅深主题、重启生效的主题和即时动画。
-  - **证据** 2b8e1a5+b6bec7f：按位置应用/恢复（先选位置再选样式，应用与恢复只改选中位置；外观页颜色与强度收折叠区）；run 45333483412 场景 SF3：应用文案随位变（桌面↔看板状态行）+ 继承行双向翻（跟随默认↔此处已单独设置）+ 恢复只清 row；场景 AE3（按位置恢复）row 清 tile 留 + AE3（重置）逐面恢复后 components 清空；取证修复链 c4d9752（combo 卡 Expanded 态 Collapse 前置）/57648de（清唯一面后 components=null 双臂轮询）/647fe94（共享助手重取元素+3 轮重试）；三处树绑定对比、浅深主题与裁切=装机亲验
+  - **证据** 2b8e1a5+b6bec7f：按位置应用/恢复（先选位置再选样式，应用与恢复只改选中位置；外观页颜色与强度收折叠区）；run 45333483412 场景 SF3：应用文案随位变（桌面↔看板状态行）+ 继承行双向翻（跟随默认↔此处已单独设置）+ 恢复只清 row；场景 AE3（按位置恢复）row 清 tile 留 + AE3（重置）逐面恢复后 components 清空；取证修复链 c4d9752（combo 卡 Expanded 态 Collapse 前置）/57648de（清唯一面后 components=null 双臂轮询）/647fe94（共享助手重取元素+3 轮重试）/c538262（catalog 重建致缓存 peer 失效改逐次重取，AE3 四步全绿复证 nightly run 45670616849）；三处树绑定对比、浅深主题与裁切=装机亲验
 
 - [x] **SET-UX-07 [P1] 补齐多指标与跨位置组合**
   - **问题** 多窗口额度容易看错周期；多个来源组合时，一个缺值容易被误解为整体故障。
@@ -133,7 +133,7 @@
   - **问题** 检查频率、刷新档、检测间隔三个名字掩盖了实际继承优先级。
   - **怎么做** 统一为「默认刷新间隔」「此组件刷新频率」，显示当前继承来源及配置周期，区分手动刷新和运行期退避。维持组件覆盖、全局覆盖、组件默认策略的优先级。
   - **怎么验证** 组合全局默认/固定、组件继承/覆盖和手动档。复用 WidgetHostTests 与 RefreshSchedulerTests。Windows 用本地固定源和时间戳确认调度在修改后生效，文案与调度一致。
-  - **证据** 2a6da76（统一刷新档词汇）：全局框「默认刷新间隔（未单独设置的组件）」+ 组件行「此组件刷新频率」+ 继承来源 hint（SettingsWindow.Pages.cs）；刷新优先级组件覆盖 > 全局 > 组件默认策略沿用 WidgetHost/RefreshIntervalResolver 单源；nightly run 45536879866 场景 SI 全绿（GLM=每 5 分钟·默认刷新间隔 / OVR=每 2 分钟·此组件刷新频率 + 继承链 hint + 全局档 300→15 落盘）；手动刷新与运行期退避区分、时间戳调度一致性待装机亲验
+  - **证据** 2a6da76（统一刷新档词汇）：全局框「默认刷新间隔（未单独设置的组件）」+ 组件行「此组件刷新频率」+ 继承来源 hint（SettingsWindow.Pages.cs）；刷新优先级组件覆盖 > 全局 > 组件默认策略沿用 WidgetHost/RefreshIntervalResolver 单源；nightly run 45536879866 场景 SI 全绿（GLM=每 5 分钟·默认刷新间隔 / OVR=每 2 分钟·此组件刷新频率 + 继承链 hint + 全局档 300→15 落盘；SI 文案锚一次取不到即判死曾假红，c538262 改 15s 轮询门，45670616849 复证绿）；手动刷新与运行期退避区分、时间戳调度一致性待装机亲验
 
 - [ ] **SET-UX-11 [P1] 生效反馈、快捷键错误和可访问性**
   - **问题** 即时与重启混在一起，部分状态只由颜色表达；快捷键注册失败反馈离控件较远。
@@ -456,7 +456,8 @@
   - 修复方向按取证定：底部残边=ULW 逐像素 alpha 整岛化或 Rgn 内收 1px+XAML alpha 边缘带补偿（根治路线见 skill 记录）；空白条=修门控与位图失效逻辑。
   - 取证①②③结论（2026-11-24）：① 位图清零/预乘路径本身正确（CountInk/Premultiply 逐像素 alpha 无误），空壳成因不在绘制侧；② 空帧门（6f52775）只堵住 Update 自身路径——两处回场 Show（CapsuleWindow.SetVisible、FullscreenAvoidance 避让回场）无门控，分层窗从未成功 ULW 时 ShowWindow 即未透明化空壳窗，正是真机「纯白不透明胶囊条」；③ 经典胶囊态可复现（SetVisible 回场路径与岛态共用，_ruleHidden 残留岛态 true 时恒进回场分支），非岛态专属。
   - 修（18a1e8d）：IslandEdgeBandWindow 增 _hasFrame（仅成功 ULW 非空位图后置位），Show 无位图原样返回、IsAlive 同步要求 _hasFrame（TopmostGuard 不再把空壳钉回可见）；两处回场 Show 加 _island 门；RestoreWindowRegion 清 _lastBandSegs 缓存（经典态 SyncEdgeBandPosition 不再用旧岛轮廓重钉）。
-  - CI 验收面：AH5e 展开→收起迁移后 band 几何 ±1px 硬门 + 岛底条带 [3,20]px 全宽零外来墨已落（c6fbdb3），仅在 nightly 的 Visual evidence 跑；待 head≥18a1e8d 的 nightly 实跑取证。
+  - CI 验收面：AH5e 展开→收起迁移后 band 几何 ±1px 硬门 + 岛底条带全宽零外来墨已落（c6fbdb3），仅在 nightly 的 Visual evidence 跑；nightly run 45670616849（head d8b52e8）实跑取证全绿——其间两轮假红修复（c538262 AE 缓存 combo peer 改逐次重取 + SI 一次取不到改 15s 轮询门；d8b52e8 条带门改行持续双门：单点 414 采样=CI 桌面 DWM 投影亚像素污染非真残留，复证 run 45649709511）。
+  - imac 真机取证（2026-11-26，deployed 2026.11.25+d8b52e8）：顶窗枚举仅岛主窗+描边带+桌面 tile 三窗，**未透明化空壳窗不再出现**（_hasFrame 门生效，空白胶囊条不复现）；展开态底缘黑→背景干净过渡（一行 AA 灰即背景），收起态同口径干净；证据 docs/acceptance-evidence/island-flank-verify/。
   - 验收硬门槛：CI 像素断言新增「白条区域透出壁纸色」+ 底部月牙采样全覆盖；**用户装机亲验通过才闭项**，agent 自评无效（重复报障单，从严）。
 
 ## 展开态白色底板（2026-11-25 用户真机截图报——岛窗口面问题第四单：灰底→EDGE-1 锯齿→BOTTOM 空白条→本条，修复必须走到用户亲验为止）
@@ -464,7 +465,8 @@
 - [ ] ISLAND-FLANK-1【2026-11-25 用户真机截图报障，已派 beacon 席执行中】展开态主岛左右两侧各露 38px 白色底板（用户原话定性；验收=CI 像素断言 + imac 真机截屏 + 用户 vision 亲验）。
   - imac 真机取证（2026-11-25，deployed 2026.11.16+41da77d）：白板两成分——①肩 16 DIP 内收=设计性侧通道（窗 238 宽、黑面仅 206，通道全高 region 外），kill-test 证白=用户浅色桌面本体（上灰 221,227,233 / y≈79 下纯白）非 app 绘制；②展开迁移期 UpdateSurfaceOutlineCore 读 RootBorder.Actual* 过期拍（island-trace：outline 238x64 而 root=238x93），region 已按窗真相裁满、曲面按旧尺寸画，region 内露 WinUI3 窗背板（浅色主题=白）。XAML 41da77d↔HEAD 零差异，HEAD 同病。
   - 修：ShoulderDips 16→0（CapsuleIslandMath——左右直边压窗缘全高，通道物理消失；收起窗高恒 32=Positioning 无阴影带口径，窗真相与旧特判同值）+ UpdateSurfaceOutlineCore 曲面尺寸改量窗客户区真相（物理像素→DIP，与 ApplyIslandRegion 同源，曲面恒铺满 region）+ Core 几何锁改肩 0 口径（Sides_RunFullHeight_NoShoulderChannels/镜像曲线 2 条/常量 0）。
-  - CI 验收面：AH1d 新增展开态侧板实着断言（左右翼板=窗缘内 4 DIP 半高处，三通道和 <90 近黑；肩/通道回归该点透桌面 ≥153 即红）；Get-CrescentMaxDistance 改底角月牙采样（AH5d① 同点，肩归零后顶部无弧外区）；AH5d③ 肩轨迹退役（旧肩区现恒黑面，轨迹恒常数=假信号），AA 硬门收窄到底两角。
+  - CI 验收面：AH1d 新增展开态侧板实着断言（左右翼板=窗缘内 4 DIP 半高处，三通道和 <90 近黑；肩/通道回归该点透桌面 ≥153 即红）；Get-CrescentMaxDistance 改底角月牙采样（AH5d① 同点，肩归零后顶部无弧外区）；AH5d③ 肩轨迹退役（旧肩区现恒黑面，轨迹恒常数=假信号），AA 硬门收窄到底两角；nightly run 45670616849（head d8b52e8）AH1d/AH5d/AH5e 全绿。
+  - imac 真机取证（2026-11-26，deployed 2026.11.25+d8b52e8，主屏 5120×2880 @200%）：程序化首展（BEACON_DEBUG_ISLAND_PREVIEW=1，与 CI 场景 AH 同钩子同 ShowPreview 渲染路径）展开窗 482×192，band=clientRect±4px 精确吻合；翼板采样（窗缘内 4/16 DIP 半高）左右四点全 (0,0,0) 和 0——**无白色侧板**；药丸 x 322..800 vs 窗框 320..802 直边压窗缘全宽（ShoulderDips=0 生效）；框内白色像素 1.3%（内容文字）；证据 docs/acceptance-evidence/island-flank-verify/（展开/收起/整屏三件+README）；真机 SendInput 绝对坐标在三混合 DPI 屏虚拟桌面映射落点偏移，悬停往返未在真机复跑（交互链 CI AH1a-c 已门，本单病灶是几何非交互）。
   - 验收硬门槛：CI 像素断言绿 + imac 真机截屏（展开态左右无白板）+ **用户 vision 亲验通过才闭项**（岛面问题第四单，从严）。
 
 
