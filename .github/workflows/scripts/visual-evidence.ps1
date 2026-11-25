@@ -8252,7 +8252,9 @@ catch
     Write-Host "::error::场景 SI 断言失败：$($_.Exception.Message)"
 }
 
-# —— 场景 SJ：生效反馈、快捷键错误（SET-UX-11，2026-10-20 巡检单批3 CI 代验）——
+# —— 场景 SJ：生效反馈、快捷键错误、主题切换（SET-UX-11，2026-10-20 巡检单批3 CI 代验）——
+# 主题档浅色→深色（Select-ComboItemByName Name 口径）→ config App.Theme 逐档落盘（生效时机标注
+# 「重启生效」已写在控件 Header；浅色实际渲染属视觉亲验面）。
 # PS 先占 Ctrl+Alt+M（RegisterHotKey NULL hwnd）→ 热键框改 Ctrl+Alt+M → 注册失败可见：
 # 反馈行「注册失败」+ 框值回退 Ctrl+Alt+B + config 不被坏键洗掉（原有效绑定保留）。
 # 解除占用后改 Ctrl+Alt+J → 反馈「已生效」+ config 落 Ctrl+Alt+J（即时生效链）。
@@ -8279,6 +8281,28 @@ public static class SjHotkeyHolder
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow 30
     if (!$settings) { Save-FullScreenshot "SJ-FAIL-no-settings.png"; throw "断言失败（场景 SJ）：--settings 启动 30s 内未见设置窗" }
+    # 主题档（SET-UX-11 补 CI 门，2026-11-26）：浅色/深色切换落盘档位——生效时机标注写在控件旁（Header
+    # 「主题（重启生效）」），实际浅色渲染翻转属用户视觉亲验面；此处断选择链 + config 逐档回读。
+    $themeBox = Find-UiaById $settings "theme-box" 10
+    if (!$themeBox) { Save-FullScreenshot "SJ-FAIL-no-theme.png"; throw "断言失败（场景 SJ）：theme-box 锚缺失" }
+    Select-ComboItemByName $themeBox "浅色"
+    Start-Sleep -Seconds 1
+    $sjThemeCfg = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($sjThemeCfg.app.theme)" -ne "light" -and "$($sjThemeCfg.theme)" -ne "light")
+    {
+        throw "断言失败（场景 SJ）：选浅色后 config theme=$($sjThemeCfg.app.theme)/$($sjThemeCfg.theme)（期望 light）——主题落盘链回归"
+    }
+    $sjThemeSel = Get-ComboSelectionName $themeBox
+    if ($sjThemeSel -notlike "*浅色*") { throw "断言失败（场景 SJ）：选浅色后框值=「$sjThemeSel」（期望浅色）——选中态回读回归" }
+    Write-Host "场景 SJ 主题档通过：浅色选中 + config theme=light"
+    Select-ComboItemByName $themeBox "深色"
+    Start-Sleep -Seconds 1
+    $sjThemeCfg2 = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ("$($sjThemeCfg2.app.theme)" -ne "dark" -and "$($sjThemeCfg2.theme)" -ne "dark")
+    {
+        throw "断言失败（场景 SJ）：选深色后 config theme=$($sjThemeCfg2.app.theme)/$($sjThemeCfg2.theme)（期望 dark）——主题回切落盘回归"
+    }
+    Write-Host "场景 SJ 主题档通过：深色回切 + config theme=dark"
     $hotkeyBox = Find-UiaById $settings "hotkey-box" 10
     if (!$hotkeyBox) { Save-FullScreenshot "SJ-FAIL-no-hotkey-box.png"; throw "断言失败（场景 SJ）：hotkey-box 锚缺失" }
     $sjToggleEl = Find-UiaById $settings "startup-toggle" 10
@@ -8327,7 +8351,7 @@ public static class SjHotkeyHolder
         throw "断言失败（场景 SJ）：config hotkey=$($sjCfg2.hotkey)（期望 Ctrl+Alt+J）——改键落盘链回归"
     }
     Stop-Beacon
-    Write-Host "场景 SJ 通过：占用失败可见 + 原键保留 + 成功即时生效——SET-UX-11"
+    Write-Host "场景 SJ 通过：浅深色落盘 + 占用失败可见 + 原键保留 + 成功即时生效——SET-UX-11"
 }
 catch
 {
