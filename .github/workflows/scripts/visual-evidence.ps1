@@ -7299,8 +7299,8 @@ try
     }
     Write-Host "场景 AH5 通过：岛↔经典↔岛三轮切换无泄漏（岛月牙=背后层、经典四角=亚克力、回切岛=背后层）"
     # AH5d 岛边缘精度取证（2026-11-18 用户真机三瑕疵驱动：透明底板/圆角不自然/强锯齿，复用 AH5c 活岛窗）：
-    # ①底角月牙 vs 同高窗外参照（AH5a 只采顶部两点；用户真机「透明底板」残留面在底部/底层——CI 补底部
-    #   两角的 region 镂空门，同款背后层自洽口径壁纸/终端皆可，硬断言）；
+    # ①底角月牙 vs 同高窗外参照（用户真机「透明底板」残留面在底部/底层——CI 补底部两角的 region 镂空门，
+    #   同款背后层自洽口径壁纸/终端皆可，硬断言；探针统一走 Get-CrescentMaxDistance，禁自写窗角定值采样）；
     # ②底缘中点过渡带剖面（黑面→窗外逐行采色，「非黑非底」像素数=边缘灰带宽度；HRGN 硬边 + 1px 发丝
     #   内缘的基线，暂 advisory——逐像素 alpha 修复后升硬断言 ≤1px）；
     # ③曲线边锯齿楼梯度量（逐行首个 surface 列=曲线轨迹，相邻行 Δx=量化台阶；HRGN 物理锯齿基线，
@@ -7312,17 +7312,11 @@ try
     $w5d = $rect5d.Right - $rect5d.Left
     $midX5d = $rect5d.Left + [int]($w5d / 2)
     $midY5d = $rect5d.Top + [int](($rect5d.Bottom - $rect5d.Top) / 2)
-    $bottomDist5d = 0
-    foreach ($spec in @(
-            @(($rect5d.Left + [int](1 * $scale5d)), ($rect5d.Bottom - [int](4 * $scale5d)), ($rect5d.Left - 30)),
-            @(($rect5d.Right - [int](2 * $scale5d)), ($rect5d.Bottom - [int](4 * $scale5d)), ($rect5d.Right + 30))))
-    {
-        $c5d = Get-AvgColor $spec[0] $spec[1] 2
-        $r5d = Get-AvgColor $spec[2] $spec[1] 2
-        $d5d = ([Math]::Abs($c5d[0] - $r5d[0]) + [Math]::Abs($c5d[1] - $r5d[1]) + [Math]::Abs($c5d[2] - $r5d[2]))
-        Write-Host "AH5d 底角采样 ($($spec[0]),$($spec[1]))=$($c5d -join ',') vs 同高参照 ($($spec[2]),$($spec[1]))=$($r5d -join ',') 距$d5d"
-        if ($d5d -gt $bottomDist5d) { $bottomDist5d = $d5d }
-    }
+    # 探针口径与 AH5a/AH5c 统一（共享 Get-CrescentMaxDistance）：旧内联版按「窗角定值偏移 4DIP + 2x2 均值」
+    # 采样，两向失效——run 45536879866 实证：surface 铺满窗框时 (343,28) 骑在弧 AA 边（读 130/151）假红，
+    # 而 run 45333483412 的假绿是 surface 只 310px 居中、探针落在透明边距里根本没碰岛。共享探针改为
+    # 窗位稳定等待 + Bottom−1/−2 对角单像素 + 逐偏移取最小，AH5a/AH5c 同 run 双处已实证可测 0。
+    $bottomDist5d = Get-CrescentMaxDistance $islandH5d
     if ($bottomDist5d -gt 24)
     {
         throw "断言失败（场景 AH5d①）：岛底角月牙与同高参照最大色距 $bottomDist5d（期望 ≤24）——底部弧外露窗背板/残留层（用户真机「透明底板」CI 面），region 底部未镂空"
