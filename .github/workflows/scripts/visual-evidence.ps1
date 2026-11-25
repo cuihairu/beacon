@@ -7601,26 +7601,33 @@ try
         Save-FullScreenshot "AH5e-FAIL-band-stale.png"
         throw "AH5e band 迁移复验失败：偏移=${off5e}px 尺寸差=${sz5e}px（期望 rect=$expL5e,$expT5e ${expW5e}x${expH5e}）——展开→收起后 band 脱同步（真机「岛底下空白条」CI 面）"
     }
-    $stripInk5e = 0
-    for ($dy5e = 3; $dy5e -le 20; $dy5e += 2)
+    # 行持久双门（45649709511 首跑证伪单点门）：岛窗是带 DWM 圆角投影的常规件，投影沿窗底缘下探
+    # 2-3px——浅色桌面上单个采样点对两侧参照的色差可过 24（同 run 几何门 0px 全对 + trace band 已按
+    # 收起几何重建 bmp=347x40 dst=338,-4 + 失败截图岛下无可见物，414 采样仅 1 点命中=投影尾非残留）。
+    # 真「空白悬浮条」=整宽不透明条跨多行上百点——判据改单行 ≥3 点异色且 ≥2 行才红；扫描自 dy=5 起
+    # （避开投影最强带；band 位图底=client 底+4，dy=3 档本就贴着它）。
+    $stripInkRows5e = 0
+    for ($dy5e = 5; $dy5e -le 20; $dy5e += 2)
     {
         $y5e = $rect5e.Bottom + $dy5e
         $lRef5e = Get-AvgColor ($rect5e.Left - 30) $y5e 2
         $rRef5e = Get-AvgColor ($rect5e.Right + 30) $y5e 2
+        $rowInk5e = 0
         for ($x5e = ($rect5e.Left - 8); $x5e -le ($rect5e.Right + 8); $x5e += 8)
         {
             $p5e = Get-AvgColor $x5e $y5e 1
             $dl5e = [Math]::Abs($p5e[0] - $lRef5e[0]) + [Math]::Abs($p5e[1] - $lRef5e[1]) + [Math]::Abs($p5e[2] - $lRef5e[2])
             $dr5e = [Math]::Abs($p5e[0] - $rRef5e[0]) + [Math]::Abs($p5e[1] - $rRef5e[1]) + [Math]::Abs($p5e[2] - $rRef5e[2])
-            if (($dl5e -gt 24) -and ($dr5e -gt 24)) { $stripInk5e++ }
+            if (($dl5e -gt 24) -and ($dr5e -gt 24)) { $rowInk5e++ }
         }
+        if ($rowInk5e -ge 3) { $stripInkRows5e++ }
     }
-    if ($stripInk5e -gt 0)
+    if ($stripInkRows5e -ge 2)
     {
         Save-FullScreenshot "AH5e-FAIL-strip-ink.png"
-        throw "AH5e 岛底条带断言失败：外来墨 $stripInk5e 像素（期望 0）——岛底下残留层（真机「空白悬浮条」CI 面）"
+        throw "AH5e 岛底条带断言失败：$stripInkRows5e 行各 ≥3 点异于两侧参照（期望 0 行）——岛底下残留层（真机「空白悬浮条」CI 面）"
     }
-    Write-Host "场景 AH5e 通过：展开→收起迁移后 band 几何复验 ±1px + 岛底条带 [3,20]px 全宽零外来墨——ISLAND-BOTTOM-1"
+    Write-Host "场景 AH5e 通过：展开→收起迁移后 band 几何复验 ±1px + 岛底条带 [5,20]px 行持久零残留——ISLAND-BOTTOM-1"
     Write-Host "场景 AH 通过：岛展开态/占位面/组件级下钻/灰板摘除/边缘精度——ISLAND-D3/D4、灰板修复与边缘精度 CI 视觉取证面"
 }
 catch
