@@ -6365,6 +6365,7 @@ try
     Start-Sleep -Seconds 90 # 首跳刷新 + 窗集建稳
     $tiles = [WinEnum]::VisibleHandlesByTitle("Beacon Tile").Count
     if ($tiles -ne 2) { Save-FullScreenshot "AD-FAIL-baseline-tiles.png"; throw "断言失败（场景 AD 前置）：浸泡基线 tile=$tiles（期望 2）" }
+    $adDay0 = Get-Date # 基线读取时刻：日志按日滚动的起点（FileLoggerProvider 每次写重算文件名）
     $log0 = Get-Content $adLog -Raw -Encoding UTF8
     $ok0 = ([regex]::Matches($log0, [regex]::Escape("refreshed ok"))).Count
     $proc0 = Get-Process Beacon.App -ErrorAction Stop | Select-Object -First 1
@@ -6376,19 +6377,36 @@ try
     Start-Sleep -Seconds 900
     $procs = @(Get-Process Beacon.App -ErrorAction SilentlyContinue)
     if ($procs.Count -ne 1) { Save-FullScreenshot "AD-FAIL-proc-gone.png"; throw "断言失败（场景 AD）：15min 静置后进程数=$($procs.Count)（期望 1——驻留期进程退出/重启即长时稳定不达）" }
-    $log1 = Get-Content $adLog -Raw -Encoding UTF8
-    $slice = if ($log1.Length -ge $len0) { $log1.Substring($len0) } else { $log1 }
+    # FileLoggerProvider 每次写都按 DateTime.Now:yyyyMMdd 重算文件名（FileLoggerProvider.cs:37）——浸泡窗
+    # 跨零点就换到次日文件，起始时点冻结的 $adLog 停在昨日：读到的「新行」只剩零点前那 80 秒
+    # （run 45495474490 实证 ok1=11 假红，而 11 行正是 80 秒 15s×2 组件的健康速率）。按基线时刻→当前
+    # 覆盖的每个日期分别读；起点前缀长度只对首日文件裁。
+    $adFiles = @()
+    $adSlice = ''
+    $adDay = $adDay0
+    while ($adDay -le (Get-Date))
+    {
+        $adF = Join-Path (Join-Path $configDir "logs") ("beacon-" + $adDay.ToString("yyyyMMdd") + ".log")
+        if (-not (Test-Path $adF)) { $adDay = $adDay.AddDays(1); continue }
+        $adFiles += $adF
+        $adTxt = Get-Content $adF -Raw -Encoding UTF8
+        if ($adDay -eq $adDay0 -and ($adTxt.Length -ge $len0)) { $adTxt = $adTxt.Substring($len0) }
+        $adSlice += $adTxt
+        $adDay = $adDay.AddDays(1)
+    }
+    $slice = $adSlice
+    if ($adFiles.Count -gt 1) { Write-Host "场景 AD：浸泡窗跨日滚动了 $($adFiles.Count) 个日志文件，已合并读取" }
     $ok1 = ([regex]::Matches($slice, [regex]::Escape("refreshed ok"))).Count
     if ($ok1 -lt 50)
     {
-        Copy-Item $adLog (Join-Path $evidence "beacon-AD-refresh-fail.log") -Force -ErrorAction SilentlyContinue
-        throw "断言失败（场景 AD）：15min 窗内 refreshed ok 新行=$ok1（期望 ≥50）——刷新循环在静置期停摆（长时稳定不达）"
+        foreach ($adF in $adFiles) { Copy-Item $adF (Join-Path $evidence ("beacon-AD-refresh-fail." + (Split-Path $adF -Leaf))) -Force -ErrorAction SilentlyContinue }
+        throw "断言失败（场景 AD）：15min 窗内 refreshed ok 新行=$ok1（期望 ≥50，已按日滚动合并读取 $($adFiles.Count) 个日志文件）——刷新循环在静置期停摆（长时稳定不达）"
     }
     $unexpected = ([regex]::Matches($slice, [regex]::Escape("refresh failed unexpectedly"))).Count
     $fatal = ([regex]::Matches($slice, [regex]::Escape("Fatal"))).Count
     if ($unexpected -ne 0 -or $fatal -ne 0)
     {
-        Copy-Item $adLog (Join-Path $evidence "beacon-AD-crash-fail.log") -Force -ErrorAction SilentlyContinue
+        foreach ($adF in $adFiles) { Copy-Item $adF (Join-Path $evidence ("beacon-AD-crash-fail." + (Split-Path $adF -Leaf))) -Force -ErrorAction SilentlyContinue }
         throw "断言失败（场景 AD）：静置窗内 unexpected=$unexpected / Fatal=$fatal（期望 0/0）——静置期异常"
     }
     $warnCount = ([regex]::Matches($slice, [regex]::Escape("refresh failed"))).Count
