@@ -18,7 +18,7 @@
 - 界面类条目走查审计（2026-11-13 任务单 beacon-ui-review）：47 条 UI 已勾项三问逐条复核（证据真伪/原始要求落实/待亲验提前勾），判真证据 27/证据不足 5/虚勾 15；虚勾 15 条改回未勾（Toast 点击激活 BLOCKED 半、P2 与 PANEL-UPGRADE-1 方案 B 后无真机、待派工 8 条装机亲验未发生、ISLAND-D1-D4 只有测试 run 无视觉取证且 island-data/ 目录不存在），计数头逐节重算；重点深查进度展示：多窗格式「5%/5h 7%/w 8%/M」已实现且有 T1e/V1 UIA 文本硬断言（真证据），进度条驱动=2026-10-15 用户令 5h 展示窗（非字面「最小额度」；ark 为最差窗，口径分歧留用户拍板）；结构性发现 nightly 零 island 视觉场景（岛类条目 CI 内无取证通道）；报告 docs/acceptance-evidence/2026-11-13-ui-audit.md。
 - beacon-next 续推处置（2026-11-12 任务单 beacon-next）：todo.md 12 条未勾项逐条核对全部外部阻塞（跨 DPI 拖动/拖放 2 条=双 DPI 真机缺，重启恢复 DPI 1 条=第二显示器+解锁 GUI，Toast 点击 1 条=imac 横幅被系统压制需真人，跨进程穿透 1 条=行 69 已裁定不自加整窗穿透+AC 转用户裁定，RFC §6.2.7 真人操作、视觉观感裁量、真人录屏、B-803 干净 VM、长时稳定观察 5 条=需装机/真人/录屏，真实 GitHub PAT 1 条=凭据待用户，USER-RPT-3=回发确认待用户），无代码可做项故不凑数；本轮转交付同批发现的 nightly 真红（见上 NIGHTLY-AB2，f9580a7）。
 
-## 设置与展示改版（SET-UX，2026-11-23，15 项 = 7 勾 / 8 未勾）
+## 设置与展示改版（SET-UX，2026-11-23，15 项 = 8 勾 / 7 未勾）
 
 目标是让第一次用 Beacon 的人能知道接入了什么数据、在哪里看到、修改后何时生效。2026-11-23 用户看过原型后认可方向，按下列任务推进现有 WinUI 设置页改版。原型使用演示数据，实施状态以各条验收为准。
 
@@ -117,11 +117,11 @@
 
 ### 第三批 · 导航、接入与验收
 
-- [ ] **SET-UX-08 [P1] 设置导航和字段搜索**
+- [x] **SET-UX-08 [P1] 设置导航和字段搜索**
   - **问题** 服务、常规设置和高级配置混排，搜索页写「字段」但只匹配模块文字。
   - **怎么做** 一级入口为「常规 / 桌面显示 / 外观 / 数据来源」，备份诊断等分组。常规集中开机启动、看板快捷键、语言，并注明语言当前覆盖看板和托盘。更新搜索以匹配实际设置和旧名称，结果进入页面后展开分组、滚动并聚焦。托盘保留原入口兼容。
   - **怎么验证** 搜「透明度」「检查频率」「贴边收起」「GitHub」「组件中心」，分别断言页面与目标控件。测试键盘、无结果、清空、窄窗，以及现有 Windows UIA 搜索场景 D。
-  - **证据** 6589111（分组导航+字段搜索跳转）：一级四入口不设头、Provider/动作归「数据来源」「备份与诊断」头（nav-group-*）；SearchEntries 36 条字段索引匹配实际设置词+旧名（悬浮形态/检查频率…），回车进页→ExpandAllAndFind 展折叠区→StartBringIntoView→Focus，150ms×20 拍重试泵（45356987498 实证 TryEnqueue 跨不过布局帧）；语言覆盖面注明在控件旁；nightly run 45536879866 场景 SG 全绿（五路跳转+模块级+清词复原）；/7615da0（无结果+清空补 CI 门）：无结果词断头行「0/N 个模块匹配」+ module-github 离树（模块行全滤除）、清词后头行回「N 个模块」非过滤形态（Get-WindowUiaTexts 文本锚，格式串与 ApplyModuleFilter 逐字对齐），nightly run 45697308890 SG 无结果档+清词头行全绿（evidence/SG-no-result.png）；键盘 Tab 序待装机亲验；窄窗档 CI 门已绿（/dfeb789 nightly run 45754679256：600px 窗「看板」过滤 N/M 头行+行滤除+清词复原全链，搜索词改模块命中判据见 BEACON-FIX-1126）；imac 真机复核 2026-11-26（session 1 UIA）：搜「检查频率」回车焦点落 poll-interval-box（SG-jump-poll.png 黑框高亮可目检），头行「0/23 个模块匹配 · 1 设置项」过滤计数同 CI；/688a37e（键盘 Tab 序真机遍历）：interactive task session 1 起点连按 60 次 Tab，焦点全程留在 app 进程（逃逸 0）、无匿名可聚焦元素（0）、侧栏模块/开关声明序=视觉序（github/jenkins/herald 单调 4<6<10）、走完侧栏进常规页热键/开机/主题/语言/刷新框+三按钮后回环 settings-search；原始日志 imac-realmachine/tabwalk.txt
+  - **证据** 6589111（分组导航+字段搜索跳转）：一级四入口不设头、Provider/动作归「数据来源」「备份与诊断」头（nav-group-*）；SearchEntries 36 条字段索引匹配实际设置词+旧名（悬浮形态/检查频率…），回车进页→ExpandAllAndFind 展折叠区→StartBringIntoView→Focus，150ms×20 拍重试泵（45356987498 实证 TryEnqueue 跨不过布局帧）；语言覆盖面注明在控件旁；nightly run 45536879866 场景 SG 全绿（五路跳转+模块级+清词复原）；/7615da0（无结果+清空补 CI 门）：无结果词断头行「0/N 个模块匹配」+ module-github 离树（模块行全滤除）、清词后头行回「N 个模块」非过滤形态（Get-WindowUiaTexts 文本锚，格式串与 ApplyModuleFilter 逐字对齐），nightly run 45697308890 SG 无结果档+清词头行全绿（evidence/SG-no-result.png）；键盘 Tab 序待装机亲验；窄窗档 CI 门已绿（/dfeb789 nightly run 45754679256：600px 窗「看板」过滤 N/M 头行+行滤除+清词复原全链，搜索词改模块命中判据见 BEACON-FIX-1126）；imac 真机复核 2026-11-26（session 1 UIA）：搜「检查频率」回车焦点落 poll-interval-box（SG-jump-poll.png 黑框高亮可目检），头行「0/23 个模块匹配 · 1 设置项」过滤计数同 CI；/688a37e（键盘 Tab 序真机遍历）：interactive task session 1 起点连按 60 次 Tab，焦点全程留在 app 进程（逃逸 0）、无匿名可聚焦元素（0）、侧栏模块/开关声明序=视觉序（github/jenkins/herald 单调 4<6<10）、走完侧栏进常规页热键/开机/主题/语言/刷新框+三按钮后回环 settings-search；原始日志 imac-realmachine/tabwalk.txt；键盘面全闭环（Enter 跳转+Tab 序真机双绿），验收五词/无结果/清空/窄窗/场景 D 全落，51a9c3f 勾
 
 - [ ] **SET-UX-09 [P1] 数据来源按接入状态组织**
   - **问题** 连接表单、组件表单和高级树同时出现；「已保存」容易被当成已验证或已显示。
