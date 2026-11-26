@@ -469,6 +469,16 @@
   - imac 真机取证（2026-11-26，deployed 2026.11.25+d8b52e8，主屏 5120×2880 @200%）：程序化首展（BEACON_DEBUG_ISLAND_PREVIEW=1，与 CI 场景 AH 同钩子同 ShowPreview 渲染路径）展开窗 482×192，band=clientRect±4px 精确吻合；翼板采样（窗缘内 4/16 DIP 半高）左右四点全 (0,0,0) 和 0——**无白色侧板**；药丸 x 322..800 vs 窗框 320..802 直边压窗缘全宽（ShoulderDips=0 生效）；框内白色像素 1.3%（内容文字）；证据 docs/acceptance-evidence/island-flank-verify/（展开/收起/整屏三件+README）；真机 SendInput 绝对坐标在三混合 DPI 屏虚拟桌面映射落点偏移，悬停往返未在真机复跑（交互链 CI AH1a-c 已门，本单病灶是几何非交互）。
   - 验收硬门槛：CI 像素断言绿 + imac 真机截屏（展开态左右无白板）+ **用户 vision 亲验通过才闭项**（岛面问题第四单，从严）。
 
+## 岛几何对齐 BrimDeck + 设置页排版 + 配置即生效（2026-11-26 用户真机报——岛窗口面问题第五单：灰底、EDGE-1 锯齿、BOTTOM 空白条、FLANK 白板之后又报「上角不是直的」「下方两角白色外围」「图标和文字都贴在一起」，修复必须走到用户亲验为止）
+
+- [ ] BEACON-FIX-1126【2026-11-26 巡检单派工】岛顶部两角直角硬切 + 底角白色外围 + 设置页四病灶（图标贴字/下拉截断/保存取消飘左上/开关挤压文字列）+ 改配置要重启才生效；验收=Core 全绿 + CI 三新门绿 + imac 真机取证 + 用户装机亲验（从严）。
+  - 病灶 A 修（4b934bc）：IslandSurfaceOutline 无肩分支补抄漏的顶角 tl/tr 圆象限弧（BrimDeck IslandBorder 同式三段；TopRadiusDips=12 与底角同值、clamp min(w,h)/2；「Notch TopRadius=0」仅适用有肩刘海态的旧误读已纠）；XAML figure 起点改随 Move 段（旧硬编码 (0,0)）；经典胶囊红线：肩>0 分支顶缘恒 (0,0) 到 (w,0) 零变化（ShoulderPresent_KeepsSquareTop_ClassicCapsuleUnchanged 锁）。
+  - 病灶 B 修（4b934bc）：RegionPoint/FlattenCubic 增客户区物理尺寸参数，region 多边形整体向窗内收缩 1 物理像素（X 按左右半场 ±1、Y 下半场 −1/上半场 +1、顶缘 py=0 不动防顶缝），收缩缝由 3px 边带环盖住；Core 几何锁 1420 全绿（IslandSurfaceOutlineTests 生产口径重写：四曲线镜像/闭合 (tr,0)/夹取/方角退化分支）。
+  - 病灶 C/D/E/F 修（17c5772）：DesignTokens 语义间距 token（IconTextGap=10/RowInline=8/SectionGap=16/CardPadding=12）+ 模块图标 Border 右 Margin 10；组件向导表头删硬编码宽（220/200/180）改三列 Grid（类型★/连接★/刷新档 MinWidth 220）+ 频率框独立行；连接编辑器保存/取消移表单底部右对齐（保存主按钮最右）；模块/连接行开关 MinWidth 40 改固定宽 44（实测轨宽，列宽恒定不挤文字列）。
+  - ③ 连接保存即生效修（545ccba）：全写点广播审计（SettingsApplied/PinsChanged/Kick）Desktop/Appearance/Actions/Navigation/ComponentStyles/Pages 全齐，唯一缺口=SaveConnectionAsync 保存后无立即重拉（Provider 每拍现读 config 无缓存，但组件在退避或长周期档时新值睡到下个节拍，workflow 档 10 分钟）；补 Host.KickConnection(id)（与启用开关同口径，打断退避段下一拍按新值拉取）。
+  - CI 验收面（5462c2f）：AH5d-B region 直读门（GetWindowRgn+PtInRegion/GetRgnBox：四角出 region=顶角弧+内缩、包围盒 Top=0 贴顶铁律、Left=1 与 Bottom 上界锁内缩，决定性免桌面像素参照）；SG 病灶 C 门（图标右缘到文字左缘 ≥9px，BoundingRectangle 直读带 NaN 防护）；SH 病灶 D 门（刷新档下拉宽 ≥218px=MinWidth 220，硬编码 180 恒红）；SET-UX-ROW-1 开关列断言随 nightly 重跑覆盖病灶 F。
+  - 验收硬门槛：CI 三新门绿 + imac 真机截屏（顶角圆弧/底角无白外围/设置页间距列宽按钮位）+ **用户装机亲验通过才闭项**（岛面问题第五单，从严）。
+
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
