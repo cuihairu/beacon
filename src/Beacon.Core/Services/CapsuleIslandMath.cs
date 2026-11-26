@@ -18,8 +18,13 @@ public static class CapsuleIslandMath
     /// <summary>肩深（BrimDeck IslandBorder.BuildOutline：shoulderDepth = shoulder × 7/16；肩 0 恒 0）。</summary>
     public const double ShoulderDepthDips = ShoulderDips * 7d / 16;
 
-    /// <summary>底圆角（BrimDeck CollapsedLimits.NotchCorner）：岛底两角，顶两角恒 0（贴屏幕顶）。</summary>
+    /// <summary>底圆角（BrimDeck CollapsedLimits.NotchCorner）：岛底两角。</summary>
     public const double BottomRadiusDips = 12;
+
+    /// <summary>顶圆角（BEACON-FIX-1126 病灶 A）：2026-11-26 用户令「上角不是直的」——ShoulderDips
+    /// 归零后轮廓落进无肩分支，顶两角直角硬切是当初抄漏的分支（BrimDeck 无肩分支顶角走 tl/tr 圆象限弧，
+    /// 「Notch TopRadius=0」只适用有肩刘海态）。与底角同值 12；窗顶缘仍贴屏幕顶，仅左右上角内圆。</summary>
+    public const double TopRadiusDips = 12;
 
     /// <summary>收起态高（BrimDeck CollapsedLimits.BaseHeight）。</summary>
     public const double HeightDips = 32;

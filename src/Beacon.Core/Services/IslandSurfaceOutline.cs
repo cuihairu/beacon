@@ -32,10 +32,11 @@ public static class IslandSurfaceOutline
     /// 生成闭合轮廓段表（首段 Move，其余 Line/Cubic，末点回到首点由调用方闭合）。
     /// 夹取与 BrimDeck 完全同式：肩夹在 [0, min(w/4, h/2)]；底角上限
     /// min(h - 肩深, h/2, (right-left)/2)（肩存在时上半），且恒不超过 (right-left)/2——
-    /// 低矮曲面（岛展开收窄）不会因肩部收尾跳变。
+    /// 低矮曲面（岛展开收窄）不会因肩部收尾跳变。顶角上限 min(w, h)/2（BrimDeck 同式），
+    /// 仅无肩分支生效（有肩=刘海态贴顶直边，顶角被肩部覆盖）。
     /// 宽或高 ≤ 0 返回空表（App 层据此不画）。
     /// </summary>
-    public static IReadOnlyList<Seg> Build(double w, double h, double shoulderDips, double bottomRadiusDips)
+    public static IReadOnlyList<Seg> Build(double w, double h, double shoulderDips, double bottomRadiusDips, double topRadiusDips = 0)
     {
         if (!(w > 0) || !(h > 0))
         {
@@ -47,11 +48,14 @@ public static class IslandSurfaceOutline
         double left = shoulder, right = w - shoulder;
         double limit = Math.Max(0, Math.Min(shoulder > 0 ? Math.Min(h - depth, h / 2) : h / 2, (right - left) / 2));
         double br = Math.Clamp(bottomRadiusDips, 0, limit);
+        double tr = Math.Clamp(topRadiusDips, 0, Math.Min(w, h) / 2); // BrimDeck 无肩分支：tl=tr 同值对称
 
-        // 贴屏幕顶：顶缘 (0,0)→(w,0) 横贯全宽、上两角恒 0（BrimDeck Notch TopRadius=0）
-        var segs = new List<Seg>(10) { new Move(new Point(0, 0)), new Line(new Point(w, 0)) };
+        var segs = new List<Seg>(12);
         if (shoulder > 0)
         {
+            // 贴屏幕顶（刘海态）：顶缘 (0,0)→(w,0) 横贯全宽（BrimDeck Notch TopRadius=0）
+            segs.Add(new Move(new Point(0, 0)));
+            segs.Add(new Line(new Point(w, 0)));
             // 肩（右）：两段 C2 连接的三次——曲率起止为 0，与直线边相切（同 BrimDeck）
             segs.Add(new Cubic(
                 new Point(w - shoulder * 0.28, 0),
@@ -61,6 +65,20 @@ public static class IslandSurfaceOutline
                 new Point(right, depth * 0.36),
                 new Point(right, depth * 0.72),
                 new Point(right, depth)));
+        }
+        else
+        {
+            // 无肩（2026-11-26 用户令「上角不是直的」）：顶两角走 tl/tr 圆象限弧（BrimDeck 无肩分支
+            // 同式三段——BeginFigure(tl,0)→Line(w-tr,0)→Bezier 右上角），radius 0 退化为旧方角口径
+            segs.Add(new Move(new Point(tr, 0)));
+            segs.Add(new Line(new Point(w - tr, 0)));
+            if (tr > 0)
+            {
+                segs.Add(new Cubic(
+                    new Point(w - tr * (1 - CircleK), 0),
+                    new Point(w, tr * (1 - CircleK)),
+                    new Point(w, tr)));
+            }
         }
 
         segs.Add(new Line(new Point(right, h - br)));
@@ -89,8 +107,19 @@ public static class IslandSurfaceOutline
         }
         else
         {
-            segs.Add(new Line(new Point(0, h - br))); // 无肩：左直边（贴顶方角）
-            segs.Add(new Line(new Point(0, 0)));
+            // 无肩：左直边上到顶角弧起点，顶左角弧回到 Move 点闭合（radius 0 = 旧方角直回）
+            segs.Add(new Line(new Point(left, tr)));
+            if (tr > 0)
+            {
+                segs.Add(new Cubic(
+                    new Point(left, tr * (1 - CircleK)),
+                    new Point(left + tr * (1 - CircleK), 0),
+                    new Point(tr, 0)));
+            }
+            else
+            {
+                segs.Add(new Line(new Point(0, 0)));
+            }
         }
 
         return segs;

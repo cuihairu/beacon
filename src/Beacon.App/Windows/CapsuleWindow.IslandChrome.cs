@@ -200,13 +200,15 @@ public sealed partial class CapsuleWindow
         {
             // WinUI 3 的同一 Geometry 实例不能挂多个 Path.Data（抛「值不在预期范围」）——
             // 曲面与两层阴影剪影各自新建一份（控制点序列相同、实例独立）
+            var segs = IslandSurfaceOutline.Build(width, height, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips, CapsuleIslandMath.TopRadiusDips);
+            var move = (IslandSurfaceOutline.Move)segs[0]; // Build 契约：首段恒 Move（上方 w/h>0 守卫已保证非空）
             var figure = new PathFigure
             {
-                StartPoint = new global::Windows.Foundation.Point(0, 0),
+                StartPoint = ToPoint(move.To), // 无肩分支 Move=(tr,0)：顶角弧起点，不再是恒 (0,0)
                 IsClosed = true,
                 IsFilled = true,
             };
-            foreach (var seg in IslandSurfaceOutline.Build(width, height, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips))
+            foreach (var seg in segs.Skip(1))
             {
                 switch (seg)
                 {
@@ -306,7 +308,9 @@ public sealed partial class CapsuleWindow
             }
             var clientWidthDips = (windowSize.Width - chromeWidth) / scale;
             var clientHeightDips = (windowSize.Height - chromeHeight) / scale;
-            var segs = IslandSurfaceOutline.Build(clientWidthDips, clientHeightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips);
+            var clientWidthPx = windowSize.Width - chromeWidth;
+            var clientHeightPx = windowSize.Height - chromeHeight;
+            var segs = IslandSurfaceOutline.Build(clientWidthDips, clientHeightDips, CapsuleIslandMath.ShoulderDips, CapsuleIslandMath.BottomRadiusDips, CapsuleIslandMath.TopRadiusDips);
             if (segs.Count == 0)
             {
                 IslandTrace("region skipped empty outline");
@@ -323,13 +327,13 @@ public sealed partial class CapsuleWindow
                 switch (seg)
                 {
                     case IslandSurfaceOutline.Move move:
-                        points.Add(RegionPoint(move.To, scale, offsetX, offsetY));
+                        points.Add(RegionPoint(move.To, scale, offsetX, offsetY, clientWidthPx, clientHeightPx));
                         break;
                     case IslandSurfaceOutline.Line line:
-                        points.Add(RegionPoint(line.To, scale, offsetX, offsetY));
+                        points.Add(RegionPoint(line.To, scale, offsetX, offsetY, clientWidthPx, clientHeightPx));
                         break;
                     case IslandSurfaceOutline.Cubic cubic:
-                        FlattenCubic(cubic, points, scale, offsetX, offsetY); // 起点取 points 末尾（前段终点）
+                        FlattenCubic(cubic, points, scale, offsetX, offsetY, clientWidthPx, clientHeightPx); // 起点取 points 末尾（前段终点）
                         break;
                 }
             }
@@ -435,7 +439,7 @@ public sealed partial class CapsuleWindow
         }
     }
 
-    private static void FlattenCubic(IslandSurfaceOutline.Cubic cubic, List<NativeMethods.POINT> points, double scale, int offsetX, int offsetY)
+    private static void FlattenCubic(IslandSurfaceOutline.Cubic cubic, List<NativeMethods.POINT> points, double scale, int offsetX, int offsetY, int clientWidthPx, int clientHeightPx)
     {
         if (points.Count == 0)
         {
@@ -450,16 +454,24 @@ public sealed partial class CapsuleWindow
             var u = 1 - t;
             var x = u * u * u * startX + 3 * u * u * t * cubic.C1.X + 3 * u * t * t * cubic.C2.X + t * t * t * cubic.To.X;
             var y = u * u * u * startY + 3 * u * u * t * cubic.C1.Y + 3 * u * t * t * cubic.C2.Y + t * t * t * cubic.To.Y;
-            points.Add(RegionPoint(new IslandSurfaceOutline.Point(x, y), scale, offsetX, offsetY));
+            points.Add(RegionPoint(new IslandSurfaceOutline.Point(x, y), scale, offsetX, offsetY, clientWidthPx, clientHeightPx));
         }
     }
 
-    private static NativeMethods.POINT RegionPoint(IslandSurfaceOutline.Point dip, double scale, int offsetX, int offsetY)
+    /// <summary>轮廓 DIP 点 → 窗相对 region 多边形点（病灶 B，BEACON-FIX-1126）：取整折线沿轮廓
+    /// 中心线裁，弧段外侧半像素露出窗背板（浅色主题读成「底角白色外围」）。多边形整体向窗内收缩
+    /// 1 物理像素：X 按左右半场 ±1，Y 下半场 −1、上半场（顶角弧段）+1、顶缘 py=0 不动（贴屏幕顶，
+    /// 内缩会开顶缝）——收缩缝由 3px 边带环盖住，视觉零损失。</summary>
+    private static NativeMethods.POINT RegionPoint(IslandSurfaceOutline.Point dip, double scale, int offsetX, int offsetY, int clientWidthPx, int clientHeightPx)
     {
+        var px = (int)Math.Round(dip.X * scale);
+        var py = (int)Math.Round(dip.Y * scale);
+        var insetX = px * 2 < clientWidthPx ? 1 : px * 2 > clientWidthPx ? -1 : 0;
+        var insetY = py == 0 ? 0 : py * 2 > clientHeightPx ? -1 : py * 2 < clientHeightPx ? 1 : 0;
         return new NativeMethods.POINT
         {
-            X = (int)Math.Round(dip.X * scale) + offsetX,
-            Y = (int)Math.Round(dip.Y * scale) + offsetY,
+            X = px + insetX + offsetX,
+            Y = py + insetY + offsetY,
         };
     }
 
