@@ -1,4 +1,4 @@
-﻿# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
+# 视觉取证（2026-10-09 bug 批验收硬标准：没截图不算完，断言失败 = 红构建不发版）
 #   场景 A 数量悬浮窗开：GLM 悬浮框必须在桌面（可见 "Beacon Tile" 窗）——全屏 + 6x 近景 +
 #     进度条像素硬断言（底部 4 DIP 条带，2026-10-11 重设计后 bar 为默认）+「NN%」UIA 文本硬断言
 #     （zhipu 连接指 mock /api/monitor/usage/quota/limit → 38% 健康链，不再赌公网/凭据）。
@@ -8294,14 +8294,11 @@ try
     Write-Host "场景 SH 添加断言通过：widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）"
     $addAfter = Find-UiaById $settings "source-add-button" 8
     if ($addAfter -and $addAfter.Current.IsEnabled) { Save-FullScreenshot "SH-FAIL-add-still-enabled.png"; throw "断言失败（场景 SH）：添加后按钮仍可用——重复提交防抖缺失" }
-    Invoke-Uia (Find-UiaById $settings "source-goto-placement" 8)
-    Start-Sleep -Seconds 3
-    if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
-    Save-FullScreenshot "SH-goto-component-center.png"
     # —— 病灶 D（BEACON-FIX-1126，2026-11-26）：刷新档下拉宽 ≥ MinWidth 220 DIP——
     # 硬编码 Width=180 把「machine · 15 秒（机器状态）」截成省略号（用户「下拉框截断」），修复后
     # 框随列宽自适应；UIA BoundingRectangle 直读宽度（修复前 180px 恒红）。
-    # 必须在 Stop-Beacon 之前读：关窗后 UIA 元素失效，Find 恒空（CI 45726231918 实证）。
+    # 锚在 Provider 页的组件向导（BuildWidgetEditor）：必须在「查看去向」跳组件中心之前读——
+    # 跳页/关窗后锚离树，Find 恒空（CI 45726231918+45740410733 两轮实证）。
     $tierD = Find-UiaById $settings "widget-tier-box" 10
     if (!$tierD) { Save-FullScreenshot "SH-FAIL-no-tier-box.png"; throw "断言失败（SH 病灶 D 门）：widget-tier-box 不在 UIA 树——组件向导未载入或锚丢失" }
     $tierW5D = $tierD.Current.BoundingRectangle.Width
@@ -8310,6 +8307,10 @@ try
         throw "断言失败（SH 病灶 D 门）：刷新档下拉宽 $tierW5D px（期望 ≥218=MinWidth 220 DIP）——硬编码宽度截断回归"
     }
     Write-Host "SH 病灶 D 门通过：刷新档下拉宽 $tierW5D px（≥218，长标签不再截断）"
+    Invoke-Uia (Find-UiaById $settings "source-goto-placement" 8)
+    Start-Sleep -Seconds 3
+    if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
+    Save-FullScreenshot "SH-goto-component-center.png"
     Stop-Beacon
     Write-Host "场景 SH 通过：chip 待验证→失败→重试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
 }
