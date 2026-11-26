@@ -1,0 +1,282 @@
+﻿DMP=C:\beacon-verify\dumps\Beacon.App.exe.39752.dmp
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\Symbols*https://msdl.microsoft.com/download/symbols
+
+************* Preparing the environment for Debugger Extensions Gallery repositories **************
+   ExtensionRepository : Implicit
+   UseExperimentalFeatureForNugetShare : true
+   AllowNugetExeUpdate : true
+   NonInteractiveNuget : true
+   AllowNugetMSCredentialProviderInstall : true
+   AllowParallelInitializationOfLocalRepositories : true
+
+   -- Configuring repositories
+      ----> Repository : LocalInstalled, Enabled: true
+      ----> Repository : UserExtensions, Enabled: true
+
+>>>>>>>>>>>>> Preparing the environment for Debugger Extensions Gallery repositories completed, duration 0.000 seconds
+
+************* Waiting for Debugger Extensions Gallery to Initialize **************
+
+>>>>>>>>>>>>> Waiting for Debugger Extensions Gallery to Initialize completed, duration 0.281 seconds
+   ----> Repository : UserExtensions, Enabled: true, Packages count: 0
+   ----> Repository : LocalInstalled, Enabled: true, Packages count: 46
+
+Microsoft (R) Windows Debugger Version 10.0.29680.1004 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\beacon-verify\dumps\Beacon.App.exe.39752.dmp]
+User Mini Dump File with Full Memory : Only application data is available
+
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+Deferred                                       srv*C:\Symbols*https://msdl.microsoft.com/download/symbols
+Symbol search path is: srv*C:\Symbols*https://msdl.microsoft.com/download/symbols
+Executable search path is: 
+Windows 10 Version 26300 MP (20 procs) Free x64
+Product: WinNt, suite: SingleUserTS
+Edition build lab: 26100.1.amd64fre.ge_release.240331-1435
+Debug session time: Thu Nov 26 18:25:07.000 2026 (UTC + 8:00)
+System Uptime: 3 days 23:23:51.743
+Process Uptime: 0 days 0:00:03.000
+................................................................
+.............................
+This dump file has an exception of interest stored in it.
+The stored exception information can be accessed via .ecxr
+(9b48.b54): Unknown exception - code c000027b (first/second chance not available)
+For analysis of this file, run !analyze -v
+KERNELBASE!RaiseFailFastException+0x188:
+00007ffd`8b56a608 0f1f440000      nop     dword ptr [rax+rax]
+0:000> cdb: Reading initial command '!analyze -v; q'
+................................................................
+.............................
+ClrmaManagedAnalysis::AssociateClient
+Loading extension C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\winext\sos\extensions\Microsoft.Diagnostics.DataContractReader.dll
+Loading extension C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\winext\sos\extensions\Microsoft.Diagnostics.DataContractReader.Extension.dll
+Loading extension C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\winext\sos\extensions\Microsoft.Diagnostics.DebuggerCommands.dll
+AssociateClient trying managed CLRMA
+AssociateClient got managed CLRMA service
+AssociateClient trying DAC CLRMA
+ERROR: FindPlugIns 800701c0
+*******************************************************************************
+*                                                                             *
+*                        Exception Analysis                                   *
+*                                                                             *
+*******************************************************************************
+
+*** WARNING: Check Image - Checksum mismatch - Dump: 0xdb79f0, File: 0xdbf0d7 - C:\Symbols\Microsoft.UI.Xaml.dll\0CAAD657db7000\Microsoft.UI.Xaml.dll
+*** WARNING: Unable to verify checksum for Beacon.App.dll
+*** WARNING: Unable to verify checksum for Beacon.App.exe
+ClrmaManagedAnalysis::GetThread 0b54
+ClrmaThread::Initialize 0b54
+~ClrmaThread
+ClrmaManagedAnalysis::get_ProviderName
+ClrmaManagedAnalysis::GetThread ffffffff
+ClrmaThread::Initialize 0b54
+ClrmaThread::get_CurrentException
+ClrmaThread::get_NestedExceptionCount
+~ClrmaThread
+DEBUG_FLR_EXCEPTION_CODE(80070057) and the ".exr -1" ExceptionCode(c000027b) don't match
+
+KEY_VALUES_STRING: 1
+
+    Key  : Analysis.CPU.mSec
+    Value: 3734
+
+    Key  : Analysis.Elapsed.mSec
+    Value: 74115
+
+    Key  : Analysis.IO.Other.Mb
+    Value: 209
+
+    Key  : Analysis.IO.Read.Mb
+    Value: 2
+
+    Key  : Analysis.IO.Write.Mb
+    Value: 512
+
+    Key  : Analysis.Init.CPU.mSec
+    Value: 2937
+
+    Key  : Analysis.Init.Elapsed.mSec
+    Value: 177148
+
+    Key  : Analysis.Memory.CommitPeak.Mb
+    Value: 569
+
+    Key  : Analysis.Version.DbgEng
+    Value: 10.0.29680.1004
+
+    Key  : Analysis.Version.Description
+    Value: 10.2608.26.1 amd64fre
+
+    Key  : Analysis.Version.Ext
+    Value: 1.2608.26.1
+
+    Key  : CLR.Engine
+    Value: CORECLR
+
+    Key  : CLR.Version
+    Value: 10.0.1526.53008
+
+    Key  : Failure.Bucket
+    Value: STOWED_EXCEPTION_80070057_Microsoft.UI.Xaml.dll!RefreshRateInfo::RegisterForPowerNotification
+
+    Key  : Failure.Exception.Code
+    Value: 0x80070057
+
+    Key  : Failure.Exception.IP.Address
+    Value: 0x7ffc51579125
+
+    Key  : Failure.Exception.IP.Module
+    Value: Microsoft_UI_Xaml
+
+    Key  : Failure.Exception.IP.Offset
+    Value: 0x9125
+
+    Key  : Failure.Hash
+    Value: {538128b4-3c68-37bd-fada-fbe7368d3a42}
+
+    Key  : Failure.ProblemClass.Primary
+    Value: STOWED_EXCEPTION
+
+    Key  : Faulting.IP.Type
+    Value: Paged
+
+    Key  : Timeline.OS.Boot.DeltaSec
+    Value: 343431
+
+    Key  : Timeline.Process.Day.DeltaSec
+    Value: 66307
+
+    Key  : Timeline.Process.Start.DeltaSec
+    Value: 3
+
+    Key  : WER.OS.Branch
+    Value: ge_release
+
+    Key  : WER.OS.Platform
+    Value: Windows
+
+    Key  : WER.OS.Version
+    Value: 10.0.26300.1
+
+    Key  : WER.Process.Name
+    Value: Beacon.App.exe
+
+    Key  : WER.Process.Version
+    Value: 0.1.2.0
+
+
+FILE_IN_CAB:  Beacon.App.exe.39752.dmp
+
+NTGLOBALFLAG:  0
+
+APPLICATION_VERIFIER_FLAGS:  0
+
+CONTEXT:  (.ecxr)
+rax=0000007e075fdfa0 rbx=0000007e075fe580 rcx=0000007e075fdfa0
+rdx=0000007e075fe450 rsi=000001b602871901 rdi=0000007e075fdfa0
+rip=00007ffd8b56a608 rsp=0000007e075fdec0 rbp=0000007e075fdfc0
+ r8=0000000000000000  r9=0000007e075fe400 r10=00007ffd8b300000
+r11=00007ffd8b3edf4f r12=00000000000004b1 r13=0000000080070057
+r14=0000000000000001 r15=0000000000000002
+iopl=0         nv up ei pl nz na po nc
+cs=0033  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00000200
+KERNELBASE!RaiseFailFastException+0x188:
+00007ffd`8b56a608 0f1f440000      nop     dword ptr [rax+rax]
+Resetting default scope
+
+EXCEPTION_RECORD:  (.exr -1)
+ExceptionAddress: 00007ffc51579125 (Microsoft_UI_Xaml!FailFastWithStowedExceptions+0x000000000000007d)
+   ExceptionCode: c000027b
+  ExceptionFlags: 00000001
+NumberParameters: 2
+   Parameter[0]: 000001b6028719c0
+   Parameter[1]: 0000000000000001
+
+PROCESS_NAME:  Beacon.App.dll
+
+ERROR_CODE: (NTSTATUS) 0x80070057 - <Unable to get error code text>
+
+EXCEPTION_CODE: (HRESULT) 0x80070057 (2147942487) - <Unable to get error code text>
+
+EXCEPTION_CODE_STR:  80070057
+
+EXCEPTION_PARAMETER1:  000001b6028719c0
+
+EXCEPTION_PARAMETER2:  0000000000000001
+
+FAULTING_THREAD:  ffffffff
+
+STACK_TEXT:  
+000001b6`0288b0f0 00007ffc`51e8f435 Microsoft_UI_Xaml!RefreshRateInfo::RegisterForPowerNotification+0xb1
+000001b6`0288b0f8 00007ffc`517d0a6a Microsoft_UI_Xaml!WindowsGraphicsDeviceManager::Create+0x156
+000001b6`0288b100 00007ffc`517c16bd Microsoft_UI_Xaml!CWindowsServices::CreateGraphicsDeviceManager+0x1d
+000001b6`0288b108 00007ffc`517b1da5 Microsoft_UI_Xaml!CommonBrowserHost::CreateRenderTarget+0x75
+000001b6`0288b110 00007ffc`517b1cc7 Microsoft_UI_Xaml!CommonBrowserHost::Init+0x127
+000001b6`0288b118 00007ffc`517b2bd7 Microsoft_UI_Xaml!CXcpBrowserHost::Init+0x17
+000001b6`0288b120 00007ffc`517b34cd Microsoft_UI_Xaml!CXcpBrowserHost::Create+0x6d
+000001b6`0288b128 00007ffc`51eb76c0 Microsoft_UI_Xaml!CControlBase::Init+0xd0
+000001b6`0288b130 00007ffc`51b843c2 Microsoft_UI_Xaml!CJupiterControl::Init+0x122
+000001b6`0288b138 00007ffc`51b84092 Microsoft_UI_Xaml!CJupiterControl::Create+0x86
+000001b6`0288b140 00007ffc`51b6fb55 Microsoft_UI_Xaml!DirectUI::DXamlCore::InitializeInstance+0x3ed
+000001b6`0288b148 00007ffc`51b747d9 Microsoft_UI_Xaml!DirectUI::DXamlCore::InitializeImpl+0xfd
+000001b6`0288b150 00007ffc`51b5d7c1 Microsoft_UI_Xaml!DirectUI::FrameworkApplication::StartDesktop+0x1a1
+000001b6`0288b158 00007ffc`5180f1b8 Microsoft_UI_Xaml!DirectUI::FrameworkApplicationFactory::Start+0x108
+
+
+STACK_COMMAND: .echo *** Stowed Exception v2 ***; .exr -1; dpp 0x1b6028719c0 L0x1; dt 0x1b60288c110 combase!STOWED_EXCEPTION_INFORMATION_V2 -r; dps 0x1b60288b0f0 L0xf ; ** Pseudo Context ** StowedPseudo ** Value: 3 ** ; kb
+
+IP_IN_PAGED_CODE: 
+Microsoft_UI_Xaml!FailFastWithStowedExceptions+7d
+00007ffc`51579125 488b4c2448      mov     rcx,qword ptr [rsp+48h]
+
+FAULTING_SOURCE_LINE:  C:\__w\1\s\dxaml\xcp\core\compositor\RefreshRateInfo.cpp
+
+FAULTING_SOURCE_FILE:  C:\__w\1\s\dxaml\xcp\core\compositor\RefreshRateInfo.cpp
+
+FAULTING_SOURCE_LINE_NUMBER:  174
+
+SYMBOL_NAME:  Microsoft_UI_Xaml!RefreshRateInfo::RegisterForPowerNotification+b1
+
+MODULE_NAME: Microsoft_UI_Xaml
+
+IMAGE_NAME:  Microsoft.UI.Xaml.dll
+
+FAILURE_BUCKET_ID:  STOWED_EXCEPTION_80070057_Microsoft.UI.Xaml.dll!RefreshRateInfo::RegisterForPowerNotification
+
+OS_VERSION:  10.0.26300.1
+
+BUILDLAB_STR:  ge_release
+
+OSPLATFORM_TYPE:  x64
+
+OSNAME:  Windows 10
+
+IMAGE_VERSION:  3.1.6.0
+
+FAILURE_ID_HASH:  {538128b4-3c68-37bd-fada-fbe7368d3a42}
+
+Followup:     MachineOwner
+---------
+
+CLRMAReleaseInstance
+quit:
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\ObjectiveC.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files\WindowsApps\Microsoft.WinDbg_1.2611.4001.0_x64__8wekyb3d8bbwe\amd64\Visualizers\winrt.natvis'
+CLRMAReleaseInstance
+DONE

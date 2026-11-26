@@ -1,0 +1,79 @@
+﻿
+TimeCreated        
+-----------        
+2026/10/7 16:27:12 
+2026/10/7 16:27:50 
+2026/10/7 19:34:56 
+2026/10/7 19:36:19 
+2026/11/25 4:57:14 
+2026/11/25 4:57:48 
+2026/11/25 5:01:44 
+2026/11/25 5:02:12 
+2026/11/26 3:49:09 
+2026/11/26 8:46:33 
+2026/11/26 8:46:50 
+2026/11/26 8:47:30 
+2026/11/26 8:48:27 
+2026/11/26 8:48:47 
+2026/11/26 8:51:32 
+2026/11/26 8:57:54 
+2026/11/26 9:05:10 
+2026/11/26 9:09:58 
+2026/11/26 9:10:27 
+2026/11/26 9:15:08 
+2026/11/26 18:11:40
+2026/11/26 18:11:58
+2026/11/26 18:12:38
+2026/11/26 18:14:53
+2026/11/26 18:16:16
+2026/11/26 18:17:06
+2026/11/26 18:18:52
+2026/11/26 18:25:05
+
+
+---install dates---
+
+
+TimeCreated : 2026/11/22 3:24:02
+Message     : Initiating changes for package KB5121794. Current state is Superseded. Target state is Absent. Client id:
+               CbsTask.
+
+TimeCreated : 2026/11/22 3:24:00
+Message     : Initiating changes for package KB5126052. Current state is Superseded. Target state is Absent. Client id:
+               CbsTask.
+
+TimeCreated : 2026/11/22 3:23:59
+Message     : Initiating changes for package KB5120708. Current state is Superseded. Target state is Absent. Client id:
+               CbsTask.
+
+TimeCreated : 2026/11/22 3:23:56
+Message     : Initiating changes for package KB5100998. Current state is Superseded. Target state is Absent. Client id:
+               CbsTask.
+
+TimeCreated : 2026/11/22 3:23:53
+Message     : Initiating changes for package KB5087051. Current state is Superseded. Target state is Absent. Client id:
+               CbsTask.
+
+TimeCreated : 2026/11/22 3:23:53
+Message     : Initiating changes for package KB777778. Current state is Superseded. Target state is Absent. Client id: 
+              CbsTask.
+
+TimeCreated : 2026/11/22 3:22:53
+Message     : Initiating changes for package KB5129195. Current state is Superseded. Target state is Absent. Client id:
+               CbsTask.
+
+TimeCreated : 2026/11/22 3:22:18
+Message     : Initiating changes for package KB777778. Current state is Staged. Target state is Staged. Client id: CbsT
+              ask.
+
+TimeCreated : 2026/11/22 3:22:18
+Message     : Initiating changes for package Microsoft-Windows-TerminalServices-AppServer-Client-FOD-zh-CN. Current sta
+              te is Staged. Target state is Staged. Client id: CbsTask.
+
+TimeCreated : 2026/11/22 3:22:18
+Message     : Initiating changes for package KB777778. Current state is Staged. Target state is Staged. Client id: CbsT
+              ask.
+
+
+
+DONE
