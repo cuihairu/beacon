@@ -57,6 +57,24 @@ interactive task 启 app（session 1），`CopyFromScreen` 拿到岛窗 98KB 有
 - 岛矩形范围内近白像素 0（白字在 y=25–41，非外围），**底角白外围已消除**；
 - 取证结束已恢复用户原 `config.json` / `shell-state.json`（DISPLAY2 岛布局 + 关闭岛态）。
 
+### 设置页与组件中心真机复核（2026-11-26，session 1 UIA）
+
+沿用 `IMAC\cui` interactive scheduled task 通道，在 imac 实机跑 UIA 断言（不是 CI 模拟）：
+
+- **搜索跳转（SET-UX-08）**：搜「检查频率」回车后 `FocusedElement.AutomationId=poll-interval-box`，
+  头行「0/23 个模块匹配 · 1 设置项」；`SG-jump-poll.png` 可见焦点框与过滤计数。
+- **来源状态三态（SET-UX-09）**：连接 chip 初始「已保存 · 待验证」→ 点「测试连接」（`127.0.0.1:18099`
+  无监听）→ chip「✗ 测试失败：HTTP 接口不可达…积极拒绝」+ 反馈行同因可见，真实原因未被通用文案吞掉。
+- **刷新档词汇（SET-UX-10）**：`poll-interval-box` 读名「默认刷新间隔（未单独设置的组件）」。
+- **主题生效标注（SET-UX-11）**：`theme-box` 读名「主题（重启生效）」。
+- **开关列对齐（SET-UX-ROW-1）**：`module-toggle-github/jenkins/herald` 右缘全 733，极差 0px。
+- **画廊按面过滤（SET-UX-ROW-2）**：http-a.status 组件，应用文案「应用到桌面」↔「应用到看板状态行」随面变；
+  row 面 `statusline` 可用，其余 6 项置灰带原因（`ROW2-gallery-row.png`）。
+- **桌面页三档显隐（SET-UX-ROW-3）**：关闭档仅 `board-toggle`；胶囊档加 `desktop-opacity-slider`；
+  岛档 `desktop-layout-box/numeric-floating-toggle/edge-collapse-toggle/desktop-opacity-slider/board-toggle`
+  五项全显（`ROW3-off.png`、`ROW3-capsule.png`、`ROW3-island.png`）。
+- 取证后已把 config 恢复 `showCapsule=false/capsuleIsland=false`（用户原态），并停止取证实例。
+
 ### 待补
 
 - **用户装机亲验仍为硬门**，BEACON-FIX-1126 保持未勾。

@@ -121,25 +121,25 @@
   - **问题** 服务、常规设置和高级配置混排，搜索页写「字段」但只匹配模块文字。
   - **怎么做** 一级入口为「常规 / 桌面显示 / 外观 / 数据来源」，备份诊断等分组。常规集中开机启动、看板快捷键、语言，并注明语言当前覆盖看板和托盘。更新搜索以匹配实际设置和旧名称，结果进入页面后展开分组、滚动并聚焦。托盘保留原入口兼容。
   - **怎么验证** 搜「透明度」「检查频率」「贴边收起」「GitHub」「组件中心」，分别断言页面与目标控件。测试键盘、无结果、清空、窄窗，以及现有 Windows UIA 搜索场景 D。
-  - **证据** 6589111（分组导航+字段搜索跳转）：一级四入口不设头、Provider/动作归「数据来源」「备份与诊断」头（nav-group-*）；SearchEntries 36 条字段索引匹配实际设置词+旧名（悬浮形态/检查频率…），回车进页→ExpandAllAndFind 展折叠区→StartBringIntoView→Focus，150ms×20 拍重试泵（45356987498 实证 TryEnqueue 跨不过布局帧）；语言覆盖面注明在控件旁；nightly run 45536879866 场景 SG 全绿（五路跳转+模块级+清词复原）；/7615da0（无结果+清空补 CI 门）：无结果词断头行「0/N 个模块匹配」+ module-github 离树（模块行全滤除）、清词后头行回「N 个模块」非过滤形态（Get-WindowUiaTexts 文本锚，格式串与 ApplyModuleFilter 逐字对齐），nightly run 45697308890 SG 无结果档+清词头行全绿（evidence/SG-no-result.png）；键盘 Tab 序待装机亲验；窄窗档 CI 门已绿（/dfeb789 nightly run 45754679256：600px 窗「看板」过滤 N/M 头行+行滤除+清词复原全链，搜索词改模块命中判据见 BEACON-FIX-1126）
+  - **证据** 6589111（分组导航+字段搜索跳转）：一级四入口不设头、Provider/动作归「数据来源」「备份与诊断」头（nav-group-*）；SearchEntries 36 条字段索引匹配实际设置词+旧名（悬浮形态/检查频率…），回车进页→ExpandAllAndFind 展折叠区→StartBringIntoView→Focus，150ms×20 拍重试泵（45356987498 实证 TryEnqueue 跨不过布局帧）；语言覆盖面注明在控件旁；nightly run 45536879866 场景 SG 全绿（五路跳转+模块级+清词复原）；/7615da0（无结果+清空补 CI 门）：无结果词断头行「0/N 个模块匹配」+ module-github 离树（模块行全滤除）、清词后头行回「N 个模块」非过滤形态（Get-WindowUiaTexts 文本锚，格式串与 ApplyModuleFilter 逐字对齐），nightly run 45697308890 SG 无结果档+清词头行全绿（evidence/SG-no-result.png）；键盘 Tab 序待装机亲验；窄窗档 CI 门已绿（/dfeb789 nightly run 45754679256：600px 窗「看板」过滤 N/M 头行+行滤除+清词复原全链，搜索词改模块命中判据见 BEACON-FIX-1126）；imac 真机复核 2026-11-26（session 1 UIA）：搜「检查频率」回车焦点落 poll-interval-box（SG-jump-poll.png 黑框高亮可目检），头行「0/23 个模块匹配 · 1 设置项」过滤计数同 CI
 
 - [ ] **SET-UX-09 [P1] 数据来源按接入状态组织**
   - **问题** 连接表单、组件表单和高级树同时出现；「已保存」容易被当成已验证或已显示。
   - **怎么做** 分三步交付。① 将已有服务和连接集中在「数据来源」，先显示服务能读到什么、连接状态和必要字段，可选端点等按需展开。② 复用原连接测试，将未连接、已保存待验证、测试成功和失败后重试映射到对应下一步。③ 提供推荐组件与位置选择，只列支持的位置，添加成功后能跳到桌面显示确认去向。
   - **怎么验证** 用固定响应覆盖未连接、缺凭据、测试失败、重试成功、连接正常而组件取数失败。验证状态与下一步准确，按所选位置显示组件，重复提交不重复创建。证据用测试数据且无密钥。
-  - **证据** 65ed9f1（按接入状态组织来源）：连接行内状态 chip 会话级三态（已保存·待验证琥珀/✓ 测试通过/失败后重试，_connectionTestStates 不落盘重启复位）；未验证不出快速添加（状态门 SH 断言）；推荐组件区随连接结论重组；source-goto-placement「查看去向」直达组件中心该组件行；nightly run 45536879866 场景 SH 全绿（种子态→测试→添加落盘→按钮禁用）；/7615da0（失败→重试补 CI 门）：mock 增 fail 档（quota/limit 回 HTTP 500）→ chip「✗ 测试失败」+ 失败不解锁快速添加 → 删档重测=重试成功「✓ 测试通过」（HttpEndpoint 500→Offline→chip failed 链与代码逐环对齐），nightly run 45697308890 SH 四拍全绿（种子→失败→重试通过→添加落盘，evidence/SH-chip-failed.png）；缺凭据/组件取数失败覆盖面待装机亲验；SH 重跑全绿（/dfeb789 nightly run 45754679256，含病灶 D 门 220px）
+  - **证据** 65ed9f1（按接入状态组织来源）：连接行内状态 chip 会话级三态（已保存·待验证琥珀/✓ 测试通过/失败后重试，_connectionTestStates 不落盘重启复位）；未验证不出快速添加（状态门 SH 断言）；推荐组件区随连接结论重组；source-goto-placement「查看去向」直达组件中心该组件行；nightly run 45536879866 场景 SH 全绿（种子态→测试→添加落盘→按钮禁用）；/7615da0（失败→重试补 CI 门）：mock 增 fail 档（quota/limit 回 HTTP 500）→ chip「✗ 测试失败」+ 失败不解锁快速添加 → 删档重测=重试成功「✓ 测试通过」（HttpEndpoint 500→Offline→chip failed 链与代码逐环对齐），nightly run 45697308890 SH 四拍全绿（种子→失败→重试通过→添加落盘，evidence/SH-chip-failed.png）；缺凭据/组件取数失败覆盖面待装机亲验；SH 重跑全绿（/dfeb789 nightly run 45754679256，含病灶 D 门 220px）；imac 真机复核 2026-11-26（session 1 UIA）：chip 初始「已保存 · 待验证」→点测试（端点 127.0.0.1:18099 无监听）→chip「✗ 测试失败：HTTP 接口不可达…积极拒绝」+反馈行「✗ http-a 不可达…」真实原因可见，会话级不落盘与代码一致
 
 - [ ] **SET-UX-10 [P1] 可读的刷新频率和继承**
   - **问题** 检查频率、刷新档、检测间隔三个名字掩盖了实际继承优先级。
   - **怎么做** 统一为「默认刷新间隔」「此组件刷新频率」，显示当前继承来源及配置周期，区分手动刷新和运行期退避。维持组件覆盖、全局覆盖、组件默认策略的优先级。
   - **怎么验证** 组合全局默认/固定、组件继承/覆盖和手动档。复用 WidgetHostTests 与 RefreshSchedulerTests。Windows 用本地固定源和时间戳确认调度在修改后生效，文案与调度一致。
-  - **证据** 2a6da76（统一刷新档词汇）：全局框「默认刷新间隔（未单独设置的组件）」+ 组件行「此组件刷新频率」+ 继承来源 hint（SettingsWindow.Pages.cs）；刷新优先级组件覆盖 > 全局 > 组件默认策略沿用 WidgetHost/RefreshIntervalResolver 单源；nightly run 45536879866 场景 SI 全绿（GLM=每 5 分钟·默认刷新间隔 / OVR=每 2 分钟·此组件刷新频率 + 继承链 hint + 全局档 300→15 落盘；SI 文案锚一次取不到即判死曾假红，c538262 改 15s 轮询门，45670616849 复证绿）；手动刷新与运行期退避区分、时间戳调度一致性待装机亲验
+  - **证据** 2a6da76（统一刷新档词汇）：全局框「默认刷新间隔（未单独设置的组件）」+ 组件行「此组件刷新频率」+ 继承来源 hint（SettingsWindow.Pages.cs）；刷新优先级组件覆盖 > 全局 > 组件默认策略沿用 WidgetHost/RefreshIntervalResolver 单源；nightly run 45536879866 场景 SI 全绿（GLM=每 5 分钟·默认刷新间隔 / OVR=每 2 分钟·此组件刷新频率 + 继承链 hint + 全局档 300→15 落盘；SI 文案锚一次取不到即判死曾假红，c538262 改 15s 轮询门，45670616849 复证绿）；手动刷新与运行期退避区分、时间戳调度一致性待装机亲验；imac 真机复核 2026-11-26（session 1 UIA）：poll-interval-box 读名「默认刷新间隔（未单独设置的组件）」词汇与代码一致（SG-jump-poll.png 目检同帧）
 
 - [ ] **SET-UX-11 [P1] 生效反馈、快捷键错误和可访问性**
   - **问题** 即时与重启混在一起，部分状态只由颜色表达；快捷键注册失败反馈离控件较远。
   - **怎么做** 生效时机与影响面写在控件旁。快捷键校验失败保留原有效绑定，显示原因与修复入口。复用 UIA 标识，完善焦点、名称、可读状态和窄窗换行。
   - **怎么验证** 使用被占用的键验证旧键仍可用、错误可定位、修改后可恢复。用键盘和屏幕阅读器走搜索、切换显示、选样式、接入。Windows 检查 100% / 150% 缩放、浅深色、窄窗和默认尺寸。
-  - **证据** 9bbde1b（热键占用失败保留原绑定+行内反馈）：注册失败框值与 config 均保持原键、失败提示与修复入口就近显示；生效时机/影响面提示见 Pages.cs/Desktop.cs/Appearance.cs 各控件旁；nightly run 45536879866 场景 SJ 全绿（占用态「注册失败」可见+原键保留→改键成功即时生效）；/56fe648（浅深色档补 CI 门）：theme-box Select-ComboItemByName 浅色→config App.Theme=light 落盘+选中态回读、回切深色→dark（生效时机「重启生效」标注在控件 Header，浅色实际渲染翻转属视觉亲验面），nightly run 45697308890 SJ 主题档双拍全绿；键盘/屏幕阅读器、100%/150% 缩放、浅色观感与窄窗面待装机亲验
+  - **证据** 9bbde1b（热键占用失败保留原绑定+行内反馈）：注册失败框值与 config 均保持原键、失败提示与修复入口就近显示；生效时机/影响面提示见 Pages.cs/Desktop.cs/Appearance.cs 各控件旁；nightly run 45536879866 场景 SJ 全绿（占用态「注册失败」可见+原键保留→改键成功即时生效）；/56fe648（浅深色档补 CI 门）：theme-box Select-ComboItemByName 浅色→config App.Theme=light 落盘+选中态回读、回切深色→dark（生效时机「重启生效」标注在控件 Header，浅色实际渲染翻转属视觉亲验面），nightly run 45697308890 SJ 主题档双拍全绿；键盘/屏幕阅读器、100%/150% 缩放、浅色观感与窄窗面待装机亲验；imac 真机复核 2026-11-26（session 1 UIA）：theme-box 读名「主题（重启生效）」生效时机标注在控件旁与代码一致
 
 - [ ] **SET-UX-12 [P1] Windows 真机验收与配置文档**
   - **问题** 原型使用示例数据，窗口切换、配置落盘、旧版兼容和真实渲染需要从 WinUI 入口验证。
@@ -152,21 +152,21 @@
   - **怎么做** 行容器改 Grid 三星列（Auto 图标 / * 文字 / Auto 开关）：开关 VerticalAlignment=Center + Margin(8,0,0,0) + MinWidth 40（WinUI 默认开关轨宽），文字 TextTrimming=CharacterEllipsis + TextWrapping=NoWrap；连接行同构改 Grid（* 文字，内嵌 * label + Auto 状态 chip / Auto 开关 / Auto 测试·编辑·删除按钮组）。同病排查其余 24 处横向 StackPanel 逐个判定：表单框行、按钮组、chip 组、radio 内容行均用定宽控件，非本病灶；组件行与动作行属「文字+尾部按钮」同族但开关在行首不受挤压、报障面不在此，只记报告不改（红线：只改行布局）。
   - **怎么验证** CI 硬门两条（visual-evidence 场景 D）：① 12 个带开关模块行开关右缘极差 ≤1px（方差=0 面）且每行开关右缘 ≤ 行右缘−7（完整可见，长副标题不挤开关）；② 6 个连接行开关右缘极差 ≤1px 且不出设置窗右缘。新增锚点 module-toggle-*（ToggleSwitch 自带 peer，AutomationId 即可达，与 pin-toggle-*/conn-toggle-* 同口径）。
   - **红线** 只改行布局，不碰配色/间距 token/其他页；本机编不了 App（NETSDK1100），Core 全绿 + CI 编译/断言绿为门；视觉项待用户装机亲验才闭项（重复报障单，从严）。
-  - **证据** 2227955：模块行（Navigation.cs:416）与连接行（Connections.cs:461）容器改 Grid，开关 VerticalAlignment=Center + Margin(8,0,0,0) + MinWidth=40，文字 CharacterEllipsis + NoWrap；锚点 module-toggle-*/conn-toggle-*；nightly run 45536879866 场景 D 双门全绿（12 模块开关右缘极差 0px 全 510、6 连接行极差 0px 全 816），与病根「长副标题挤开关/右缘漂移」正面对撞；装机亲验待用户目检
+  - **证据** 2227955：模块行（Navigation.cs:416）与连接行（Connections.cs:461）容器改 Grid，开关 VerticalAlignment=Center + Margin(8,0,0,0) + MinWidth=40，文字 CharacterEllipsis + NoWrap；锚点 module-toggle-*/conn-toggle-*；nightly run 45536879866 场景 D 双门全绿（12 模块开关右缘极差 0px 全 510、6 连接行极差 0px 全 816），与病根「长副标题挤开关/右缘漂移」正面对撞；imac 真机复核 2026-11-26（session 1 UIA）：module-toggle-github/jenkins/herald 右缘全 733 极差 0px，真机布局同 CI 口径；装机亲验待用户目检
 
 - [ ] **SET-UX-ROW-2 [P1] 画廊模板按所选应用面过滤或标注适用面（2026-11-25 用户报）**
   - **问题** 用户原话「切换不同的显示方式，对应的设置项也需要对应改变，有些根本不是对应显示方式选项」。病灶=组件中心定向模式里应用位置（桌面/看板状态行/详情）切换只改按钮文案与继承行说明，模板清单不跟着变：清单由数据能力一次生成（SampleGalleryWindow.cs:318 WidgetStyleAdvice.List 只吃 dataKinds+targetState，无面维度），选「看板状态行」时列出的仍是桌面 tile 向模板（圆环/数字卡/圆形水位等），部分模板对该位置根本不适用，且无任何适用面标注。
   - **怎么做** 模板注册表补面适用性维度（模板声明适用 tile/row/detail 哪些面，或按几何约束如 MinTileHeightDips 推导）；WidgetStyleAdvice.List 增加面参数，清单按「数据能力 + 当前所选面」双过滤；对该面不适用的模板置灰并给原因（沿用「不可用：…」文案口径），真正不支持的不可点；面切换时清单即时刷新。
   - **怎么验证** UIA：同一夹具切三档应用面断言 style-item-* 可用集合随之变化、置灰行原因可读；选 tile 专属模板在 row 面断言不可应用；装机亲验各面行高与裁切。
   - **红线** 只动过滤与标注，不改模板树生成与渲染语义；本机编不了 App，Core 全绿 + CI 编译/断言绿为门；视觉项待装机亲验闭项。
-  - **证据** 2cc66a2：DisplayTemplates 增面高度预算 RowSurfaceHeightBudgetDips=40（口径取 CI 实证：单行族 32-34DIP 行内可承载、48/60DIP 多行结构塞不下）；WidgetStyleAdvice.List 增 surface 参按「数据能力+当前面」双过滤；SampleGalleryWindow.PopulateStyleCatalog 七行全建、IsEnabled=advice.Ok（面外超预算置灰带原因）、面切换 RefreshStyleCatalog 重选首可用；UIA 锚 style-item-* 不变；Core 测试 1418/1418 全绿；场景 SF3 断言「row 面 number 条目置灰+圆环可用」；各面行高与裁切待装机亲验。
+  - **证据** 2cc66a2：DisplayTemplates 增面高度预算 RowSurfaceHeightBudgetDips=40（口径取 CI 实证：单行族 32-34DIP 行内可承载、48/60DIP 多行结构塞不下）；WidgetStyleAdvice.List 增 surface 参按「数据能力+当前面」双过滤；SampleGalleryWindow.PopulateStyleCatalog 七行全建、IsEnabled=advice.Ok（面外超预算置灰带原因）、面切换 RefreshStyleCatalog 重选首可用；UIA 锚 style-item-* 不变；Core 测试 1418/1418 全绿；场景 SF3 断言「row 面 number 条目置灰+圆环可用」；imac 真机复核 2026-11-26（session 1 UIA，http-a.status 组件）：应用文案随面变「应用到桌面」↔「应用到看板状态行」，row 面清单随面重建且 statusline 可用、其余 6 项置灰带原因（ROW2-gallery-row.png），面过滤与置灰标注真机同 CI 口径；各面行高与裁切待装机亲验。
 
 - [ ] **SET-UX-ROW-3 [P1] 桌面显示页按状态条选档联动显隐（2026-11-25 用户报）**
   - **问题** 桌面显示页状态条三选一切到「关闭」或「右下角胶囊」后，「窗口与看板」区仍五项全显：桌面组件布局/数值悬浮框/面板贴边收起是悬浮岛（面板与独立窗）家族专属（PinnedHostWindow/FloatingHostWindow 消费），窗口不透明度作用于悬浮面与胶囊（App.xaml.cs:316 四宿主同值）——选「关闭」时这些项与当前形态无关，选「胶囊」时岛家族项也不适用（原型静态稿本身未做显隐，属用户新提出的交互要求）。
   - **怎么做** BuildDesktopPage 按 StatusBarMode 条件渲染：关闭=悬浮面整区隐藏只留看板开关；胶囊=隐藏岛家族三项；岛=全显；SaveStatusBarMode 已有广播链，切档后重建本页（保持滚动位与焦点不丢）。
   - **怎么验证** UIA 三档各断言可见控件集合（关闭档 desktop-layout-box/numeric-floating-toggle/edge-collapse-toggle/desktop-opacity-slider 不在 UIA 树；胶囊档仅岛家族三项不在；岛档全在）且切回原档全显恢复；CI 场景 D 增补断言或单开场景。
   - **红线** 只动显隐与页重建，不改各设置项自身语义与保存链；本机编不了 App，Core 全绿 + CI 编译/断言绿为门；视觉项待装机亲验闭项。
-  - **证据** 1ab67ae：BuildDesktopPage 三档条件渲染（关闭=只留 board-toggle + 隐藏原因 Hint；胶囊=隐藏岛家族三项、不透明度+看板仍留；岛=五项全显）、未建控件显式置 null；SaveStatusBarMode 延后一拍重建本页并还原滚动位/焦点；CI 场景 W4 种子关闭档断言四项在树外+看板在树、切岛档回树；SU2 三档显隐集合逐档断言+切档后重取失效 radio；SU3 先切岛档再走四件；SG 种子播岛档保三路字段跳转锚点；Core 1418/1418 + ParseFile 0 错；视觉观感待装机亲验。
+  - **证据** 1ab67ae：BuildDesktopPage 三档条件渲染（关闭=只留 board-toggle + 隐藏原因 Hint；胶囊=隐藏岛家族三项、不透明度+看板仍留；岛=五项全显）、未建控件显式置 null；SaveStatusBarMode 延后一拍重建本页并还原滚动位/焦点；CI 场景 W4 种子关闭档断言四项在树外+看板在树、切岛档回树；SU2 三档显隐集合逐档断言+切档后重取失效 radio；SU3 先切岛档再走四件；SG 种子播岛档保三路字段跳转锚点；Core 1418/1418 + ParseFile 0 错；imac 真机复核 2026-11-26（session 1 UIA 三档切遍）：关闭档在树仅 board-toggle、胶囊档加 desktop-opacity-slider、岛档五项全显（ROW3-off/capsule/island.png 三图目检同 CI 断言集合），切回岛档复位；视觉观感待装机亲验。
 
 ## MVP 待验/未修项（50 项 = 50 勾 / 0 未勾；未完成项即装机清单；2026-11-13 审计发现原头 42/8 与实数 43/7 漂移，本头按实数+Toast 改未勾重算）
 
