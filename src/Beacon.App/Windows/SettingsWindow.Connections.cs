@@ -77,7 +77,16 @@ internal sealed partial class SettingsWindow
         form.Children.Add(_connTokenBox);
         form.Children.Add(_connConsoleBox);
         SyncUsageBoxVisibility();
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _connSaveButton, cancel } });
+        // 病灶 E（BEACON-FIX-1126）：保存/取消贴 form 底部、右对齐——WinUI 惯例主操作居右
+        // （「保存连接」最右，「取消编辑」在其左），长表单编辑完不再回找顶部
+        form.Children.Add(new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = DesignTokens.RowInline,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 4, 0, 0),
+            Children = { cancel, _connSaveButton },
+        });
         return new Border
         {
             Padding = new Thickness(10),
@@ -141,6 +150,10 @@ internal sealed partial class SettingsWindow
             }
         }
         _runtime.Config.UpsertConnection(connection);
+        // ③ 修复（BEACON-FIX-1126）：端点/密钥改动「必须重启才生效」——Provider 每拍现读 config
+        // 无缓存，但组件组循环停在退避/长周期档时新值要睡到下个节拍才被取用（workflow 档 10 分钟、
+        // 退避段 30s+）。复订唤醒与启用开关同口径：打断当前段，下一拍立即按新值拉取。
+        _runtime.Host.KickConnection(id);
         _connectionTestStates[id] = ("saved", ""); // SET-UX-09：改动后旧测试结论失效，回「待验证」
         ResetConnectionEditor();
         RebuildConnections();
@@ -372,8 +385,8 @@ internal sealed partial class SettingsWindow
             IsOn = connection.Enabled,
             OnContent = "",
             OffContent = "",
-            Margin = new Thickness(8, 0, 0, 0), // SET-UX-ROW-1：与模块行开关同口径
-            MinWidth = 40, // WinUI 默认开关轨宽：整列开关等宽→右缘同一直线
+            Margin = new Thickness(DesignTokens.RowInline, 0, 0, 0), // SET-UX-ROW-1：与模块行开关同口径
+            Width = 44, // 病灶 F：MinWidth 40 < 实际轨宽——固定 44 实测值，列宽恒定不挤文字列
             VerticalAlignment = VerticalAlignment.Center,
         };
         // UIA 取证/CI 入口（行 193 订阅重建链）：与 pin-toggle 同口径（ToggleSwitch 自带 peer）
