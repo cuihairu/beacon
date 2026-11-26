@@ -197,6 +197,11 @@ internal sealed class SampleGalleryWindow : Window
         Title = "Beacon · 组件中心";
         Content = BuildContent();
         ((FrameworkElement)Content).Loaded += OnContentLoaded;
+        // B-601 同款 ESC 键盘关闭：画廊窗此前无任何键盘关闭路径（2026-11-26 imac 键盘走查发现，
+        // QuickPanelWindow.cs 先例；global:: 限定防 Beacon.App.Windows 遮蔽 Windows 根命名空间）
+        var escape = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = global::Windows.System.VirtualKey.Escape };
+        escape.Invoked += (_, _) => Close();
+        ((FrameworkElement)Content).KeyboardAccelerators.Add(escape);
         if (targeted)
         {
             // 实时预览（评审 P1）：订阅该组件状态事件，到站即重渲（UI 线程回本窗 DispatcherQueue）
