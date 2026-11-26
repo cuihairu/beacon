@@ -1,0 +1,60 @@
+﻿ControlType.Edit id=settings-search name=搜索设置（模块/字段）
+ANON type=ControlType.Button id=module-general pat=I focus=True
+ANON type=ControlType.Button id=module-desktop pat=I focus=True
+ANON type=ControlType.Button id=module-appearance pat=I focus=True
+ANON type=ControlType.Button id=module-components pat=I focus=True
+ANON type=ControlType.Button id=module-github pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-github pat=T focus=True
+ANON type=ControlType.Button id=module-jenkins pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-jenkins pat=T focus=True
+ANON type=ControlType.Button id=module-machine pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-machine pat=T focus=True
+ANON type=ControlType.Button id=module-herald pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-herald pat=T focus=True
+ANON type=ControlType.Button id=module-bigmodel pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-bigmodel pat=T focus=True
+ANON type=ControlType.Button id=module-ark pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-ark pat=T focus=True
+ANON type=ControlType.Button id=module-claude pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-claude pat=T focus=True
+ANON type=ControlType.Button id=module-kimi pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-kimi pat=T focus=True
+ANON type=ControlType.Button id=module-moonshot pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-moonshot pat=T focus=True
+ANON type=ControlType.Button id=module-deepseek pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-deepseek pat=T focus=True
+ANON type=ControlType.Button id=module-mimo pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-mimo pat=T focus=True
+ANON type=ControlType.Button id=module-codex pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-codex pat=T focus=True
+ANON type=ControlType.Button id=module-copilot pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-copilot pat=T focus=True
+ANON type=ControlType.Button id=module-opencode pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-opencode pat=T focus=True
+ANON type=ControlType.Button id=module-qwen pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-qwen pat=T focus=True
+ANON type=ControlType.Button id=module-sensenova pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-sensenova pat=T focus=True
+ANON type=ControlType.Button id=module-http pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-http pat=T focus=True
+ANON type=ControlType.Button id=module-actions pat=I focus=True
+ANON type=ControlType.Button id=module-advanced pat=I focus=True
+ControlType.ScrollBar id=VerticalScrollBar name=垂直
+ControlType.ComboBox id= name=类型 expand=Collapsed
+ControlType.Edit id=conn-id-box name=名称（唯一 Id）
+ControlType.Edit id=conn-endpoint-box name=Endpoint（可空 = 官方 API）
+ControlType.Edit id= name=PAT（只写 DPAPI，JSON 仅存引用）
+ControlType.Button id= name=取消编辑
+ControlType.Button id=conn-save-button name=保存连接
+ControlType.ComboBox id=widget-type-box name=类型 expand=Collapsed
+ControlType.ComboBox id=widget-connection-box name=连接 expand=Collapsed
+ControlType.ComboBox id=widget-tier-box name=刷新档 expand=Collapsed
+ControlType.ComboBox id= name=此组件刷新频率（不选=按继承） expand=Collapsed
+ControlType.Edit id= name=仓库（必填）
+ControlType.Edit id= name=有待你 review 时告警
+ControlType.Edit id= name=PR 的 CI 红灯时计入告警
+ControlType.Edit id= name=颜色覆盖（可选 #RRGGBB，作用于状态灯）
+ControlType.Button id= name=添加到桌面（钉选） toggle=On
+ControlType.Button id= name=添加组件
+ControlType.Group id= name=组件树（高级 · 声明式编辑） expand=Collapsed
+ControlType.ScrollBar id=VerticalScrollBar name=垂直

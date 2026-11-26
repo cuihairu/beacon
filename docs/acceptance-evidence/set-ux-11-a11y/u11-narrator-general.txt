@@ -1,0 +1,51 @@
+﻿ControlType.Edit id=settings-search name=搜索设置（模块/字段）
+ANON type=ControlType.Button id=module-general pat=I focus=True
+ANON type=ControlType.Button id=module-desktop pat=I focus=True
+ANON type=ControlType.Button id=module-appearance pat=I focus=True
+ANON type=ControlType.Button id=module-components pat=I focus=True
+ANON type=ControlType.Button id=module-github pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-github pat=T focus=True
+ANON type=ControlType.Button id=module-jenkins pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-jenkins pat=T focus=True
+ANON type=ControlType.Button id=module-machine pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-machine pat=T focus=True
+ANON type=ControlType.Button id=module-herald pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-herald pat=T focus=True
+ANON type=ControlType.Button id=module-bigmodel pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-bigmodel pat=T focus=True
+ANON type=ControlType.Button id=module-ark pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-ark pat=T focus=True
+ANON type=ControlType.Button id=module-claude pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-claude pat=T focus=True
+ANON type=ControlType.Button id=module-kimi pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-kimi pat=T focus=True
+ANON type=ControlType.Button id=module-moonshot pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-moonshot pat=T focus=True
+ANON type=ControlType.Button id=module-deepseek pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-deepseek pat=T focus=True
+ANON type=ControlType.Button id=module-mimo pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-mimo pat=T focus=True
+ANON type=ControlType.Button id=module-codex pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-codex pat=T focus=True
+ANON type=ControlType.Button id=module-copilot pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-copilot pat=T focus=True
+ANON type=ControlType.Button id=module-opencode pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-opencode pat=T focus=True
+ANON type=ControlType.Button id=module-qwen pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-qwen pat=T focus=True
+ANON type=ControlType.Button id=module-sensenova pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-sensenova pat=T focus=True
+ANON type=ControlType.Button id=module-http pat=I focus=True
+ANON type=ControlType.Button id=module-toggle-http pat=T focus=True
+ANON type=ControlType.Button id=module-actions pat=I focus=True
+ANON type=ControlType.Button id=module-advanced pat=I focus=True
+ControlType.ScrollBar id=VerticalScrollBar name=垂直
+ControlType.Edit id=hotkey-box name=全局热键（如 Ctrl+Alt+B）
+ControlType.Button id=startup-toggle name=开机自启 toggle=On
+ControlType.ComboBox id=theme-box name=主题（重启生效） expand=Collapsed
+ControlType.ComboBox id=language-box name=语言（看板与托盘即时生效） expand=Collapsed
+ControlType.ComboBox id=poll-interval-box name=默认刷新间隔（未单独设置的组件） expand=Collapsed
+ControlType.Button id= name=检查更新
+ControlType.Button id= name=项目主页
+ControlType.Button id= name=组件中心
+ControlType.ScrollBar id=VerticalScrollBar name=垂直

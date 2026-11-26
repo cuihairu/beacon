@@ -1,0 +1,21 @@
+﻿
+EXE 0.1.2.0 11/26/2026 17:29:28
+BACKUP-OK
+SEED theme=light
+SETTINGS=5247232 RECT=539,539,2325,1890
+SHOT U11-light 167723
+LUM U11-light 1786x1351 mean=240.6
+THEMEBOX name=主题（重启生效）
+THEMESEL=
+SEED theme=dark
+SETTINGS=6292610 RECT=49,49,1835,1400
+SHOT U11-dark 164717
+LUM U11-dark 1786x1351 mean=22.6
+THEME-DELTA=218 (light mean 240.6 vs dark mean 22.6)
+NARROW old=1786x1351 new=1200x1351
+SHOT U11-narrow 148185
+NARROW-OVERFLOW=0
+NARR general total=140 interactive=51 anon=40 focusAnon=40
+NARR sources total=156 interactive=60 anon=40 focusAnon=40
+RESTORE theme=system showCapsule=False capsuleIsland=False w=880 h=640
+DONE
