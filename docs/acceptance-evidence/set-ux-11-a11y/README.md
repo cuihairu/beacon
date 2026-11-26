@@ -41,8 +41,18 @@ UIA 全树走查（dump 原始文件 `u11-narrator-general.txt` / `u11-narrator-
 `SetName(conn-toggle, "{connection.Id} 启用")`。画廊/组件中心行已有 Content 名不受累
 （gallery ListViewItem Content=文本；pin 开关 OnContent=「钉」；删除/组件树/展示样式按钮有文字）。
 
-复验门：nightly run 45888292592（head c0215aa）资产部署后重跑 NarrDump，
-预期常规页/来源页 anon=0（含 module-http 页 conn-toggle 具名）——**待跑**。
+复验：nightly run 45888292592（head c0215aa，2026-11-26T20:04Z 触发，conclusion **success**
+全场景绿）资产部署 imac 后重跑 NarrDump（`ux11v-log.txt`）——**全绿**：
+
+| 页 | 交互数 | 修复前 anon | 修复后 anon |
+|---|---|---|---|
+| 常规 | 51 | 40 | **0** |
+| 数据来源 | 60 | 40 | **0** |
+| 自定义 HTTP（conn 行面，修复前未 dump） | 81 | — | **0** |
+
+具名抽检：`module-github`=「GitHub」、`module-toggle-github`=「GitHub 启用」、
+`conn-toggle-http-a`=「http-a 启用」、`test-http-a`=「测试」、`conn-state-http-a`=「已保存 · 待验证」
+（dump 原始文件 `u11v-narrator-{general,sources,http}.txt`）。读屏名面闭环。
 
 ## 4. 缩放
 

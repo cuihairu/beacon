@@ -1,0 +1,13 @@
+﻿
+EXE 0.1.2.0 11/26/2026 20:06:00
+SETTINGS=3346198
+NAME module-github = GitHub
+NAME module-toggle-github = GitHub 启用
+NAME module-http = 自定义 HTTP
+NARR general total=140 interactive=51 anon=0 focusAnon=0
+NARR sources total=156 interactive=60 anon=0 focusAnon=0
+NAME conn-toggle-http-a = http-a 启用
+NAME test-http-a = 测试
+NAME conn-state-http-a = 已保存 · 待验证
+NARR http total=185 interactive=81 anon=0 focusAnon=0
+DONE

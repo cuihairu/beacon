@@ -1,0 +1,60 @@
+﻿ControlType.Edit id=settings-search name=搜索设置（模块/字段）
+ControlType.Button id=module-general name=常规
+ControlType.Button id=module-desktop name=桌面显示
+ControlType.Button id=module-appearance name=外观
+ControlType.Button id=module-components name=组件中心
+ControlType.Button id=module-github name=GitHub
+ControlType.Button id=module-toggle-github name=GitHub 启用 toggle=Off
+ControlType.Button id=module-jenkins name=Jenkins
+ControlType.Button id=module-toggle-jenkins name=Jenkins 启用 toggle=Off
+ControlType.Button id=module-machine name=本机
+ControlType.Button id=module-toggle-machine name=本机 启用 toggle=Off
+ControlType.Button id=module-herald name=Herald
+ControlType.Button id=module-toggle-herald name=Herald 启用 toggle=Off
+ControlType.Button id=module-bigmodel name=智谱 GLM
+ControlType.Button id=module-toggle-bigmodel name=智谱 GLM 启用 toggle=Off
+ControlType.Button id=module-ark name=火山方舟
+ControlType.Button id=module-toggle-ark name=火山方舟 启用 toggle=Off
+ControlType.Button id=module-claude name=Claude Code
+ControlType.Button id=module-toggle-claude name=Claude Code 启用 toggle=Off
+ControlType.Button id=module-kimi name=Kimi For Coding
+ControlType.Button id=module-toggle-kimi name=Kimi For Coding 启用 toggle=Off
+ControlType.Button id=module-moonshot name=Moonshot 开放平台
+ControlType.Button id=module-toggle-moonshot name=Moonshot 开放平台 启用 toggle=Off
+ControlType.Button id=module-deepseek name=DeepSeek
+ControlType.Button id=module-toggle-deepseek name=DeepSeek 启用 toggle=Off
+ControlType.Button id=module-mimo name=小米 MiMo
+ControlType.Button id=module-toggle-mimo name=小米 MiMo 启用 toggle=Off
+ControlType.Button id=module-codex name=OpenAI Codex
+ControlType.Button id=module-toggle-codex name=OpenAI Codex 启用 toggle=Off
+ControlType.Button id=module-copilot name=GitHub Copilot
+ControlType.Button id=module-toggle-copilot name=GitHub Copilot 启用 toggle=Off
+ControlType.Button id=module-opencode name=OpenCode Go
+ControlType.Button id=module-toggle-opencode name=OpenCode Go 启用 toggle=Off
+ControlType.Button id=module-qwen name=阿里千问
+ControlType.Button id=module-toggle-qwen name=阿里千问 启用 toggle=Off
+ControlType.Button id=module-sensenova name=商汤
+ControlType.Button id=module-toggle-sensenova name=商汤 启用 toggle=Off
+ControlType.Button id=module-http name=自定义 HTTP
+ControlType.Button id=module-toggle-http name=自定义 HTTP 启用 toggle=On
+ControlType.Button id=module-actions name=自定义动作
+ControlType.Button id=module-advanced name=高级
+ControlType.ScrollBar id=VerticalScrollBar name=垂直
+ControlType.ComboBox id= name=类型
+ControlType.Edit id=conn-id-box name=名称（唯一 Id）
+ControlType.Edit id=conn-endpoint-box name=Endpoint（可空 = 官方 API）
+ControlType.Edit id= name=PAT（只写 DPAPI，JSON 仅存引用）
+ControlType.Button id= name=取消编辑
+ControlType.Button id=conn-save-button name=保存连接
+ControlType.ComboBox id=widget-type-box name=类型
+ControlType.ComboBox id=widget-connection-box name=连接
+ControlType.ComboBox id=widget-tier-box name=刷新档
+ControlType.ComboBox id= name=此组件刷新频率（不选=按继承）
+ControlType.Edit id= name=仓库（必填）
+ControlType.Edit id= name=有待你 review 时告警
+ControlType.Edit id= name=PR 的 CI 红灯时计入告警
+ControlType.Edit id= name=颜色覆盖（可选 #RRGGBB，作用于状态灯）
+ControlType.Button id= name=添加到桌面（钉选） toggle=On
+ControlType.Button id= name=添加组件
+ControlType.Group id= name=组件树（高级 · 声明式编辑）
+ControlType.ScrollBar id=VerticalScrollBar name=垂直
