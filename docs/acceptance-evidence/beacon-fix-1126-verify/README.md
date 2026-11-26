@@ -90,9 +90,10 @@ SET-UX-11 键盘面：四路径全部真机键盘闭环（`imac-realmachine/kbdw
 工具学注记（取证通道，非产品缺陷）：SendInput 合成键在 WinUI 控件激活路径不生效
 （Tab 导航与 TextBox KeyDown 通，Button/RadioButton Space/Enter 不响应），改用
 `keybd_event` 注入全通——三次对照实验（v5 SendInput 全败 / v6 keybd_event 首拍即翻 /
-v7 全链 KeybdPair 全绿）定谳。另发现：组件中心画廊窗（SampleGalleryWindow，997 行）
+v7 全链 KeybdPair 全绿）定谳。另发现并已修：组件中心画廊窗（SampleGalleryWindow）
 无 Esc/KeyDown 处理，键盘 Esc 关不掉画廊（QuickPanelWindow 有 B-601 Esc accelerator，
-画廊窗没有）——与走查四路径结论无关，记录备查。
+画廊窗没有）——d313b43 补同款 Escape accelerator → Close()（键盘/读屏用户可达性，
+SET-UX-11 a11y 面）；真机 Esc 复测待部署含修复的 nightly 后补跑。
 
 取证后 config 已恢复用户原态（showCapsule=false/capsuleIsland=false）。
 
