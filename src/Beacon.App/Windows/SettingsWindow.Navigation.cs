@@ -470,6 +470,7 @@ internal sealed partial class SettingsWindow
                 };
                 _moduleToggles[type] = toggle;
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(toggle, $"module-toggle-{module.Key}"); // UIA 取证/CI 入口（SET-UX-ROW-1 开关列对齐断言锚）
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(toggle, $"{module.DisplayName} 启用"); // SET-UX-11 读屏名：On/OffContent 均为空时 Name 是读屏唯一播报源（ux11 取证 17 个匿名开关）
                 Grid.SetColumn(toggle, 2); // 开关列 Auto 右贴：行右缘锚点统一
                 content.Children.Add(toggle);
             }
@@ -504,6 +505,7 @@ internal sealed partial class SettingsWindow
                 CornerRadius = DesignTokens.RadiusCard,
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, module.DisplayName); // SET-UX-11 读屏名：Button 内容树不生成 Name，侧栏行读屏播报靠它（ux11 取证 23 个匿名行）
             var captured = module;
             row.Click += (_, _) => SelectModule(captured);
             _moduleRows[module.Key] = row;

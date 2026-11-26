@@ -391,6 +391,7 @@ internal sealed partial class SettingsWindow
         };
         // UIA 取证/CI 入口（行 193 订阅重建链）：与 pin-toggle 同口径（ToggleSwitch 自带 peer）
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(enabledToggle, $"conn-toggle-{connection.Id}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(enabledToggle, $"{connection.Id} 启用"); // SET-UX-11 读屏名：On/OffContent 均为空时读屏播报靠它（ux11 取证同模块开关匿名）
         enabledToggle.Toggled += (_, _) =>
         {
             // Enabled init-only（class 非 record）：重建替换落库
