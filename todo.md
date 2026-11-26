@@ -121,13 +121,13 @@
   - **问题** 服务、常规设置和高级配置混排，搜索页写「字段」但只匹配模块文字。
   - **怎么做** 一级入口为「常规 / 桌面显示 / 外观 / 数据来源」，备份诊断等分组。常规集中开机启动、看板快捷键、语言，并注明语言当前覆盖看板和托盘。更新搜索以匹配实际设置和旧名称，结果进入页面后展开分组、滚动并聚焦。托盘保留原入口兼容。
   - **怎么验证** 搜「透明度」「检查频率」「贴边收起」「GitHub」「组件中心」，分别断言页面与目标控件。测试键盘、无结果、清空、窄窗，以及现有 Windows UIA 搜索场景 D。
-  - **证据** 6589111（分组导航+字段搜索跳转）：一级四入口不设头、Provider/动作归「数据来源」「备份与诊断」头（nav-group-*）；SearchEntries 36 条字段索引匹配实际设置词+旧名（悬浮形态/检查频率…），回车进页→ExpandAllAndFind 展折叠区→StartBringIntoView→Focus，150ms×20 拍重试泵（45356987498 实证 TryEnqueue 跨不过布局帧）；语言覆盖面注明在控件旁；nightly run 45536879866 场景 SG 全绿（五路跳转+模块级+清词复原）；/7615da0（无结果+清空补 CI 门）：无结果词断头行「0/N 个模块匹配」+ module-github 离树（模块行全滤除）、清词后头行回「N 个模块」非过滤形态（Get-WindowUiaTexts 文本锚，格式串与 ApplyModuleFilter 逐字对齐），nightly run 45697308890 SG 无结果档+清词头行全绿（evidence/SG-no-result.png）；键盘 Tab 序/窄窗面待装机亲验
+  - **证据** 6589111（分组导航+字段搜索跳转）：一级四入口不设头、Provider/动作归「数据来源」「备份与诊断」头（nav-group-*）；SearchEntries 36 条字段索引匹配实际设置词+旧名（悬浮形态/检查频率…），回车进页→ExpandAllAndFind 展折叠区→StartBringIntoView→Focus，150ms×20 拍重试泵（45356987498 实证 TryEnqueue 跨不过布局帧）；语言覆盖面注明在控件旁；nightly run 45536879866 场景 SG 全绿（五路跳转+模块级+清词复原）；/7615da0（无结果+清空补 CI 门）：无结果词断头行「0/N 个模块匹配」+ module-github 离树（模块行全滤除）、清词后头行回「N 个模块」非过滤形态（Get-WindowUiaTexts 文本锚，格式串与 ApplyModuleFilter 逐字对齐），nightly run 45697308890 SG 无结果档+清词头行全绿（evidence/SG-no-result.png）；键盘 Tab 序待装机亲验；窄窗档 CI 门已绿（/dfeb789 nightly run 45754679256：600px 窗「看板」过滤 N/M 头行+行滤除+清词复原全链，搜索词改模块命中判据见 BEACON-FIX-1126）
 
 - [ ] **SET-UX-09 [P1] 数据来源按接入状态组织**
   - **问题** 连接表单、组件表单和高级树同时出现；「已保存」容易被当成已验证或已显示。
   - **怎么做** 分三步交付。① 将已有服务和连接集中在「数据来源」，先显示服务能读到什么、连接状态和必要字段，可选端点等按需展开。② 复用原连接测试，将未连接、已保存待验证、测试成功和失败后重试映射到对应下一步。③ 提供推荐组件与位置选择，只列支持的位置，添加成功后能跳到桌面显示确认去向。
   - **怎么验证** 用固定响应覆盖未连接、缺凭据、测试失败、重试成功、连接正常而组件取数失败。验证状态与下一步准确，按所选位置显示组件，重复提交不重复创建。证据用测试数据且无密钥。
-  - **证据** 65ed9f1（按接入状态组织来源）：连接行内状态 chip 会话级三态（已保存·待验证琥珀/✓ 测试通过/失败后重试，_connectionTestStates 不落盘重启复位）；未验证不出快速添加（状态门 SH 断言）；推荐组件区随连接结论重组；source-goto-placement「查看去向」直达组件中心该组件行；nightly run 45536879866 场景 SH 全绿（种子态→测试→添加落盘→按钮禁用）；/7615da0（失败→重试补 CI 门）：mock 增 fail 档（quota/limit 回 HTTP 500）→ chip「✗ 测试失败」+ 失败不解锁快速添加 → 删档重测=重试成功「✓ 测试通过」（HttpEndpoint 500→Offline→chip failed 链与代码逐环对齐），nightly run 45697308890 SH 四拍全绿（种子→失败→重试通过→添加落盘，evidence/SH-chip-failed.png）；缺凭据/组件取数失败覆盖面待装机亲验
+  - **证据** 65ed9f1（按接入状态组织来源）：连接行内状态 chip 会话级三态（已保存·待验证琥珀/✓ 测试通过/失败后重试，_connectionTestStates 不落盘重启复位）；未验证不出快速添加（状态门 SH 断言）；推荐组件区随连接结论重组；source-goto-placement「查看去向」直达组件中心该组件行；nightly run 45536879866 场景 SH 全绿（种子态→测试→添加落盘→按钮禁用）；/7615da0（失败→重试补 CI 门）：mock 增 fail 档（quota/limit 回 HTTP 500）→ chip「✗ 测试失败」+ 失败不解锁快速添加 → 删档重测=重试成功「✓ 测试通过」（HttpEndpoint 500→Offline→chip failed 链与代码逐环对齐），nightly run 45697308890 SH 四拍全绿（种子→失败→重试通过→添加落盘，evidence/SH-chip-failed.png）；缺凭据/组件取数失败覆盖面待装机亲验；SH 重跑全绿（/dfeb789 nightly run 45754679256，含病灶 D 门 220px）
 
 - [ ] **SET-UX-10 [P1] 可读的刷新频率和继承**
   - **问题** 检查频率、刷新档、检测间隔三个名字掩盖了实际继承优先级。
@@ -476,7 +476,8 @@
   - 病灶 B 修（4b934bc）：RegionPoint/FlattenCubic 增客户区物理尺寸参数，region 多边形整体向窗内收缩 1 物理像素（X 按左右半场 ±1、Y 下半场 −1/上半场 +1、顶缘 py=0 不动防顶缝），收缩缝由 3px 边带环盖住；Core 几何锁 1420 全绿（IslandSurfaceOutlineTests 生产口径重写：四曲线镜像/闭合 (tr,0)/夹取/方角退化分支）。
   - 病灶 C/D/E/F 修（17c5772）：DesignTokens 语义间距 token（IconTextGap=10/RowInline=8/SectionGap=16/CardPadding=12）+ 模块图标 Border 右 Margin 10；组件向导表头删硬编码宽（220/200/180）改三列 Grid（类型★/连接★/刷新档 MinWidth 220）+ 频率框独立行；连接编辑器保存/取消移表单底部右对齐（保存主按钮最右）；模块/连接行开关 MinWidth 40 改固定宽 44（实测轨宽，列宽恒定不挤文字列）。
   - ③ 连接保存即生效修（545ccba）：全写点广播审计（SettingsApplied/PinsChanged/Kick）Desktop/Appearance/Actions/Navigation/ComponentStyles/Pages 全齐，唯一缺口=SaveConnectionAsync 保存后无立即重拉（Provider 每拍现读 config 无缓存，但组件在退避或长周期档时新值睡到下个节拍，workflow 档 10 分钟）；补 Host.KickConnection(id)（与启用开关同口径，打断退避段下一拍按新值拉取）。
-  - CI 验收面（5462c2f）：AH5d-B region 直读门（GetWindowRgn+PtInRegion/GetRgnBox：四角出 region=顶角弧+内缩、包围盒 Top=0 贴顶铁律、Left=1 与 Bottom 上界锁内缩，决定性免桌面像素参照）；SG 病灶 C 门（图标右缘到文字左缘 ≥9px，BoundingRectangle 直读带 NaN 防护）；SH 病灶 D 门（刷新档下拉宽 ≥218px=MinWidth 220，硬编码 180 恒红）；SET-UX-ROW-1 开关列断言随 nightly 重跑覆盖病灶 F。
+  - CI 验收面：AH5d-B region 直读门（GetWindowRgn+PtInRegion/GetRgnBox：四角出 region=顶角弧+内缩、包围盒 Top 贴顶、Left=1 与 Bottom 上界锁内缩，决定性免桌面像素参照）；SG 病灶 C 门（图标右缘到文字左缘 ≥9px，BoundingRectangle 直读带 NaN 防护）；SH 病灶 D 门（刷新档下拉宽 ≥218px=MinWidth 220，硬编码 180 恒红）；SET-UX-ROW-1 开关列断言随 nightly 重跑覆盖病灶 F。
+  - CI 门脚本三连修（89c829f+a4c1ba3+dfeb789，门脚本自身缺陷非产品缺陷）：① AH5d-B 的 region 四件套 P/Invoke 写错 DLL（CreateRectRgn/DeleteObject/GetRgnBox/PtInRegion 是 GDI32 导出，写 user32 找不到入口→EntryPointNotFoundException，全加 ExactSpelling=true 无后缀导出精确匹配，CI 45726231918 实证）；② SG 窄窗门搜索词写「透明度」但模块过滤只数模块名命中（头行恒 0/N）→换「看板」（桌面显示模块+看板入口双命中，头行 N/M 且行滤除，CI 45740410733 实证）；③ SH tier-box 锚在 Provider 页组件向导，「查看去向」跳组件中心后锚离树→门挪到跳页之前（CI 45740410733 实证）。nightly run 45754679256（head dfeb789）三道门全绿：AH5d-B「四角全出 region 顶缘 Top=3 贴顶铁律」/ SG 病灶 C「10px（≥9）」/ SG 窄窗档 / SH 病灶 D「220px（≥218）」；nightly 资产 06:02 UTC 发布。
   - 验收硬门槛：CI 三新门绿 + imac 真机截屏（顶角圆弧/底角无白外围/设置页间距列宽按钮位）+ **用户装机亲验通过才闭项**（岛面问题第五单，从严）。
 
 
