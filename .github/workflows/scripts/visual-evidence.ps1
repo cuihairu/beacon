@@ -214,11 +214,14 @@ public static class WinEnum
     public static RECT ClientRectOf(IntPtr h) { RECT r; GetClientRect(h, out r); return r; }
     // 岛窗 OS region 直读（BEACON-FIX-1126 病灶 A/B 门）：GetWindowRgn+PtInRegion/GetRgnBox
     // 直接问 OS 裁剪裁决——决定性、免桌面像素参照（CI 桌面非纯色的假红面根除）。
-    [DllImport("user32.dll")] private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
-    [DllImport("user32.dll")] private static extern bool DeleteObject(IntPtr obj);
-    [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
-    [DllImport("user32.dll")] private static extern int GetRgnBox(IntPtr hRgn, out RECT lprc);
-    [DllImport("user32.dll")] private static extern bool PtInRegion(IntPtr hRgn, int x, int y);
+    // ExactSpelling=true 必填（无后缀导出，Ansi 默认挂 A 找不到）；DLL 不能乱写：
+    // CreateRectRgn/DeleteObject/GetRgnBox/PtInRegion 是 GDI32 导出（CI 45726231918
+    // 实证写 user32.dll → EntryPointNotFoundException），GetWindowRgn 才是 user32。
+    [DllImport("gdi32.dll", ExactSpelling = true)] private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
+    [DllImport("gdi32.dll", ExactSpelling = true)] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll", ExactSpelling = true)] private static extern int GetRgnBox(IntPtr hRgn, out RECT lprc);
+    [DllImport("gdi32.dll", ExactSpelling = true)] private static extern bool PtInRegion(IntPtr hRgn, int x, int y);
+    [DllImport("user32.dll", ExactSpelling = true)] private static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
     // 返回 region 类别（>0=已应用：2 SIMPLEREGION / 3 COMPLEXREGION），0=错误、1=NULLREGION。
     // PtInRegion 坐标是窗相对；GetRgnBox 输出窗相对包围盒。调用方负责 DeleteObject。
     public static int WindowRgnKind(IntPtr h) { var rgn = CreateRectRgn(0, 0, 1, 1); var kind = GetWindowRgn(h, rgn); DeleteObject(rgn); return kind; }
@@ -8186,10 +8189,13 @@ try
     Start-Sleep -Seconds 2
     $sgNarrowBox = Find-UiaById $settings "settings-search" 8
     if (!$sgNarrowBox) { Save-FullScreenshot "SG-FAIL-narrow-no-search.png"; throw "断言失败（场景 SG）：窄窗 600px 下 settings-search 不在树——窄窗搜索链断裂" }
-    ($sgNarrowBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("透明度")
+    # 搜索词必须同时命中模块名与字段索引：头行计数是模块命中数，字段命中只追加「· K 设置项」。
+    # 「透明度」只在字段索引里（模块 DisplayName/Subtitle/Key 均无此词）→ 头行恒 0/N，不能当模块过滤判据。
+    ($sgNarrowBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("看板")
     Start-Sleep -Milliseconds 900
     $sgNarrowTexts = Get-WindowUiaTexts ([IntPtr]$settings.Current.NativeWindowHandle)
-    if (!($sgNarrowTexts | Where-Object { $_ -match '^配置中心 · 1/\d+ 个模块匹配' })) { Save-FullScreenshot "SG-FAIL-narrow-header.png"; throw "断言失败（场景 SG）：窄窗下过滤计数头未见 1/N 匹配——窄窗过滤链回归" }
+    if (!($sgNarrowTexts | Where-Object { $_ -match '^配置中心 · [1-9]\d*/\d+ 个模块匹配' })) { Save-FullScreenshot "SG-FAIL-narrow-header.png"; throw "断言失败（场景 SG）：窄窗下过滤计数头未见 N/M 命中（N≥1）——窄窗过滤链回归" }
+    if (Find-UiaById $settings "module-advanced" 3) { Save-FullScreenshot "SG-FAIL-narrow-row.png"; throw "断言失败（场景 SG）：窄窗过滤下未命中模块 module-advanced 仍在树——窄窗行滤除回归" }
     ($sgNarrowBox.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)).SetValue("")
     Start-Sleep -Milliseconds 600
     if (!(Find-UiaById $settings "module-advanced" 6)) { throw "断言失败（场景 SG）：窄窗清词后 module-advanced 未回树——窄窗复位回归" }
@@ -8292,10 +8298,10 @@ try
     Start-Sleep -Seconds 3
     if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
     Save-FullScreenshot "SH-goto-component-center.png"
-    Stop-Beacon
     # —— 病灶 D（BEACON-FIX-1126，2026-11-26）：刷新档下拉宽 ≥ MinWidth 220 DIP——
     # 硬编码 Width=180 把「machine · 15 秒（机器状态）」截成省略号（用户「下拉框截断」），修复后
-    # 框随列宽自适应；UIA BoundingRectangle 直读宽度（修复前 180px 恒红）
+    # 框随列宽自适应；UIA BoundingRectangle 直读宽度（修复前 180px 恒红）。
+    # 必须在 Stop-Beacon 之前读：关窗后 UIA 元素失效，Find 恒空（CI 45726231918 实证）。
     $tierD = Find-UiaById $settings "widget-tier-box" 10
     if (!$tierD) { Save-FullScreenshot "SH-FAIL-no-tier-box.png"; throw "断言失败（SH 病灶 D 门）：widget-tier-box 不在 UIA 树——组件向导未载入或锚丢失" }
     $tierW5D = $tierD.Current.BoundingRectangle.Width
@@ -8304,6 +8310,7 @@ try
         throw "断言失败（SH 病灶 D 门）：刷新档下拉宽 $tierW5D px（期望 ≥218=MinWidth 220 DIP）——硬编码宽度截断回归"
     }
     Write-Host "SH 病灶 D 门通过：刷新档下拉宽 $tierW5D px（≥218，长标签不再截断）"
+    Stop-Beacon
     Write-Host "场景 SH 通过：chip 待验证→失败→重试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
 }
 catch
