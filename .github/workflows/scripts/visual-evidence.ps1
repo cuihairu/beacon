@@ -776,6 +776,12 @@ function Start-MockServer
                             $body = '{"ok":true}'
                         }
                     }
+                    "/badjson" {
+                        # 组件取数失败链（场景 SH 收口②，2026-11-26）：HTTP 200 但体非 JSON——连接测试只看
+                        # 2xx（chip「✓ 测试通过」），组件 fetch 的 JsonDocument.Parse 抛 Degraded
+                        # → PublishStale 无缓存分支摘要「拉取失败：HTTP 响应不是合法 JSON」
+                        $body = 'this-is-not-json'
+                    }
                     "/repos/cuihairu/beacon/actions/workflows/ci.yml/runs" { $body = $ghRuns }
                     "/repos/cuihairu/beacon/actions/runs/12345/rerun-failed-jobs" {
                         # POST 回执留痕（场景 U）：marker 文件 = 服务端真收到重跑请求的硬证据
@@ -8219,7 +8225,9 @@ catch
 # 「✗ 测试失败：HTTP 认证失败」→ fail 档注入 500「✗ 测试失败」（两档失败均不解锁快速添加）→
 # 删档重测=重试成功「✓ 测试通过」→ 快速添加区出现（桌面档可用 / 岛档随状态条未选岛置灰）；
 # 未测试/未通过不出快速添加（状态门）。添加后 widgets.json 落 bigmodel.usage:zhipu（pinned=true，总数 +1）
-# + 添加钮禁用（重复提交防抖）+「查看去向」直达组件中心该组件桌面去向行。
+# + 添加钮禁用（重复提交防抖）+「查看去向」直达组件中心该组件桌面去向行；
+# 收口两档（2026-11-26）：空态（connections 清空→「尚无连接」hint+无 chip+无快速添加）与
+# 组件取数失败（/badjson 200 非 JSON→chip「✓ 测试通过」而组件「拉取失败」摘要同框）——五面全覆盖。
 try
 {
     Write-GConfig "" "off" 1.0
@@ -8311,8 +8319,62 @@ try
     Start-Sleep -Seconds 3
     if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
     Save-FullScreenshot "SH-goto-component-center.png"
+    # —— 空态档（SET-UX-09 收口①，2026-11-26）：connections 清空 → http 页空态 hint + 无 chip + 不出快速添加 ——
+    # 「未连接」与「已保存 · 待验证」互斥可证：无连接档只余 ProviderEmptyHint(http) 文案锚
+    # （SettingsWindow.Actions.cs:549），状态 chip 与快速添加门同灭；WriteAllText 无 BOM 防 JsonDocument 拒读。
     Stop-Beacon
-    Write-Host "场景 SH 通过：chip 待验证→失败→重试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
+    [System.IO.File]::WriteAllText($shConnsPath, "[]")
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $shEmpty = Find-SettingsWindow 30
+    if (!$shEmpty) { Save-FullScreenshot "SH-FAIL-empty-no-settings.png"; throw "断言失败（场景 SH 空态档）：连接清空重启 30s 内未见设置窗" }
+    Invoke-Uia (Find-UiaById $shEmpty "module-http" 10)
+    Start-Sleep -Seconds 2
+    $shEmptyTexts = @(Get-WindowUiaTexts $shEmpty)
+    if (@($shEmptyTexts | Where-Object { $_ -like "*尚无连接*" }).Count -lt 1) { Save-FullScreenshot "SH-FAIL-no-empty-hint.png"; throw "断言失败（场景 SH 空态档）：http 页未见「尚无连接」空态 hint；实际：$($shEmptyTexts -join ' | ')" }
+    if (Find-UiaById $shEmpty "conn-state-zhipu" 3) { Save-FullScreenshot "SH-FAIL-empty-has-chip.png"; throw "断言失败（场景 SH 空态档）：连接清空后仍见 conn-state-zhipu——空态渲染泄漏" }
+    if (Find-UiaById $shEmpty "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-empty-add.png"; throw "断言失败（场景 SH 空态档）：无连接却出快速添加按钮——状态门回归" }
+    Save-FullScreenshot "SH-empty-hint.png"
+    Write-Host "场景 SH 空态档通过：无连接 →「尚无连接」hint + 无 chip + 无快速添加（未连接面独立可证）"
+    # —— 组件取数失败档（SET-UX-09 收口②，2026-11-26）：连接测试 2xx 通过而组件 fetch 失败 ——
+    # datafail 连接指向 mock /badjson（200 非 JSON）：TestAsync=GET 2xx 即 Healthy → chip「✓ 测试通过」；
+    # 组件 fetch JsonDocument.Parse 抛 Degraded → PublishStale 无缓存分支摘要「拉取失败：…」在样式画廊
+    # 预览面直显（AE1 同款断言面）——连接健康与组件取数两层解耦同框可证。逐字替换 widgets.json
+    # （不 Replace(']')：组件对象可能含嵌套数组，首个 ] 命中会切坏 JSON）。
+    Stop-Beacon
+    [System.IO.File]::WriteAllText($shConnsPath, '[{ "id": "datafail", "type": "http", "endpoint": "http://127.0.0.1:18081/badjson", "enabled": true }]')
+    [System.IO.File]::WriteAllText($shWidgetsPath, '[{ "id": "http.datafail", "type": "http.status", "connectionId": "datafail", "refreshTier": "ci", "pinned": true, "config": { "label": "DF" } }]')
+    Stop-MockServer
+    Ensure-MockServer
+    Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
+    $shDf = Find-SettingsWindow 30
+    if (!$shDf) { Save-FullScreenshot "SH-FAIL-df-no-settings.png"; throw "断言失败（场景 SH 取数档）：重启 30s 内未见设置窗" }
+    Invoke-Uia (Find-UiaById $shDf "module-http" 10)
+    Start-Sleep -Seconds 2
+    Invoke-Uia (Find-UiaById $shDf "test-datafail" 10)
+    Start-Sleep -Seconds 4
+    $chipDf = Find-UiaById $shDf "conn-state-datafail" 8
+    $chipDfText = ""
+    try { $chipDfText = $chipDf.Current.Name } catch { }
+    if ($chipDfText -notlike "*测试通过*") { Save-FullScreenshot "SH-FAIL-df-chip.png"; throw "断言失败（场景 SH 取数档）：200 非 JSON 连接测试 chip=「$chipDfText」（期望「✓ 测试通过」）——TestAsync 2xx 语义回归" }
+    Save-FullScreenshot "SH-df-chip-ok.png"
+    Invoke-Uia (Find-UiaById $shDf "style-button-http.datafail" 10)
+    $galleryDf = Find-GalleryWindow 15
+    if (!$galleryDf) { Save-FullScreenshot "SH-FAIL-df-no-gallery.png"; throw "断言失败（场景 SH 取数档）：样式画廊 15s 未开——DF 组件定向链断" }
+    $dfStale = $false
+    $dfTexts = @()
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline)
+    {
+        $dfHandles = [WinEnum]::VisibleHandlesByTitle("Beacon · 组件中心")
+        if ($dfHandles.Count -ge 1) { $dfTexts = @(Get-WindowUiaTexts $dfHandles[0]) }
+        if (@($dfTexts | Where-Object { $_ -like "*拉取失败*" }).Count -ge 1) { $dfStale = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (!$dfStale) { Save-FullScreenshot "SH-FAIL-df-no-stale.png"; throw "断言失败（场景 SH 取数档）：组件预览未见「拉取失败」摘要（PublishStale 无缓存分支回归）；实际：$($dfTexts -join ' | ')" }
+    Save-FullScreenshot "SH-df-fetch-failed.png"
+    Write-Host "场景 SH 取数档通过：chip「✓ 测试通过」+ 组件「拉取失败」同框——连接正常与组件取数失败解耦"
+    Stop-Beacon
+    Write-Host "场景 SH 通过：chip 待验证→失败→重试通过→快速添加落盘+按钮禁用→查看去向直达→空态与取数失败两档——SET-UX-09"
 }
 catch
 {
@@ -8403,8 +8465,24 @@ try
         throw "断言失败（场景 SI）：驱动 poll-15 后 config pollIntervalSeconds=$($siAfter.pollIntervalSeconds)（期望 15）——全局档落盘链回归"
     }
     Save-FullScreenshot "SI-poll-15.png"
+    # —— 调度生效档（SET-UX-10 收口，2026-11-26）：全局 300→15 落盘后新拍真驱动刷新 ——
+    # 可观测面=app 日志逐跳行「Widget {Id} refreshed ok」（WidgetHost.cs:322）：全局档落盘即广播
+    # → WidgetHost.Reload Clear+Start 重排调度，GLM（无覆盖）落 15s 拍（50s 窗 ≥2 跳）；
+    # OVR（RefreshIntervalSeconds=120 组件覆盖）不吃 15s 染（窗内 ≤1 跳=即时 reload 一跳）。
+    # 日志 UTF-8 无 BOM 必显式 -Encoding UTF8（PS 5.1 ANSI 误读，run 37954226899 教训）。
+    $siLogPath = Join-Path (Join-Path $configDir "logs") ("beacon-" + (Get-Date -Format "yyyyMMdd") + ".log")
+    $siLogBefore = 0
+    if (Test-Path $siLogPath) { $siLogBefore = @(Get-Content $siLogPath -Encoding UTF8).Count }
+    Start-Sleep -Seconds 50
+    $siLogTail = @()
+    if (Test-Path $siLogPath) { $siLogTail = @(Get-Content $siLogPath -Encoding UTF8 | Select-Object -Skip $siLogBefore) }
+    $siGlmHits = @($siLogTail | Where-Object { $_ -like "*bigmodel.usage:GLM refreshed ok*" }).Count
+    $siOvrHits = @($siLogTail | Where-Object { $_ -like "*bigmodel.usage:OVR refreshed ok*" }).Count
+    if ($siGlmHits -lt 2) { Save-FullScreenshot "SI-FAIL-cadence.png"; throw "断言失败（场景 SI 调度档）：全局改 15s 后 50s 窗内 GLM 仅 $siGlmHits 跳成功刷新（期望 ≥2=15s 拍）——调度未吃新档回归；日志尾部：$(($siLogTail | Select-Object -Last 5) -join ' | ')" }
+    if ($siOvrHits -gt 1) { Save-FullScreenshot "SI-FAIL-ovr-leak.png"; throw "断言失败（场景 SI 调度档）：OVR（组件覆盖 120s）50s 窗内刷新 $siOvrHits 跳（期望 ≤1）——组件覆盖被全局 15s 染回归" }
+    Write-Host "场景 SI 调度档通过：GLM 50s 窗 $siGlmHits 跳（15s 拍生效）+ OVR $siOvrHits 跳（组件覆盖 120s 不染）"
     Stop-Beacon
-    Write-Host "场景 SI 通过：行标签双口径人话 + 继承链 hint + 全局档 300→15 落盘——SET-UX-10"
+    Write-Host "场景 SI 通过：行标签双口径人话 + 继承链 hint + 全局档 300→15 落盘 + 新拍真驱动（调度生效档）——SET-UX-10"
 }
 catch
 {
