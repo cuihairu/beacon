@@ -37,7 +37,7 @@ jobs:
   build-publish:
     name: Build & publish nightly (windows-x86_64)
     runs-on: ${{ vars.CI_RUNNER || 'windows-latest' }}
-    timeout-minutes: 110 # visual-evidence 全程可破 80min（场景 AI 四阶段后 43747051732 实证），护栏 100min + 上传余量
+    timeout-minutes: 150 # visual-evidence 全程可破 100min（SET-UX-09/10 收口档后 45849564192 于 100min 被护栏强杀实证），护栏 120min + 上传余量
     # SignPath 代码签名凭据：api-token 与 organization-id 走仓库 Secrets
     # （SIGNPATH_API_TOKEN / SIGNPATH_ORGANIZATION_ID，均已配置），绝不硬编码。
     # secrets 未配置时版本通道打印提示并跳过签名、发布未签名资产（run 不红）；

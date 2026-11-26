@@ -51,9 +51,11 @@ if ($PSVersionTable.PSVersion.Major -ne 5)
 # （场景 AD）与 40+ 场景，历史全程实测 ~70-90min（不能按 15min 设——会在浸泡中段误杀）；
 # 场景 AI 四阶段再加 ~4min 后全程可破 80min（43747051732 于 80min 整点在 AH3 睡眠中被强杀=
 # 静默 exit 1 无任何场景报错——watchdog 死法特征）→ 抬 6000s=100min 并留 AH3+J 收尾余量。
-# 早于 job timeout-minutes=110 触发，让 evidence 照常走 always() 上传步留证。
+# SET-UX-09/10 收口档（SH 空态/取数 + SI 调度，2026-11-26）再加 ~5min 后 45849564192 于
+# 100min 整点在场景 J 静默安装起步 10s 后被强杀（同上死法）→ 抬 7200s=120min。
+# 早于 job timeout-minutes=150 触发，让 evidence 照常走 always() 上传步留证。
 # 可用环境变量 BEACON_EVIDENCE_TIMEOUT_SEC 覆盖（本地调试缩短用）。
-[int]$script:EvidenceTimeoutSec = 6000
+[int]$script:EvidenceTimeoutSec = 7200
 if ($env:BEACON_EVIDENCE_TIMEOUT_SEC)
 {
     [int]::TryParse($env:BEACON_EVIDENCE_TIMEOUT_SEC, [ref]$script:EvidenceTimeoutSec) | Out-Null
