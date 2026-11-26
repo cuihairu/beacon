@@ -75,6 +75,27 @@ interactive task 启 app（session 1），`CopyFromScreen` 拿到岛窗 98KB 有
   五项全显（`ROW3-off.png`、`ROW3-capsule.png`、`ROW3-island.png`）。
 - 取证后已把 config 恢复 `showCapsule=false/capsuleIsland=false`（用户原态），并停止取证实例。
 
+### 键盘走查真机取证（2026-11-26，session 1 合成键）
+
+SET-UX-11 键盘面：四路径全部真机键盘闭环（`imac-realmachine/kbdwalk.txt` 原始日志；
+焦点可达性另见 `imac-realmachine/tabwalk.txt`，51a9c3f）：
+
+- **搜索**：`settings-search` SetValue「检查频率」→ Enter → `FocusedElement=poll-interval-box`；
+- **切换显示**：`status-bar-island/capsule/off` 逐个 SetFocus + Space，config 三档逐拍落盘
+  （岛 `showCapsule=True/capsuleIsland=True` → 胶囊 `True/False` → 关 `False/False`）；
+- **选样式**：`style-button-http-a.status` SetFocus + Enter → 「Beacon · 组件中心」窗出现；
+- **接入**：`test-http-a` SetFocus + Space → chip 翻「✗ 测试失败：HTTP 接口不可达：由于目标
+  计算机积极拒绝，无法连接。(127.0.0.1:18099)」（端点无监听，真实原因可见）。
+
+工具学注记（取证通道，非产品缺陷）：SendInput 合成键在 WinUI 控件激活路径不生效
+（Tab 导航与 TextBox KeyDown 通，Button/RadioButton Space/Enter 不响应），改用
+`keybd_event` 注入全通——三次对照实验（v5 SendInput 全败 / v6 keybd_event 首拍即翻 /
+v7 全链 KeybdPair 全绿）定谳。另发现：组件中心画廊窗（SampleGalleryWindow，997 行）
+无 Esc/KeyDown 处理，键盘 Esc 关不掉画廊（QuickPanelWindow 有 B-601 Esc accelerator，
+画廊窗没有）——与走查四路径结论无关，记录备查。
+
+取证后 config 已恢复用户原态（showCapsule=false/capsuleIsland=false）。
+
 ### 待补
 
 - **用户装机亲验仍为硬门**，BEACON-FIX-1126 保持未勾。

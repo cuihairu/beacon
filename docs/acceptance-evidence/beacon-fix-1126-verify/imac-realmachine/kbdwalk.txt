@@ -1,0 +1,25 @@
+﻿
+BACKUP-OK cfg=810 wjs=933
+CFG-INIT showCapsule=False capsuleIsland=False
+SETTINGS=656618
+B-ISLAND-KEYBDEVENT showCapsule=True capsuleIsland=True
+FK-status-bar-capsule-FOCUSED=status-bar-capsule-FGDIFF=False
+FK-status-bar-capsule-KEY=32-FOCUSED-OK
+B-CAPSULE showCapsule=True capsuleIsland=False
+FK-status-bar-off-FOCUSED=status-bar-off-FGDIFF=False
+FK-status-bar-off-KEY=32-FOCUSED-OK
+B-OFF showCapsule=False capsuleIsland=False
+FK-style-button-http-a.status-FOCUSED=style-button-http-a.status-FGDIFF=False
+FK-style-button-http-a.status-KEY=13-FOCUSED-OK
+C-GALLERY=5509022
+C-GALLERY-AFTER-ESC=5509022
+C-GALLERY-AFTER-ESC2=5509022
+SETTINGS-BACK=656618
+D-CHIP-BEFORE=已保存 · 待验证
+FK-test-http-a-FOCUSED=test-http-a-FGDIFF=False
+FK-test-http-a-KEY=32-FOCUSED-OK
+D-CHIP-AFTER=✗ 测试失败：HTTP 接口不可达：由于目标计算机积极拒绝，无法连接。 (127.0.0.1:18099)
+D-PASS
+PROBE-JUMP=poll-interval-box
+CFG-RESTORED showCapsule=False capsuleIsland=False
+DONE
