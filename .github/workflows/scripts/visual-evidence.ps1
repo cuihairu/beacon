@@ -8329,7 +8329,7 @@ try
     if (!$shEmpty) { Save-FullScreenshot "SH-FAIL-empty-no-settings.png"; throw "断言失败（场景 SH 空态档）：连接清空重启 30s 内未见设置窗" }
     Invoke-Uia (Find-UiaById $shEmpty "module-http" 10)
     Start-Sleep -Seconds 2
-    $shEmptyTexts = @(Get-WindowUiaTexts $shEmpty)
+    $shEmptyTexts = @(Get-WindowUiaTexts ([IntPtr]$shEmpty.Current.NativeWindowHandle))
     if (@($shEmptyTexts | Where-Object { $_ -like "*尚无连接*" }).Count -lt 1) { Save-FullScreenshot "SH-FAIL-no-empty-hint.png"; throw "断言失败（场景 SH 空态档）：http 页未见「尚无连接」空态 hint；实际：$($shEmptyTexts -join ' | ')" }
     if (Find-UiaById $shEmpty "conn-state-zhipu" 3) { Save-FullScreenshot "SH-FAIL-empty-has-chip.png"; throw "断言失败（场景 SH 空态档）：连接清空后仍见 conn-state-zhipu——空态渲染泄漏" }
     if (Find-UiaById $shEmpty "source-add-button" 3) { Save-FullScreenshot "SH-FAIL-empty-add.png"; throw "断言失败（场景 SH 空态档）：无连接却出快速添加按钮——状态门回归" }
