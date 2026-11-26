@@ -212,6 +212,30 @@ public static class WinEnum
     // 断言期望值按窗实测 DPI 算，不写死 1.0——runner 换缩放不会假红（2026-10-14 缺陷单改造）。
     public static double DpiScaleOf(IntPtr h) { var d = GetDpiForWindow(h); return d == 0 ? 1.0 : d / 96.0; }
     public static RECT ClientRectOf(IntPtr h) { RECT r; GetClientRect(h, out r); return r; }
+    // 岛窗 OS region 直读（BEACON-FIX-1126 病灶 A/B 门）：GetWindowRgn+PtInRegion/GetRgnBox
+    // 直接问 OS 裁剪裁决——决定性、免桌面像素参照（CI 桌面非纯色的假红面根除）。
+    [DllImport("user32.dll")] private static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
+    [DllImport("user32.dll")] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("user32.dll")] private static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
+    [DllImport("user32.dll")] private static extern int GetRgnBox(IntPtr hRgn, out RECT lprc);
+    [DllImport("user32.dll")] private static extern bool PtInRegion(IntPtr hRgn, int x, int y);
+    // 返回 region 类别（>0=已应用：2 SIMPLEREGION / 3 COMPLEXREGION），0=错误、1=NULLREGION。
+    // PtInRegion 坐标是窗相对；GetRgnBox 输出窗相对包围盒。调用方负责 DeleteObject。
+    public static int WindowRgnKind(IntPtr h) { var rgn = CreateRectRgn(0, 0, 1, 1); var kind = GetWindowRgn(h, rgn); DeleteObject(rgn); return kind; }
+    public static RECT WindowRgnBox(IntPtr h)
+    {
+        RECT box;
+        var rgn = CreateRectRgn(0, 0, 1, 1);
+        try { if (GetWindowRgn(h, rgn) <= 0) { throw new InvalidOperationException("GetWindowRgn returned no region"); } GetRgnBox(rgn, out box); }
+        finally { DeleteObject(rgn); }
+        return box;
+    }
+    public static bool WindowRgnContains(IntPtr h, int x, int y)
+    {
+        var rgn = CreateRectRgn(0, 0, 1, 1);
+        try { if (GetWindowRgn(h, rgn) <= 0) { throw new InvalidOperationException("GetWindowRgn returned no region"); } return PtInRegion(rgn, x, y); }
+        finally { DeleteObject(rgn); }
+    }
     // 客户区矩形换算到屏幕坐标：GetClientRect 原点是客户区自身（通常 0,0），New-Crop 走 CopyFromScreen
     // 要的是屏幕坐标，混用会把裁图挪到窗口原点（2026-10-14 进度条缺陷单断言改造踩坑）。
     public static RECT ClientScreenRectOf(IntPtr h)
@@ -7424,6 +7448,51 @@ try
         throw "断言失败（场景 AH5d①）：岛底角月牙与同高参照最大色距 $bottomDist5d（期望 ≤24）——底部弧外露窗背板/残留层（用户真机「透明底板」CI 面），region 底部未镂空"
     }
     Write-Host "场景 AH5d① 通过：岛底角月牙=背后层（最大色距 $bottomDist5d ≤24）——region 底部镂空成立"
+    # ⑤ region 几何直读门（BEACON-FIX-1126 病灶 A/B，2026-11-26）：GetWindowRgn+PtInRegion/GetRgnBox
+    # 直接问 OS 裁剪裁决——病灶 A（无肩顶角圆弧：顶两角 (1,1)/(w-2,1) 必须出 region）、病灶 B
+    # （region 内缩 1px：底两角出 region、包围盒 Left≥1/Bottom≤h-1、贴顶铁律 Top=0）。决定性、
+    # 免桌面像素参照（CI 桌面非纯色的假红面根除，AH5d 假红两半根因教训同口径规避）。
+    $winRgn5d = [WinEnum]::RectOf($islandH5d)
+    $cliRgn5d = [WinEnum]::ClientScreenRectOf($islandH5d)
+    $offX5d = $cliRgn5d.Left - $winRgn5d.Left   # 客户区→窗相对偏移（无边框岛恒 0，换算写全防 chrome 假设）
+    $offY5d = $cliRgn5d.Top - $winRgn5d.Top
+    $wCli5d = $cliRgn5d.Right - $cliRgn5d.Left
+    $hCli5d = $cliRgn5d.Bottom - $cliRgn5d.Top
+    $rgnKind5d = [WinEnum]::WindowRgnKind($islandH5d)
+    if ($rgnKind5d -le 1)
+    {
+        throw "断言失败（AH5d-B region 门）：GetWindowRgn=$rgnKind5d——岛窗无 OS region（方案 B 失效，弧外全露窗背板）"
+    }
+    $rgnBox5d = [WinEnum]::WindowRgnBox($islandH5d)
+    # GDI 包围盒约定：Left/Top 含（region 最左/最上像素）、Right/Bottom 排（最右/最下像素 +1）。
+    # 内缩前：最左列=0（x=0 点）、最下行=窗高 h（y=h 点）→ Bottom=h+1；内缩后：Left=1、Bottom=h。
+    if ($rgnBox5d.Top -ne $offY5d)
+    {
+        throw "断言失败（AH5d-B）：region 包围盒 Top=$($rgnBox5d.Top)（期望 $offY5d）——顶缘离开屏幕顶（贴顶铁律破）"
+    }
+    if ($rgnBox5d.Left -ne ($offX5d + 1) -or $rgnBox5d.Bottom -gt ($offY5d + $hCli5d))
+    {
+        throw "断言失败（AH5d-B）：region 包围盒 Left=$($rgnBox5d.Left) Bottom=$($rgnBox5d.Bottom) 客户区=$($wCli5d)x$($hCli5d) 偏移=$offX5d,$offY5d（期望 Left=$($offX5d + 1)、Bottom≤$($offY5d + $hCli5d)）——region 未内缩 1px（病灶 B 白外围回归）"
+    }
+    # 四角出 region（病灶 A 顶角弧 + 底角弧，窗相对坐标=客户区偏移后取角内 1px）；
+    # 半径下界 12px（1x）保证角内 1px 点距弧心恒大于半径。顶/底缘中点在 region 内（边未破）。
+    $rgnCorners5d = @(
+        @{ Label = "顶左角"; X = ($offX5d + 1); Y = ($offY5d + 1); Inside = $false },
+        @{ Label = "顶右角"; X = ($offX5d + $wCli5d - 2); Y = ($offY5d + 1); Inside = $false },
+        @{ Label = "底左角"; X = ($offX5d + 1); Y = ($offY5d + $hCli5d - 2); Inside = $false },
+        @{ Label = "底右角"; X = ($offX5d + $wCli5d - 2); Y = ($offY5d + $hCli5d - 2); Inside = $false },
+        @{ Label = "顶缘中点"; X = ($offX5d + [int]($wCli5d / 2)); Y = ($offY5d + 1); Inside = $true },
+        @{ Label = "底缘中点"; X = ($offX5d + [int]($wCli5d / 2)); Y = ($offY5d + $hCli5d - 2); Inside = $true }
+    )
+    foreach ($rc5d in $rgnCorners5d)
+    {
+        $hitRgn5d = [WinEnum]::WindowRgnContains($islandH5d, $rc5d.X, $rc5d.Y)
+        if ($hitRgn5d -ne $rc5d.Inside)
+        {
+            throw "断言失败（AH5d-B region 门）：窗坐标 ($($rc5d.X),$($rc5d.Y)) $($rc5d.Label) PtInRegion=$hitRgn5d（期望 $($rc5d.Inside)）——角弧/内缩几何回归"
+        }
+    }
+    Write-Host "场景 AH5d-B 通过：region 直读——四角全出 region（病灶 A 顶角弧 + 病灶 B 内缩 1px），顶缘 Top=$($rgnBox5d.Top) 贴顶铁律保持"
     # ② 底缘过渡带剖面：x=底边中点列，从黑面到窗外逐行采色分类（surface/bg/GRAY）
     # 背景参照=剖面末行（dy=+3，region 裁剪保证已出窗）同列取样：44250272756 桌面有横向结构
     # （浏览器顶缘 y≈27 起的 51,51,51 横带 + 右侧浮层面板），跨列取参照会把异色混进来误判灰带。
@@ -8066,6 +8135,18 @@ try
     if (!(Find-UiaById $settings "nav-group-sources" 8)) { Save-FullScreenshot "SG-FAIL-no-group.png"; throw "断言失败（场景 SG）：nav-group-sources 不在 UIA 树——左栏「数据来源」分组头缺失" }
     if (!(Find-UiaById $settings "nav-group-advanced" 8)) { Save-FullScreenshot "SG-FAIL-no-adv-group.png"; throw "断言失败（场景 SG）：nav-group-advanced 不在 UIA 树——「备份与诊断」分组头缺失" }
     Write-Host "场景 SG 分组断言通过：数据来源/备份与诊断分组头在树（一级四入口无头）"
+    # —— 病灶 C（BEACON-FIX-1126，2026-11-26）：模块图标-文字间距 ≥10 DIP——BoundingRectangle
+    # 几何直读（图标 Border SetName 造 peer 后按 id 定位，右缘→文字左缘；修复前零间距恒红）
+    $iconGapC = Find-UiaById $settings "module-icon-github" 10
+    if (!$iconGapC) { Save-FullScreenshot "SG-FAIL-no-icon-peer.png"; throw "断言失败（SG 病灶 C 门）：module-icon-github 不在 UIA 树——图标 Border SetName peer 回归" }
+    $nameGapC = Find-UiaById $settings "module-name-github" 10
+    if (!$nameGapC) { Save-FullScreenshot "SG-FAIL-no-name-anchor.png"; throw "断言失败（SG 病灶 C 门）：module-name-github 不在 UIA 树——行名锚缺失" }
+    $gapPx5C = $nameGapC.Current.BoundingRectangle.Left - $iconGapC.Current.BoundingRectangle.Right
+    if (!($gapPx5C -ge 9)) # NaN 防护：BoundingRectangle 可返 NaN（虚拟化行），-lt 遇 NaN 恒 false 假绿
+    {
+        throw "断言失败（SG 病灶 C 门）：图标右缘→文字左缘间距 $gapPx5C px（期望 ≥9=10 DIP Margin）——图标与文字贴死回归（用户「图标和文字都贴在一起」）"
+    }
+    Write-Host "SG 病灶 C 门通过：图标-文字间距 $gapPx5C px（≥9）"
     Invoke-SearchJump $settings "透明度" "desktop-opacity-slider" "SG-jump-opacity"
     Invoke-SearchJump $settings "检查频率" "poll-interval-box" "SG-jump-poll"
     Invoke-SearchJump $settings "贴边收起" "edge-collapse-toggle" "SG-jump-edge"
@@ -8212,6 +8293,17 @@ try
     if (!(Find-UiaById $settings "component-desktop-state-bigmodel.usage:zhipu" 10)) { Save-FullScreenshot "SH-FAIL-no-goto.png"; throw "断言失败（场景 SH）：查看去向后组件中心未见 component-desktop-state-bigmodel.usage:zhipu——跳转链回归" }
     Save-FullScreenshot "SH-goto-component-center.png"
     Stop-Beacon
+    # —— 病灶 D（BEACON-FIX-1126，2026-11-26）：刷新档下拉宽 ≥ MinWidth 220 DIP——
+    # 硬编码 Width=180 把「machine · 15 秒（机器状态）」截成省略号（用户「下拉框截断」），修复后
+    # 框随列宽自适应；UIA BoundingRectangle 直读宽度（修复前 180px 恒红）
+    $tierD = Find-UiaById $settings "widget-tier-box" 10
+    if (!$tierD) { Save-FullScreenshot "SH-FAIL-no-tier-box.png"; throw "断言失败（SH 病灶 D 门）：widget-tier-box 不在 UIA 树——组件向导未载入或锚丢失" }
+    $tierW5D = $tierD.Current.BoundingRectangle.Width
+    if (!($tierW5D -ge 218)) # NaN 防护：同病灶 C 门
+    {
+        throw "断言失败（SH 病灶 D 门）：刷新档下拉宽 $tierW5D px（期望 ≥218=MinWidth 220 DIP）——硬编码宽度截断回归"
+    }
+    Write-Host "SH 病灶 D 门通过：刷新档下拉宽 $tierW5D px（≥218，长标签不再截断）"
     Write-Host "场景 SH 通过：chip 待验证→失败→重试通过→快速添加落盘+按钮禁用→查看去向直达——SET-UX-09"
 }
 catch
