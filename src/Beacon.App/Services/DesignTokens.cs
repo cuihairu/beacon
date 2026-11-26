@@ -41,6 +41,12 @@ internal static class DesignTokens
     public const double Space16 = 16;
     public const double Space18 = 18;
 
+    // 语义间距（BEACON-FIX-1126 病灶 C：设置页排版命名刻度，值落在既有 Space 刻度上）
+    public const double IconTextGap = Space10;  // 模块图标-文字最小间距（CI 断言 ≥10px）
+    public const double RowInline = Space8;     // 行内控件间距（开关列左距/行内按钮组）
+    public const double SectionGap = Space16;   // 分节间距
+    public const double CardPadding = Space12;  // 卡片内距
+
     /// <summary>
     /// 密度档收编口（Phase 5 行 5）：间距值经 Core UiDensity 按当前档缩放（regular 恒等——G 系像素断言锚的值不动；
     /// compact ×0.75 四舍五入 AwayFromZero）。各窗构造时传当前 Appearance.Density，「构造期实时读」口径与

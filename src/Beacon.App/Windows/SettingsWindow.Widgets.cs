@@ -26,7 +26,7 @@ internal sealed partial class SettingsWindow
 
     private UIElement BuildWidgetEditor()
     {
-        _widgetTypeBox = new ComboBox { Header = "类型", Width = 220 };
+        _widgetTypeBox = new ComboBox { Header = "类型", HorizontalAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_widgetTypeBox, "widget-type-box"); // UIA 取证：类型下拉非空断言（小米类型空回归）
         foreach (var descriptor in _scopeDescriptors ?? AllWidgetDescriptors())
         {
@@ -37,9 +37,12 @@ internal sealed partial class SettingsWindow
             _widgetTypeBox.SelectedIndex = 0;
         }
         _widgetTypeBox.SelectionChanged += (_, _) => RebuildWidgetFields();
-        _widgetConnectionBox = new ComboBox { Header = "连接", Width = 200 };
+        _widgetConnectionBox = new ComboBox { Header = "连接", HorizontalAlignment = HorizontalAlignment.Stretch };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_widgetConnectionBox, "widget-connection-box"); // UIA 取证：展开截可选项
-        _widgetTierBox = new ComboBox { Header = "刷新档", Width = 180 };
+        // 病灶 D（BEACON-FIX-1126）：硬编码 Width（220/200/180）把「machine · 15 秒（机器状态）」截成省略号——
+        // 删固定宽，表头改三列 Grid（类型★/连接★/刷新档 MinWidth 220）随列宽自适应，下拉展开态不受限
+        _widgetTierBox = new ComboBox { Header = "刷新档", MinWidth = 220, HorizontalAlignment = HorizontalAlignment.Stretch };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_widgetTierBox, "widget-tier-box"); // UIA 取证/CI 入口（BEACON-FIX-1126 病灶 D 宽度断言锚）
         // UI/UX 审计：下拉里是原始英文 tag（pr/ci/…），含义与频率要用户猜——中文标签带刷新秒数，Tag 仍存档位名
         foreach (var (tier, label) in new[]
         {
@@ -56,7 +59,7 @@ internal sealed partial class SettingsWindow
         }
         // 检测间隔覆盖（拍板：频率要可设）——不选=按刷新档默认；秒数落 WidgetConfig.RefreshIntervalSeconds
         // SET-UX-10 正名：「检测间隔」→「此组件刷新频率」（继承链组件级一环，组件行标签同名展示）。
-        _widgetIntervalBox = new ComboBox { Header = "此组件刷新频率（不选=按继承）", Width = 200 };
+        _widgetIntervalBox = new ComboBox { Header = "此组件刷新频率（不选=按继承）", HorizontalAlignment = HorizontalAlignment.Stretch };
         foreach (var (tag, label) in new[] { ("", "跟随刷新档"), ("30", "30 秒"), ("60", "1 分钟"), ("120", "2 分钟"), ("300", "5 分钟"), ("900", "15 分钟"), ("3600", "1 小时") })
         {
             var item = new ComboBoxItem { Content = label, Tag = tag };
@@ -73,7 +76,20 @@ internal sealed partial class SettingsWindow
         save.Click += (_, _) => SaveWidget();
 
         var form = new StackPanel { Spacing = 8, Padding = new Thickness(0, 4, 0, 0) };
-        form.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Children = { _widgetTypeBox, _widgetConnectionBox, _widgetTierBox, _widgetIntervalBox } });
+        // 病灶 D：表头三列 Grid（类型★/连接★/刷新档）——StackPanel 不约束子项宽度，Stretch 下拉在其
+        // 间不生效；刷新频率框 header 长独立成行
+        var metaRow = new Grid { ColumnSpacing = DesignTokens.RowInline };
+        metaRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        metaRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        metaRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(_widgetTypeBox, 0);
+        Grid.SetColumn(_widgetConnectionBox, 1);
+        Grid.SetColumn(_widgetTierBox, 2);
+        metaRow.Children.Add(_widgetTypeBox);
+        metaRow.Children.Add(_widgetConnectionBox);
+        metaRow.Children.Add(_widgetTierBox);
+        form.Children.Add(metaRow);
+        form.Children.Add(_widgetIntervalBox);
         // SET-UX-10：继承链与「手动刷新 vs 运行期退避」写进向导（文案与 RefreshIntervalResolver/调度一致）
         form.Children.Add(Hint("刷新继承：此组件刷新频率 > 全局默认刷新间隔（常规页） > 刷新档；「手动刷新」档只在你点刷新时拉取。" +
             "拉取连续失败时运行期会指数退避重试，恢复后回到配置节拍——退避不是配置频率。"));

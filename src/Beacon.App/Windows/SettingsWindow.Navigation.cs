@@ -422,10 +422,16 @@ internal sealed partial class SettingsWindow
             content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var icon = MakeModuleIcon(module);
             icon.VerticalAlignment = VerticalAlignment.Center; // 列宽 Auto，纵轴不拉伸（色块高度不变）
+            // UIA 取证/CI 入口（BEACON-FIX-1126 病灶 C 间距断言）：Border 只设 AutomationId 不进 UIA 树，
+            // SetName 强制造 peer（38138106644 教训同口径）——间距门按 icon 右缘→文字左缘直读
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(icon, $"{module.DisplayName} 图标");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(icon, $"module-icon-{module.Key}");
             Grid.SetColumn(icon, 0);
             content.Children.Add(icon);
             var nameStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Stretch };
-            nameStack.Children.Add(new TextBlock { Text = module.DisplayName, FontSize = DesignTokens.FontSubtitle, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap }); // 200 窄列不挤烂（用户规格 min 200）
+            var nameBlock = new TextBlock { Text = module.DisplayName, FontSize = DesignTokens.FontSubtitle, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap }; // 200 窄列不挤烂（用户规格 min 200）
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(nameBlock, $"module-name-{module.Key}"); // UIA 取证/CI 入口（病灶 C 间距断言文字缘锚）
+            nameStack.Children.Add(nameBlock);
             nameStack.Children.Add(new TextBlock
             {
                 Text = module.Subtitle,
@@ -444,8 +450,8 @@ internal sealed partial class SettingsWindow
                     OnContent = "",
                     OffContent = "",
                     IsOn = TypeEnabled(type),
-                    Margin = new Thickness(8, 0, 0, 0), // SET-UX-ROW-1：与连接行同口径
-                    MinWidth = 40, // WinUI 默认开关轨宽：整列开关等宽→右缘同一直线
+                    Margin = new Thickness(DesignTokens.RowInline, 0, 0, 0), // SET-UX-ROW-1：与连接行同口径
+                    Width = 44, // 病灶 F：MinWidth 40 < 实际轨宽——固定 44 实测值，列宽恒定不挤文字列
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 toggle.Toggled += (_, _) =>
@@ -557,6 +563,7 @@ internal sealed partial class SettingsWindow
             Height = 30,
             CornerRadius = DesignTokens.RadiusControl,
             Background = new SolidColorBrush(tint),
+            Margin = new Thickness(0, 0, DesignTokens.IconTextGap, 0), // 病灶 C：图标与文字零间距→10 DIP
             VerticalAlignment = VerticalAlignment.Center,
             Child = content,
         };
