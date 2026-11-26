@@ -41,11 +41,22 @@ beacon 托管代码零执行——与本次 C# 改动无因果关系；改动前
 
 `imac-realmachine/fullscreen.png`：主屏 2560x1440 桌面全形（200% 缩放）。
 
+### 真机已核（岛面顶角/底角）
+
+副屏岛窗（saved `islandLayout.monitor=\\\.\DISPLAY2`，虚桌面 x=8024）分层合成，`CopyFromScreen`
+抓得纯白 377B（PrintWindow 亦白）——换主屏复现：
+临时把 `islandLayout.monitor` 改 `\\.\DISPLAY1` + `showCapsule=true/capsuleIsland=true`，
+interactive task 启 app（session 1），`CopyFromScreen` 拿到岛窗 98KB 有效 PNG：
+`imac-realmachine/island-primary.png` + 3 倍放大 `island-primary-zoom.png`。
+
+逐像素判定（按截屏坐标，岛 rect 2319,-3–2801,125，截图起点 2289,-33）：
+- 顶两角：从上缘起左右各约 12px 逐行切出斜边（黑岛边 x 起点 32→38→44、右端 511→505→499），
+  **非直角硬切**；
+- 底两角：底部两角平滑圆弧收口（左下黑边 x=34→64，右下黑边 x=507→477），
+  弧外直接是壁纸色；
+- 岛矩形范围内近白像素 0（白字在 y=25–41，非外围），**底角白外围已消除**；
+- 取证结束已恢复用户原 `config.json` / `shell-state.json`（DISPLAY2 岛布局 + 关闭岛态）。
+
 ### 待补
 
-- 岛态窗（`Beacon Status`）视觉截图：区域在副屏（虚拟桌面 x=8024），
-  岛窗为分层/region 窗，`CopyFromScreen` 抓得全白（虚/实桌面截图均复现）；
-  顶角圆弧 + 底角无白外围需改用 PrintWindow 分层合成或在用户屏幕内验。
-- 岛态需先设 `showCapsule=true`+`capsuleIsland=true`（本次取证已恢复原配置
-  `showCapsule=false`，不影响用户日常使用）。
 - **用户装机亲验仍为硬门**，BEACON-FIX-1126 保持未勾。
