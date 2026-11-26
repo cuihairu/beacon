@@ -93,7 +93,9 @@ SET-UX-11 键盘面：四路径全部真机键盘闭环（`imac-realmachine/kbdw
 v7 全链 KeybdPair 全绿）定谳。另发现并已修：组件中心画廊窗（SampleGalleryWindow）
 无 Esc/KeyDown 处理，键盘 Esc 关不掉画廊（QuickPanelWindow 有 B-601 Esc accelerator，
 画廊窗没有）——d313b43 补同款 Escape accelerator → Close()（键盘/读屏用户可达性，
-SET-UX-11 a11y 面）；真机 Esc 复测待部署含修复的 nightly 后补跑。
+SET-UX-11 a11y 面）；**Esc 复测通过**（2026-11-26 部署 nightly 资产 sha256 0737ecd3…，
+run 45867924409 全绿产物：C-GALLERY-AFTER-ESC=0，Esc 一拍即关；同轮 B 三档/D 测试
+连接/搜索跳转在新二进制上全部复证绿）。
 
 取证后 config 已恢复用户原态（showCapsule=false/capsuleIsland=false）。
 

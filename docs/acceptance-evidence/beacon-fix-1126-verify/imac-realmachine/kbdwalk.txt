@@ -1,7 +1,7 @@
 ﻿
 BACKUP-OK cfg=810 wjs=933
 CFG-INIT showCapsule=False capsuleIsland=False
-SETTINGS=656618
+SETTINGS=2691904
 B-ISLAND-KEYBDEVENT showCapsule=True capsuleIsland=True
 FK-status-bar-capsule-FOCUSED=status-bar-capsule-FGDIFF=False
 FK-status-bar-capsule-KEY=32-FOCUSED-OK
@@ -11,10 +11,9 @@ FK-status-bar-off-KEY=32-FOCUSED-OK
 B-OFF showCapsule=False capsuleIsland=False
 FK-style-button-http-a.status-FOCUSED=style-button-http-a.status-FGDIFF=False
 FK-style-button-http-a.status-KEY=13-FOCUSED-OK
-C-GALLERY=5509022
-C-GALLERY-AFTER-ESC=5509022
-C-GALLERY-AFTER-ESC2=5509022
-SETTINGS-BACK=656618
+C-GALLERY=1769804
+C-GALLERY-AFTER-ESC=0
+SETTINGS-BACK=2691904
 D-CHIP-BEFORE=已保存 · 待验证
 FK-test-http-a-FOCUSED=test-http-a-FGDIFF=False
 FK-test-http-a-KEY=32-FOCUSED-OK
