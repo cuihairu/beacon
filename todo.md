@@ -488,7 +488,9 @@
   - 像素取证（2026-11-28，docs/acceptance-evidence/ui-spacing-1127/imac-200/island-faces-collapsed.png，build c0215aa @200%）：顶两角圆弧真在（逐行斜边实测弧半径 24px=12 DIP，region/band/路径三层同源轮廓，island-trace `region ok points=101`）——「顶角不是圆角」观感来自 DWM 1px 亮边框沿弧压亮线；底两角弧外 2-3px 纯白（255）弧带、亮于壁纸 ~200，顶两角同位置零白、左直边干净——白弧只在窗底=窗顶 −4px 出屏藏掉顶部 DWM 边框，底边框全暴露。
   - 根因定谳：Win11 DWM 给每个顶层窗画 1px 亮色边框（DWMWA_BORDER_COLOR，浅色主题取白）并按系统口径圆角，画在 SetWindowRgn 边界之上——白边+外凸白弧都是 DWM 层不是轮廓几何；BrimDeck 是 WPF AllowsTransparency 窗天然不受 DWM 边框/圆角处理，「抄不对」实为抄漏这层结构性差异。残余细白边另一成分=边带笔 3px 在 200% DPI 内半 1.5px 盖不全 XAML 路径 AA 2 物理px（4b934bc region 1px 内缩缝）。
   - 修（14c9fff）：CapsuleWindow.ApplyIslandDwm 岛态三连关 DWMWA_NCRENDERING_POLICY=DISABLED + DWMWA_WINDOW_CORNER_PREFERENCE=DONOTROUND + DWMWA_BORDER_COLOR=NONE（NativeMethods 新增 dwmapi DwmSetWindowAttribute+常量；经典态回 DEFAULT/USEWINDOWSTYLE，RestoreWindowRegion 回切还原）；IslandEdgeBandWindow.BandPenWidthPx 3→4（内半 2px 盖 region 台阶+路径 AA 缝）。
-  - 验收硬门槛：CI 编译门绿 + imac 真机底角像素复测（弧外零 255 纯白）+ **用户装机亲验通过才闭项**（岛面问题第六单，从严）。
+  - CI 编译门绿（run 46046724071 build-test 2m17s，三处 App C# 编译过关）；imac 真机 API 级断言绿（2026-11-28 02:35，用户令「直接在imac上自己验证」：源码 tar 传机 dotnet publish EXIT 0 → scheduled task IMAC\cui session 1 启动修复构建 ALIVE pid=18972，island-trace 七条 `dwm chrome island=True hr=0x0,0x0,0x0` 三项属性全 S_OK + `region ok points=101 client=238x62` 轮廓链未受损；证据 docs/acceptance-evidence/island-dwm-1128/）。
+  - 底角像素复测未完成：02:35 显示器休眠（CopyFromScreen 两轮全黑，SendInput 撞醒失败），暗帧 dwm-verify-frame-dark.png 存档不构成白边裁决；待屏醒重跑 island-dwm-task.ps1 取亮帧逐像素核弧外零纯白。
+  - 验收硬门槛：CI 编译门绿（已过）+ imac 真机底角像素复测（弧外零 255 纯白，待屏醒）+ **用户装机亲验通过才闭项**（岛面问题第六单，从严）。
 
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
