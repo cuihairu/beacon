@@ -24,7 +24,7 @@
 | :39 | Toast 发送 / 点击 / 激活路由 | **PARTIAL** | 发送半：错误态触发后 `notifications.json` 落 1 条记录（含 `detailUrl=https://open.bigmodel.cn/usage`）、AUMID 注册在案、日志 0 条「Toast 发送失败」。横幅呈现与点击路由 **OPEN(锁屏)**：锁屏下不产生可枚举的新窗（`T3-toast-window FAIL`，新增顶层窗=无） |
 | :43 | 托盘图标颜色 / 刷新周期 | **PARTIAL** | `TrayNotifyWnd` 健康态 vs error 态 PrintWindow 两态差分：**189 px 变化**（簇 x552-567、x890-902），15s 轮询 + 40s 等待窗口内发生；但该簇归属未能在锁屏下确证为 Beacon 图标（另一簇是系统时钟），托盘溢出区需解锁后展开 → `T2-tray-diff`、`T2-tray-xaml-diff`、`tray-toast-verify.txt` |
 | :49 | 跨进程点击穿透 / 焦点 | **PARTIAL** | 结构面：`WS_EX_APPWINDOW` 未置位（看板/胶囊不进任务栏与 Alt-Tab）、状态翻转前后前台不变（`Windows 默认锁屏界面` → 同）；真实「点到下层窗口」实测 **OPEN(锁屏)**（合成点击到不了桌面窗口）→ `behaviour-verify.txt` |
-| :62 | tile/胶囊改色 → 托盘同步 | **PARTIAL** | 改色半：`severity-color-warning`、`widget-color-override` 两组 off/on 实拍图见 [`docs/img/config-effects/`](../img/config-effects/)（`severity-color-warning-off/on.png`）；托盘同步半同 :33 行口径 → `docs/img/config-effects/` |
+| :62 | tile/胶囊改色 → 托盘同步 | **PARTIAL** | 改色半：`severity-color-warning`、`widget-color-override` 两组 off/on 实拍图见 [`docs/img/config-effects/`](../img/config-effects/severity-color-warning-on.png)（`severity-color-warning-off/on.png`）；托盘同步半同 :33 行口径 → `docs/img/config-effects/` |
 | :90 | explorer 登录会话调度 | **PASS(会话内) / OPEN(真实注销登录)** | `launchOnStartup=true` → `HKCU\Run\Beacon = "C:\beacon-verify\publish\Beacon.App.exe"`；`explorer.exe <path>` 拉起进程 pid=14236、父进程 explorer、会话=1；关掉开关后 Run 值清空。真实注销/重登 **OPEN**（2026-10-30 决策 13：不在未安排会话时擅自注销用户）→ `behaviour-verify.txt` |
 | :92 | 长时稳定观察 | **PARTIAL(进行中)** | `soak-log.csv` 每 60s 采样进程数/工作集/句柄/CPU/日志错误数；起点 08:27，采集仍在跑（8h 上限）。4 小时口径未满 → `soak-log.csv` |
 | :112 | 展示模板尺寸裁切复核 | **OPEN(未执行)** | 本轮未跑到组件中心模板矩阵（时间让位给看板/DOC-GIF/推送）；组件中心 UIA 驱动链已在 CI 场景 AE 验证可复用 |

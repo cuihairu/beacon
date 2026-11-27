@@ -18,6 +18,8 @@ on:
       - '.gitignore'
       - '*.svg'
       - '.editorconfig'
+permissions:
+  contents: read
 jobs:
   build-test:
     runs-on: ${{ vars.CI_RUNNER || 'windows-latest' }}
