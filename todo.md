@@ -491,3 +491,8 @@
 - [x] [M] WidgetHost 重建 Clear()→逐个注册竞争收敛（src/Beacon.Core/Services/WidgetHost.cs:174-176）——批量 kick 与组内注册竞争（debf201：_lifecycleGate 串行 Start/Reload/ReloadRegistrations 的 Clear→注册→启动序列与 KickConnection；KickWidget 改返投递成败（Core 测试 KickWidget_ReportsDelivery_LossSignalForUnregistered），真空期丢失的 kick 记 _pendingKicks、注册重建后 DrainPendingKicks 补放——唤醒意图穿越重建时序；回归 KickConnection_BeforeRegistration_PreservesWakeThroughReload：宿主未启动先 kick（丢失）→ Reload 空 kickIds → 1h 档负验门下立即首拉，摘 DrainPendingKicks 实测复红 Poll 超时）
 - [x] [M] 同根因两条 DSL 缓存项合并同一 commit 处理（src/Beacon.App/Services/BeaconRuntime.cs）——避免修一半（已并入 96de3e3 单 commit：代数计数源（Storage）与 getter 失效消费（App）同批落地，不留半修；调度器/宿主两竞争项同根因（重建时序）同批 debf201）
 - 门禁收口（2026-11-13）：全套测试绿 Core 1277/Connections 1017/Actions 55/Storage 59 合计 2408 过；ci run 43458417175 绿（Windows 编译门覆盖 App 侧 BeaconRuntime.cs，App 工程 Linux 本地不编译）
+
+- [ ] UI-SPACING-1127【2026-11-27 用户反馈「界面越改越差，文字和 icon 之间的空隙都没有了」】全窗口间距一致性治理；验收=每个窗口 DesignTokens 收编 + imac 真机截图（icon-text 间距逐窗对比）+ 用户亲验闭项。
+  - 病根定性（代码考古 2026-11-27）：DesignTokens 间距刻度（IconTextGap=10/RowInline=8/SectionGap=16/CardPadding=12）只在 Settings 窗收编（17c5772），其余窗口（QuickPanel/Capsule/Gallery/连接向导）仍是 inline 字面量手写 Margin/Padding——每窗各自为政，改一处坏一处；20+ 个 UI fix 提交均为单点修补，缺全局约束（todo.md 第五单 BEACON-FIX-1126 只收编了 Settings 四病灶）。
+  - 治理方案（待 imac 开机后执行，真机截图先行）：①逐窗截图当前间距现状（用户指认最差窗口优先）；②按窗收编 DesignTokens（IconTextGap/RowInline 全窗统一）；③XAML 侧 App.xaml 资源字典同步（WinUI 3 无 x:Static 的镜像约束）；④CI 像素断言扩展（SG 病灶 C 门推广到全窗口：icon 右缘→文字左缘 ≥9px）；⑤用户逐窗亲验。
+  - 依赖：imac 开机（真机截图取证）；本单不做盲改（无截图不动代码——岛面五单的教训）。
