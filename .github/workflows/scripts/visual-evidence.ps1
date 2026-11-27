@@ -1360,6 +1360,18 @@ function Expand-UiaElement([System.Windows.Automation.AutomationElement] $elemen
     ($element.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)).Expand()
 }
 
+# 收集 UIA 子树全部非空 Text 元素 Name（SET-UX-11 生效时机 hint 断言用：TextBlock hint 无
+# AutomationId，只能按 Name 子串在文本树里找；口径同 SI 场景 Get-SiTexts，提为公共助手供 AA/SJ 复用）。
+function Get-UiaTextNames([System.Windows.Automation.AutomationElement] $root)
+{
+    $names = @()
+    foreach ($t in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text))))
+    {
+        try { if ($t.Current.Name) { $names += $t.Current.Name } } catch { }
+    }
+    return $names
+}
+
 function Find-SettingsWindow([int] $timeoutSec = 30)
 {
     $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "Beacon 设置")
@@ -6083,6 +6095,20 @@ try
         Save-FullScreenshot "AA-FAIL-no-density-box.png"
         throw "断言失败（场景 AA）：UIA 未找到 appearance-density-box（密度下拉锚点丢失）"
     }
+    # 生效时机 hint 档（SET-UX-11 补 CI 门，2026-11-27）：密度「即时重排桌面组件/详情窗下次打开生效」
+    # 与进度样式「切换即时生效」写在控件旁——densityBox 已现=右栏树已进 UIA，单趟文本树走查即可断。
+    $aaHintNames = @(Get-UiaTextNames $settings)
+    if (@($aaHintNames | Where-Object { $_ -like "*即时重排桌面组件*下次打开时生效*" }).Count -eq 0)
+    {
+        Save-FullScreenshot "AA-FAIL-no-density-hint.png"
+        throw "断言失败（场景 AA）：外观页未见界面密度生效时机 hint（即时重排桌面组件 + 详情窗下次打开生效）——SET-UX-11 hint 缺失"
+    }
+    if (@($aaHintNames | Where-Object { $_ -like "*切换即时生效*" }).Count -eq 0)
+    {
+        Save-FullScreenshot "AA-FAIL-no-progress-hint.png"
+        throw "断言失败（场景 AA）：外观页未见进度样式生效时机 hint（切换即时生效）——SET-UX-11 hint 缺失"
+    }
+    Write-Host "场景 AA 生效时机 hint 通过：密度即时重排 + 详情窗下次打开生效 + 进度样式切换即时生效——SET-UX-11"
     # AA1：默认档=常规（AppearanceConfig.Density 默认 regular，Write-GConfig 不落 density 键）
     $sel0 = Get-ComboSelectionName $densityBox
     if ($sel0 -notlike "常规*")
@@ -8523,6 +8549,21 @@ public static class SjHotkeyHolder
     Start-Process -FilePath (Join-Path $env:GITHUB_WORKSPACE "publish/Beacon.App.exe") -ArgumentList "--settings" | Out-Null
     $settings = Find-SettingsWindow 30
     if (!$settings) { Save-FullScreenshot "SJ-FAIL-no-settings.png"; throw "断言失败（场景 SJ）：--settings 启动 30s 内未见设置窗" }
+    # 生效时机 hint 档（SET-UX-11 补 CI 门，2026-11-27）：开机自启 hint 写在控件旁——
+    # 「注册表 Run 键」保存即时 + 「下次登录」随 explorer 拉起；首拍就绪门同 SI（窗现≠树现，45601056698）。
+    $sjStartupHint = $false
+    $sjHintDeadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $sjHintDeadline)
+    {
+        if (@(Get-UiaTextNames $settings | Where-Object { $_ -like "*注册表 Run 键*下次登录*" }).Count -gt 0) { $sjStartupHint = $true; break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (!$sjStartupHint)
+    {
+        Save-FullScreenshot "SJ-FAIL-no-startup-hint.png"
+        throw "断言失败（场景 SJ）：常规页未见开机自启生效时机 hint（注册表 Run 键 + 下次登录）——SET-UX-11 hint 缺失"
+    }
+    Write-Host "场景 SJ 生效时机 hint 通过：开机自启 hint 写在控件旁（保存即时 + 下次登录拉起）"
     # 主题档（SET-UX-11 补 CI 门，2026-11-26）：浅色/深色切换落盘档位——生效时机标注写在控件旁（Header
     # 「主题（重启生效）」），实际浅色渲染翻转属用户视觉亲验面；此处断选择链 + config 逐档回读。
     $themeBox = Find-UiaById $settings "theme-box" 10
