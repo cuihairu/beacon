@@ -76,14 +76,15 @@ public sealed class CapsuleIslandMathTests
     [Fact]
     public void Notch_Constants_MatchBrimDeckLimits()
     {
-        // BrimDeck CollapsedLimits：NotchCorner=12、BaseHeight=32、肩深=shoulder×7/16。
-        // 肩 2026-11-25 归零（真机白板病灶：16 DIP 肩通道在浅色桌面读成「展开态左右白板」）——
-        // 贴顶岛=全宽平齐板，锁 0 防肩回归
-        Assert.Equal(0, CapsuleIslandMath.ShoulderDips);
+        // BrimDeck CollapsedLimits：NotchCorner=12、BaseHeight=32、NotchShoulder=16、肩深=shoulder×7/16=7。
+        // 肩 2026-11-25 曾为白板病灶归零、2026-11-28 用户令恢复（「上面的角向内弯」=BrimDeck 喇叭肩正形；
+        // 肩下透明通道是刘海形态本体，白板观感根因是叠层缺陷非肩本身）。顶角 0=肩>0 时被肩部覆盖。
+        Assert.Equal(16, CapsuleIslandMath.ShoulderDips);
         Assert.Equal(12, CapsuleIslandMath.BottomRadiusDips);
         Assert.Equal(32, CapsuleIslandMath.HeightDips);
-        Assert.Equal(0, CapsuleIslandMath.ShoulderDepthDips);
-        // 内缩按 Notch 口径 30（NotchInset；Capsule 的 16 不适用于贴顶岛），并锁 NotchWidthMin=72
+        Assert.Equal(7, CapsuleIslandMath.ShoulderDepthDips);
+        Assert.Equal(0, CapsuleIslandMath.TopRadiusDips);
+        // 内缩按 Notch 口径 30（NotchInset；内容避让肩 16 + 底角 12），并锁 NotchWidthMin=72
         Assert.Equal(30, CapsuleIslandMath.InsetDips);
         Assert.Equal(72, CapsuleIslandMath.MinWidthDips);
         Assert.Equal(238, CapsuleIslandMath.DefaultWidthDips); // NotchWidthDefault（展开内容区 238-60=178）

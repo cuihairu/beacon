@@ -5,26 +5,27 @@ namespace Beacon.Core.Services;
 /// <summary>
 /// 悬浮岛几何（USER-RPT-4，BrimDeck Notch 口径对拍重做）：岛=刘海式贴顶形态——
 /// 窗口顶缘恒贴屏幕顶（y=屏幕顶，永不下移、不持久化拖动 Y），水平居中 + 仅 X 偏移可持久化；
-/// 形态常量源自 BrimDeck CollapsedLimits（底圆角 12、高 32；肩 16 于 2026-11-25 归零，见 ShoulderDips）。
+/// 形态常量源自 BrimDeck CollapsedLimits（底圆角 12、高 32；肩 16 于 2026-11-25 归零、
+/// 2026-11-28 用户令恢复，见 ShoulderDips）。
 /// 纯函数 Core 层（Core.Tests 锁口径）：CapsuleWindow 的岛形态启动恢复与拖动落点持久化共用。
 /// </summary>
 public static class CapsuleIslandMath
 {
-    /// <summary>肩部半径：2026-11-25 归零（用户真机「展开态左右各露 38px 白色底板」）——旧 BrimDeck
-    /// NotchShoulder=16 的肩内收让窗口两侧各留全高 16 DIP 透明通道（region 外），浅色桌面/窗背板
-    /// 透进来读成白板。贴顶岛改全宽平齐板：肩 0=左右直边压窗缘，仅底两角圆角。</summary>
-    public const double ShoulderDips = 0;
+    /// <summary>肩部半径：2026-11-28 用户令恢复 BrimDeck NotchShoulder=16（「上面的角不是向内弯的」）——
+    /// 2026-11-25 为修白板归零、2026-11-26 又在无肩分支补外凸顶弧，两改叠成胶囊形（顶角外凸），偏离
+    /// 参照。BrimDeck 正形=顶缘 (0,0)→(w,0) 全宽贴屏 + 两角向内弯喇叭肩（肩深 7）+ 底角外凸 12；
+    /// 两侧肩下 16 DIP 透明通道是刘海形态本体（BrimDeck 同款，WPF 透明窗与 region 镂空观感一致）。</summary>
+    public const double ShoulderDips = 16;
 
-    /// <summary>肩深（BrimDeck IslandBorder.BuildOutline：shoulderDepth = shoulder × 7/16；肩 0 恒 0）。</summary>
+    /// <summary>肩深（BrimDeck IslandBorder.BuildOutline：shoulderDepth = shoulder × 7/16 = 7）。</summary>
     public const double ShoulderDepthDips = ShoulderDips * 7d / 16;
 
     /// <summary>底圆角（BrimDeck CollapsedLimits.NotchCorner）：岛底两角。</summary>
     public const double BottomRadiusDips = 12;
 
-    /// <summary>顶圆角（BEACON-FIX-1126 病灶 A）：2026-11-26 用户令「上角不是直的」——ShoulderDips
-    /// 归零后轮廓落进无肩分支，顶两角直角硬切是当初抄漏的分支（BrimDeck 无肩分支顶角走 tl/tr 圆象限弧，
-    /// 「Notch TopRadius=0」只适用有肩刘海态）。与底角同值 12；窗顶缘仍贴屏幕顶，仅左右上角内圆。</summary>
-    public const double TopRadiusDips = 12;
+    /// <summary>顶圆角：肩>0 时被肩部覆盖（BrimDeck Notch TopRadius=0 口径）；仅无肩分支（API 兼容
+    /// 路径）生效。2026-11-26 曾设 12 补无肩分支顶弧，2026-11-28 随肩恢复退回 0。</summary>
+    public const double TopRadiusDips = 0;
 
     /// <summary>收起态高（BrimDeck CollapsedLimits.BaseHeight）。</summary>
     public const double HeightDips = 32;

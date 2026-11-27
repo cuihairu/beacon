@@ -1147,7 +1147,8 @@ function Save-Zoom([System.Drawing.Bitmap] $crop, [string] $name, [int] $zoom)
 
 # AH5 岛灰板断言助手（屏上小区域均值色）：CopyFromScreen 取真实像素无压缩伪影。
 # 采样点贴窗角内缩 1px、span 2（经典态专用：经典 RootBorder 圆角外的窗底材质区；岛态月牙走
-# Get-CrescentMaxDistance——岛肩 2026-11-25 归零后岛态顶角已无弧外区）。
+# Get-CrescentMaxDistance——岛肩 2026-11-28 恢复后顶两角重回弧外区，月牙门仍锚底两角，
+# 顶部肩区由 AH5d-B region 肩形探针直读把守）。
 function Get-AvgColor([int] $x, [int] $y, [int] $span)
 {
     $bmp = New-Object System.Drawing.Bitmap $span, $span
@@ -7214,26 +7215,39 @@ try
     }
     Save-Zoom (New-Crop ([WinEnum]::RectOf($islandHandles[0])) 8) "AH-island-expanded.png" 3
     Write-Host "场景 AH1 通过：岛展开态在位（预览行长出，窗高 ≥1.6×收起基线）"
-    # AH1d 展开态侧板实着断言（2026-11-25 用户真机「展开态左右各露 38px 白色底板」CI 回归门）：
-    # 旧几何两病灶——肩 16 DIP 让窗口两侧各留全高透明通道（region 外，浅色桌面透进来=白板）+
-    # 轮廓量 RootBorder.Actual* 过期拍让 region 内露窗背板。修复后侧缘压窗缘：左右翼板（窗缘内
-    # 4 DIP、半高处，避开 3px 边带环与 30 DIP 内容区）必须是岛面本体近黑（三通道和 <90）；
-    # 肩/通道回归时该点透桌面（CI 桌面最暗横带 51,51,51 起步，和 ≥153）即红。
+    # AH1d 展开态肩形断言（2026-11-28 用户令恢复 BrimDeck 喇叭肩「上面的角向内弯」重写；2026-11-25
+    # 版按「肩 0 全宽板」断翼板近黑，随肩恢复作废）：肩 16 DIP 让窗口两侧各留 16 DIP 透明通道
+    # （肩下 region 外）——2026-11-25 曾当白板病灶归零肩部，后定谳白板=叠层缺陷（过期拍+DWM 边框）
+    # 非肩本身，BrimDeck 正形即带通道（WPF 透明窗同观感）。两判据：① 通道点（窗缘内 4 DIP、半高处）
+    # == 同高窗外参照（region 镂空透桌面，色距 ≤24，AH5 月牙同口径）——肩被填死/胶囊回归时该点近黑，
+    # 与参照距拉满即红；② 主体点（窗缘内 肩+6 DIP）岛面本体近黑（三通道和 <90）——region 未随肩
+    # 内收/面缺失时该点透桌面（和 ≥153）即红。
     $flankRect = [WinEnum]::ClientScreenRectOf($islandHandles[0])
     $flankScale = [WinEnum]::DpiScaleOf($islandHandles[0])
     $flankY = $flankRect.Top + [int](($flankRect.Bottom - $flankRect.Top) / 2)
+    $flankRefL = Get-AvgColor ($flankRect.Left - 30) $flankY 1
+    $flankRefR = Get-AvgColor ($flankRect.Right + 30) $flankY 1
     foreach ($flank in @(
-            @(($flankRect.Left + [int](4 * $flankScale)), '左'),
-            @(($flankRect.Right - [int](5 * $flankScale)), '右')))
+            @(($flankRect.Left + [int](4 * $flankScale)), '左', $flankRefL, ($flankRect.Left + [int]((16 + 6) * $flankScale))),
+            @(($flankRect.Right - [int](5 * $flankScale)), '右', $flankRefR, ($flankRect.Right - [int]((16 + 7) * $flankScale)))))
     {
         $fc = Get-AvgColor $flank[0] $flankY 2
-        $fsum = [int]($fc[0] + $fc[1] + $fc[2])
-        if ($fsum -ge 90)
+        $fref = $flank[2]
+        $fdist = ([Math]::Abs($fc[0] - $fref[0]) + [Math]::Abs($fc[1] - $fref[1]) + [Math]::Abs($fc[2] - $fref[2]))
+        if ($fdist -gt 24)
         {
-            Save-FullScreenshot "AH-FAIL-flank-ink.png"
-            throw "断言失败（场景 AH1d）：展开态$($flank[1])翼板采到非岛面色 ($($fc -join ','))，三通道和 $fsum（期望 <90 近黑）——侧缘透明通道/露背板回归（真机白板病灶 CI 面）"
+            Save-FullScreenshot "AH-FAIL-flank-channel.png"
+            throw "断言失败（场景 AH1d）：展开态$($flank[1])肩通道采色 ($($fc -join ',')) 与同高窗外参照 ($($fref -join ',')) 色距 $fdist（期望 ≤24）——肩通道未镂空（胶囊回归/露背板，BrimDeck 喇叭肩形丢失）"
         }
-        Write-Host "场景 AH1d $($flank[1])翼板采样=($($fc -join ',')) 和 $fsum <90——侧板实着（无透明通道）"
+        Write-Host "场景 AH1d $($flank[1])肩通道=($($fc -join ',')) vs 同高参照距 $fdist ≤24——喇叭肩通道镂空成立"
+        $bc = Get-AvgColor $flank[3] $flankY 2
+        $bsum = [int]($bc[0] + $bc[1] + $bc[2])
+        if ($bsum -ge 90)
+        {
+            Save-FullScreenshot "AH-FAIL-flank-body.png"
+            throw "断言失败（场景 AH1d）：展开态$($flank[1])肩下主体（肩内 6 DIP）采色 ($($bc -join ',')) 三通道和 $bsum（期望 <90 近黑）——region 未随肩内收/岛面缺失"
+        }
+        Write-Host "场景 AH1d $($flank[1])肩下主体=($($bc -join ',')) 和 $bsum <90——肩形主体实着"
     }
     # AH1a 真实指针进入：探针首展是程序化 ShowPreview 直调（不设 _hovered）——指针从未「进入」过岛时
     # 移出不构成 PointerExited（43662875796 实证：跳过这步移出后岛不收）。先真悬停进岛建立 enter 态
@@ -7394,8 +7408,8 @@ try
     Stop-Beacon
     Write-Host "场景 AH3 通过：岛 GLM 面单击 → 看板开 + 智谱来源卡定位（组件级下钻链）"
     # AH5 岛灰板修复取证（方案 B，2026-11-16：SetWindowRgn 真镂空）——岛态底角月牙（12 DIP 底角
-    # 弧外；肩 2026-11-25 归零后弧外区只剩底两角）应透到背后层（与窗外同高参照比，CI 桌面有宿主
-    # 终端窗占屏、角落背景非壁纸故参照自洽取同高两点）；
+    # 弧外；肩 2026-11-28 恢复后顶两角弧外区由 AH5d-B region 探针把守，月牙门仍锚底两角）应透到
+    # 背后层（与窗外同高参照比，CI 桌面有宿主终端窗占屏、角落背景非壁纸故参照自洽取同高两点）；
     # 经典态四角恒=亚克力灰（无 region，RootBorder 圆角外露窗底材质）=经典观感保持（逐字节不动红线）。
     # 重启链三轮切换（岛→经典→岛）覆盖 region 摘/设多轮；10 次运行时循环与亮/暗壁纸真机观感待装机亲验。
     Write-GConfig "" "off" 1.0 $false $false $true "stack" '["bigmodel.usage:GLM"]'
@@ -7485,10 +7499,11 @@ try
         throw "断言失败（场景 AH5d①）：岛底角月牙与同高参照最大色距 $bottomDist5d（期望 ≤24）——底部弧外露窗背板/残留层（用户真机「透明底板」CI 面），region 底部未镂空"
     }
     Write-Host "场景 AH5d① 通过：岛底角月牙=背后层（最大色距 $bottomDist5d ≤24）——region 底部镂空成立"
-    # ⑤ region 几何直读门（BEACON-FIX-1126 病灶 A/B，2026-11-26）：GetWindowRgn+PtInRegion/GetRgnBox
-    # 直接问 OS 裁剪裁决——病灶 A（无肩顶角圆弧：顶两角 (1,1)/(w-2,1) 必须出 region）、病灶 B
-    # （region 内缩 1px：底两角出 region、包围盒 Left≥1/Bottom≤h-1、贴顶铁律 Top=0）。决定性、
-    # 免桌面像素参照（CI 桌面非纯色的假红面根除，AH5d 假红两半根因教训同口径规避）。
+    # ⑤ region 几何直读门（BEACON-FIX-1126 病灶 A/B，2026-11-26；肩形探针 2026-11-28）：GetWindowRgn+
+    # PtInRegion/GetRgnBox 直接问 OS 裁剪裁决——四角出 region（底角 12 弧 + 顶角在喇叭肩曲率起点内）、
+    # 病灶 B（region 内缩 1px：包围盒 Left≥1/Bottom≤h-1、贴顶铁律 Top=0）、喇叭肩形（肩下通道出
+    # region、肩内主体在 region，胶囊回归即红）。决定性、免桌面像素参照（CI 桌面非纯色的假红面根除，
+    # AH5d 假红两半根因教训同口径规避）。
     $winRgn5d = [WinEnum]::RectOf($islandH5d)
     $cliRgn5d = [WinEnum]::ClientScreenRectOf($islandH5d)
     $offX5d = $cliRgn5d.Left - $winRgn5d.Left   # 客户区→窗相对偏移（无边框岛恒 0，换算写全防 chrome 假设）
@@ -7511,15 +7526,26 @@ try
     {
         throw "断言失败（AH5d-B）：region 包围盒 Left=$($rgnBox5d.Left) Bottom=$($rgnBox5d.Bottom) 客户区=$($wCli5d)x$($hCli5d) 偏移=$offX5d,$offY5d（期望 Left=$($offX5d + 1)、Bottom≤$($offY5d + $hCli5d)）——region 未内缩 1px（病灶 B 白外围回归）"
     }
-    # 四角出 region（病灶 A 顶角弧 + 底角弧，窗相对坐标=客户区偏移后取角内 1px）；
+    # 四角出 region（底角弧 + 顶角在喇叭肩曲率起点内，窗相对坐标=客户区偏移后取角内 1px）；
     # 半径下界 12px（1x）保证角内 1px 点距弧心恒大于半径。顶/底缘中点在 region 内（边未破）。
+    # 肩形探针（2026-11-28 恢复 BrimDeck 喇叭肩）：肩深 7 DIP 之下主体内收 16 DIP——肩下通道两点
+    # （窗缘内 2px）必须出 region（喇叭肩镂空），肩内主体两点必须在 region（面本体随肩内收）。
+    # 胶囊回归（肩 0）时通道点落回 region 即红；region 未随肩内收时主体点恒在 region 不设防（AH1d
+    # 像素门兜底主体实着）。
+    $shPx5d = [int][Math]::Ceiling(16 * $scale5d)
+    $depPx5d = [int][Math]::Ceiling(7 * $scale5d)
+    $shY5d = ($offY5d + $depPx5d + 2)
     $rgnCorners5d = @(
         @{ Label = "顶左角"; X = ($offX5d + 1); Y = ($offY5d + 1); Inside = $false },
         @{ Label = "顶右角"; X = ($offX5d + $wCli5d - 2); Y = ($offY5d + 1); Inside = $false },
         @{ Label = "底左角"; X = ($offX5d + 1); Y = ($offY5d + $hCli5d - 2); Inside = $false },
         @{ Label = "底右角"; X = ($offX5d + $wCli5d - 2); Y = ($offY5d + $hCli5d - 2); Inside = $false },
         @{ Label = "顶缘中点"; X = ($offX5d + [int]($wCli5d / 2)); Y = ($offY5d + 1); Inside = $true },
-        @{ Label = "底缘中点"; X = ($offX5d + [int]($wCli5d / 2)); Y = ($offY5d + $hCli5d - 2); Inside = $true }
+        @{ Label = "底缘中点"; X = ($offX5d + [int]($wCli5d / 2)); Y = ($offY5d + $hCli5d - 2); Inside = $true },
+        @{ Label = "肩下左通道"; X = ($offX5d + 2); Y = $shY5d; Inside = $false },
+        @{ Label = "肩下右通道"; X = ($offX5d + $wCli5d - 3); Y = $shY5d; Inside = $false },
+        @{ Label = "肩内左主体"; X = ($offX5d + $shPx5d + 4); Y = $shY5d; Inside = $true },
+        @{ Label = "肩内右主体"; X = ($offX5d + $wCli5d - $shPx5d - 5); Y = $shY5d; Inside = $true }
     )
     foreach ($rc5d in $rgnCorners5d)
     {
@@ -7529,7 +7555,7 @@ try
             throw "断言失败（AH5d-B region 门）：窗坐标 ($($rc5d.X),$($rc5d.Y)) $($rc5d.Label) PtInRegion=$hitRgn5d（期望 $($rc5d.Inside)）——角弧/内缩几何回归"
         }
     }
-    Write-Host "场景 AH5d-B 通过：region 直读——四角全出 region（病灶 A 顶角弧 + 病灶 B 内缩 1px），顶缘 Top=$($rgnBox5d.Top) 贴顶铁律保持"
+    Write-Host "场景 AH5d-B 通过：region 直读——四角+肩形十探针全中（底角弧/顶角肩曲率出 region、肩下通道出、肩内主体在、内缩 1px），顶缘 Top=$($rgnBox5d.Top) 贴顶铁律保持"
     # ② 底缘过渡带剖面：x=底边中点列，从黑面到窗外逐行采色分类（surface/bg/GRAY）
     # 背景参照=剖面末行（dy=+3，region 裁剪保证已出窗）同列取样：44250272756 桌面有横向结构
     # （浏览器顶缘 y≈27 起的 51,51,51 横带 + 右侧浮层面板），跨列取参照会把异色混进来误判灰带。
@@ -7566,13 +7592,13 @@ try
         throw "AH5d② 边缘过渡带断言失败：灰带 $trans5d px（>1）——修复单口径「4x 后边缘过渡带 ≤1px 无灰带」"
     }
     # ③ 曲线边楼梯度量（首版逐列扫首个非背景行作废：轮廓顶缘横贯全宽，全列恒命中 y0=顶缘本身）——
-    #   轮廓几何（44238805907 轨迹×近景像素取证互证 + 2026-11-25 肩归零改版）：顶缘满宽贴屏，
-    #   左右直边压窗缘全高，曲线只剩底两角（弧自窗角 x0 扫到 x12）；肩轨迹已废——旧肩区现为
-    #   实心黑面，轨迹恒常数=假信号。逐行扫首个 surface 列=曲线轨迹（右角自右往左），
-    #   相邻行 Δx=量化台阶、边界像素去重层数=色阶；HRGN 物理锯齿基线，暂 advisory。
+    #   轮廓几何（44238805907 轨迹×近景像素取证互证；肩 2026-11-28 恢复 BrimDeck 喇叭肩，顶部肩曲线
+    #   由 AH5d-B region 肩形探针直读把守，tl/tr-shoulder 近景 ④ 归档）：本度量锚底两角弧（弧自窗角
+    #   x0 扫到 x12），肩轨迹不作楼梯门（顶部肩区背景参照跨屏幕顶不可采）。逐行扫首个 surface 列=
+    #   曲线轨迹（右角自右往左），相邻行 Δx=量化台阶、边界像素去重层数=色阶；HRGN 物理锯齿基线。
     #   桌面结构免疫（44250272756 定谳）：CI 桌面非纯色（浏览器横带 51,51,51 + 浮层面板），背景参照
     #   必须逐行外沿自洽，任何「单点探针当全局 bg」都会撞横向结构出垃圾轨迹。DPI1.0 基线=左底角
-    #   0→12、右底角 12→0（maxΔx=2 色阶=3；旧肩基线 11..16 与左底 16→24 随肩退役）。
+    #   0→12、右底角 12→0（maxΔx=2 色阶=3；环带后色阶门 ≥4）。
     $brPx5d = [int][Math]::Ceiling(12 * $scale5d)
     function Trace-CurveStair([int] $zoneL, [int] $zoneT, [int] $zoneW, [int] $zoneH, [int] $dir, [string] $tag)
     {
