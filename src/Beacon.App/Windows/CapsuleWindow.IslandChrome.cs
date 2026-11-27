@@ -356,6 +356,7 @@ public sealed partial class CapsuleWindow
             }
             IslandTrace($"region ok points={points.Count} client={clientWidthDips:0.#}x{clientHeightDips:0.#} offset={offsetX},{offsetY}");
             _lastRegionKey = key;
+            ApplyIslandDwm(true); // DWM 亮边框/圆角关断（ISLAND-DWM-1128）：白弧病灶在 region 外层
             EnsureTopmostBand();
             // spike：alpha 边带随 region 同步（同一轮廓段表，GDI+ 真 AA；先钉 TOPMOST band 再插带）
             SyncEdgeBand(scale, new NativeMethods.RECT
@@ -475,6 +476,35 @@ public sealed partial class CapsuleWindow
         };
     }
 
+    /// <summary>岛态 DWM 属性关断（ISLAND-DWM-1128）：Win11 DWM 给每个顶层窗叠 1px 亮色边框
+    /// （浅色主题取白）+ 圆角处理，画在 region 边界上——岛底两角沿 region 弧出现「外凸白弧」、
+    /// 直边「白边」（2026-11-28 imac 像素实证：角弧白 255 纯白亮于壁纸 ~200，黑面上外弧 2-3px；
+    /// 顶缘因窗顶出屏 4px 看不见）。BrimDeck 参照是 WPF AllowsTransparency 窗，天然不在 DWM
+    /// 边框/圆角的处理面——WinUI3 窗必须逐项显式关掉才抄齐。岛态三项全关（NC 渲染停用、
+    /// DONOTROUND、边框色 NONE）；经典态还原默认（系统其余窗观感不动）。失败仅 trace 不抛
+    /// （老系统无此属性非致命，region+边带兜底）。region 应用成功与经典还原两处调用。</summary>
+    private void ApplyIslandDwm(bool island)
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+        try
+        {
+            var ncrp = island ? NativeMethods.DWMNCRP_DISABLED : NativeMethods.DWMNCRP_USEWINDOWSTYLE;
+            var corner = island ? NativeMethods.DWMWCP_DONOTROUND : NativeMethods.DWMWCP_DEFAULT;
+            var borderColor = island ? NativeMethods.DWMWA_COLOR_NONE : NativeMethods.DWMWA_COLOR_DEFAULT;
+            var hrNcrp = NativeMethods.DwmSetWindowAttribute(_hwnd, NativeMethods.DWMWA_NCRENDERING_POLICY, ref ncrp, sizeof(int));
+            var hrCorner = NativeMethods.DwmSetWindowAttribute(_hwnd, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
+            var hrBorder = NativeMethods.DwmSetWindowAttribute(_hwnd, NativeMethods.DWMWA_BORDER_COLOR, ref borderColor, sizeof(int));
+            IslandTrace($"dwm chrome island={island} hr=0x{hrNcrp:X8},0x{hrCorner:X8},0x{hrBorder:X8}");
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"ApplyIslandDwm FAILED\n{ex}");
+        }
+    }
+
     /// <summary>摘窗 region 还原矩形（经典切回）：SetWindowRgn(Zero)=无裁剪；句柄未就绪跳过
     /// （经典态本就无 region）。</summary>
     private void RestoreWindowRegion()
@@ -486,6 +516,7 @@ public sealed partial class CapsuleWindow
         try
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            ApplyIslandDwm(false); // 经典态还原 DWM 默认（岛态关断的边框/圆角回场）
             _edgeBand?.Hide(); // 经典态无边带（region 摘除同步）
             _lastBandSegs = []; // 缓存一并清零：经典态残留 segs 会让 SyncEdgeBandPosition 用旧岛轮廓
                                 // 走重钉（ISLAND-BOTTOM-1 经典态复现面）；Count=0 即无事可做

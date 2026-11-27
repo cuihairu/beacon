@@ -40,8 +40,10 @@ internal sealed class IslandEdgeBandWindow : IDisposable
     /// <summary>边带位图四周外扩物理像素：笔宽 3px 居中于轮廓 → 外侧最多 ~2px AA，余量防裁。</summary>
     private const int BandMarginPx = 4;
 
-    /// <summary>环带笔宽（物理 px，居中于轮廓线）：内半 1.5px 盖住 region 硬切边、外半 1.5px AA 落壁纸。</summary>
-    private const float BandPenWidthPx = 3f;
+    /// <summary>环带笔宽（物理 px，居中于轮廓线）：内半 2px 盖住 region 硬切边 + 曲面路径 AA 边
+    /// （200% DPI 下 AA 跨 2 物理px，4b934bc 的 region 1px 内缩盖不全，残余半透明白边即「圆角白边」
+    /// 病灶之一）、外半 AA 落壁纸。3px 时 200% 下角弧残余 0.5px 半盖白边（ISLAND-DWM-1128）。</summary>
+    private const float BandPenWidthPx = 4f;
 
     private readonly NativeMethods.WndProcDelegate _wndProc; // 持有引用防 GC（Win32MessageWindow 同款）
     private IntPtr _classNamePtr;

@@ -360,6 +360,24 @@ internal static class NativeMethods
     [DllImport("gdi32.dll")]
     public static extern bool DeleteObject(IntPtr hObject);
 
+    // —— DWM 窗口属性（岛白边修复，ISLAND-DWM-1128）：Win11 DWM 给每个顶层窗画 1px 亮色边框
+    // （DWMWA_BORDER_COLOR，浅色主题取亮色）并做圆角处理，画在 region 边界上——岛底两角沿
+    // region 圆弧出现「外凸白弧」、直边出现「白边」（imac 2026-11-27 真机像素实证：角弧白
+    // 255 纯白亮于壁纸 ~200）。BrimDeck 参照实现是 WPF AllowsTransparency 窗，天然无 DWM
+    // 边框/圆角处理；WinUI3 窗须逐项显式关掉才对齐。关不掉≠致命：region+边带照旧兜底。 ——
+    public const int DWMWA_NCRENDERING_POLICY = 2;       // DWMNCRP_DISABLED = 1
+    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33; // DWMWCP_DEFAULT = 0 / DWMWCP_DONOTROUND = 1
+    public const int DWMWA_BORDER_COLOR = 34;             // 值为 COLORREF（4 字节）
+    public const int DWMNCRP_DISABLED = 1;
+    public const int DWMNCRP_USEWINDOWSTYLE = 0;
+    public const int DWMWCP_DEFAULT = 0;
+    public const int DWMWCP_DONOTROUND = 1;
+    public const int DWMWA_COLOR_DEFAULT = unchecked((int)0xFFFFFF00);
+    public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
     [DllImport("user32.dll")]
     public static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }
