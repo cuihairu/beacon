@@ -498,6 +498,16 @@
   - 验收硬门槛：CI 编译门绿（已过）+ imac 真机底角像素复测（弧外零 255 纯白+肩形通道，待屏醒）+ **用户装机亲验通过才闭项**（岛面问题第六单，从严；形状以 BrimDeck 为唯一参照，用户已两轮否决 agent 自创口径）。
 
 
+## 岛边缘 AA 四边统一 + 收起态三数据病灶（2026-11-28 编排方派单 BEACON-ISLAND-AA-1——岛窗口面问题第七单：形状对齐后用户仍报「感觉没有人家的自然」，编排方像素扫描定位边缘软硬不对称+收起态双数字/假进度/横幅分离；修复必须走到用户亲验为止；1 项 = 0 勾 / 1 未勾）
+
+- [ ] ISLAND-AA-1【2026-11-28 用户报障链，巡检单 ~/.hermes/cache/scratch/tasks/BEACON-ISLAND-AA-1.md】岛边缘软硬不对称（顶缘 4px 软、侧缘 1px、底缘 ≈0——region 硬裁裸边；BrimDeck 四边均匀 2-3px 矢量 AA）+ 收起态三病灶：双数字重复（徽标裸计数+环内计数同画两遍）、无数据假进度（total==0 时 OkShare 兜底 1.0 画满环/满条）、Offline 横幅掉岛外（独立圆角卡片+冻结时间戳无重试反馈）。
+  - 病灶 A 诊断修正：任务书「边带只画顶部弧段」与 main 不符（BuildPath 本就全轮廓描环）——真根因=单笔 4px 不透明描环的边缘软化全靠 GDI+ 几何 AA，而轴对齐直边笔缘落整像素界几何 AA≈0，只有角弧有 AA，正合实测三质感；修（5205313）：单笔改三重同心笔 alpha 渐变（6px/α95→4px/α135→2px/α200 同路径叠描，合成账 1-∏(1-α/255)），每直边外侧恰好 2px 落进 60<亮度<180 扫描门（亮壁纸 ~245 下 ≈154/72）、最内 ~239 盖 region 硬切边+路径 AA 白边，四边四角同渐变=顶缘同质感。
+  - 病灶 B1/B2 修（96f4b1a）：IslandDisplayPlan 徽标可见时虚拟环/条 Text 置空（计数归徽标唯一显示位），徽标隐藏时环心 PercentText 整数%读数；IslandContext 增 NoData 位（App 喂 IslandAggregateFacts.NoData），NoData→虚拟面 Placeholder=true+Progress=0+无读数=空轨道；新 Core 纯函数 IslandAggregateFacts（OkShare total==0 归 0 不再兜底 1.0、NoData、OfflineBannerText）；App.xaml.cs 喂数改走 Core 单源、_islandNoData 初始 true（启动首帧即空轨道）。
+  - 病灶 B3 修（96f4b1a）：XAML 增 IslandOfflineRow 进 SurfaceStack（岛体第二行，无底色/描边/圆角，曲面内无缝长出），经典态恒 Collapsed 保 RootBorder 外旧卡片横幅逐字节同旧（回归红线）；UpdateStatus 按形态二选一+文案双喂，断连 fresh（<5 分钟）显「（重试中）」久断静默旧值；ApplyIslandChrome 两分支离线中切形态横幅行互换（岛内行不漏进经典态）；MeasureSizePx 宽 238 下限/变高判据并入 IslandOfflineRow（否则岛态离线被 32px 恒高裁掉）。
+  - 证据：docs/acceptance-evidence/island-aa-1/notes.md（含 alpha 合成账表）；Core 本地 1430/1430 全绿（原 1420+新 10：IslandAggregateFactsTests 7 + 计划互斥/百分比/无数据 3，另翻 2 处旧断言"2"/"3"→""）；App 侧（Linux 不编译）标识符→命名空间表逐项自查过。
+  - 验收硬门槛：CI Windows 编译门（本 push 触发）+ nightly 绿含既有 AH 门（展开态/经典胶囊不得回归）+ imac 像素扫描四边 2-4px 均匀/双数字消失/无数据空轨道（需新构建部署）+ **用户装机亲验通过才闭项（硬门，agent 自评无效）**；OAuth 向导（GitHub Device Flow/MiMo Cookie 录制）不在本单已另立排队。
+
+
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
 - [x] [M] DSL 动作 TTL 缓存感知配置变更（src/Beacon.App/Services/BeaconRuntime.cs:42-83）——连接列表变更不失效，注释与实际竞态面不符（96de3e3：JsonConfigurationStore 新增 ConnectionsVersion 代数（Upsert/Remove/ReplaceAll 递增、删不存在不增，Storage 测试 ConnectionsVersion_BumpsOnConnectionMutationsOnly）+ DslActions getter 版本不匹配即重算、代数未变才走 2s TTL，注释按实际双失效面重写；App 侧 getter 属 App 工程 Linux 不编译，CS 面人工核 + CI 编译门）
