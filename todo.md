@@ -482,6 +482,14 @@
   - imac 启动崩溃根因（2026-11-26）：新 nightly 与改动前源码（d67ef48）同样起落 `0xC000027B`；WinDbg `!analyze -v` 实证 stowed exception `0x80070057` 落在 `Microsoft.UI.Xaml!RefreshRateInfo::RegisterForPowerNotification`（RefreshRateInfo.cpp:174），崩在 Application.Start 原生初始化、托管代码零执行；故障属 **WinUI 不支持 ssh session 0**（官方 microsoft-ui-xaml#10163 结论），非代码回归。修正通道：scheduled task `IMAC\cui` Interactive 落 console session 1 启动稳定存活；此前「session 1 全崩」结论系 principal 写 `CUI\cui` 启动失败误判。崩溃史 11-25 04:57 起同 offset 0x9125；WER 与「ALIVE」交叉核对（12s 窗口假阳性）。留档 docs/acceptance-evidence/beacon-fix-1126-verify/（README+cdb-analyze+crash-history+display-config+imac-realmachine/）。
   - imac 真机已核（2026-11-26，session 1 截图）：`imac-realmachine/settings-scr-1.png` 常规页图标-文字有间隙、侧栏四入口+搜索框完整；`imac-realmachine/source-page.png` 数据来源页连接行状态 chip 与开关列居右不挤压文字、保存/取消两按钮在表单底部右下、组件向导「刷新档」表头完整；`fullscreen.png` 主屏全形。岛态副屏分层窗抓白，改临时切主屏（DISPLAY1）截图 `imac-realmachine/island-primary.png`/`-zoom.png` 98KB 有效：顶两角逐行斜边（约 12px）非直角硬切、底两角圆弧收口且岛框内近白像素 0（白字除外）——病灶 A/B 真机通过；取证已恢复用户原 config/shell-state。用户装机亲验仍是闭项硬门，保持未勾。
 
+## 岛窗口 DWM 白边 + 外凸底角（2026-11-28 用户真机报——岛窗口面问题第六单：灰底、EDGE-1 锯齿、BOTTOM 空白条、FLANK 白板、FIX-1126 顶角之后又报「顶部的角不是圆角」「圆角还是有白边」「底部的是外向的圆角」，修复必须走到用户亲验为止）
+
+- [ ] ISLAND-DWM-1【2026-11-28 用户口头报障，beacon 席自查执行中】岛顶角观感不是圆角、圆角有白边、底角圆弧向外凸（用户原话「顶部的角不是圆角……现在圆角还是有白边，底下的角是圆角，底部的是外向的圆角，你抄都抄不对」；参照实现 BrimDeck `~/workspaces/brimdeck-ref`）。
+  - 像素取证（2026-11-28，docs/acceptance-evidence/ui-spacing-1127/imac-200/island-faces-collapsed.png，build c0215aa @200%）：顶两角圆弧真在（逐行斜边实测弧半径 24px=12 DIP，region/band/路径三层同源轮廓，island-trace `region ok points=101`）——「顶角不是圆角」观感来自 DWM 1px 亮边框沿弧压亮线；底两角弧外 2-3px 纯白（255）弧带、亮于壁纸 ~200，顶两角同位置零白、左直边干净——白弧只在窗底=窗顶 −4px 出屏藏掉顶部 DWM 边框，底边框全暴露。
+  - 根因定谳：Win11 DWM 给每个顶层窗画 1px 亮色边框（DWMWA_BORDER_COLOR，浅色主题取白）并按系统口径圆角，画在 SetWindowRgn 边界之上——白边+外凸白弧都是 DWM 层不是轮廓几何；BrimDeck 是 WPF AllowsTransparency 窗天然不受 DWM 边框/圆角处理，「抄不对」实为抄漏这层结构性差异。残余细白边另一成分=边带笔 3px 在 200% DPI 内半 1.5px 盖不全 XAML 路径 AA 2 物理px（4b934bc region 1px 内缩缝）。
+  - 修（14c9fff）：CapsuleWindow.ApplyIslandDwm 岛态三连关 DWMWA_NCRENDERING_POLICY=DISABLED + DWMWA_WINDOW_CORNER_PREFERENCE=DONOTROUND + DWMWA_BORDER_COLOR=NONE（NativeMethods 新增 dwmapi DwmSetWindowAttribute+常量；经典态回 DEFAULT/USEWINDOWSTYLE，RestoreWindowRegion 回切还原）；IslandEdgeBandWindow.BandPenWidthPx 3→4（内半 2px 盖 region 台阶+路径 AA 缝）。
+  - 验收硬门槛：CI 编译门绿 + imac 真机底角像素复测（弧外零 255 纯白）+ **用户装机亲验通过才闭项**（岛面问题第六单，从严）。
+
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
 
