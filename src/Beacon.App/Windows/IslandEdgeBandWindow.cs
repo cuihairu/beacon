@@ -37,13 +37,16 @@ internal sealed class IslandEdgeBandWindow : IDisposable
     private const byte AC_SRC_OVER = 0;
     private const byte AC_SRC_ALPHA = 1;
 
-    /// <summary>边带位图四周外扩物理像素：笔宽 3px 居中于轮廓 → 外侧最多 ~2px AA，余量防裁。</summary>
+    /// <summary>边带位图四周外扩物理像素：最宽笔 6px 居中于轮廓 → 外侧最多 ~3px 渐变+AA，余量防裁。</summary>
     private const int BandMarginPx = 4;
 
-    /// <summary>环带笔宽（物理 px，居中于轮廓线）：内半 2px 盖住 region 硬切边 + 曲面路径 AA 边
-    /// （200% DPI 下 AA 跨 2 物理px，4b934bc 的 region 1px 内缩盖不全，残余半透明白边即「圆角白边」
-    /// 病灶之一）、外半 AA 落壁纸。3px 时 200% 下角弧残余 0.5px 半盖白边（ISLAND-DWM-1128）。</summary>
-    private const float BandPenWidthPx = 4f;
+    /// <summary>环带笔序（物理 px，居中于轮廓线）：BEACON-ISLAND-AA-1 病灶 A——旧单笔 4px 不透明
+    /// 描环在轴对齐直边上几何 AA≈0（笔缘落整像素界，覆盖率 0/1 跳变），只有角弧段有 AA，实测
+    /// 「顶缘 4px 软、侧缘 1px、底缘 0px」三质感同岛。改三重同心笔叠出跨笔宽 alpha 渐变：
+    /// 每边外侧 2px 落进取证扫描的 60&lt;亮度&lt;180 过渡窗（亮壁纸 ~245 下 ≈154/72），最内环 ~0.94
+    /// 盖住 region 硬切边与曲面路径 AA 白边，四边+四角过渡带均匀 2-3px（BrimDeck 矢量 AA 对标）。
+    /// alpha 取值经合成叠账：1-(1-a1/255)(1-a2/255)(1-a3/255)。</summary>
+    private static readonly (float WidthPx, byte Alpha)[] BandPasses = [(6f, 95), (4f, 135), (2f, 200)];
 
     private readonly NativeMethods.WndProcDelegate _wndProc; // 持有引用防 GC（Win32MessageWindow 同款）
     private IntPtr _classNamePtr;
@@ -110,12 +113,18 @@ internal sealed class IslandEdgeBandWindow : IDisposable
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 using var path = BuildPath(segs, scale, BandMarginPx);
                 var bounds = path.GetBounds(); // 取证面：路径若退化（近零尺寸），环带没画先从这里看
-                CapsuleWindow.IslandTraceShared($"edge band path bounds={bounds.X:0.#},{bounds.Y:0.#} {bounds.Width:0.#}x{bounds.Height:0.#} step={scale:0.###}x{BandPenWidthPx:0.#}");
-                using var pen = new Pen(Color.FromArgb(255, 0, 0, 0), BandPenWidthPx);
-                pen.LineJoin = LineJoin.Round;
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                g.DrawPath(pen, path); // 只描环不填充：内部透明露出下层岛体
+                CapsuleWindow.IslandTraceShared($"edge band path bounds={bounds.X:0.#},{bounds.Y:0.#} {bounds.Width:0.#}x{bounds.Height:0.#} step={scale:0.###}x{BandPasses.Length}passes");
+                // AA-1 lesion A: stroke the same outline path once per ramp pass, widest/faintest
+                // first so inner passes stack on top (alpha compositing builds the gradient).
+                // Stroke only, no fill: the interior stays transparent to show the island body.
+                foreach (var (widthPx, alpha) in BandPasses)
+                {
+                    using var pen = new Pen(Color.FromArgb(alpha, 0, 0, 0), widthPx);
+                    pen.LineJoin = LineJoin.Round;
+                    pen.StartCap = LineCap.Round;
+                    pen.EndCap = LineCap.Round;
+                    g.DrawPath(pen, path);
+                }
             }
             var (inked, maxAlpha) = CountInk(bmp); // 取证面：DrawPath 后位图若近乎空，问题在绘制侧而非 ULW
             CapsuleWindow.IslandTraceShared($"edge band ink count={inked} maxA={maxAlpha} of {bmpW * bmpH}");
