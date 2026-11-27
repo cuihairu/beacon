@@ -1,0 +1,10 @@
+﻿
+EXE-EXISTS True
+ALIVE pid=48848
+island rect=8024,-4,8508,128 484x132
+TRACE-DWM 02:58:54.656 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000 || 02:58:55.311 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000 || 02:58:55.361 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000 || 02:58:55.398 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000 || 02:58:55.437 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000 || 02:58:55.788 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000 || 02:58:57.662 dwm chrome island=True hr=0x00000000,0x00000000,0x00000000
+TRACE-REGION 02:58:57.662 region ok points=149 client=238x62 offset=3,3
+GRAB1 center1=0,0,0 center2=0,0,0
+DARK → nudge display and retry
+GRAB2 center1=0,0,0 center2=0,0,0
+DISPLAY-DARK-ABORT (trace assertions stand, pixel check deferred)
