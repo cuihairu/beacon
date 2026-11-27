@@ -1,0 +1,63 @@
+﻿STARTED
+SETTINGS=1904012
+SHOT S1-settings-general.png rect=1786x1351 zoom=2x saved=314703B
+GAP settings-sidebar-icon-text = 20 px (from 'GitHub 图标' right=278 to 'GitHub' left=298)
+SHOT S2-connection-list.png rect=1786x1351 zoom=2x saved=324899B
+SHOT S3-connection-wizard.png rect=1786x1351 zoom=2x saved=324963B
+WIDGET IDS: http-a.status,http-b.status,bigmodel.usage:GLM
+ISLAND SET: http-a.status,http-b.status,bigmodel.usage:GLM
+PANEL=986470
+SHOT S4-board.png rect=1466x1146 zoom=2x saved=272711B
+ROW 'Beacon' id=
+ROW '20' id=UnreadCount
+ROW '0 警告 · 2 错误' id=OverallSummary
+ROW '需要关注' id=AttentionHeader
+ROW '00:00:32' id=
+ROW 'Deploy · Deploy failed' id=
+ROW '21:14:16' id=
+ROW 'GLM · 5h 额度已耗尽（11-27 21:59 重置）' id=
+ROW '00:00:35' id=
+ROW 'Pack A · Pack A normal' id=
+ROW '概览' id=OverviewHeader
+ROW '5' id=OverviewCount
+ROW '全部 5' id=chip-all
+ROW '5' id=
+ROW '全部' id=
+ROW 'HTTP 2' id=chip-HTTP
+ROW '2' id=
+ROW 'HTTP' id=
+ROW '智谱 3' id=chip-智谱
+ROW '3' id=
+ROW '智谱' id=
+ROW '事件动态' id=RecentHeader
+ROW '21:14:16' id=
+ROW '智谱' id=
+ROW '5h额度已尽' id=
+ROW 'GLM · 5h 额度已耗尽（11-27 21:59 重置）' id=
+ROW '21:14:16' id=
+ROW '智谱' id=
+ROW '5h额度已尽' id=
+ROW 'GLM · 5h 额度已耗尽（11-27 21:59 重置）' id=
+ROW '21:14:16' id=
+ROW 'HTTP' id=
+ROW 'Deploy · Deploy failed' id=
+ROW '21:14:16' id=
+ROW 'HTTP' id=
+ROW 'Pack A · Pack A normal' id=
+ROW '通知' id=NotificationsHeader
+ROW '全部已读' id=MarkAllReadButton
+ROW '11-27 21:14' id=
+ROW 'GLM · 5h 额度已耗尽（11-27 21:59 重置）' id=
+ROWS total=84
+INVOKE ROW 'Deploy · Deploy failed' via ControlType.ListItem
+INVOKED=True
+TOPWIN 'Beacon Pinned' class=WinUIDesktopWin32WindowClass hwnd=2887124
+TOPWIN 'Beacon Status' class=WinUIDesktopWin32WindowClass hwnd=1838454
+TOPWIN 'Beacon 快速面板' class=WinUIDesktopWin32WindowClass hwnd=986470
+TOPWIN 'Beacon · Deploy · Deploy failed' class=WinUIDesktopWin32WindowClass hwnd=2297184
+DETAIL=2297184 name=Beacon · Deploy · Deploy failed
+SHOT S5-detail.png rect=1066x1191 zoom=2x saved=138998B
+ISLAND-FACE-NOTFOUND
+NO-ISLAND-HWND
+DONE
+RESTORED C:\Users\cui\AppData\Roaming\Beacon\config.json

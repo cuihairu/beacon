@@ -1,8 +1,9 @@
-# UI-SPACING-1127 逐窗间距现状 · CI 取证半（2026-11-27）
+# UI-SPACING-1127 逐窗间距现状取证（2026-11-27）
 
-来源：nightly run 45948548406（head be16a1a）visual-evidence 工件，Windows 100% DPI。
-对应 todo.md「UI-SPACING-1127」治理方案①的 CI 半；imac 200% 真机半与用户指认最差窗口
-待真机在线后补（本单红线：无截图不动代码，本目录即截图证据半，不含代码改动）。
+CI 半来源：nightly run 45948548406（head be16a1a）visual-evidence 工件，Windows 100% DPI。
+imac 200% 真机半：`imac-200/`（2026-11-27，session 1 UIA + PrintWindow，包 c0215aa）。
+对应 todo.md「UI-SPACING-1127」治理方案①的截图证据；本单红线「无截图不动代码」——
+本目录只有取证，不含代码改动。
 
 ## 逐窗观察（icon-text 间距口径）
 
@@ -31,7 +32,32 @@ CI 有截图/UIA 通道的全部窗口在当前 nightly 上 icon-text 间距**�
 - DetailWindow Column 词汇件 Spacing=10，已与 IconTextGap 等值。
 - 其余窗口 inline 字面量清单见 todo.md 病根定性段（2026-11-27）。
 
-## 待办（imac 在线后）
+## imac 200% 真机半（2026-11-27）
 
-① 200% 真机逐窗截图（用户指认最差窗口优先）；② 按窗收编 DesignTokens；
+会话：ssh imac → 定时任务 `IMAC\cui` Interactive session 1（避开 WinUI session 0 崩）；
+包 `C:\beacon-verify\beacon-app-sdk27\Beacon.App.exe`（2026.11.26+c0215aa，含 17c5772 间距收编）；
+脚本 `C:\beacon-verify\realmachine-spacing1127.ps1`，逐面 PrintWindow 截图 + UIA BoundingRectangle
+直读量间距，取证结束恢复用户原 config（备份 `config.json.bak1127`）。
+
+| 面 | 截图 | 观察（200% 物理像素） |
+|---|---|---|
+| 设置 · 常规页 | imac-200/settings-general.png | 侧栏 icon→文字 UIA 直读 = 20 px = 10 DIP × 2，与 IconTextGap 常量一致，无贴死 |
+| 设置 · 数据来源页 | imac-200/connection-list.png | 连接行文字、状态 chip、开关列、按钮组间距清晰；开关不被文字挤压 |
+| 连接向导表单 | imac-200/connection-wizard.png | 表单标签/输入框/按钮行距正常，无 icon-text 贴死 |
+| 看板 | imac-200/board.png | 来源卡品牌图标（智谱 Z）与文字有间隙；时间线行圆点-时刻-摘要间距清晰 |
+| 详情窗 | imac-200/detail.png | 时间线圆点-时刻-摘要间距清晰；**另见下方独立发现** |
+
+**独立发现（非本单报障口径，如实记录）**：详情窗 DETAILS 区 `status`/`endpoint` 两行在 200%
+物理像素下出现文字纵向重叠（前一行下沿压到后一行上沿）。该现象属「文字行重叠」而非用户报的
+「文字与 icon 之间无空隙」；本单红线「无截图不动代码」，不在 UI-SPACING-1127 项下改码，
+另立条目或由用户裁定后再动。
+
+岛展开态未取到：`BEACON_DEBUG_ISLAND_PREVIEW=1` 钩子本轮未渲染 `island-face-*` UIA 树
+（`measurements.txt` 末 `ISLAND-FACE-NOTFOUND`），与 ISLAND-FLANK-1 已归档 imac 展开态截图
+（`docs/acceptance-evidence/island-flank-verify/`）互为补充，本单不重复取证。
+
+## 待办
+
+① 用户指认最差窗口（agent 侧五面截图均无「icon 贴死」）；② 按窗收编 DesignTokens；
 ③ App.xaml 资源字典镜像；④ CI 病灶 C 门推广到全窗口；⑤ 用户逐窗亲验。
+另：详情窗 DETAILS 文字行重叠待裁定是否单开条目。
