@@ -20,7 +20,7 @@
 | **C-JENKINS** | A Jenkins connection (the public anonymous instance `https://weekly.ci.jenkins.io` suffices, or self-hosted) |
 | **C-MOONSHOT** | A Moonshot open platform Key (platform.moonshot.cn; not interchangeable with Kimi For Coding) |
 | **C-DISCONNECT** | A way to cut the network: turn off Wi-Fi / unplug the cable; recovery the same |
-| **C-DPI** | A 200%/250% scaled display (or change scaling in Windows Settings); with multiple monitors, at least two monitors at different scales |
+| **C-DPI** | A 100%/150%/200%/250% scaled display (change scaling in Windows Settings → Display → Scale; sign out and back in when prompted); with multiple monitors, at least two monitors at different scales |
 
 Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; archive recordings/screenshots under `docs/`.
 
@@ -95,6 +95,11 @@ Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; 
 - **Preconditions**: E0, C-DPI (200%/250%).
 - **Steps**: ① open the detail window at 200% scaling; ② look at the capsule and floating tile text; ③ repeat at 250%.
 - **Expected**: The detail window sizes to content and text is complete, not clipped; the capsule / floating panel DIP layout is correct (the earlier 5K clipping root cause was not resizing and falling back to fixed physical pixels).
+
+### 2.12a SET-UX-11 | 150% scaling and screen-reader names (installation half)
+- **Preconditions**: E0, C-DPI (150%), Windows Narrator or NVDA available, settings window open.
+- **Steps**: ① set scaling to 150%, sign out/back in if prompted, open Settings → General and look at the hotkey / startup / refresh-interval hints; ② narrow the settings window to 600 DIP and check the hints wrap without clipping; ③ turn on Narrator or NVDA and tab through the sidebar module rows and their switches, then the connection rows on the Sources page.
+- **Expected**: Hints are complete and readable at 150%; the screen reader announces e.g. "GitHub" for the module row and "GitHub enabled" for its switch (not just "button" / "toggle switch"); no focus escapes the app. CI covers 100% and imac evidence covers 200% plus the name fix; 150% and the human listening check are the remaining installation items.
 
 ### 2.13 批3-补20 | Drag follow-the-cursor + cross-screen flicker
 - **Preconditions**: E0, multiple monitors (a high-refresh-rate mouse is better).
