@@ -7501,9 +7501,10 @@ try
     Write-Host "场景 AH5d① 通过：岛底角月牙=背后层（最大色距 $bottomDist5d ≤24）——region 底部镂空成立"
     # ⑤ region 几何直读门（BEACON-FIX-1126 病灶 A/B，2026-11-26；肩形探针 2026-11-28）：GetWindowRgn+
     # PtInRegion/GetRgnBox 直接问 OS 裁剪裁决——四角出 region（底角 12 弧 + 顶角在喇叭肩曲率起点内）、
-    # 病灶 B（region 内缩 1px：包围盒 Left≥1/Bottom≤h-1、贴顶铁律 Top=0）、喇叭肩形（肩下通道出
-    # region、肩内主体在 region，胶囊回归即红）。决定性、免桌面像素参照（CI 桌面非纯色的假红面根除，
-    # AH5d 假红两半根因教训同口径规避）。
+    # 病灶 B（2026-11-28 1c0f34b 起 region 走轮廓中心线：顶缘 (0,0)→(w,0) 全宽贴屏 → 包围盒 Left=0、
+    # 贴顶铁律 Top=0；旧 4b934bc 方向性 1px 内缩已废——肩形斜曲线被两轴各削 1px=亚像素斜切）、
+    # 喇叭肩形（肩下通道出 region、肩内主体在 region，胶囊回归即红）。决定性、免桌面像素参照
+    # （CI 桌面非纯色的假红面根除，AH5d 假红两半根因教训同口径规避）。
     $winRgn5d = [WinEnum]::RectOf($islandH5d)
     $cliRgn5d = [WinEnum]::ClientScreenRectOf($islandH5d)
     $offX5d = $cliRgn5d.Left - $winRgn5d.Left   # 客户区→窗相对偏移（无边框岛恒 0，换算写全防 chrome 假设）
@@ -7517,14 +7518,15 @@ try
     }
     $rgnBox5d = [WinEnum]::WindowRgnBox($islandH5d)
     # GDI 包围盒约定：Left/Top 含（region 最左/最上像素）、Right/Bottom 排（最右/最下像素 +1）。
-    # 内缩前：最左列=0（x=0 点）、最下行=窗高 h（y=h 点）→ Bottom=h+1；内缩后：Left=1、Bottom=h。
+    # 中心线口径：顶缘起点 (0,0) 全宽贴屏 → 最左列=0（Left=offX）、底角弧终点 y=h → 多边形内部
+    # 最低扫描行 h-1 → Bottom=offY+h（扫描行 h-1 +1）。
     if ($rgnBox5d.Top -ne $offY5d)
     {
         throw "断言失败（AH5d-B）：region 包围盒 Top=$($rgnBox5d.Top)（期望 $offY5d）——顶缘离开屏幕顶（贴顶铁律破）"
     }
-    if ($rgnBox5d.Left -ne ($offX5d + 1) -or $rgnBox5d.Bottom -gt ($offY5d + $hCli5d))
+    if ($rgnBox5d.Left -ne $offX5d -or $rgnBox5d.Bottom -gt ($offY5d + $hCli5d))
     {
-        throw "断言失败（AH5d-B）：region 包围盒 Left=$($rgnBox5d.Left) Bottom=$($rgnBox5d.Bottom) 客户区=$($wCli5d)x$($hCli5d) 偏移=$offX5d,$offY5d（期望 Left=$($offX5d + 1)、Bottom≤$($offY5d + $hCli5d)）——region 未内缩 1px（病灶 B 白外围回归）"
+        throw "断言失败（AH5d-B）：region 包围盒 Left=$($rgnBox5d.Left) Bottom=$($rgnBox5d.Bottom) 客户区=$($wCli5d)x$($hCli5d) 偏移=$offX5d,$offY5d（期望 Left=$offX5d、Bottom≤$($offY5d + $hCli5d)）——region 未沿轮廓中心线（顶缘全宽应贴到窗左缘 0，旧内缩口径回归）"
     }
     # 四角出 region（底角弧 + 顶角在喇叭肩曲率起点内，窗相对坐标=客户区偏移后取角内 1px）；
     # 半径下界 12px（1x）保证角内 1px 点距弧心恒大于半径。顶/底缘中点在 region 内（边未破）。
@@ -7552,10 +7554,10 @@ try
         $hitRgn5d = [WinEnum]::WindowRgnContains($islandH5d, $rc5d.X, $rc5d.Y)
         if ($hitRgn5d -ne $rc5d.Inside)
         {
-            throw "断言失败（AH5d-B region 门）：窗坐标 ($($rc5d.X),$($rc5d.Y)) $($rc5d.Label) PtInRegion=$hitRgn5d（期望 $($rc5d.Inside)）——角弧/内缩几何回归"
+            throw "断言失败（AH5d-B region 门）：窗坐标 ($($rc5d.X),$($rc5d.Y)) $($rc5d.Label) PtInRegion=$hitRgn5d（期望 $($rc5d.Inside)）——角弧/肩形/中心线几何回归"
         }
     }
-    Write-Host "场景 AH5d-B 通过：region 直读——四角+肩形十探针全中（底角弧/顶角肩曲率出 region、肩下通道出、肩内主体在、内缩 1px），顶缘 Top=$($rgnBox5d.Top) 贴顶铁律保持"
+    Write-Host "场景 AH5d-B 通过：region 直读——四角+肩形十探针全中（底角弧/顶角肩曲率出 region、肩下通道出、肩内主体在、包围盒贴轮廓中心线 Left=0/Bottom=h），顶缘 Top=$($rgnBox5d.Top) 贴顶铁律保持"
     # ② 底缘过渡带剖面：x=底边中点列，从黑面到窗外逐行采色分类（surface/bg/GRAY）
     # 背景参照=剖面末行（dy=+3，region 裁剪保证已出窗）同列取样：44250272756 桌面有横向结构
     # （浏览器顶缘 y≈27 起的 51,51,51 横带 + 右侧浮层面板），跨列取参照会把异色混进来误判灰带。
