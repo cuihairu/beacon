@@ -1,7 +1,7 @@
 
-# Installation acceptance checklist (71 items · 2026-10-12)
+# Installation acceptance checklist (75 items · 2026-10-12; 2.12a–d added 2026-11-27)
 
-> Source: the three ledgers in `docs/mvp-issues.md`「装机对照清单」(verified 1 + fixed-pending-verify 17 + not fixed 53 = **71 items**; 2026-10-12 eleventh re-sort corrected the original 51/68 sum drift; 批3-补47 added 2.17 and then line-by-line recount).
+> Source: the three ledgers in `docs/mvp-issues.md`「装机对照清单」(verified 1 + fixed-pending-verify 21 + not fixed 53 = **75 items**; 2026-10-12 eleventh re-sort corrected the original 51/68 sum drift; 批3-补47 added 2.17 and then line-by-line recount; 2026-11-27 added 2.12a SET-UX-11 150%/screen-reader and 2.12b–d the three ROW visual checks, then recounted all headers).
 > This version expands each item into a three-part form: **preconditions / verification steps / expected results**. Every step can be followed as written and every item can be receipted individually.
 > Items with local automation evidence annotate the corresponding unit tests under "Appendix: local automation coverage notes"; the real machine only supplies the UI/interaction half.
 
@@ -34,7 +34,7 @@ Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; 
 
 ---
 
-## 2. Fixed, pending verification (17 items — focus on these with the latest nightly)
+## 2. Fixed, pending verification (21 items — focus on these with the latest nightly)
 
 ### 2.1 B-301 | Real PAT connection test success/failure paths
 - **Preconditions**: E0, E2; one revocable real GitHub PAT.
@@ -100,6 +100,21 @@ Overall receipt criteria: MVP acceptance (B-803) closes once everything passes; 
 - **Preconditions**: E0, C-DPI (150%), Windows Narrator or NVDA available, settings window open.
 - **Steps**: ① set scaling to 150%, sign out/back in if prompted, open Settings → General and look at the hotkey / startup / refresh-interval hints; ② narrow the settings window to 600 DIP and check the hints wrap without clipping; ③ turn on Narrator or NVDA and tab through the sidebar module rows and their switches, then the connection rows on the Sources page.
 - **Expected**: Hints are complete and readable at 150%; the screen reader announces e.g. "GitHub" for the module row and "GitHub enabled" for its switch (not just "button" / "toggle switch"); no focus escapes the app. CI covers 100% and imac evidence covers 200% plus the name fix; 150% and the human listening check are the remaining installation items.
+
+### 2.12b SET-UX-ROW-1 | Switch alignment on module/connection rows
+- **Preconditions**: E0, settings window open at default width; at least two connections saved (so their rows are visible).
+- **Steps**: ① Settings → General, look at the module rows in the left sidebar with long and short subtitles; ② Sources → connection rows; ③ drag the settings window narrow (about 600 DIP) and look at the rows again.
+- **Expected**: All module-row switches share the same right edge (≤1 px spread) and are fully visible with long subtitles; connection-row switches likewise stay aligned and inside the window; text never pushes a switch out of view. CI scene D and the 2026-11-26 imac UIA pass already observed 0 px spread; this step is the human visual check on the installed package.
+
+### 2.12c SET-UX-ROW-2 | Gallery templates follow the chosen surface
+- **Preconditions**: E0, one connection with a widget (e.g. `http-a.status`), Component Center reachable.
+- **Steps**: ① open Component Center → style catalog on that widget; ② switch the application surface between Desktop / Board status row / Detail and watch the template list each time; ③ try to apply a desktop-only template while on the Board status row.
+- **Expected**: The template list rebuilds per surface; templates that don't fit the row height (e.g. number card / circular pool) are greyed out with a readable reason, while status-line templates stay usable; the apply button text names the selected surface. CI scene SF3 and the 2026-11-26 imac UIA pass already confirmed the filtering; this step checks per-surface row height and clipping by eye.
+
+### 2.12d SET-UX-ROW-3 | Desktop page follows the status-bar choice
+- **Preconditions**: E0, Desktop display page open.
+- **Steps**: ① pick Top floating island → look at the "Windows & board" section; ② switch to Bottom-right capsule → compare; ③ switch to Off → compare; ④ switch back to island and check the scroll position and focus are restored.
+- **Expected**: Island mode shows all five controls; capsule mode hides only the three island-family controls (desktop layout / numeric floating / edge collapse) and keeps opacity + board; Off leaves only the board switch plus a short reason hint; after switching back the section is complete and focus is on the newly selected radio. CI scenes W4/SU2/SU3 and the 2026-11-26 imac UIA pass already asserted the visible-control sets; this step is the installed-package visual check.
 
 ### 2.13 批3-补20 | Drag follow-the-cursor + cross-screen flicker
 - **Preconditions**: E0, multiple monitors (a high-refresh-rate mouse is better).
