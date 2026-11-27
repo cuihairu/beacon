@@ -1,0 +1,16 @@
+﻿
+CFG island on DISPLAY1 faces=http-a.status,http-b.status,bigmodel.usage:GLM
+ISLAND start=2241,-3,2879,131 134h
+NEVER-EXPANDED (h=134)
+UIA STATUS hwnd=2362720 name='Beacon Status'
+UIA descendants=13
+FACE id='island-face-island.progressring' name='island.progressring 22' type=ControlType.Custom rect=2342,10,44,44
+FACE id='island-face-island.progressbar' name='island.progressbar 22' type=ControlType.Custom rect=2398,27,112,10
+FACE id='island-face-http-a.status' name='http-a.status Pack A' type=ControlType.Custom rect=2522,17,91,30
+FACE id='' name='Pack A' type=ControlType.Text rect=2548,17,65,30
+FACE id='island-face-http-b.status' name='http-b.status Deploy' type=ControlType.Custom rect=2625,17,95,30
+FACE id='' name='Deploy' type=ControlType.Text rect=2651,17,69,30
+FACE id='' name='HTTP' type=ControlType.Text rect=2348,84,59,32
+FACE id='' name='Pack A · Pack A normal' type=ControlType.Text rect=2407,85,391,30
+SHOT S6-island-expanded.png 21999B rect=2241,-3,2879,131
+RESTORED

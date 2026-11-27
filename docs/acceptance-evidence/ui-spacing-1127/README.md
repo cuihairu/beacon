@@ -52,9 +52,13 @@ CI 有截图/UIA 通道的全部窗口在当前 nightly 上 icon-text 间距**�
 「文字与 icon 之间无空隙」；本单红线「无截图不动代码」，不在 UI-SPACING-1127 项下改码，
 另立条目或由用户裁定后再动。
 
-岛展开态未取到：`BEACON_DEBUG_ISLAND_PREVIEW=1` 钩子本轮未渲染 `island-face-*` UIA 树
-（`measurements.txt` 末 `ISLAND-FACE-NOTFOUND`），与 ISLAND-FLANK-1 已归档 imac 展开态截图
-（`docs/acceptance-evidence/island-flank-verify/`）互为补充，本单不重复取证。
+岛面补取（同日第二轮，`imac-200/island-uia.txt` + `island-faces-collapsed.png`）：
+按 ISLAND-FLANK-1 成功脚本口径把岛钉主屏 DISPLAY1 + 上岛三组件，UIA `island-face-*` 树拿到：
+`island-face-http-a.status` rect=(2522,17,91,30)，其子 Text「Pack A」left=2548 →
+**面徽标→文字 26px = 13 DIP @200%**（非贴死）；进度环/条两虚拟面同在树。
+展开态本轮未触发（`NEVER-EXPANDED`，height 134px 收起档；预览钩子与鼠标悬停均未令窗高超过 160px），
+展开态 200% 截图沿用 ISLAND-FLANK-1 已归档件（`docs/acceptance-evidence/island-flank-verify/`），
+本单不重复取证。
 
 ## 待办
 
