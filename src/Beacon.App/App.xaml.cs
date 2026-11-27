@@ -35,6 +35,9 @@ public partial class App : Application
     private int _islandUnread; // 岛徽标未读（NotificationRaised 采样，未读优先、异常次之）
     private int _islandAbnormal; // 岛徽标异常计数（warn+err，AggregateStatusChanged 采样）
     private double _islandOkShare = 1.0; // 岛环/条健康份额（ok 占比，UpdateStatus 同口径缓存）
+    // BEACON-ISLAND-AA-1 B2：聚合计数字面为零=无数据（启动首帧即无数据；首拍 AggregateStatusChanged
+    // 按 IslandAggregateFacts.NoData 刷新）——计划侧据此画空轨道、环心不落读数。
+    private bool _islandNoData = true;
     private Severity _islandOverall = Severity.Success; // 岛总体级别（聚合链实时）
     private int _islandCarouselTick; // 轮播轮转下标（每 4s +1，计划 i mod n 回卷）
     private Microsoft.UI.Xaml.DispatcherTimer? _islandCarouselTimer; // 轮播节拍（仅 carousel 档且池>1 激活）
@@ -234,7 +237,10 @@ public partial class App : Application
             var warn = status.Counts.GetValueOrDefault(Severity.Warning);
             var error = status.Counts.GetValueOrDefault(Severity.Error) + status.Counts.GetValueOrDefault(Severity.Critical);
             var total = ok + warn + error;
-            _islandOkShare = total == 0 ? 1.0 : (double)ok / total;
+            // BEACON-ISLAND-AA-1 B2：无数据（total==0）份额归 0 + NoData 标记——空轨道才是真值，
+            // 旧 1.0 兜底把零数据画成整圆/满条=假健康（Core IslandAggregateFacts 单源）。
+            _islandOkShare = IslandAggregateFacts.OkShare(ok, warn, error);
+            _islandNoData = IslandAggregateFacts.NoData(ok, warn, error);
             _islandAbnormal = warn + error;
             _islandOverall = status.Overall;
             RecomputeIsland();
@@ -659,7 +665,7 @@ public partial class App : Application
             runtime.Config.App,
             runtime.Config.Widgets,
             _lastStates,
-            new IslandContext(_islandUnread, _islandAbnormal, _islandOkShare, _islandOverall),
+            new IslandContext(_islandUnread, _islandAbnormal, _islandOkShare, _islandOverall, _islandNoData),
             _islandCarouselTick);
         capsule.UpdateIslandPlan(plan);
         UpdateCarouselTimer(plan.Mode == IslandDisplayPlan.ModeCarousel && plan.Faces.Count + plan.OverflowCount > 1);

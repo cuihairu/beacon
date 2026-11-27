@@ -41,8 +41,8 @@ public sealed class IslandDisplayPlanTests
     private static Dictionary<string, string> PV(params (string Key, string Value)[] items)
         => new(items.ToDictionary(item => item.Key, item => item.Value), StringComparer.OrdinalIgnoreCase);
 
-    private static IslandContext Ctx(int unread = 0, int abnormal = 0, double okShare = 1.0)
-        => new(unread, abnormal, okShare, Severity.Success);
+    private static IslandContext Ctx(int unread = 0, int abnormal = 0, double okShare = 1.0, bool noData = false)
+        => new(unread, abnormal, okShare, Severity.Success, noData);
 
     private static IslandPlan Plan(AppConfig app, IReadOnlyList<WidgetConfig> widgets,
         IReadOnlyDictionary<string, WidgetState> states, IslandContext ctx, int carouselIndex = 0)
@@ -77,7 +77,9 @@ public sealed class IslandDisplayPlanTests
         Assert.Equal(ComponentCenterCatalog.IslandRingId, plan.Faces[0].WidgetId);
         Assert.Equal("ring", plan.Faces[0].Kind);
         Assert.Equal(0.75, plan.Faces[0].Progress);
-        Assert.Equal("2", plan.Faces[0].Text); // 计数=未读优先（与现环心数字同口径）
+        // AA-1 B1：徽标可见时计数只在徽标位显示一次，环心读数位让位（不再双数字）
+        Assert.Equal("", plan.Faces[0].Text);
+        Assert.True(plan.BadgeVisible);
         Assert.Equal(ComponentCenterCatalog.IslandBarId, plan.Faces[1].WidgetId);
         Assert.Equal("bar", plan.Faces[1].Kind);
         Assert.False(plan.Faces[0].Placeholder);
@@ -90,10 +92,37 @@ public sealed class IslandDisplayPlanTests
         var app = new AppConfig();
         ComponentCenterCatalog.SetVisible(app, ComponentCenterCatalog.IslandRingId, visible: false); // 只留条
         var plan = Plan(app, [], new Dictionary<string, WidgetState>(), Ctx(abnormal: 3));
-        Assert.Equal("3", plan.Faces.Single(f => f.Kind == "bar").Text);
+        // AA-1 B1：徽标可见（异常计数）时条面计数让位徽标，不落字
+        Assert.Equal("", plan.Faces.Single(f => f.Kind == "bar").Text);
+        Assert.True(plan.BadgeVisible);
 
-        var silent = Plan(new AppConfig(), [], new Dictionary<string, WidgetState>(), Ctx());
-        Assert.All(silent.Faces, face => Assert.Equal("", face.Text)); // 全零不落字
+        // 全零+无数据（AA-1 B2）：环心/条侧都不落读数，虚拟面标占位（空轨道）
+        var silent = Plan(new AppConfig(), [], new Dictionary<string, WidgetState>(), Ctx(noData: true));
+        Assert.All(silent.Faces, face => Assert.Equal("", face.Text));
+        Assert.All(silent.Faces, face => Assert.True(face.Placeholder));
+    }
+
+    [Fact]
+    public void Compute_BadgeHidden_RingCarriesPercentReadout()
+    {
+        // AA-1 B1：徽标隐藏时环心保留唯一读数位——进度百分比（整数%，非计数）
+        var plan = Plan(new AppConfig(), [], new Dictionary<string, WidgetState>(), Ctx(okShare: 0.75));
+
+        Assert.False(plan.BadgeVisible);
+        Assert.Equal(2, plan.Faces.Count);
+        Assert.Equal("75%", plan.Faces[0].Text);
+        Assert.All(plan.Faces, face => Assert.False(face.Placeholder));
+    }
+
+    [Fact]
+    public void Compute_NoData_VirtualFacesEmptyTrackNoReadout()
+    {
+        // AA-1 B2：无数据（total==0）不画满——份额 0 + 占位标记 + 环心不落读数（空轨道才是真值）
+        var plan = Plan(new AppConfig(), [], new Dictionary<string, WidgetState>(), Ctx(okShare: 0, noData: true));
+
+        Assert.Equal(0.0, plan.Faces[0].Progress);
+        Assert.All(plan.Faces, face => Assert.True(face.Placeholder));
+        Assert.All(plan.Faces, face => Assert.Equal("", face.Text));
     }
 
     [Fact]

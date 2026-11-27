@@ -144,11 +144,20 @@ public sealed partial class CapsuleWindow
                     $"ring=#{_ringColor.R:X2}{_ringColor.G:X2}{_ringColor.B:X2} faces={IslandProgress.Visibility}/{IslandProgress.ActualWidth}");
 
         var offline = status.OfflineConnections > 0;
-        OfflineBanner.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
+        // BEACON-ISLAND-AA-1 B3：横幅按形态二选一——岛态走曲面内第二行（无独立圆角边框），
+        // 经典态保留 RootBorder 外的旧卡片横幅（观感逐字节同旧，回归红线）。
+        OfflineBanner.Visibility = offline && !_island ? Visibility.Visible : Visibility.Collapsed;
+        IslandOfflineRow.Visibility = offline && _island ? Visibility.Visible : Visibility.Collapsed;
         if (offline)
         {
             var since = _lastFetchedAt == default ? status.Timestamp : _lastFetchedAt;
-            OfflineText.Text = WidgetFeedback.LastUpdate(since);
+            // AA-1 B3：断连 fresh（最近一次成功拉取 5 分钟内）明示「（重试中）」给反馈，
+            // 久断退回静默时间戳（Core IslandAggregateFacts 单源文案裁决）。
+            var offlineLabel = IslandAggregateFacts.OfflineBannerText(
+                WidgetFeedback.LastUpdate(since),
+                DateTimeOffset.Now - since < TimeSpan.FromMinutes(5));
+            OfflineText.Text = offlineLabel;
+            IslandOfflineText.Text = offlineLabel;
         }
         // 横幅/文案变化会改变内容尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
         ApplySize();

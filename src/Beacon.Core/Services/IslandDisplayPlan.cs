@@ -46,18 +46,28 @@ public static class IslandDisplayPlan
         IslandContext context,
         int carouselIndex = 0)
     {
+        // 徽标裁决：未读优先、异常次之、全零隐藏。
+        // BEACON-ISLAND-AA-1 B1：徽标可见时计数只在徽标位显示一次——虚拟环/条 face.Text 置空，
+        // 免「裸 38 + 环内 38」双数字；徽标隐藏时环心保留进度百分比（整数%，非计数）。
+        // BEACON-ISLAND-AA-1 B2：无数据（App 喂 NoData=true，total==0）环心不落读数、面标占位
+        // ——份额已由 App 侧归 0，空轨道 + 空读数才是真值，不再有「0 数据画满环」的假健康。
+        var (badgeVisible, badgeCount) = context.UnreadCount > 0
+            ? (true, context.UnreadCount)
+            : context.AbnormalCount > 0 ? (true, context.AbnormalCount) : (false, 0);
+        var virtualText = !badgeVisible && !context.NoData ? PercentText(context.OkShare) : string.Empty;
+
         var candidates = new List<IslandFace>();
         if (ComponentCenterCatalog.IslandRingVisible(app))
         {
             candidates.Add(new IslandFace(
                 ComponentCenterCatalog.IslandRingId, "ring", Sanitize(context.OkShare), context.Overall,
-                CountText(context.UnreadCount, context.AbnormalCount), null, Placeholder: false));
+                virtualText, null, Placeholder: context.NoData));
         }
         if (ComponentCenterCatalog.IslandBarVisible(app))
         {
             candidates.Add(new IslandFace(
                 ComponentCenterCatalog.IslandBarId, "bar", Sanitize(context.OkShare), context.Overall,
-                CountText(context.UnreadCount, context.AbnormalCount), null, Placeholder: false));
+                virtualText, null, Placeholder: context.NoData));
         }
         foreach (var widgetId in app.IslandComponents)
         {
@@ -79,10 +89,6 @@ public static class IslandDisplayPlan
         };
         var faces = visible.ToList();
 
-        // 徽标裁决与计数文本同源：未读优先、异常次之、全零隐藏
-        var (badgeVisible, badgeCount) = context.UnreadCount > 0
-            ? (true, context.UnreadCount)
-            : context.AbnormalCount > 0 ? (true, context.AbnormalCount) : (false, 0);
         return new IslandPlan(mode, faces, candidates.Count - faces.Count, badgeVisible, badgeCount, carouselIndex);
     }
 
@@ -124,9 +130,10 @@ public static class IslandDisplayPlan
     /// <summary>进度份额清洗：非有限值归零（占位口径不造数）。</summary>
     private static double Sanitize(double fraction) => double.IsFinite(fraction) ? Math.Clamp(fraction, 0.0, 1.0) : 0.0;
 
-    /// <summary>计数文本裁决：未读优先、异常次之、全零不落字（与现环心数字逐字节同口径）。</summary>
-    private static string CountText(int unread, int abnormal)
-        => unread > 0 ? unread.ToString() : abnormal > 0 ? abnormal.ToString() : string.Empty;
+    /// <summary>环心百分比读数（BEACON-ISLAND-AA-1 B1：徽标隐藏时的唯一读数位，整数%非计数；
+    /// invariant 文化不随机器区域漂）。</summary>
+    private static string PercentText(double share)
+        => Math.Round(share * 100).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
 
     // —— 收起面主读数（SET-UX-07 ②「来源短名、周期和主值」）：周期+主值成对取自同一键，
     //    不拿 state.Progress 反推周期（Progress 与各窗键的对应关系 provider 私有，猜了会造假）。
@@ -173,19 +180,23 @@ public static class IslandDisplayPlan
         => Math.Round(value, 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 }
 
-/// <summary>岛聚合上下文：App 从聚合状态/通知计数采样后传入（App 侧只采样不决策）。</summary>
+/// <summary>岛聚合上下文：App 从聚合状态/通知计数采样后传入（App 侧只采样不决策）。
+/// NoData=聚合计数字面为零（BEACON-ISLAND-AA-1 B2：App 侧 IslandAggregateFacts.NoData 采样，
+/// 计划侧据此把虚拟环/条标占位且环心不落读数）。</summary>
 public sealed record IslandContext(
     int UnreadCount,
     int AbnormalCount,
     double OkShare,
-    Severity Overall);
+    Severity Overall,
+    bool NoData = false);
 
 /// <summary>岛收起态单面：虚拟环/条或真实组件的可见投影（App 按面上的值渲染，不再自行裁决）。</summary>
 /// <param name="WidgetId">island.progressring / island.progressbar / 真实 WidgetId。</param>
 /// <param name="Kind">ring | bar | chip（环/条/灯点+标签）。</param>
 /// <param name="Progress">0..1 份额（chip/占位恒 null——不造假）。</param>
 /// <param name="Severity">级别色锚（占位面保留最后真实级别，零数据退 Info）。</param>
-/// <param name="Text">环/条=计数文本（全零空串）；chip=组件标签。</param>
+/// <param name="Text">虚拟环/条=徽标隐藏时的百分比读数（AA-1 B1：徽标可见/无数据恒空串）；
+/// 真实面/chip=组件标签。</param>
 /// <param name="Summary">真实摘要（chip tooltip 用；虚拟面/占位面 null）。</param>
 /// <param name="Placeholder">true=零数据/断连/过期占位（App 画灰点淡字，不渲染真实数值）。</param>
 /// <param name="Metric">收起面主读数（SET-UX-07 ②：周期+主值成对，如「5h 65%」；无结构化值空串）。</param>

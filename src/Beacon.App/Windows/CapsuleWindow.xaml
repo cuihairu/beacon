@@ -81,6 +81,19 @@
                                     Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
+                        <!-- BEACON-ISLAND-AA-1 B3：岛态离线行（岛体第二行，曲面内无缝长出，无独立
+                             圆角/底色/描边——读作「岛长了尾巴」而非「掉下来的一块」）。仅岛态可见
+                             （StatusFaces 按形态切换）；经典态恒 Collapsed，RootBorder 外的经典横幅
+                             观感逐字节同旧（回归红线） -->
+                        <StackPanel
+                            x:Name="IslandOfflineRow"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            HorizontalAlignment="Center"
+                            Visibility="Collapsed">
+                            <Ellipse Width="8" Height="8" Fill="Transparent" Stroke="{ThemeResource TextFillColorTertiaryBrush}" StrokeThickness="1.5" VerticalAlignment="Center" />
+                            <TextBlock x:Name="IslandOfflineText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="11" VerticalAlignment="Center" />
+                        </StackPanel>
                         <!-- 悬停预览：各数据源一行（级别点 + 来源 + 摘要），PointerEntered 展开/退出收起；
                              无数据/拖动中不展开（宽随内容，行文本裁尾）。
                              岛形态：Margin 0、透明底、无独立描边（曲面内无缝长出，chrome 代码侧喂）；

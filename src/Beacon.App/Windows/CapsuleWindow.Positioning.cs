@@ -45,8 +45,10 @@ public sealed partial class CapsuleWindow
             // 预览行 MaxWidth = 岛宽 - 60，窄收起行会把预览裁到不可读（DI expanded 同样横向变宽）。
             // 下限 NotchWidthMin 72、上限屏宽 - 16 DIP 不变。
             var rowDips = PillArea.DesiredSize.Width + CapsuleIslandMath.InsetDips * 2;
+            // AA-1 B3：岛态离线行在曲面内（第二行），与展开态同保 238 宽下限
             var expandedOrBanner = SourcePreview.Visibility == Visibility.Visible
-                || OfflineBanner.Visibility == Visibility.Visible;
+                || OfflineBanner.Visibility == Visibility.Visible
+                || IslandOfflineRow.Visibility == Visibility.Visible;
             var wantDips = expandedOrBanner
                 ? Math.Max(CapsuleIslandMath.DefaultWidthDips, rowDips)
                 : rowDips;
@@ -54,7 +56,8 @@ public sealed partial class CapsuleWindow
                 CapsuleIslandMath.MinWidthDips, IslandMaxWidthDips(dpi));
             _islandWidthDips = widthDips;
             var heightDips = Math.Max(CapsuleIslandMath.HeightDips, Math.Ceiling(desired.Height));
-            if (SourcePreview.Visibility != Visibility.Visible && OfflineBanner.Visibility != Visibility.Visible)
+            if (SourcePreview.Visibility != Visibility.Visible && OfflineBanner.Visibility != Visibility.Visible
+                && IslandOfflineRow.Visibility != Visibility.Visible)
             {
                 // 收起态：岛=贴顶平齐刘海（Dynamic Island 口径），窗高=曲面高 32 恒——无底部阴影带。
                 // ① 刘海是贴顶的平齐黑药丸，不是带落影的浮块：底部阴影带把窗口读成矩形板
