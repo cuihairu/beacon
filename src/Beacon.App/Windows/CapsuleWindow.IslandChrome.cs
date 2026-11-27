@@ -459,20 +459,25 @@ public sealed partial class CapsuleWindow
         }
     }
 
-    /// <summary>轮廓 DIP 点 → 窗相对 region 多边形点（病灶 B，BEACON-FIX-1126）：取整折线沿轮廓
-    /// 中心线裁，弧段外侧半像素露出窗背板（浅色主题读成「底角白色外围」）。多边形整体向窗内收缩
-    /// 1 物理像素：X 按左右半场 ±1，Y 下半场 −1、上半场（顶角弧段）+1、顶缘 py=0 不动（贴屏幕顶，
-    /// 内缩会开顶缝）——收缩缝由 3px 边带环盖住，视觉零损失。</summary>
+    /// <summary>轮廓 DIP 点 → 窗相对 region 多边形点（2026-11-28 重做，BEACON-FIX-1126 病灶 B 返工）：
+    /// 旧版按「左右/上下半场」方向内缩 1px，顶角弧段的点同时按 X、Y 两轴各内缩 1px——
+    /// 多边形相对 XAML 画的弧在内侧斜削，24 步折线叠加方向性收缩后，顶角读成被削平/不对称
+    /// （用户 2026-11-28 真机「上面的角不对」，三轮 vision 均误判对称，实为亚像素斜切）。
+    /// 新口径：多边形沿轮廓中心线取整，不做方向性内缩——弧外月牙由 3px alpha 边带环盖住
+    /// （band 与 region 同一 segs 生成，本就为此设计），region 只负责把弧外区域移出窗。
+    /// BrimDeck 对照：WPF AllowsTransparency 无 region 面，弧线即所见；任何附加内缩是自造缺陷。</summary>
     private static NativeMethods.POINT RegionPoint(IslandSurfaceOutline.Point dip, double scale, int offsetX, int offsetY, int clientWidthPx, int clientHeightPx)
     {
+        // clientWidthPx/clientHeightPx intentionally unused since the 2026-11-28
+        // centerline rework (signature kept so call sites stay untouched).
+        _ = clientWidthPx;
+        _ = clientHeightPx;
         var px = (int)Math.Round(dip.X * scale);
         var py = (int)Math.Round(dip.Y * scale);
-        var insetX = px * 2 < clientWidthPx ? 1 : px * 2 > clientWidthPx ? -1 : 0;
-        var insetY = py == 0 ? 0 : py * 2 > clientHeightPx ? -1 : py * 2 < clientHeightPx ? 1 : 0;
         return new NativeMethods.POINT
         {
-            X = px + insetX + offsetX,
-            Y = py + insetY + offsetY,
+            X = px + offsetX,
+            Y = py + offsetY,
         };
     }
 
