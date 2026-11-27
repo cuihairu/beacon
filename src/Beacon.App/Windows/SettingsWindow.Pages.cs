@@ -87,6 +87,8 @@ internal sealed partial class SettingsWindow
                 Hint("全局热键即时生效（改完即重新注册）；被占用或无效时保留原热键，原因见下一行反馈。"),
                 _hotkeyFeedback!,
                 _startupToggle,
+                // SET-UX-11：生效时机与影响面注明（写 HKCU Run 键保存即落，下次登录随 explorer 拉起）
+                Hint("写入当前用户注册表 Run 键（保存即时生效）；下次登录 Windows 时随 explorer 自动拉起。"),
                 _themeBox,
                 _languageBox,
                 // SET-UX-11：语言覆盖面注明（看板/托盘即时，其余界面暂未全面迁移）

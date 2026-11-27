@@ -109,7 +109,7 @@ internal sealed partial class SettingsWindow
         }
 
         // Phase 5 行 5：界面密度（regular 恒等 / compact 间距 ×0.75，Core UiDensity 单源 fail-open）。
-        // 与 progressStyle 同「构造期实时读」口径：改档后下次开窗生效，无需重渲染。
+        // 与 progressStyle 同「构造期实时读」口径：保存即广播 SettingsApplied 重建两宿主（SET-INST-001 已补）。
         _densityBox = new ComboBox { Header = "界面密度", Width = 260 };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_densityBox, "appearance-density-box"); // UIA 取证：密度档锚点（场景 AA 驱动）
         foreach (var (value, label) in new[]
@@ -151,13 +151,15 @@ internal sealed partial class SettingsWindow
         // 组件行「展示样式」另选的面不受影响，想回传统渲染 = 组件中心「恢复传统渲染」。
         form.Children.Add(new TextBlock
         {
-            Text = "此档管传统渲染的全局额度表现（未选展示样式的组件）；组件行「展示样式」所选面不受影响，回传统渲染在组件中心点「恢复传统渲染」。",
+            Text = "此档管传统渲染的全局额度表现（未选展示样式的组件），切换即时生效；组件行「展示样式」所选面不受影响，回传统渲染在组件中心点「恢复传统渲染」。",
             FontSize = DesignTokens.FontCaption,
             Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184)),
             TextWrapping = TextWrapping.Wrap,
             Width = 260,
         });
         form.Children.Add(_densityBox);
+        // SET-UX-11：密度档生效时机注明（SaveDensity 广播重建两宿主，桌面 tile 即刻重排；已开详情窗构造期读，下次打开生效）
+        form.Children.Add(Hint("界面密度改档即时重排桌面组件；已打开的详情窗下次打开时生效。"));
         form.Children.Add(new StackPanel
         {
             Orientation = Orientation.Horizontal,
