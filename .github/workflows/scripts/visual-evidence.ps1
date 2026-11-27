@@ -4442,6 +4442,29 @@ try
     {
         throw "断言失败（场景 U2）：详情窗无「Retry Failed Jobs」按钮——失败 run 动作区回归"
     }
+    # 键值列分离硬门（2026-11-28 imac detail.png 200% 实证键值同格互压，根因=ComponentTable 值位
+    # 未 SetColumn、WinUI 缺省全落 column 0）：value 左缘必须 ≥ key 右缘（列距 6px 在其间）。
+    # BoundingRectangle NaN/空防护照 SG 行门成例——NaN 恒 false 会把断言洗白成通过，先显式判矩形可用。
+    $runIdKeyEl = Find-UiaByName $detailEl "run_id" 8
+    $runIdValueEl = Find-UiaByName $detailEl "12345" 8
+    if ($runIdKeyEl -and $runIdValueEl)
+    {
+        $dKeyRect = $runIdKeyEl.Current.BoundingRectangle
+        $dValRect = $runIdValueEl.Current.BoundingRectangle
+        $dKeyRectOk = ($null -ne $dKeyRect) -and (-not $dKeyRect.IsEmpty) -and (-not [double]::IsNaN($dKeyRect.X)) -and (-not [double]::IsNaN($dKeyRect.Width))
+        $dValRectOk = ($null -ne $dValRect) -and (-not $dValRect.IsEmpty) -and (-not [double]::IsNaN($dValRect.X)) -and (-not [double]::IsNaN($dValRect.Width))
+        if (!$dKeyRectOk -or !$dValRectOk)
+        {
+            throw "断言失败（场景 U2）：DETAILS 键/值元素矩形不可读（NaN/空）——键值列分离门无法执行，不得静默放行"
+        }
+        $dKeyRight = [int]($dKeyRect.X + $dKeyRect.Width)
+        $dValLeft = [int]$dValRect.X
+        if ($dValLeft -lt $dKeyRight)
+        {
+            throw "断言失败（场景 U2）：DETAILS 表键值列重叠（key 右缘 $dKeyRight > value 左缘 $dValLeft）——表行值位未落 Star 列（column 0 同格互压回归）"
+        }
+        Write-Host "场景 U2 键值列分离门通过：value 左缘 $dValLeft ≥ key 右缘 $dKeyRight"
+    }
     Write-Host "场景 U2 通过：行 Invoke 打开 L3 详情窗，run_id=12345 数据行与 Retry 按钮在窗"
     # U3 确认弹窗可关（行 38）：Retry → 取消 → mock 零 POST（marker 不在 = 服务端零请求）
     $hitPath = Join-Path $env:TEMP "beacon-gh-rerun-hit.txt"

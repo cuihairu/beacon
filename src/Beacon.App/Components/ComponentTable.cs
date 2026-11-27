@@ -19,7 +19,9 @@ internal static class ComponentTable
     {
         var grid = ComponentLayout.Columns(GridColumnSpacing, GridLength.Auto, new GridLength(1, GridUnitType.Star));
         grid.Children.Add(ComponentText.Caption(label, caption));
-        grid.Children.Add(ComponentText.Caption(value, caption));
+        var valueText = ComponentText.Caption(value, caption);
+        Grid.SetColumn(valueText, 1); // 值位显式落第 2 列（WinUI 缺省全落 column 0，同 Body 注）
+        grid.Children.Add(valueText);
         return grid;
     }
 
@@ -31,7 +33,12 @@ internal static class ComponentTable
         {
             var grid = ComponentLayout.Columns(GridColumnSpacing, GridLength.Auto, new GridLength(1, GridUnitType.Star));
             grid.Children.Add(ComponentText.Caption(key, label));
-            grid.Children.Add(ComponentText.Body(text, value));
+            var valueText = ComponentText.Body(text, value);
+            // 值位必须显式 SetColumn 落 Star 列：WinUI Grid 子项缺省全落 column 0，不设即键值同格叠印
+            //（2026-11-28 imac detail.png 200% 实证：endpoint 直接压在 http://127.0.0.1… 上；
+            // PinTile 2026-11-08 曾反向犯同族错——SetColumn(3) 超列数钳到末列叠印，本件是漏设缺省列）。
+            Grid.SetColumn(valueText, 1);
+            grid.Children.Add(valueText);
             column.Children.Add(grid);
         }
         return column;
