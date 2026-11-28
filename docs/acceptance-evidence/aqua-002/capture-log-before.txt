@@ -1,0 +1,12 @@
+﻿aqua002 capture start 2026-11-28T22:36:25.0595327+08:00
+STARTED pid=32688
+WINDOWS-COUNT 3
+WINDOW 0 hwnd=855066 rect=2341,-3,2773,67 title=[Beacon Status]
+WINDOW 1 hwnd=592878 rect=4146,57,4670,127 title=[Beacon Pinned]
+WINDOW 2 hwnd=67072 rect=1760,912,3360,1872 title=[命令面板]
+WINDOW 3 hwnd=67100 rect=196,196,996,1228 title=[PowerToys Quick Access (Preview)]
+SHOT win0 432x70 title=[Beacon Status]
+SHOT win1 524x70 title=[Beacon Pinned]
+SHOT win2 1600x960 title=[命令面板]
+SHOT win3 800x1032 title=[PowerToys Quick Access (Preview)]
+DONE

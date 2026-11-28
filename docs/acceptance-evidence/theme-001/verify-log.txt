@@ -1,0 +1,17 @@
+﻿theme002 verify start 2026-11-28T22:18:59.0110598+08:00
+THEME-BEFORE system
+TARGET theme-card-dark
+STARTED pid=33680
+SETTINGS hwnd=395578 island=657736
+UIA-SETTINGS name=Beacon 设置
+NAV-INVOKED module-appearance
+SHOT C:\beacon-verify\theme002-settings-before.png 1800x1359
+CARD-INVOKED theme-card-dark try1
+THEME-AFTER dark pid-same=True
+CHECK-IN-TREE theme-check-dark = True
+SHOT C:\beacon-verify\theme002-settings-after.png 1800x1359
+SETTINGS-DIFF-PCT 87.4
+THEME002-VERDICT PASS | invoked=True before=system after=dark target=dark samePid=True settingsDiff=87.4% checkInTree=True
+CARD-INVOKED theme-card-system try1
+THEME-RESTORED system
+DONE
