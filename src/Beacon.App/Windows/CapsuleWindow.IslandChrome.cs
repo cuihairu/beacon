@@ -275,6 +275,15 @@ public sealed partial class CapsuleWindow
     /// 同几何也要重设，region 已被摘）。</summary>
     private (int WinW, int WinH, int ChromeW, int ChromeH) _lastRegionKey;
 
+    /// <summary>region 落定回测重入护栏（ISLAND-DWM-1128）：DWM 关断塌缩窗框若在 region 应用与
+    /// 回测之间才落定，清键重入一次重建；递归第二层不再展开，键留 default 交下一拍布局自愈。</summary>
+    private bool _regionRealigning;
+
+    /// <summary>region 落定单发定时器（ISLAND-DWM-1128）：塌缩若迟于本拍落定，150ms 后重入
+    /// ApplyIslandRegion——键含 chrome，漂移即重建，未漂即键命中空转。防 46078004182 式
+    /// 「错位后本场景内再无重建拍」的永久 stale。</summary>
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _regionSettleTimer;
+
     /// <summary>岛边缘 alpha 边带窗（spike/island-alpha-edge）：ULW 逐像素 alpha 环带盖住 region
     /// 硬切边。仅岛态存在，经典态隐藏；失败静默退场不扰岛体（IslandEdgeBandWindow）。</summary>
     private IslandEdgeBandWindow? _edgeBand;
@@ -311,6 +320,12 @@ public sealed partial class CapsuleWindow
             // 启动期窗默认近全屏，布局回调先把 region 钉在全屏轮廓、随后 Resize 收窄时序脱节
             // （43812011171 实证：窗顶 28px 被 stale region 裁掉、GLM 面不在树），量窗=每拍都以
             // 窗矩形真相为准，收窄后 Region 跟 Resize 走。
+            // DWM 关断先于几何测量（ISLAND-DWM-1128，nightly 46078004182 AH5d-B 实证）：
+            // NCRENDERING DISABLED 塌缩窗框——客户区原点在窗内平移（CI 实测 offset 14,3→3,3）。
+            // 旧序在 SetWindowRgn 之后才关断，region 已按旧框坐标建好且本场景内再无重建拍 →
+            // 整体错位 11px（左右两缘裁进客户区，CI 暗桌面黑对黑不可见，浅壁纸真机必现）。
+            // 先关断后量几何，offset 落在终帧上。
+            ApplyIslandDwm(true);
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
             var key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight);
@@ -368,8 +383,50 @@ public sealed partial class CapsuleWindow
             }
             IslandTrace($"region ok points={points.Count} client={clientWidthDips:0.#}x{clientHeightDips:0.#} offset={offsetX},{offsetY}");
             _lastRegionKey = key;
-            ApplyIslandDwm(true); // DWM 亮边框/圆角关断（ISLAND-DWM-1128）：白弧病灶在 region 外层
             EnsureTopmostBand();
+            // 关断塌缩异步落定防御：region 应用后回测 frame（chrome+客户区原点），漂移即清键重入
+            // 一次重建（_regionRealigning 有界；仍漂则键留 default 交下一拍布局自愈）。
+            var (chromeAfter, _) = NativeMethods.ChromeSizePx(_hwnd);
+            var originAfter = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out originAfter);
+            NativeMethods.GetWindowRect(_hwnd, out var windowAfter);
+            if (chromeAfter != chromeWidth
+                || originAfter.X - windowAfter.Left != offsetX
+                || originAfter.Y - windowAfter.Top != offsetY)
+            {
+                _lastRegionKey = default;
+                if (!_regionRealigning)
+                {
+                    _regionRealigning = true;
+                    try
+                    {
+                        ApplyIslandRegion();
+                    }
+                    finally
+                    {
+                        _regionRealigning = false;
+                    }
+                }
+                else
+                {
+                    IslandTrace("region realign still drifting, left for next layout pass");
+                }
+                return;
+            }
+            // 塌缩迟落定兜底：单发定时器到点重入本方法（键命中=无漂移空转；漂移=重建）。
+            var queue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            if (queue is not null && _regionSettleTimer is null)
+            {
+                _regionSettleTimer = queue.CreateTimer();
+                _regionSettleTimer.Interval = TimeSpan.FromMilliseconds(150);
+                _regionSettleTimer.IsRepeating = false;
+                _regionSettleTimer.Tick += (_, _) =>
+                {
+                    _regionSettleTimer = null;
+                    ApplyIslandRegion();
+                };
+                _regionSettleTimer.Start();
+            }
             // spike：alpha 边带随 region 同步（同一轮廓段表，GDI+ 真 AA；先钉 TOPMOST band 再插带）
             SyncEdgeBand(scale, new NativeMethods.RECT
             {
