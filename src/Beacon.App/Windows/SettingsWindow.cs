@@ -22,8 +22,8 @@ namespace Beacon.App.Windows;
 
 /// <summary>
 /// Settings 窗口（B-801，RFC §38/§42，PowerToys 形态配置中心）：左侧模块目录（每模块独立 icon、
-/// Provider 模块带启用开关——开启才见配置页），右侧对应页面：常规（热键/自启/主题/透明度/胶囊）、
-/// 外观（级别色+动效）、GitHub/智谱 GLM/自定义 HTTP（连接 CRUD + 组件向导，类型锁定模块）、
+/// Provider 模块带启用开关——开启才见配置页），右侧对应页面：常规（热键/自启/语言/透明度/胶囊）、
+/// 外观（主题卡片+配色色卡+级别色+动效，BEACON-THEME-002）、GitHub/智谱 GLM/自定义 HTTP（连接 CRUD + 组件向导，类型锁定模块）、
 /// 高级（导入导出+通知规则）。启停经 ConnectionConfig.Enabled 落库，宿主跳过刷新、状态即时失效。
 /// 凭据只进 DPAPI（严禁明文 JSON）；改动即存 config.json。
 /// </summary>
@@ -39,7 +39,6 @@ internal sealed partial class SettingsWindow : Window
     private TextBox _hotkeyBox = null!;
     private TextBlock? _hotkeyFeedback; // SET-UX-11：热键注册结果控件旁反馈（常规页构建时赋值）
     private ToggleSwitch _startupToggle = null!;
-    private ComboBox _themeBox = null!;
     private ComboBox _languageBox = null!;
     private ComboBox _pollBox = null!;
     private ComboBox _islandModeBox = null!; // 岛收起态展示方式档（ISLAND-D1 single|stack|carousel）：岛组内
@@ -170,9 +169,9 @@ internal sealed partial class SettingsWindow : Window
     {
         _modules =
         [
-            new ModuleDef("general", "常规", "热键 · 自启 · 主题 · 语言 · 频率", "\ue713", null),
+            new ModuleDef("general", "常规", "热键 · 自启 · 语言 · 频率", "\ue713", null),
             new ModuleDef("desktop", "桌面显示", "状态条 · 窗口与看板", "\ue7f4", null), // TVMonitor 字形（SET-UX-02/03 桌面显示统一入口）
-            new ModuleDef("appearance", "外观", "级别色 · 动效", "\ue790", null),
+            new ModuleDef("appearance", "外观", "主题 · 配色 · 级别色 · 动效", "\ue790", null),
             new ModuleDef("components", "组件中心", "全部组件按类型分组 · 勾选显隐", "\ue71d", null),
             new ModuleDef("github", "GitHub", "Pull Requests · Actions", "\ue943", "github"),
             new ModuleDef("jenkins", "Jenkins", "构建状态 · 开源标准 API", "\ue9d5", "jenkins"),

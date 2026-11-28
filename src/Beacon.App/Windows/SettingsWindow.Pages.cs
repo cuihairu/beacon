@@ -37,14 +37,7 @@ internal sealed partial class SettingsWindow
         _startupToggle = new ToggleSwitch { Header = "开机自启", IsOn = _runtime.Config.App.LaunchOnStartup };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_startupToggle, "startup-toggle"); // UIA 取证：开机自启驱动
         _startupToggle.Toggled += (_, _) => SaveStartup(); // SET-UX-01 单项保存：只写 LaunchOnStartup
-        _themeBox = new ComboBox { Header = "主题", Width = 160, HorizontalAlignment = HorizontalAlignment.Left }; // BEACON-THEME-001：即时生效，不再标注重启
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_themeBox, "theme-box"); // UIA 取证/搜索跳转锚（SET-UX-08 场景 SG）
-        foreach (var item in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
-        {
-            _themeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
-        }
-        _themeBox.SelectedIndex = IndexOfTag(_themeBox, _runtime.Config.App.Theme);
-        _themeBox.SelectionChanged += (_, _) => SaveTheme(); // SET-UX-01 单项保存；主题即时生效（BEACON-THEME-001 广播链）
+        // BEACON-THEME-002：主题入口迁「外观」页卡片选择器（theme-box/theme-card-* 锚随迁），本页留指路
         // 界面语言（2026-10-14 用户单②）：看板/托盘即时生效（UiStrings.LanguageChanged 广播重画）；
         // 设置页存量中文文案暂未整体迁移（UiStrings 覆盖面记录在案）。语言名按惯例用本名不翻译。
         _languageBox = new ComboBox { Header = UiStrings.SettingsLanguage, Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
@@ -89,7 +82,7 @@ internal sealed partial class SettingsWindow
                 _startupToggle,
                 // SET-UX-11：生效时机与影响面注明（写 HKCU Run 键保存即落，下次登录随 explorer 拉起）
                 Hint("写入当前用户注册表 Run 键（保存即时生效）；下次登录 Windows 时随 explorer 自动拉起。"),
-                _themeBox,
+                Hint("主题在「外观」页选择：卡片式点选，即时生效（跟随系统 / 浅色 / 深色）。"),
                 _languageBox,
                 // SET-UX-11：语言覆盖面注明（看板/托盘即时，其余界面暂未全面迁移）
                 Hint("语言当前作用于看板与托盘（即时生效）；设置窗口等其余界面暂未全面翻译。"),
@@ -679,17 +672,8 @@ internal sealed partial class SettingsWindow
         SettingsApplied?.Invoke(); // 自启对齐走 ApplySettingsEffects → StartupService.SyncWith
     }
 
-    private void SaveTheme()
-    {
-        _runtime.Config.App.Theme = TagOf(_themeBox) ?? "system";
-        // BEACON-THEME-001：即时生效两段广播，同帧完成（无中间帧，一次到位）——
-        // ① ThemeRuntime.Apply 翻转实时 IsDark 源（Changed → 看板/胶囊/本页重画静态色面，同值静默）；
-        // ② SettingsApplied → App 侧把三活窗根元素 RequestedTheme 重设（ThemeResource 面随根一次重绘）。
-        // system 态取启动解析的 Application.RequestedTheme 口径；OS 运行期改主题不动态跟随（下次启动生效）。
-        ThemeRuntime.Apply(_runtime.Config.App.Theme, Application.Current.RequestedTheme == ApplicationTheme.Dark);
-        _runtime.Config.SaveApp();
-        SettingsApplied?.Invoke();
-    }
+    // BEACON-THEME-002：SaveTheme 已迁「外观」页卡片驱动（SettingsWindow.Appearance.cs
+    // SaveThemeFromCard），同一段两段广播链不变——此处原 combo 路径随 _themeBox 一并退役。
 
     private void SaveLanguage()
     {

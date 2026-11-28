@@ -61,7 +61,11 @@ internal sealed partial class SettingsWindow
         new("general", "poll-interval-box", ["检查频率", "刷新频率", "默认刷新间隔", "刷新间隔", "检测间隔", "轮询间隔"]),
         new("general", "hotkey-box", ["热键", "快捷键", "全局热键"]),
         new("general", "startup-toggle", ["开机自启", "自启动", "开机启动"]),
-        new("general", "theme-box", ["主题", "深色", "浅色"]),
+        // BEACON-THEME-002：主题入口迁「外观」页（theme-box 锚随卡片容器迁移）；
+        // 卡片与色卡直接可搜（卡片 AutomationId theme-card-*）。
+        new("appearance", "theme-box", ["主题", "深色", "浅色"]),
+        new("appearance", "theme-card-dark", ["深色模式", "暗色"]),
+        new("appearance", "theme-card-light", ["浅色模式", "亮色"]),
         new("general", "language-box", ["语言", "翻译"]),
         new("desktop", "desktop-layout-box", ["桌面组件布局", "组件布局", "悬浮形态", "集中面板", "独立显示"]),
         new("desktop", "numeric-floating-toggle", ["数值和额度", "悬浮框", "数值悬浮框", "在桌面显示数值"]),

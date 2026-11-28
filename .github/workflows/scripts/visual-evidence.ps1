@@ -8629,28 +8629,57 @@ public static class SjHotkeyHolder
         throw "断言失败（场景 SJ）：常规页未见开机自启生效时机 hint（注册表 Run 键 + 下次登录）——SET-UX-11 hint 缺失"
     }
     Write-Host "场景 SJ 生效时机 hint 通过：开机自启 hint 写在控件旁（保存即时 + 下次登录拉起）"
-    # 主题档（SET-UX-11 补 CI 门，2026-11-26）：浅色/深色切换落盘档位——生效时机标注写在控件旁（Header
-    # 「主题（重启生效）」），实际浅色渲染翻转属用户视觉亲验面；此处断选择链 + config 逐档回读。
-    $themeBox = Find-UiaById $settings "theme-box" 10
-    if (!$themeBox) { Save-FullScreenshot "SJ-FAIL-no-theme.png"; throw "断言失败（场景 SJ）：theme-box 锚缺失" }
-    Select-ComboItemByName $themeBox "浅色"
+    # 主题档（SET-UX-11 补 CI 门，2026-11-26；BEACON-THEME-002 卡片驱动改版 2026-11-28）：主题入口迁
+    # 「外观」页卡片选择器（theme-box 锚=卡片容器 StackPanel）。流程：Invoke 进外观页 → 挪窗避让顶中
+    # 岛 → SendInput 点卡（Border 无 Invoke pattern，ClickAt/Get-ClickPoint 成例）→ config 逐档回读 +
+    # 勾角标 UIA 代理判选中（Collapsed 元素整体离树：theme-check-* 找得到=该卡选中）。浅色渲染翻转属
+    # 用户视觉亲验面。主题翻转会经 THEME-001 广播链整页重建，每轮点击前重找元素（stale element 防御）。
+    $sjSettingsHwnd = [IntPtr]$settings.Current.NativeWindowHandle
+    [WinEnum]::MoveNoFocus($sjSettingsHwnd, 60, 420)   # 顶中岛是 TOPMOST：卡片点前先挪设置窗出岛带（SF4 成例）
     Start-Sleep -Seconds 1
-    $sjThemeCfg = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ("$($sjThemeCfg.app.theme)" -ne "light" -and "$($sjThemeCfg.theme)" -ne "light")
+    $sjNav = Find-UiaById $settings "module-appearance" 10
+    if (!$sjNav) { Save-FullScreenshot "SJ-FAIL-no-appearance-nav.png"; throw "断言失败（场景 SJ）：module-appearance 导航行缺失" }
+    $sjNav.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep -Seconds 2
+
+    function Invoke-ThemeCardCheck([string] $cardId, [string] $checkId, [string] $themeValue)
     {
-        throw "断言失败（场景 SJ）：选浅色后 config theme=$($sjThemeCfg.app.theme)/$($sjThemeCfg.theme)（期望 light）——主题落盘链回归"
+        foreach ($attempt in 1..3)
+        {
+            $card = Find-UiaById $settings $cardId 8
+            if (!$card) { Save-FullScreenshot "SJ-FAIL-no-$cardId-$attempt.png"; throw "断言失败（场景 SJ）：$cardId 卡片缺失（第 $attempt 次）" }
+            [WinEnum]::SetForeground($sjSettingsHwnd)
+            Start-Sleep -Milliseconds 400
+            $cardPt = Get-ClickPoint $card
+            if (!$cardPt) { Save-FullScreenshot "SJ-FAIL-no-point-$cardId-$attempt.png"; throw "断言失败（场景 SJ）：$cardId 取不到可点坐标（第 $attempt 次）" }
+            [WinEnum]::ClickAt($cardPt[0], $cardPt[1])
+            Start-Sleep -Seconds 2   # 落盘 + THEME-001 两段广播（整页重建）完成窗
+            $sjCfgSnap = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+            $sjSnapTheme = "$($sjCfgSnap.app.theme)"
+            if ($sjSnapTheme -eq "") { $sjSnapTheme = "$($sjCfgSnap.theme)" }
+            if ($sjSnapTheme -eq $themeValue)
+            {
+                $freshRoot = [System.Windows.Automation.AutomationElement]::FromHandle($sjSettingsHwnd)
+                $checkEl = Find-UiaById $freshRoot $checkId 6
+                if ($checkEl) { Write-Host "场景 SJ 主题档通过：$cardId 点选 + config theme=$themeValue + $checkId 勾标在场（选中）"; return }
+                Save-FullScreenshot "SJ-FAIL-no-$checkId-$attempt.png"
+                throw "断言失败（场景 SJ）：config theme=$themeValue 但 $checkId 勾标不在树（期望选中卡角标可见）——选中态回读回归"
+            }
+            Write-Host "场景 SJ 主题卡 $cardId 第 $attempt 次点击后 config theme=$sjSnapTheme（期望 $themeValue），重试"
+            Start-Sleep -Seconds 1
+        }
+        Save-FullScreenshot "SJ-FAIL-theme-$cardId.png"
+        throw "断言失败（场景 SJ）：三连点 $cardId 后 config theme 始终≠$themeValue——主题落盘链回归"
     }
-    $sjThemeSel = Get-ComboSelectionName $themeBox
-    if ($sjThemeSel -notlike "*浅色*") { throw "断言失败（场景 SJ）：选浅色后框值=「$sjThemeSel」（期望浅色）——选中态回读回归" }
-    Write-Host "场景 SJ 主题档通过：浅色选中 + config theme=light"
-    Select-ComboItemByName $themeBox "深色"
-    Start-Sleep -Seconds 1
-    $sjThemeCfg2 = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ("$($sjThemeCfg2.app.theme)" -ne "dark" -and "$($sjThemeCfg2.theme)" -ne "dark")
-    {
-        throw "断言失败（场景 SJ）：选深色后 config theme=$($sjThemeCfg2.app.theme)/$($sjThemeCfg2.theme)（期望 dark）——主题回切落盘回归"
-    }
-    Write-Host "场景 SJ 主题档通过：深色回切 + config theme=dark"
+
+    Invoke-ThemeCardCheck "theme-card-light" "theme-check-light" "light"
+    Invoke-ThemeCardCheck "theme-card-dark" "theme-check-dark" "dark"
+
+    # 卡片段后回常规页（后续热键/自启断言锚都在常规页）
+    $sjNavBack = Find-UiaById $settings "module-general" 10
+    if (!$sjNavBack) { Save-FullScreenshot "SJ-FAIL-no-general-nav.png"; throw "断言失败（场景 SJ）：module-general 导航行缺失（回页用）" }
+    $sjNavBack.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep -Seconds 2
     $hotkeyBox = Find-UiaById $settings "hotkey-box" 10
     if (!$hotkeyBox) { Save-FullScreenshot "SJ-FAIL-no-hotkey-box.png"; throw "断言失败（场景 SJ）：hotkey-box 锚缺失" }
     $sjToggleEl = Find-UiaById $settings "startup-toggle" 10

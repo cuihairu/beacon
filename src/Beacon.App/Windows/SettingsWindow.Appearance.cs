@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Windows.Storage.Pickers;
@@ -24,13 +25,210 @@ internal sealed partial class SettingsWindow
 {
     // —— 页面：外观 ——
 
+    // BEACON-THEME-002: theme card selector state (tag -> card chrome / corner check), rebuilt
+    // together with the page; the dictionary is capped at the three fixed tags (system/light/dark).
+    private readonly Dictionary<string, Border> _themeCards = [];
+    private readonly Dictionary<string, TextBlock> _themeChecks = [];
+
+    private const double ThemeCardWidth = 150;
+    private const double ThemeCardPreviewHeight = 56;
+
     private UIElement BuildAppearancePage()
     {
         var page = PageShell();
+        page.Children.Add(SectionTitle("主题"));
+        page.Children.Add(BuildThemeCardsSection());
+        page.Children.Add(SectionTitle("配色方案"));
+        page.Children.Add(BuildPaletteSection());
+        page.Children.Add(Hint("主题与配色即时生效（不重启）；级别色自定义收在下方「更多选项」折叠区。"));
         page.Children.Add(SectionTitle("外观"));
         page.Children.Add(BuildAppearanceSection());
         return page;
     }
+
+    // —— 外观：主题卡片选择器（BEACON-THEME-002，样式语言取自原型 02-style.png 四卡网格） ——
+
+    /// <summary>Three cards (follow system / light / dark), each a mini window preview + label +
+    /// brand border + corner check on selection. Tap to switch, live effect via the THEME-001 chain.
+    /// The container keeps the legacy "theme-box" automation anchor (search jump / CI forensics).</summary>
+    private UIElement BuildThemeCardsSection()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+        foreach (var (tag, label) in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
+        {
+            row.Children.Add(BuildThemeCard(tag, label));
+        }
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, "theme-box"); // UIA 取证/搜索跳转锚（SET-UX-08 场景 SG 沿用）
+        ApplyThemeCardSelection(NormalizeTheme(_runtime.Config.App.Theme)); // 首挂/页重建即按 config 现值高亮（重建后字典指向新卡）
+        return row;
+    }
+
+    private UIElement BuildThemeCard(string tag, string label)
+    {
+        var check = new TextBlock
+        {
+            Text = "\uE73E", // Segoe checkmark glyph (U+E73E), corner badge on the selected card
+            FontFamily = new FontFamily("Segoe Fluent Icons,Segoe MDL2 Assets"),
+            FontSize = DesignTokens.FontCaption,
+            Foreground = new SolidColorBrush(ThemeColors.Brand()),
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(DesignTokens.Space6, 0, 0, 0),
+        };
+        // UIA selection readback: a Collapsed element leaves the tree entirely, so "check found
+        // by id" == "card selected" - the CI proxy for the selected state (no pattern on Border).
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(check, $"theme-check-{tag}");
+        var preview = tag == "system"
+            ? PreviewSplit()
+            : MiniPreview(dark: tag == "dark", outer: new CornerRadius(4));
+
+        var grid = new Grid { RowSpacing = DesignTokens.Space6 };
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(ThemeCardPreviewHeight) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Grid.SetRow(preview, 0);
+        grid.Children.Add(preview);
+        var nameRow = new StackPanel { Orientation = Orientation.Horizontal };
+        nameRow.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = DesignTokens.FontBody,
+            Foreground = new SolidColorBrush(ThemeColors.TextPrimary()),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        nameRow.Children.Add(check);
+        Grid.SetRow(nameRow, 1);
+        grid.Children.Add(nameRow);
+
+        var card = new Border
+        {
+            Width = ThemeCardWidth,
+            Padding = new Thickness(DesignTokens.Space8),
+            CornerRadius = DesignTokens.RadiusCard,
+            Background = new SolidColorBrush(ThemeColors.SurfaceCard()),
+            Child = grid,
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(ThemeColors.TextTertiary()),
+        };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(card, $"theme-card-{tag}"); // UIA 取证：卡片点选驱动
+        ToolTipService.SetToolTip(card, label);
+        var captured = tag;
+        card.Tapped += (_, _) => SaveThemeFromCard(captured);
+        _themeCards[tag] = card;
+        _themeChecks[tag] = check;
+        return card;
+    }
+
+    /// <summary>Mini window mock: title bar strip + content surface + two text lines, in the fixed
+    /// palette of the mode it represents (never the live theme — a light card must show light even
+    /// while the app is dark, that is the point of the preview).</summary>
+    private static Grid MiniPreview(bool dark, CornerRadius outer)
+    {
+        var background = dark ? SeverityPalette.Rgb(255, 31, 31, 31) : SeverityPalette.Rgb(255, 255, 255, 255);
+        var bar = dark ? SeverityPalette.Rgb(255, 45, 45, 45) : SeverityPalette.Rgb(255, 241, 245, 249);
+        var line = dark ? SeverityPalette.Rgb(255, 74, 74, 74) : SeverityPalette.Rgb(255, 203, 213, 225);
+
+        var grid = new Grid { CornerRadius = outer };
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var barRect = new Border { Background = new SolidColorBrush(bar), Height = 12 };
+        Grid.SetRow(barRect, 0);
+        grid.Children.Add(barRect);
+        var body = new Border
+        {
+            Background = new SolidColorBrush(background),
+            Child = new StackPanel
+            {
+                Margin = new Thickness(10, 8, 10, 0),
+                Spacing = 5,
+                Children =
+                {
+                    new Border { Height = 4, CornerRadius = new CornerRadius(2), Width = 96, HorizontalAlignment = HorizontalAlignment.Left, Background = new SolidColorBrush(line) },
+                    new Border { Height = 4, CornerRadius = new CornerRadius(2), Width = 64, HorizontalAlignment = HorizontalAlignment.Left, Background = new SolidColorBrush(line) },
+                },
+            },
+        };
+        Grid.SetRow(body, 1);
+        grid.Children.Add(body);
+        return grid;
+    }
+
+    /// <summary>Follow-system card: light mock on the left half, dark mock on the right half.</summary>
+    private static Grid PreviewSplit()
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var left = MiniPreview(dark: false, outer: new CornerRadius(4, 0, 0, 4));
+        Grid.SetColumn(left, 0);
+        grid.Children.Add(left);
+        var right = MiniPreview(dark: true, outer: new CornerRadius(0, 4, 4, 0));
+        Grid.SetColumn(right, 1);
+        grid.Children.Add(right);
+        return grid;
+    }
+
+    /// <summary>Refresh card chrome for the given tag (thick brand border + visible check on the
+    /// selected card). Explicit call keeps cards in sync even when the theme flip is silent
+    /// (system→light while the system already resolves light — ThemeRuntime.Apply stays quiet).</summary>
+    private void ApplyThemeCardSelection(string tag)
+    {
+        foreach (var (key, card) in _themeCards)
+        {
+            var selected = key == tag;
+            card.BorderThickness = new Thickness(selected ? 2 : 1);
+            card.BorderBrush = new SolidColorBrush(selected ? ThemeColors.Brand() : ThemeColors.TextTertiary());
+            if (_themeChecks.TryGetValue(key, out var check))
+            {
+                check.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+    }
+
+    /// <summary>BEACON-THEME-002: card-driven theme save — same two-stage live broadcast as the
+    /// former combo path: ThemeRuntime.Apply flips the live IsDark source (Changed repaints static
+    /// color surfaces), SettingsApplied re-applies root themes across the three live windows.</summary>
+    private void SaveThemeFromCard(string theme)
+    {
+        _runtime.Config.App.Theme = NormalizeTheme(theme);
+        ThemeRuntime.Apply(_runtime.Config.App.Theme, Application.Current.RequestedTheme == ApplicationTheme.Dark);
+        _runtime.Config.SaveApp();
+        ApplyThemeCardSelection(_runtime.Config.App.Theme);
+        SettingsApplied?.Invoke();
+    }
+
+    /// <summary>Unknown/missing values fall back to follow-system (App constructor resolution).</summary>
+    private static string NormalizeTheme(string? theme)
+    {
+        var value = (theme ?? "system").Trim().ToLowerInvariant();
+        return value is "light" or "dark" ? value : "system";
+    }
+
+    // —— 外观：配色方案色卡组（BEACON-THEME-002，原型 02-style.png 可视化色卡语言） ——
+
+    /// <summary>Six key UI colors as round swatches with hover names. Display-only: level colors
+    /// stay customizable in the folded area below; this row is the at-a-glance palette of the
+    /// current theme (re-resolved on page rebuild after a live theme flip).</summary>
+    private UIElement BuildPaletteSection()
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12 };
+        foreach (var (name, color) in new[]
+        {
+            ("主色", ThemeColors.Brand()),
+            ("强调", ThemeColors.AccentFill()),
+            ("背景", ThemeColors.Surface()),
+            ("文字", ThemeColors.TextPrimary()),
+            ("成功", ThemeColors.StatusOk()),
+            ("警告", ThemeColors.StatusWarn()),
+        })
+        {
+            var swatch = new Ellipse { Width = 28, Height = 28, Fill = new SolidColorBrush(color) };
+            ToolTipService.SetToolTip(swatch, name); // hover shows the name (原型悬停显名)
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(swatch, name); // UIA 取证可读
+            row.Children.Add(swatch);
+        }
+        return row;
+    }
+
     // —— 外观：级别色编辑 + 动效档位与逐族预览（B-805，RFC §4.1/§6.2.8） ——
 
     private UIElement BuildAppearanceSection()
