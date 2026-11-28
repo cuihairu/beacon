@@ -514,9 +514,9 @@
   - 验收硬门槛：CI Windows 编译门绿（已过 46085314411）+ nightly 绿含既有 AH 门（展开态/经典胶囊不得回归）+ imac 像素扫描四边 2-4px 均匀/双数字消失/无数据空轨道（构建已部署，待屏醒）+ **用户装机亲验通过才闭项（硬门，agent 自评无效）**；OAuth 向导（GitHub Device Flow/MiMo Cookie 录制）不在本单已另立排队。
   - 病灶 B3 实现已被 BEACON-PROTO-001 超集替代（2026-11-28 用户实机截图定案「岛底一层透明的东西」=离线标注仍是一层独立面，用户令「按原型做」）：岛体第二行副卡与经典独立横幅双双退役，离线降级收敛为主卡行单一内联元素 OfflineSuffix，（重试中）语义与 Core 单源文案原样平移（见 PROTO-001 行）。
 
-## 岛对齐 BrimDeck 原型（2026-11-28 用户实机截图定案派单 BEACON-PROTO-001：岛底「一层透明的东西」=离线横幅/副卡偏离原型单卡片结构，用户令「按原型做」；BrimDeck 为唯一参照不拷素材不改其源码；1 项 = 0 勾 / 1 未勾）
+## 岛对齐 BrimDeck 原型（2026-11-28 用户实机截图定案派单 BEACON-PROTO-001：岛底「一层透明的东西」=离线横幅/副卡偏离原型单卡片结构，用户令「按原型做」；BrimDeck 为唯一参照不拷素材不改其源码；1 项 = 1 勾 / 0 未勾）
 
-- [ ] PROTO-001 删离线横幅（OfflineBanner 独立卡片与岛体第二行 IslandOfflineRow 两面齐退）改主卡行内联小字「 · Last update HH:mm」（BrimDeck「 · 缓存」后缀同式：字号=主数字 0.6 倍、TextSecondary 色、同行不换卡片，离线态岛仍单卡片，在线态零变化）+ 徽章去重（badge 数值与行内任一主文本同值时不渲染徽标，数值法兜底 AA-1 B1 位置法，旧装机「文本 78+红徽章 78」实害不复发）+ Core 文案单源改名 OfflineInlineSuffix（重试中语义平移，Core 本地 1430/1430 绿）+ RFC §6.2.6 契约双语先行改（离线降级=行内联非独立横幅）+ CI Q3 门翻行内联口径（`^\s*·\s*Last update`，F2 tile 面通配不受影响）。
+- [x] PROTO-001 删离线横幅（OfflineBanner 独立卡片与岛体第二行 IslandOfflineRow 两面齐退）改主卡行内联小字「 · Last update HH:mm」（BrimDeck「 · 缓存」后缀同式：字号=主数字 0.6 倍、TextSecondary 色、同行不换卡片，离线态岛仍单卡片，在线态零变化）+ 徽章去重（badge 数值与行内任一主文本同值时不渲染徽标，数值法兜底 AA-1 B1 位置法，旧装机「文本 78+红徽章 78」实害不复发）+ Core 文案单源改名 OfflineInlineSuffix（重试中语义平移，Core 本地 1430/1430 绿）+ RFC §6.2.6 契约双语先行改（离线降级=行内联非独立横幅）+ CI Q3 门翻行内联口径（`^\s*·\s*Last update`，F2 tile 面通配不受影响）。落地 c609786（11 文件，push main）；imac 真机编译 0 错误（git pull c609786 + dotnet build src/Beacon.App，18 存量 CS86xx 告警全在 PinTile 等非本轮文件）；真机截图取证 docs/acceptance-evidence/proto-001/（PrintWindow flag2，岛屏 DPMS 暗屏 CopyFromScreen 死通道改道）：before（datasrc 旧版，UIA=84/Beacon/独立行 Last update 00:00，窗 484x111 两层卡）→ after（c609786，UIA=86/Beacon/「 · Last update 00:00」内联后缀，窗 568x70 单卡）——副卡层几何退场 111→70、单卡片+同行内联小字达标；装机亲验闭项待用户。
 
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
