@@ -78,6 +78,7 @@ internal sealed partial class SettingsWindow
         // UIA selection readback: a Collapsed element leaves the tree entirely, so "check found
         // by id" == "card selected" - the CI proxy for the selected state (no pattern on Border).
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(check, $"theme-check-{tag}");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(check, $"{label} 选中角标");
         var preview = tag == "system"
             ? PreviewSplit()
             : MiniPreview(dark: tag == "dark", outer: new CornerRadius(4));
@@ -110,6 +111,7 @@ internal sealed partial class SettingsWindow
             BorderBrush = new SolidColorBrush(ThemeColors.TextTertiary()),
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(card, $"theme-card-{tag}"); // UIA 取证：卡片点选驱动
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, label); // Border 只设 AutomationId 不进 UIA 树，SetName 强制造 peer（38138106644 同坑）
         ToolTipService.SetToolTip(card, label);
         var captured = tag;
         card.Tapped += (_, _) => SaveThemeFromCard(captured);
