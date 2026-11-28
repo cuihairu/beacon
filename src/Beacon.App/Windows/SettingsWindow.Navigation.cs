@@ -504,14 +504,26 @@ internal sealed partial class SettingsWindow
                 Padding = new Thickness(10, 7, 8, 7),
                 CornerRadius = DesignTokens.RadiusCard,
             };
-            // DATASRC-001 病灶①（imac UIA 取证：行 Button 全宽 508px 而星号文字列冻结 62px，200% DPI
-            // 真机特有，CI 100% 同模板正常）——文字列宽度不再依赖 Grid 星号列重分配：行尺寸一变即按
-            // 行宽减内边距显式钉 content 宽，文字吃满开关左侧全部宽度、开关恒贴行右缘。拖分隔条/换
-            // DPI/窗口缩放都经此路径重排。
-            row.SizeChanged += (_, args) =>
+            // DATASRC-001 病灶①（imac UIA 两轮取证：行 Button 全宽 508px 而星号文字列冻结 62px；钉宽后
+            // 随钉值精确重分配 34 DIP=126−92，证明显式 Width 完全驱动该 Grid；200% DPI 真机特有，CI 100%
+            // 同模板正常）——文字列宽度不再依赖 Grid 星号列：按 row.ActualWidth 现值重钉（不信
+            // args.NewSize——首轮取证即被首帧瞬态左列宽 144 DIP 骗过一次），Loaded 双拍（首拍+250ms
+            // 落定拍，左列定宽在首帧后由分隔条逻辑落定）+ SizeChanged 跟随（拖分隔条/换 DPI/窗口缩放）。
+            void PinRowContent()
             {
-                content.Width = Math.Max(0, args.NewSize.Width - row.Padding.Left - row.Padding.Right);
+                var inner = row.ActualWidth - row.Padding.Left - row.Padding.Right;
+                if (inner > 0)
+                {
+                    content.Width = inner;
+                }
+            }
+            row.Loaded += async (_, _) =>
+            {
+                PinRowContent();
+                await System.Threading.Tasks.Task.Delay(250); // 落定拍：覆盖左列定宽晚于首帧的时序
+                PinRowContent();
             };
+            row.SizeChanged += (_, _) => PinRowContent();
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, module.DisplayName); // SET-UX-11 读屏名：Button 内容树不生成 Name，侧栏行读屏播报靠它（ux11 取证 23 个匿名行）
             var captured = module;
