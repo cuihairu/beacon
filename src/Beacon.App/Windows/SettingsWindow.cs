@@ -56,6 +56,7 @@ internal sealed partial class SettingsWindow : Window
     private StackPanel _connectionList = null!;
     private ComboBox _connTypeBox = null!;
     private TextBox _connIdBox = null!;
+    private Grid _settingsRoot = null!; // BEACON-THEME-001/002: root backplate re-brushed on live theme flips
     private string _lastPrefilledConnectionId = "";
     private TextBox _connEndpointBox = null!;
     private TextBox? _connUsageBox; // qwen 专属：自定义用量端点（官方额度口未开放，网关/代理口可填）
@@ -158,9 +159,13 @@ internal sealed partial class SettingsWindow : Window
 
     /// <summary>BEACON-THEME-001: live theme flip repaint — SelectModule rebuilds the right pane
     /// with fresh ThemeColors brushes (title/text rows carry static brushes). _selectedKey is always
-    /// set (ctor selects the first module); fall back to it if the key lookup misses.</summary>
+    /// set (ctor selects the first module); fall back to it if the key lookup misses. The root
+    /// background is also re-brushed: the window has no SystemBackdrop, so without it the WinUI
+    /// startup-baseline (dark) window base keeps showing through and light-theme primary text
+    /// (dark ink) becomes unreadable black-on-black (imac 2026-11-28 light flip evidence).</summary>
     private void OnThemeChanged()
     {
+        _settingsRoot.Background = new SolidColorBrush(ThemeColors.Surface());
         var current = _modules.FirstOrDefault(m => m.Key == _selectedKey) ?? _modules[0];
         SelectModule(current);
     }
@@ -283,11 +288,17 @@ internal sealed partial class SettingsWindow : Window
         RebuildModuleRows();
         SelectModule(_modules[0]);
 
+        // Explicit Surface backplate (not the default window base): the window has no
+        // SystemBackdrop, so the WinUI startup baseline (dark) would keep showing through a
+        // light-theme flip and leave dark text on a black field. Re-brushed on theme flips
+        // (OnThemeChanged) since ThemeColors brushes are static snapshots.
         var root = new Grid
         {
             Padding = new Thickness(16, 14, 16, 14),
+            Background = new SolidColorBrush(ThemeColors.Surface()),
             Children = { grid },
         };
+        _settingsRoot = root;
         root.SizeChanged += (_, _) => ScheduleWindowSizeSave(); // 拖窗/初始布局都进防抖，800ms 静止才落盘
         return root;
     }
