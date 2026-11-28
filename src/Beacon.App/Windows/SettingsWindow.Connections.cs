@@ -386,7 +386,8 @@ internal sealed partial class SettingsWindow
             OnContent = "",
             OffContent = "",
             Margin = new Thickness(DesignTokens.RowInline, 0, 0, 0), // SET-UX-ROW-1：与模块行开关同口径
-            Width = 44, // 病灶 F：MinWidth 40 < 实际轨宽——固定 44 实测值，列宽恒定不挤文字列
+            MinWidth = 44, // DATASRC-001 病灶①同款（模块行列级实证）：WinUI ToggleSwitch 默认 MinWidth=154，Width 压不过
+            Width = 44, //   MinWidth，Auto 开关列实占 162 挤瘪文字列触发截断；MinWidth 一并钳到 44 后列恒 52
             VerticalAlignment = VerticalAlignment.Center,
         };
         // UIA 取证/CI 入口（行 193 订阅重建链）：与 pin-toggle 同口径（ToggleSwitch 自带 peer）

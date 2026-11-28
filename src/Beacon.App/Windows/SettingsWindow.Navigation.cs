@@ -451,7 +451,8 @@ internal sealed partial class SettingsWindow
                     OffContent = "",
                     IsOn = TypeEnabled(type),
                     Margin = new Thickness(DesignTokens.RowInline, 0, 0, 0), // SET-UX-ROW-1：与连接行同口径
-                    Width = 44, // 病灶 F：MinWidth 40 < 实际轨宽——固定 44 实测值，列宽恒定不挤文字列
+                    MinWidth = 44, // DATASRC-001 病灶①真根因（imac 列级实证 cols=40,34,162）：WinUI ToggleSwitch 默认 MinWidth=154，
+                    Width = 44, //   Width 压不过 MinWidth，Auto 开关列实占 154+margin=162 把星号列挤到 34 DIP 触发全行截断；MinWidth 一并钳到 44 后列恒 52
                     VerticalAlignment = VerticalAlignment.Center,
                 };
                 toggle.Toggled += (_, _) =>
@@ -504,36 +505,9 @@ internal sealed partial class SettingsWindow
                 Padding = new Thickness(10, 7, 8, 7),
                 CornerRadius = DesignTokens.RadiusCard,
             };
-            // DATASRC-001 病灶①（imac UIA 两轮取证：行 Button 全宽 508px 而星号文字列冻结 62px；钉宽后
-            // 随钉值精确重分配 34 DIP=126−92，证明显式 Width 完全驱动该 Grid；200% DPI 真机特有，CI 100%
-            // 同模板正常）——文字列宽度不再依赖 Grid 星号列：按 row.ActualWidth 现值重钉（不信
-            // args.NewSize——首轮取证即被首帧瞬态左列宽 144 DIP 骗过一次），Loaded 双拍（首拍+250ms
-            // 落定拍，左列定宽在首帧后由分隔条逻辑落定）+ SizeChanged 跟随（拖分隔条/换 DPI/窗口缩放）。
-            void PinRowContent()
-            {
-                var host = _leftPanel.Parent as ScrollViewer;
-                var inner = host is { } h && h.ViewportWidth > 0
-                    ? h.ViewportWidth - row.Padding.Left - row.Padding.Right
-                    : row.ActualWidth - row.Padding.Left - row.Padding.Right;
-                _runtime.Logger?.LogInformation("rowpin {Key} row={Row} viewport={Vp} pinned={Pin} actual={Act}",
-                    module.Key, row.ActualWidth, host?.ViewportWidth, content.Width, content.ActualWidth);
-                if (inner > 0)
-                {
-                    content.Width = inner;
-                }
-            }
-            row.Loaded += async (_, _) =>
-            {
-                PinRowContent();
-                await System.Threading.Tasks.Task.Delay(250); // 落定拍：覆盖左列定宽晚于首帧的时序
-                PinRowContent();
-                await System.Threading.Tasks.Task.Delay(800); // 纯读拍：arrange 后真值（Width 与 ActualWidth 是否分叉）
-                _runtime.Logger?.LogInformation("rowpin-verify {Key} width={W} actual={A} rowActual={R} stack={S} name={N} cols={C0},{C1},{C2}",
-                    module.Key, content.Width, content.ActualWidth, row.ActualWidth,
-                    nameStack.ActualWidth, nameBlock.ActualWidth,
-                    content.ColumnDefinitions[0].ActualWidth, content.ColumnDefinitions[1].ActualWidth, content.ColumnDefinitions[2].ActualWidth);
-            };
-            row.SizeChanged += (_, _) => PinRowContent();
+            // DATASRC-001 病灶①：行宽由 Button Stretch 天然驱动，星号列吃满剩余宽（真根因=开关
+            // MinWidth 154，见上方开关注释；2026-11-28 曾在此按 ViewportWidth 钉 content.Width 追
+            // 截断——列级日志证明钉值恒生效而截断依旧，属追鬼影，撤）。
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, module.DisplayName); // SET-UX-11 读屏名：Button 内容树不生成 Name，侧栏行读屏播报靠它（ux11 取证 23 个匿名行）
             var captured = module;
