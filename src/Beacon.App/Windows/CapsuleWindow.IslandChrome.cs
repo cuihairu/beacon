@@ -274,10 +274,15 @@ public sealed partial class CapsuleWindow
     /// 「错位后本场景内再无重建拍」的永久 stale。</summary>
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _regionSettleTimer;
 
-    /// <summary>落定探针剩余拍数（ISLAND-DWM-1128 v3，nightly 46100389053 AH5d-B 三红实证）：
+    /// <summary>落定探针剩余高频拍数（ISLAND-DWM-1128 v3，nightly 46100389053 AH5d-B 三红实证）：
     /// v2 单发拍 150ms 早于塌缩落定时早退，此后本场景再无调用去量新 offset——键含 offset 也无人
-    /// 触发，stale region 挂到门读。改有界重复探针：每拍重入（命中=空转，漂移=重建并续期），
-    /// 20 拍 ×150ms ≈3s 覆盖合成器迟落定；到期即停不常驻。</summary>
+    /// 触发，stale region 挂到门读。20 拍 ×150ms ≈3s 覆盖合成器迟落定。</summary>
+    /// <summary>v5（nightly 46123715536 AH5d-B 第五红定谳）：高频段耗尽后探针不再停——降频
+    /// 2s 一拍转 ProbeRegionHealth 常备（岛态存续期跟随，经典切回 RestoreWindowRegion 停）。
+    /// 第四/第五红读数逐字节相同（Left=14 Top=3 Bottom=35 offX=3,3）证明 v4 FRAMECHANGED 无效
+    /// 且第五红门读时 trace 最后 region ok=offset 3,3、settle 已 stable——OS region 在探针死后
+    /// 被系统侧改写（塌缩回弹期把 region 裁成回弹客户区交集：Left=14=回弹后客户区左缘，几何唯一
+    /// 自洽解释）。3s 窗一死错位挂到门读=「错位后本场景内再无重建拍」复发，健康拍补的就是这块。</summary>
     private int _regionSettleTicksLeft;
 
     /// <summary>岛边缘 alpha 边带窗（spike/island-alpha-edge）：ULW 逐像素 alpha 环带盖住 region
@@ -322,13 +327,10 @@ public sealed partial class CapsuleWindow
             // 整体错位 11px（左右两缘裁进客户区，CI 暗桌面黑对黑不可见，浅壁纸真机必现）。
             // 先关断后量几何，offset 落在终帧上。
             ApplyIslandDwm(true);
-            // FRAMECHANGED 强制塌缩落地（ISLAND-DWM-1128 v4，46100389053+46115015469 连环红定谳）：
-            // NCRENDERING DISABLED 的框塌缩由 DWM 惰性应用（实测可迟于 v3 探针 3s 窗），塌缩前量
-            // offset 仍得旧框 14,3 → region 整体右移 11px 挂到门读。SWP_FRAMECHANGED 令 NC 度量
-            // 当场重算（塌缩同步走完），首建即按终帧 offset；探针保留作兜底不撤。
-            NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
-                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
-                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
+            // 键早退前置（ISLAND-DWM-1128 v5，46123715536 第五红定谳）：稳定拍（键命中）直接返回，
+            // 不再每拍轰 SWP_FRAMECHANGED——高频落定段 150ms/拍的 NC 重算正是塌缩回弹的自造源
+            // （回弹期系统侧改写 region：门读 Left=14=回弹客户区左缘而 trace region ok=offset 3,3）。
+            // 首建/漂移恢复拍（键不命中）保留 v4 的 FRAMECHANGED 强制塌缩同步。
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
             var origin = new NativeMethods.POINT { X = 0, Y = 0 };
@@ -344,6 +346,26 @@ public sealed partial class CapsuleWindow
             if (key == _lastRegionKey)
             {
                 return; // 同几何同原点已应用（SetWindowRgn 自身触发的 frame 回调走这里，防环）
+            }
+            // FRAMECHANGED 强制塌缩落地（ISLAND-DWM-1128 v4，46100389053+46115015469 连环红定谳）：
+            // NCRENDERING DISABLED 的框塌缩由 DWM 惰性应用（实测可迟于 v3 探针 3s 窗），塌缩前量
+            // offset 仍得旧框 14,3 → region 整体右移 11px 挂到门读。SWP_FRAMECHANGED 令 NC 度量
+            // 当场重算（塌缩同步走完）；v5 收敛到重建拍轰（稳定拍已在上早退），健康拍兜底不撤。
+            NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
+                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
+            // 塌缩同步可能改 frame：FRAMECHANGED 后重量，region 按终帧 offset 建
+            (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            windowSize = _appWindow.Size;
+            origin = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out origin);
+            NativeMethods.GetWindowRect(_hwnd, out window);
+            offsetX = origin.X - window.Left;
+            offsetY = origin.Y - window.Top;
+            key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight, offsetX, offsetY);
+            if (key == _lastRegionKey)
+            {
+                return; // FRAMECHANGED 后与已应用键同（塌缩已稳定），无需重设
             }
             var clientWidthDips = (windowSize.Width - chromeWidth) / scale;
             var clientHeightDips = (windowSize.Height - chromeHeight) / scale;
@@ -451,14 +473,15 @@ public sealed partial class CapsuleWindow
         if (_regionSettleTimer is null)
         {
             _regionSettleTimer = queue.CreateTimer();
-            _regionSettleTimer.Interval = TimeSpan.FromMilliseconds(150);
             _regionSettleTimer.IsRepeating = true;
             _regionSettleTimer.Tick += (_, _) =>
             {
                 if (_regionSettleTicksLeft <= 0)
                 {
-                    _regionSettleTimer?.Stop();
-                    IslandTrace("region settle probe exhausted (stable)");
+                    // v5：高频段耗尽不停表——降频转 region 健康常备拍（几何守卫非动画，不触
+                    // §6.2.8 常驻动效红线；空转静默不打 trace）。塌缩回弹/系统侧 region 改写
+                    // 不挑时点（第五红：settle stable 后 13s 才发生），3s 窗关不住它。
+                    ProbeRegionHealth();
                     return;
                 }
                 _regionSettleTicksLeft--;
@@ -466,7 +489,73 @@ public sealed partial class CapsuleWindow
             };
         }
         _regionSettleTicksLeft = Math.Max(_regionSettleTicksLeft, 20);
+        _regionSettleTimer.Interval = _regionSettleTicksLeft > 0
+            ? TimeSpan.FromMilliseconds(150)
+            : TimeSpan.FromMilliseconds(2000);
         _regionSettleTimer.Start();
+    }
+
+    /// <summary>region 健康常备拍（ISLAND-DWM-1128 v5，nightly 46123715536 AH5d-B 第五红定谳）：
+    /// 高频落定段（20×150ms）耗尽后以 2s 一拍常备。直读 OS region 包围盒对照当帧客户区口径
+    /// （AH5d-B 门同款判据：Left/Top=客户区偏移、Bottom≤偏移+客户区高）——系统侧把 region 裁成
+    /// 回弹客户区交集（第五红：trace 最后 region ok=offset 3,3 且 settle stable，门读 Left=14=
+    /// 回弹后客户区左缘，唯一自洽解释）或键漂移（offset/chrome 变）任一成立即清键重建。空转
+    /// 静默（2s 一拍若打 trace 会加速 island-trace.txt 的 64KB 轮转淹掉取证窗口）。</summary>
+    private void ProbeRegionHealth()
+    {
+        if (_hwnd == IntPtr.Zero || _appWindow is null)
+        {
+            return;
+        }
+        try
+        {
+            var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+            var windowSize = _appWindow.Size;
+            var origin = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out origin);
+            NativeMethods.GetWindowRect(_hwnd, out var window);
+            var offsetX = origin.X - window.Left;
+            var offsetY = origin.Y - window.Top;
+            var key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight, offsetX, offsetY);
+            var clientHeightPx = windowSize.Height - chromeHeight;
+            var box = RegionBoundingBox();
+            if (key != _lastRegionKey
+                || box.Left != offsetX
+                || box.Top != offsetY
+                || box.Bottom > offsetY + clientHeightPx)
+            {
+                IslandTrace($"region health rebuild box=({box.Left},{box.Top})-({box.Right},{box.Bottom}) expected L={offsetX} T={offsetY} B<={offsetY + clientHeightPx} offset={offsetX},{offsetY}");
+                _lastRegionKey = default;
+                ApplyIslandRegion();
+            }
+        }
+        catch (Exception ex)
+        {
+            IslandTrace($"region health probe FAILED\n{ex}");
+        }
+    }
+
+    /// <summary>OS region 包围盒直读（窗相对坐标）：GetWindowRgn 拷出当前 region 后 GetRgnBox
+    /// 读包围盒；无 region/读失败返 (0,0,0,0)（调用方按对照失败处理，探针侧静默降级不抛）。</summary>
+    private (int Left, int Top, int Right, int Bottom) RegionBoundingBox()
+    {
+        var rgn = NativeMethods.CreateRectRgn(0, 0, 1, 1);
+        if (rgn == IntPtr.Zero)
+        {
+            return (0, 0, 0, 0);
+        }
+        try
+        {
+            if (NativeMethods.GetWindowRgn(_hwnd, rgn) <= 0 || !NativeMethods.GetRgnBox(rgn, out var rc))
+            {
+                return (0, 0, 0, 0);
+            }
+            return (rc.Left, rc.Top, rc.Right, rc.Bottom);
+        }
+        finally
+        {
+            NativeMethods.DeleteObject(rgn);
+        }
     }
 
     /// <summary>三次贝塞尔折线展平（GDI region 只吃多边形）：起点=已有末点，每段 Cubic 采样
@@ -617,6 +706,9 @@ public sealed partial class CapsuleWindow
         try
         {
             NativeMethods.SetWindowRgn(_hwnd, IntPtr.Zero, true);
+            // 健康常备拍只属岛态（v5）：经典态无 region，拍内包围盒对照必假阳性触发重建
+            _regionSettleTimer?.Stop();
+            _regionSettleTicksLeft = 0;
             ApplyIslandDwm(false); // 经典态还原 DWM 默认（岛态关断的边框/圆角回场）
             _edgeBand?.Hide(); // 经典态无边带（region 摘除同步）
             _lastBandSegs = []; // 缓存一并清零：经典态残留 segs 会让 SyncEdgeBandPosition 用旧岛轮廓

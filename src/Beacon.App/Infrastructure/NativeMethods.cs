@@ -359,6 +359,18 @@ internal static class NativeMethods
     [DllImport("gdi32.dll")]
     public static extern IntPtr CreatePolygonRgn(POINT[] lpPoints, int nCount, int nPolyFillMode);
 
+    // region 健康复读（ISLAND-DWM-1128 v5）：GetWindowRgn 取当前 OS region 拷贝（>=1 已应用），
+    // GetRgnBox 读其窗相对包围盒——系统侧改写 region（塌缩回弹期裁剪）只有直读 OS 才能发现。
+    // 三者均为 gdi32/user32 标准导出（失败探针静默降级，不影响 region 主线）。
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateRectRgn(int x1, int y1, int x2, int y2);
+
+    [DllImport("user32.dll")]
+    public static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool GetRgnBox(IntPtr hRgn, out RECT lprc);
+
     [DllImport("gdi32.dll")]
     public static extern bool DeleteObject(IntPtr hObject);
 
