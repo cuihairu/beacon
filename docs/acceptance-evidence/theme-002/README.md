@@ -16,7 +16,7 @@
 - `before-light.png` / `after-dark.png`（1800x1359）：浅色轮全窗白底可读（背板修复实证）、深色轮墨蓝背板清晰；卡片三枚（跟随系统/浅色/深色）迷你预览+选中边框+勾角标两向都正确。
 - `verify-log.txt`：THEME002-VERDICT PASS 两轮全文（含还原链 THEME-RESTORED）。
 - pid 不变+diff 34.7%/87.4% = 不重启即时切换（THEME-001 链同窗实证，theme-001/ 目录同证据）。
-- CI 场景 SJ 同步改版：visual-evidence.ps1 主题段改卡片 InvokePattern+config 回读+勾标断言（c679667）。
+- CI 场景 SJ 同步改版：visual-evidence.ps1 主题段改卡片 InvokePattern+config 回读+勾标断言（c679667）；nightly 46154272071 实证两轮全绿（`theme-card-light`/`theme-card-dark` Invoke+config theme=light/dark+`theme-check-*` 勾标在场）。该 run 整体红系 AH5d-B 岛 region 旧账，与主题链无关。
 - imac 机器状态已还原：config theme=system（验证脚本 PASS 路径自动点回原卡，22:18 轮 THEME-RESTORED system）。
 
 遗留观察：QuickPanelWindow/CapsuleWindow 无显式背板（亚克力/自绘深色系），浅色适配未在本单范围，待用户目验反馈。
