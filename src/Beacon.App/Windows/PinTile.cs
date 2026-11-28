@@ -40,8 +40,9 @@ internal sealed class PinTile
 
     // —— 横灌注水桶（AQUA-001 横向改版，2026-11-17 用户令「我说的注水桶应该是横着的」「就是整个就是注水桶」）——
     // 整个 tile 本身=横放的水桶：水（档位配色）从左往右灌满全高桶身，水位前沿=竖直线（frontX=进度×桶宽），
-    // 前沿双层正弦波（Core AquariumWave 折线轴交换）composition 纵向漂移出活水感。波形幅度小（≤3 DIP，
-    // 桶高 1/10；也是 CI 列采样波峰可证下限）频率慢（3.8s/5.4s 一漂移周期），motion off 档静止
+    // 前沿双层正弦波（Core AquariumWave 折线轴交换）composition 纵向漂移出活水感。波幅按桶高度自适应
+    // clamp(桶高/8, 3, 6) DIP（下限 3=CI 列采样波峰可证下限）、周期按桶宽自适应 clamp(桶宽/3, 28, 56)
+    // DIP，漂移 2.2s/3.4s 一周期（AQUA-002 提速），另加 1 DIP 高光线 6s 间歇扫过；motion off 档全静止
     // （B-707 纪律，Core WavesAnimate 门）。
     private const double AquariumWaveSkirtDips = 4; // 波形裙边（没入水体侧，盖住与水体的接缝，trough 1.6 DIP 内无漏缝）
 
@@ -202,6 +203,10 @@ internal sealed class PinTile
     private Rectangle _aquariumWater;
     private global::Microsoft.UI.Xaml.Shapes.Path _waveBack;
     private global::Microsoft.UI.Xaml.Shapes.Path _waveFront;
+    private Rectangle _waveGlint; // AQUA-002：1 DIP 水面高光线（6s 间歇扫过，composition 内插）
+    private double _frontPeriod = AquariumWave.FrontPeriodDips; // 自适应周期工作值（ApplyAquariumGeometry 按桶宽重算）
+    private double _frontAmp = AquariumWave.FrontAmplitudeDips; // 自适应振幅工作值（按桶高重算；StartWaves 漂移行程与之同源）
+    private double _glintTravel; // 高光扫过行程=桶高（ApplyAquariumGeometry 实测赋值；0=未测量不启动）
     private Storyboard? _aquariumStoryboard; // 字段持有：水位推进先 Stop 上段（HoldEnd 动画值压本地新值，bar 同口径）
     private double _aquariumFraction;
     private bool _aquariumMode; // 非只读同 _barMode（构建主体赋值）
@@ -379,6 +384,16 @@ internal sealed class PinTile
             VerticalAlignment = VerticalAlignment.Top,
             Visibility = Visibility.Collapsed,
         };
+        // AQUA-002 水面高光：1 DIP 横亮线骑在水面上，随波纵向扫过、6s 间歇（其余时间 Opacity 0 隐没）。
+        // 宽度=水体已灌宽（ApplyAquariumGeometry 同步），白色低透明不抢进度色。构建期 Collapsed 同波层。
+        _waveGlint = new Rectangle
+        {
+            Height = 1,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Fill = new SolidColorBrush(SeverityPalette.Rgb(150, 255, 255, 255)),
+            Visibility = Visibility.Collapsed,
+        };
         _aquariumHost = new Grid
         {
             IsHitTestVisible = false, // 纯装饰层：不吃输入（tile 点击面归主行）
@@ -388,6 +403,7 @@ internal sealed class PinTile
         _aquariumHost.Children.Add(_aquariumWater);
         _aquariumHost.Children.Add(_waveBack);
         _aquariumHost.Children.Add(_waveFront);
+        _aquariumHost.Children.Add(_waveGlint); // 最上层：高光压波面
 
         var grid = ComponentLayout.Columns(DesignTokens.Spacing(6, _palette.Density), GridLength.Auto, GridLength.Auto,
             new GridLength(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto);
@@ -653,6 +669,7 @@ internal sealed class PinTile
             _aquariumWater.Visibility = Visibility.Visible;
             _waveBack.Visibility = Visibility.Visible;
             _waveFront.Visibility = Visibility.Visible;
+            _waveGlint.Visibility = Visibility.Visible;
             _aquariumHost.Visibility = Visibility.Visible;
             _aquariumFraction = fraction;
             ApplyAquariumGeometry(
@@ -701,8 +718,9 @@ internal sealed class PinTile
         {
             return;
         }
-        _motion.StartRipple(_waveFront, AquariumWave.FrontPeriodDips, forward: false, vertical: true);
+        _motion.StartRipple(_waveFront, _frontPeriod, forward: false, vertical: true); // 行程=一个自适应周期（无缝循环）
         _motion.StartRipple(_waveBack, AquariumWave.BackPeriodDips, forward: true, vertical: true); // 反向+异周期=视差活水
+        _motion.StartGlint(_waveGlint, _glintTravel); // AQUA-002：高光随波轴间歇扫过（off 档内部不启动）
         _aquariumWavesRunning = true;
     }
 
@@ -714,6 +732,7 @@ internal sealed class PinTile
         }
         _motion.StopRipple(_waveFront, vertical: true);
         _motion.StopRipple(_waveBack, vertical: true);
+        _motion.StopGlint(_waveGlint);
         _aquariumWavesRunning = false;
     }
 
@@ -770,12 +789,18 @@ internal sealed class PinTile
         // X=位移+A+skirt 全非负（pool「显式宽高+非负几何」同口径），前沿定位走 Margin=frontX−A−skirt
         // ——领先沿绝对位=frontX+位移恰绕前沿线振荡。漂移=composition Offset.Y 平移 [0,−P]（前层）/
         // [−P,0]（后层反向）全程覆盖前沿纵向。
+        // AQUA-002 自适应：波幅 clamp(桶高/8, 3, 6)、周期 clamp(桶宽/3, 28, 56)——桶度量驱动波感，
+        // 下限 3 守 CI 列采样可证性。工作值落字段：StartWaves 漂移行程必须与本几何同周期（无缝循环）。
+        _frontAmp = AquariumWave.AdaptiveAmplitudeDips(tankHeight);
+        _frontPeriod = AquariumWave.AdaptivePeriodDips(tankWidth);
+        _glintTravel = tankHeight;
+        _waveGlint.Width = Math.Max(fillWidth, 0); // 高光骑在已灌水面上（空桶宽 0=不可见）
         var frontCrest = AquariumWave.Crest(
-            tankHeight + AquariumWave.FrontPeriodDips, AquariumWave.FrontPeriodDips, AquariumWave.FrontAmplitudeDips, phaseTurns: 0);
-        _waveFront.Width = 2 * AquariumWave.FrontAmplitudeDips + AquariumWaveSkirtDips;
+            tankHeight + _frontPeriod, _frontPeriod, _frontAmp, phaseTurns: 0);
+        _waveFront.Width = 2 * _frontAmp + AquariumWaveSkirtDips;
         _waveFront.Height = frontCrest[^1].X; // 轴交换：crest 的 X（前沿纵向位置）落路径局部 Y 域
-        _waveFront.Margin = new Thickness(frontX - AquariumWave.FrontAmplitudeDips - AquariumWaveSkirtDips, 0, 0, 0);
-        _waveFront.Data = VerticalWaveFigure(frontCrest, AquariumWave.FrontAmplitudeDips);
+        _waveFront.Margin = new Thickness(frontX - _frontAmp - AquariumWaveSkirtDips, 0, 0, 0);
+        _waveFront.Data = VerticalWaveFigure(frontCrest, _frontAmp);
         var backCrest = AquariumWave.Crest(
             tankHeight + AquariumWave.BackPeriodDips, AquariumWave.BackPeriodDips, AquariumWave.BackAmplitudeDips, AquariumWave.BackPhaseTurns);
         _waveBack.Width = 2 * AquariumWave.BackAmplitudeDips + AquariumWaveSkirtDips;

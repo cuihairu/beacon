@@ -74,8 +74,66 @@ public sealed class AquariumWaveTests
     {
         // 2026-11-17 横灌改版（前沿转竖直）重定标：桶高 32 DIP，振幅 ≤ 1/10 桶高仍是「小幅」；
         // 且 ≥3 是 CI 列采样的波峰在场硬断言下限（1px 分辨率下领先幅 <3 DIP 无全色像素可断）
-        Assert.True(AquariumWave.FrontAmplitudeDips <= 3.0);
+        // BEACON-AQUA-002：默认振幅提到 4（仍在 [可证下限 3, 自适应上限 6] 带内）
+        Assert.InRange(AquariumWave.FrontAmplitudeDips, AquariumWave.AmplitudeFloorDips, AquariumWave.AmplitudeCeilingDips);
         Assert.True(AquariumWave.FrontPeriodDips >= 30);     // 慢波：周期长，肉眼是缓动不是抖动
         Assert.NotEqual(AquariumWave.FrontPeriodDips, AquariumWave.BackPeriodDips); // 异周期出视差
+    }
+
+    [Fact]
+    public void Constants_Aqua002_FasterDriftAndHighlightCycle() // AQUA-002 提速锚：前层最快、后层次之（视差反差保留），高光 6s 间歇
+    {
+        Assert.Equal(2200, AquariumWave.FrontDriftMilliseconds);
+        Assert.Equal(3400, AquariumWave.BackDriftMilliseconds);
+        Assert.True(AquariumWave.FrontDriftMilliseconds < AquariumWave.BackDriftMilliseconds); // 前层比后层快：速差=活水
+        Assert.Equal(6000, AquariumWave.HighlightCycleMilliseconds);
+    }
+
+    [Fact]
+    public void AdaptiveAmplitude_LowTiles_ClampAtProvableFloor() // 下限 3=CI 列采样可证下限：spec 原值 2 被 3 压制（AQUA-002 拍板）
+    {
+        Assert.Equal(3.0, AquariumWave.AdaptiveAmplitudeDips(16), 9); // 16/8=2.0 → 抬到 3
+        Assert.Equal(3.0, AquariumWave.AdaptiveAmplitudeDips(24), 9); // 24/8=3.0 → 恰在下限
+        Assert.Equal(3.0, AquariumWave.AdaptiveAmplitudeDips(0), 9);  // 退化输入也守下限
+        Assert.Equal(3.0, AquariumWave.AdaptiveAmplitudeDips(-40), 9); // 负数（未测量）同口径
+    }
+
+    [Fact]
+    public void AdaptiveAmplitude_LargeTiles_ClampAtCeiling() // 上限 6：大桶不回到「幅度大抢眼」反面
+    {
+        Assert.Equal(6.0, AquariumWave.AdaptiveAmplitudeDips(80), 9);  // 80/8=10 → 压到 6
+        Assert.Equal(6.0, AquariumWave.AdaptiveAmplitudeDips(48), 9);  // 48/8=6.0 → 恰在上限
+    }
+
+    [Fact]
+    public void AdaptiveAmplitude_Midrange_Proportional() // 带内线性：桶高/8 直通（钳位只在带外生效）
+    {
+        Assert.Equal(4.0, AquariumWave.AdaptiveAmplitudeDips(32), 9); // 与默认振幅同值：32 DIP 桶是标定桶
+        Assert.Equal(5.0, AquariumWave.AdaptiveAmplitudeDips(40), 9);
+    }
+
+    [Fact]
+    public void AdaptivePeriod_SmallAndWideTiles_Clamped() // 周期钳位 [28, 56]：小桶不挤成锯齿、大桶不摊平
+    {
+        Assert.Equal(28.0, AquariumWave.AdaptivePeriodDips(60), 9);   // 60/3=20 → 抬到 28
+        Assert.Equal(28.0, AquariumWave.AdaptivePeriodDips(84), 9);   // 84/3=28 → 恰在下限
+        Assert.Equal(56.0, AquariumWave.AdaptivePeriodDips(240), 9);  // 240/3=80 → 压到 56
+        Assert.Equal(56.0, AquariumWave.AdaptivePeriodDips(168), 9);  // 168/3=56 → 恰在上限
+    }
+
+    [Fact]
+    public void AdaptivePeriod_NominalTile_MatchesDefaultPeriod() // 标定桶宽 120 → 40=FrontPeriodDips：自适应对常规桶不改观感
+    {
+        Assert.Equal(AquariumWave.FrontPeriodDips, AquariumWave.AdaptivePeriodDips(120));
+    }
+
+    [Fact]
+    public void AdaptiveValues_ProduceSeamlessCrest() // 自适应值喂回波形：无缝循环不变式仍成立（漂移循环方案的前提）
+    {
+        const double amp = 5.25, period = 37.5; // 带内非整值：钳位与采样解耦的证明
+        Assert.True(AquariumWave.IsSeamlessAt(0, period, amp, 0));
+        Assert.True(AquariumWave.IsSeamlessAt(period * 0.37, period, amp, AquariumWave.BackPhaseTurns));
+        var points = AquariumWave.Crest(96, period, amp, 0);
+        Assert.Equal(points[0].Y, points[AquariumWave.SegmentsPerPeriod].Y, 9);
     }
 }

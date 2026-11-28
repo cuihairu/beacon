@@ -73,12 +73,66 @@ internal sealed class MotionEngine
             drift.InsertKeyFrame(0.0f, (float)(forward ? -travelDips : 0));
             drift.InsertKeyFrame(1.0f, (float)(forward ? 0 : -travelDips)); // 线性匀速（不插 easing）
             drift.IterationBehavior = AnimationIterationBehavior.Forever; // 常驻循环；收起态由 SuspendMotion 停
-            drift.Duration = TimeSpan.FromMilliseconds((forward ? 5400 : 3800) * Intensity);
+            // AQUA-002: durations live in Core AquariumWave single source (front 2200 / back 3400;
+            // forward=后层反向), speed-up from 3800/5400 for a livelier water feel
+            drift.Duration = TimeSpan.FromMilliseconds((forward ? AquariumWave.BackDriftMilliseconds : AquariumWave.FrontDriftMilliseconds) * Intensity);
             visual.StartAnimation(vertical ? "Offset.Y" : "Offset.X", drift);
         }
         catch
         {
             // 动效不可用（无 Composition 支持）：水面静止，波形仍显示
+        }
+    }
+
+    /// <summary>水面高光扫过（BEACON-AQUA-002）：1 DIP 亮线随波漂移轴扫过水面，6s 间歇循环——
+    /// 扫过只占周期前段，其余时间 Opacity 归 0 隐没。composition 标量关键帧线性内插；时长随 intensity，
+    /// off 档不启动=静止（同 StartRipple 门）。动画失败静默降级（高光不出现，水面照常）。</summary>
+    public void StartGlint(UIElement element, double travelDips)
+    {
+        if (!WavesAllowed || travelDips <= 0)
+        {
+            return;
+        }
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            var compositor = visual.Compositor;
+            var cycle = TimeSpan.FromMilliseconds(AquariumWave.HighlightCycleMilliseconds * Intensity);
+            var sweep = compositor.CreateScalarKeyFrameAnimation();
+            sweep.InsertKeyFrame(0.0f, 0f);
+            sweep.InsertKeyFrame(0.22f, (float)travelDips); // 前段完成一次扫过（顶→底，其余时间停在带外）
+            sweep.InsertKeyFrame(1.0f, (float)travelDips);
+            sweep.Duration = cycle;
+            sweep.IterationBehavior = AnimationIterationBehavior.Forever;
+            visual.StartAnimation("Offset.Y", sweep); // 波沿纵向流动，高光同轴掠过水面
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0.0f, 0f);
+            fade.InsertKeyFrame(0.05f, 0.8f); // 快速浮现
+            fade.InsertKeyFrame(0.22f, 0f); // 扫完即隐
+            fade.InsertKeyFrame(1.0f, 0f);
+            fade.Duration = cycle;
+            fade.IterationBehavior = AnimationIterationBehavior.Forever;
+            visual.StartAnimation("Opacity", fade);
+        }
+        catch
+        {
+            // 动效不可用：高光静默缺席（水面与波形不受影响）
+        }
+    }
+
+    /// <summary>停高光扫过：Offset/Opacity 归布局值，亮线定格隐藏（Opacity 关键帧起点 0，布局态=不可见）。</summary>
+    public void StopGlint(UIElement element)
+    {
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            visual.StopAnimation("Offset.Y");
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 0f;
+        }
+        catch
+        {
+            // 同 StartGlint：动效通道不可用时无需清理
         }
     }
 
