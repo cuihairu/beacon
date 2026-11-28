@@ -8630,13 +8630,11 @@ public static class SjHotkeyHolder
     }
     Write-Host "场景 SJ 生效时机 hint 通过：开机自启 hint 写在控件旁（保存即时 + 下次登录拉起）"
     # 主题档（SET-UX-11 补 CI 门，2026-11-26；BEACON-THEME-002 卡片驱动改版 2026-11-28）：主题入口迁
-    # 「外观」页卡片选择器（theme-box 锚=卡片容器 StackPanel）。流程：Invoke 进外观页 → 挪窗避让顶中
-    # 岛 → SendInput 点卡（Border 无 Invoke pattern，ClickAt/Get-ClickPoint 成例）→ config 逐档回读 +
+    # 「外观」页卡片选择器（theme-box 锚=卡片容器 StackPanel）。流程：Invoke 进外观页 → 逐卡
+    # InvokePattern.Invoke（卡片是真 Button；初版 Border 靠 SendInput 坐标点击，高 DPI 宿主上 UIA
+    # rect 与真实布局错位、三连点全空转，Button 化后与导航行同通道，零几何依赖）→ config 逐档回读 +
     # 勾角标 UIA 代理判选中（Collapsed 元素整体离树：theme-check-* 找得到=该卡选中）。浅色渲染翻转属
-    # 用户视觉亲验面。主题翻转会经 THEME-001 广播链整页重建，每轮点击前重找元素（stale element 防御）。
-    $sjSettingsHwnd = [IntPtr]$settings.Current.NativeWindowHandle
-    [WinEnum]::MoveNoFocus($sjSettingsHwnd, 60, 420)   # 顶中岛是 TOPMOST：卡片点前先挪设置窗出岛带（SF4 成例）
-    Start-Sleep -Seconds 1
+    # 用户视觉亲验面。主题翻转会经 THEME-001 广播链整页重建，每轮 Invoke 前重找元素（stale element 防御）。
     $sjNav = Find-UiaById $settings "module-appearance" 10
     if (!$sjNav) { Save-FullScreenshot "SJ-FAIL-no-appearance-nav.png"; throw "断言失败（场景 SJ）：module-appearance 导航行缺失" }
     $sjNav.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -8648,28 +8646,24 @@ public static class SjHotkeyHolder
         {
             $card = Find-UiaById $settings $cardId 8
             if (!$card) { Save-FullScreenshot "SJ-FAIL-no-$cardId-$attempt.png"; throw "断言失败（场景 SJ）：$cardId 卡片缺失（第 $attempt 次）" }
-            [WinEnum]::SetForeground($sjSettingsHwnd)
-            Start-Sleep -Milliseconds 400
-            $cardPt = Get-ClickPoint $card
-            if (!$cardPt) { Save-FullScreenshot "SJ-FAIL-no-point-$cardId-$attempt.png"; throw "断言失败（场景 SJ）：$cardId 取不到可点坐标（第 $attempt 次）" }
-            [WinEnum]::ClickAt($cardPt[0], $cardPt[1])
+            try { $card.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
+            catch { Save-FullScreenshot "SJ-FAIL-no-invoke-$cardId-$attempt.png"; throw "断言失败（场景 SJ）：$cardId 无 InvokePattern（卡片须是真 Button，第 $attempt 次）" }
             Start-Sleep -Seconds 2   # 落盘 + THEME-001 两段广播（整页重建）完成窗
             $sjCfgSnap = Get-Content (Join-Path $configDir "config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
             $sjSnapTheme = "$($sjCfgSnap.app.theme)"
             if ($sjSnapTheme -eq "") { $sjSnapTheme = "$($sjCfgSnap.theme)" }
             if ($sjSnapTheme -eq $themeValue)
             {
-                $freshRoot = [System.Windows.Automation.AutomationElement]::FromHandle($sjSettingsHwnd)
-                $checkEl = Find-UiaById $freshRoot $checkId 6
-                if ($checkEl) { Write-Host "场景 SJ 主题档通过：$cardId 点选 + config theme=$themeValue + $checkId 勾标在场（选中）"; return }
+                $checkEl = Find-UiaById $settings $checkId 6
+                if ($checkEl) { Write-Host "场景 SJ 主题档通过：$cardId Invoke + config theme=$themeValue + $checkId 勾标在场（选中）"; return }
                 Save-FullScreenshot "SJ-FAIL-no-$checkId-$attempt.png"
                 throw "断言失败（场景 SJ）：config theme=$themeValue 但 $checkId 勾标不在树（期望选中卡角标可见）——选中态回读回归"
             }
-            Write-Host "场景 SJ 主题卡 $cardId 第 $attempt 次点击后 config theme=$sjSnapTheme（期望 $themeValue），重试"
+            Write-Host "场景 SJ 主题卡 $cardId 第 $attempt 次 Invoke 后 config theme=$sjSnapTheme（期望 $themeValue），重试"
             Start-Sleep -Seconds 1
         }
         Save-FullScreenshot "SJ-FAIL-theme-$cardId.png"
-        throw "断言失败（场景 SJ）：三连点 $cardId 后 config theme 始终≠$themeValue——主题落盘链回归"
+        throw "断言失败（场景 SJ）：三连 Invoke $cardId 后 config theme 始终≠$themeValue——主题落盘链回归"
     }
 
     Invoke-ThemeCardCheck "theme-card-light" "theme-check-light" "light"

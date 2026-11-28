@@ -27,7 +27,7 @@ internal sealed partial class SettingsWindow
 
     // BEACON-THEME-002: theme card selector state (tag -> card chrome / corner check), rebuilt
     // together with the page; the dictionary is capped at the three fixed tags (system/light/dark).
-    private readonly Dictionary<string, Border> _themeCards = [];
+    private readonly Dictionary<string, Button> _themeCards = [];
     private readonly Dictionary<string, TextBlock> _themeChecks = [];
 
     private const double ThemeCardWidth = 150;
@@ -49,7 +49,7 @@ internal sealed partial class SettingsWindow
     // —— 外观：主题卡片选择器（BEACON-THEME-002，样式语言取自原型 02-style.png 四卡网格） ——
 
     /// <summary>Three cards (follow system / light / dark), each a mini window preview + label +
-    /// brand border + corner check on selection. Tap to switch, live effect via the THEME-001 chain.
+    /// brand border + corner check on selection. Click/Invoke to switch, live effect via the THEME-001 chain.
     /// The container keeps the legacy "theme-box" automation anchor (search jump / CI forensics).</summary>
     private UIElement BuildThemeCardsSection()
     {
@@ -100,21 +100,26 @@ internal sealed partial class SettingsWindow
         Grid.SetRow(nameRow, 1);
         grid.Children.Add(nameRow);
 
-        var card = new Border
+        // Real Button (not a Border): exposes InvokePattern for UIA/CI driving and keyboard
+        // reachability. Coordinate clicks on a Border peer proved unreliable (UIA rect offset
+        // vs real layout on high-DPI host, 3-click no-op empirically); nav-row Button.Invoke
+        // is the proven channel in this codebase.
+        var card = new Button
         {
             Width = ThemeCardWidth,
             Padding = new Thickness(DesignTokens.Space8),
             CornerRadius = DesignTokens.RadiusCard,
             Background = new SolidColorBrush(ThemeColors.SurfaceCard()),
-            Child = grid,
             BorderThickness = new Thickness(1),
             BorderBrush = new SolidColorBrush(ThemeColors.TextTertiary()),
+            Content = grid,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
         };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(card, $"theme-card-{tag}"); // UIA 取证：卡片点选驱动
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, label); // Border 只设 AutomationId 不进 UIA 树，SetName 强制造 peer（38138106644 同坑）
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, label);
         ToolTipService.SetToolTip(card, label);
         var captured = tag;
-        card.Tapped += (_, _) => SaveThemeFromCard(captured);
+        card.Click += (_, _) => SaveThemeFromCard(captured);
         _themeCards[tag] = card;
         _themeChecks[tag] = check;
         return card;
