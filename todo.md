@@ -534,7 +534,8 @@
   - 证据定谳（2026-11-28 看图立案，修正 11-27「纵向重叠」初判）：非行间纵向重叠，是**同一行的键列与值列叠在同一 column 0**——键 `endpoint` 与值 `http://…` 同 x 起点互压，行 1 `status` 同病。
   - 根因（静态坐实）：`ComponentTable.Header/Body`（src/Beacon.App/Components/ComponentTable.cs）两子直接 `Children.Add` 未 `Grid.SetColumn`，WinUI Grid 子项缺省全落 column 0；值位 Star 列从未生效。同族错误 PinTile 2026-11-08 反向犯过（SetColumn(3) 超列数钳到末列叠印，代码注释在案）；同族病全仓排查收口（2026-11-28 第二轮，扩到全部 `ColumnDefinitions.Add` 47 处）：PinTile×2/PinnedHost（循环内 SetColumn+SetRow）/SampleGallery（三子 0/2/4，1/3 设计空隔）全部显式设列，仅本件漏设。DPI 无关（100% 同病，只是此前无详情窗 DETAILS 的 CI/真机布局断言，文本在场断言遮住了它）。
   - 修（本轮）：Header/Body 值位补 `Grid.SetColumn(valueText, 1)`（注释带双案例指向）；CI 场景 U2 挂键值分离硬门——run_id/12345 元素 BoundingRectangle 断 `value 左缘 ≥ key 右缘`，矩形 NaN/空显式硬红不得静默放行（SG 行门成例口径）。
-  - 验收硬门槛：ci 编译门绿（46081438008 绿，2m38s，ComponentTable.cs+U2 门过 Windows 编译）+ nightly U2 键值分离门绿（首轮未跑到则下轮）+ imac 重截 detail 面 + **用户亲验通过才闭项**。
+  - 验收硬门槛：ci 编译门绿（46081438008 绿，2m38s，ComponentTable.cs+U2 门过 Windows 编译）+ nightly U2 键值分离门绿（c8e2d59 首验 220≥214）+ imac 重截 detail 面 + **用户亲验通过才闭项**。
+  - imac 重截已落（2026-11-28，docs/acceptance-evidence/detail-table-1128/）：HEAD 含 SetColumn 修复部署 imac（beacon-app-datasrc 包），快速面板→Deploy 行 Invoke→详情窗 UIA 矩形全量转储+PrintWindow——status key 右缘 303 < value 315、endpoint key 右缘 333 < value 345 两行各分离 12px（修前同 x=245 同格叠印），像素图 imac-200-detail-fixed.png 键灰值白两列清晰，与 CI U2 门同口径真机复证通过；取证后已恢复用户 config（bak1128）。
 
 ## 设置侧栏文字截断+对比度（2026-11-28 编排方派单 BEACON-DATASRC-001 巡检单：数据来源页 6 条目标题副标题全部省略号截断+副标题中灰配纯黑不可读，用户两次报障，修复必须走到用户装机亲验）
 

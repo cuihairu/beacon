@@ -1,0 +1,15 @@
+PANEL=3214940
+INVOKE ROW 'Deploy · Deploy failed'
+INVOKED=True
+DETAIL=1576854 name=Beacon · Deploy · Deploy failed
+EL 'http.status · Error · Failed · stale · fetched 00:00:32' id= rect=245,349 968x32
+EL 'status' id= rect=245,514 58x30
+EL 'failed' id= rect=315,513 898x32
+EL 'endpoint' id= rect=245,550 88x30
+EL 'http://127.0.0.1:18099/b.json' id= rect=345,549 868x32
+
+imac 200% 真机 UIA BoundingRectangle 判决（物理 px，2026-11-28，HEAD 含 SetColumn 修复）：
+- status key 245,514 58x30 右缘 303 → value 'failed' 315,513 左缘 315：分离 12px
+- endpoint key 245,550 88x30 右缘 333 → value 'http://127.0.0.1:18099/b.json' 345,549 左缘 345：分离 12px
+- 修前（8eded06 detail.png）：两行 value 与 key 同 x=245 起点同格叠印
+- 判定：key 右缘 < value 左缘，与 CI U2 门同口径，真机复证通过
