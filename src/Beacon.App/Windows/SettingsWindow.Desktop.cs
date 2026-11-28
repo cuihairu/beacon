@@ -174,7 +174,7 @@ internal sealed partial class SettingsWindow
         {
             Text = subtitle,
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             TextWrapping = TextWrapping.Wrap,
         };
         var textColumn = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
@@ -203,7 +203,7 @@ internal sealed partial class SettingsWindow
         var frame = new Border
         {
             Background = new SolidColorBrush(SeverityPalette.Rgb(255, 24, 28, 36)),
-            BorderBrush = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            BorderBrush = new SolidColorBrush(ThemeColors.TextSecondary()),
             BorderThickness = new Thickness(1),
             CornerRadius = DesignTokens.RadiusControl,
         };

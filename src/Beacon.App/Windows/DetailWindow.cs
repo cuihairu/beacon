@@ -173,7 +173,7 @@ internal sealed class DetailWindow : Window
         var muted = new SolidColorBrush(SeverityPalette.Rgb(255, 148, 163, 184));
         var foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 226, 232, 240));
         root.Children.Add(ComponentLayout.SectionLabel("DETAILS",
-            new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+            new SolidColorBrush(ThemeColors.TextSecondary())));
         var detailRows = WidgetFeedback.DetailRows(_state.Payload);
         root.Children.Add(detailRows.Count == 0
             ? ComponentFeedback.Empty(UiStrings.FeedbackEmpty, muted) // 空数据明示（含只有数值位提示键的情形）
@@ -196,7 +196,7 @@ internal sealed class DetailWindow : Window
                 new SolidColorBrush(_palette.SeverityColor(direction))));
             chartRow.Children.Add(ComponentText.Caption(ComponentChart.Caption(trendSummary), muted));
             root.Children.Add(ComponentLayout.SectionLabel("TREND",
-                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+                new SolidColorBrush(ThemeColors.TextSecondary())));
             root.Children.Add(chartRow);
         }
     }
@@ -243,7 +243,7 @@ internal sealed class DetailWindow : Window
         if (entries.Count > 0)
         {
             root.Children.Add(ComponentLayout.SectionLabel(UiStrings.BoardRecentEvents,
-                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+                new SolidColorBrush(ThemeColors.TextSecondary())));
             var timeline = ComponentLayout.Column(DesignTokens.Spacing(6, density));
             foreach (var entry in entries)
             {
@@ -294,7 +294,7 @@ internal sealed class DetailWindow : Window
         if (actions.Children.Count > 0)
         {
             root.Children.Add(ComponentLayout.SectionLabel("ACTIONS",
-                new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139))));
+                new SolidColorBrush(ThemeColors.TextSecondary())));
             // P5-02 run 关联显示：状态带 run_id → 关联实际任务；run 型组件无 run_id → 明示「尚未关联」
             // ——dispatch 响应不携带 run id，不猜测最近一次 run；新 run 出现后随状态刷新自动接上。
             if (runId is not null)

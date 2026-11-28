@@ -490,7 +490,7 @@ internal sealed partial class SettingsWindow
         {
             Text = $"{item.TypeName} · {(onboarded ? "已上岛" : "未上岛")}",
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         var textColumn = new StackPanel { Spacing = 2 };
@@ -591,7 +591,7 @@ internal sealed partial class SettingsWindow
             Text = "检查更新走 GitHub Releases：仅正式发布参与比较（nightly 预发布不参与；每日构建日期版本恒视为已最新）。"
                 + "启动约 20 秒后自动查一次并缓存，结果仅供提示、不自动安装；升级 = 下载覆盖安装后托盘 Exit 重启（单实例常驻）。",
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             TextWrapping = TextWrapping.Wrap,
         });
 
@@ -715,7 +715,7 @@ internal sealed partial class SettingsWindow
         panel.Children.Add(new TextBlock
         {
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             Text = "导出包含 config/connections/widgets/pins/actions 五份配置（含自定义动作库）；密钥绝不入包（JSON 只存 credentialRef），导入后按提示在连接里重录。",
             TextWrapping = TextWrapping.Wrap,
         });

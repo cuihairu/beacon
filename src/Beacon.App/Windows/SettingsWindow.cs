@@ -281,7 +281,7 @@ internal sealed partial class SettingsWindow : Window
     {
         Text = text,
         FontSize = DesignTokens.FontBody,
-        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+        Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
         TextWrapping = TextWrapping.Wrap,
     };
 

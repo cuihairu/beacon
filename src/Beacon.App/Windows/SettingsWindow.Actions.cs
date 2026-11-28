@@ -53,7 +53,7 @@ internal sealed partial class SettingsWindow
         page.Children.Add(new TextBlock
         {
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             Text = "规则经 config.json 的 notificationRules 自定义；留空使用内置默认。",
             TextWrapping = TextWrapping.Wrap,
         });
@@ -279,7 +279,7 @@ internal sealed partial class SettingsWindow
                         {
                             Text = ProviderStatus(module, connections, widgets.Count),
                             FontSize = DesignTokens.FontCaptionEmphasis,
-                            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+                            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
                             TextWrapping = TextWrapping.Wrap,
                         },
                     },

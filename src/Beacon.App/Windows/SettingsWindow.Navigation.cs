@@ -115,7 +115,7 @@ internal sealed partial class SettingsWindow
             Margin = new Thickness(0, 24, 0, 24),
             RadiusX = 1.5,
             RadiusY = 1.5,
-            Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Fill = new SolidColorBrush(ThemeColors.TextSecondary()),
         };
         var splitter = new Border
         {
@@ -126,7 +126,7 @@ internal sealed partial class SettingsWindow
         ToolTipService.SetToolTip(splitter, "拖拽调整左栏宽度"); // 附加属性不能进对象初始化器（C# 语法）
         // 用户令：悬停变品牌色（#60A5FA 蓝），3px 抓握点一眼可辨
         splitter.PointerEntered += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 96, 165, 250));
-        splitter.PointerExited += (_, _) => grip.Fill = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139));
+        splitter.PointerExited += (_, _) => grip.Fill = new SolidColorBrush(ThemeColors.TextSecondary());
         splitter.PointerPressed += (sender, e) =>
         {
             if (sender is Border border && border.CapturePointer(e.Pointer))
@@ -408,7 +408,7 @@ internal sealed partial class SettingsWindow
             Text = $"配置中心 · {_modules.Count} 个模块",
             FontSize = DesignTokens.FontBody,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             Margin = new Thickness(10, 2, 0, 8),
         });
         foreach (var module in _modules)
@@ -435,8 +435,8 @@ internal sealed partial class SettingsWindow
             nameStack.Children.Add(new TextBlock
             {
                 Text = module.Subtitle,
-                FontSize = DesignTokens.FontFootnote,
-                Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+                FontSize = DesignTokens.FontFootnote + 1, // DATASRC-001 ④：脚注档偏小是轻度因素，微调 +1sp
+                Foreground = new SolidColorBrush(ThemeColors.TextSecondary()), // DATASRC-001 ②：原硬编码浅色档灰在深色主题不可读（用户两次报），转主题感知
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 TextWrapping = TextWrapping.NoWrap,
             });
@@ -485,7 +485,7 @@ internal sealed partial class SettingsWindow
                         Text = group == "sources" ? "数据来源" : "备份与诊断",
                         FontSize = DesignTokens.FontFootnote,
                         FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-                        Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+                        Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
                         Margin = new Thickness(10, 10, 0, 4),
                     };
                     Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(header, group == "sources" ? "nav-group-sources" : "nav-group-advanced");
@@ -503,6 +503,14 @@ internal sealed partial class SettingsWindow
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Padding = new Thickness(10, 7, 8, 7),
                 CornerRadius = DesignTokens.RadiusCard,
+            };
+            // DATASRC-001 病灶①（imac UIA 取证：行 Button 全宽 508px 而星号文字列冻结 62px，200% DPI
+            // 真机特有，CI 100% 同模板正常）——文字列宽度不再依赖 Grid 星号列重分配：行尺寸一变即按
+            // 行宽减内边距显式钉 content 宽，文字吃满开关左侧全部宽度、开关恒贴行右缘。拖分隔条/换
+            // DPI/窗口缩放都经此路径重排。
+            row.SizeChanged += (_, args) =>
+            {
+                content.Width = Math.Max(0, args.NewSize.Width - row.Padding.Left - row.Padding.Right);
             };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, module.DisplayName); // SET-UX-11 读屏名：Button 内容树不生成 Name，侧栏行读屏播报靠它（ux11 取证 23 个匿名行）

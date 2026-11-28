@@ -174,7 +174,7 @@ internal sealed partial class SettingsWindow
         form.Children.Add(new TextBlock
         {
             FontSize = DesignTokens.FontCaption,
-            Foreground = new SolidColorBrush(SeverityPalette.Rgb(255, 100, 116, 139)),
+            Foreground = new SolidColorBrush(ThemeColors.TextSecondary()),
             Text = "改动即时预览并写入 config.json appearance；off 档预览即全静止，静止按钮复位循环动画。",
             TextWrapping = TextWrapping.Wrap,
         });
