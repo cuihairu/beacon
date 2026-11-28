@@ -6,10 +6,31 @@ namespace Beacon.App.Windows;
 
 /// <summary>主题色桥：Core 高对比调色板（可测元组）→ WinUI 画刷。
 /// 悬浮 tile 实色底 + 主题感知前景（浅底深字/深底亮字，WCAG AA 4.5:1，
-/// 配对断言见 Core.Tests/ContrastMathTests）。主题按应用启动口径（重启生效）。</summary>
+/// 配对断言见 Core.Tests/ContrastMathTests）。IsDark 读 ThemeRuntime 实时单源
+/// （BEACON-THEME-001：设置切主题即时生效，不再锁启动口径）。</summary>
 internal static class ThemeColors
 {
-    private static bool IsDark => Application.Current.RequestedTheme == ApplicationTheme.Dark;
+    private static bool IsDark => ThemeRuntime.IsDark;
+
+    /// <summary>config theme 三态 → 根元素覆盖值：light/dark 绝对、system 回 Default
+    /// （Default = 跟随 Application.RequestedTheme，构造器已按同一 config 设好，两口径一致）。</summary>
+    public static ElementTheme RootTheme(string? theme) => theme?.Trim().ToLowerInvariant() switch
+    {
+        "light" => ElementTheme.Light,
+        "dark" => ElementTheme.Dark,
+        _ => ElementTheme.Default,
+    };
+
+    /// <summary>把 config 三态刷到窗口根元素（BEACON-THEME-001：WinUI3 Application.RequestedTheme
+    /// 构造期锁死，活窗即时切换只能走 FrameworkElement.RequestedTheme；ThemeResource 消费面随根元素
+    /// 一次性重绘，同值重设无副作用——ApplySettingsEffects 每次设置应用都重放三窗）。</summary>
+    public static void ApplyRootTheme(FrameworkElement? root, string? theme)
+    {
+        if (root is not null)
+        {
+            root.RequestedTheme = RootTheme(theme);
+        }
+    }
 
     public static global::Windows.UI.Color Surface() => Solid(HighContrastPalette.Surface(IsDark));
     public static global::Windows.UI.Color Label() => Solid(HighContrastPalette.Label(IsDark));

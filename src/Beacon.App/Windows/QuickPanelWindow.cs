@@ -90,12 +90,16 @@ public sealed partial class QuickPanelWindow : Window
         _palette = new UiPalette(runtime.Config); // B-706：渲染时实时读 appearance.SeverityColors
         _dispatcher = dispatcher;
         _shellState = shellState;
+        ThemeColors.ApplyRootTheme((FrameworkElement)Content, runtime.Config.App.Theme); // BEACON-THEME-001：根元素初始口径（与 App 构造器同源一致）
 
         runtime.Bus.Subscribe<WidgetStateChanged>(evt => dispatcher.Post(() => OnStateChanged(evt.State, record: true)));
         runtime.Bus.Subscribe<WidgetsInvalidated>(evt => dispatcher.Post(() => OnWidgetsInvalidated(evt.WidgetIds)));
         runtime.Bus.Subscribe<AggregateStatusChanged>(_ => dispatcher.Post(UpdateHeader));
         runtime.Bus.Subscribe<NotificationRaised>(_ => dispatcher.Post(RebuildNotifications)); // B-601 通知中心
         UiStrings.LanguageChanged += OnLanguageChanged; // 用户单②：设置切语言，看板文案即时重画（App 生命周期单例，无需退订）
+        // BEACON-THEME-001：主题翻转即重画——语言重画套已覆盖本窗全部静态 ThemeColors 面
+        // （footer 品牌/筛 chip），文案重放幂等，复用同链不另造重建路（单例同上无需退订）
+        ThemeRuntime.Changed += OnThemeChanged;
 
         // 缓存优先（B-601 验收：打开无网络等待白屏）——启动即用上次落盘状态填充首屏
         foreach (var connection in runtime.Config.Connections)
@@ -343,6 +347,10 @@ public sealed partial class QuickPanelWindow : Window
             RebuildRecent();
         });
     }
+
+    /// <summary>BEACON-THEME-001：主题翻转重画。语言重画套（ApplyStrings+四重建）已覆盖全部静态
+    /// ThemeColors 消费面，文案重放幂等无副作用——复用不另造链；派发归口在 OnLanguageChanged 内。</summary>
+    private void OnThemeChanged() => OnLanguageChanged();
 
     /// <summary>静态文案统一入口（XAML 缺省英文 → 当前语言）；时间线主区头与 OVERVIEW 头随过滤态更新。</summary>
     private void ApplyStrings()

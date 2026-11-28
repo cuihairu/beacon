@@ -45,6 +45,10 @@ public sealed partial class CapsuleWindow : Window
     private Severity _lastOverall = Severity.Success; // 级别抬升判定基线（Flash 触发面）
     private bool _hovered; // 指针在窗内（悬停预览展开条件之一）
     private IReadOnlyList<SourcePreviewRow> _previewRows = Array.Empty<SourcePreviewRow>();
+
+    /// <summary>BEACON-THEME-001: live theme flip repaint — rebuild preview rows from cache with
+    /// fresh brushes. Fired on the UI thread (settings save chain); runs only while subscribed.</summary>
+    private void OnThemeChanged() => RebuildPreview();
     private bool _island; // 悬浮岛形态（§7 Phase 2，config.capsuleIsland）：顶中锚定 + 品牌标/徽标收起态
     private bool _chromeCaptured; // 经典形态的 XAML 视觉快照（首次切岛前抓，切回原样还原）
     private Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop? _classicBackdrop; // 经典亚克力单例（岛态摘、切回重挂同例避免重建闪烁）
@@ -119,6 +123,15 @@ public sealed partial class CapsuleWindow : Window
         OverallLight.Fill = new SolidColorBrush(initial);
         OverallHalo.Fill = new SolidColorBrush(ThemeColors.Halo(initial, 64));
         ((FrameworkElement)Content).Loaded += OnLoaded; // WinUI 3 的 Window 本身没有 Loaded 事件
+        // BEACON-THEME-001: seed root override from config and repaint on live flips. This window
+        // is closable and rebuilt (ApplySettingsEffects teardown path), so the subscription dies
+        // with it (Closed unsubscribes). Repaint = RebuildPreview only: island chrome is
+        // theme-invariant (constant black surface / white hairline) and severity colors ride
+        // config, so the preview rows' static TextPrimary/TextSecondary brushes are the one
+        // theme-dependent surface drawn in code.
+        ThemeColors.ApplyRootTheme((FrameworkElement)Content, config.App.Theme);
+        ThemeRuntime.Changed += OnThemeChanged;
+        Closed += (_, _) => ThemeRuntime.Changed -= OnThemeChanged;
         // 启动期抢先把 AppWindow 句柄取到（WinUI 3 Window 构造即建原生窗）：EnsureCapsule 在 Activate
         // 前调用 SetIslandMode 时，其既有 ApplySize/RestorePosition 路径就能按岛/胶囊口径预排尺寸，
         // 避免窗口先以系统默认尺寸（近全屏）闪一帧再被 OnLoaded 收窄——真机 trace outline 1907x32/

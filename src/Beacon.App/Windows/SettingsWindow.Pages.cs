@@ -37,14 +37,14 @@ internal sealed partial class SettingsWindow
         _startupToggle = new ToggleSwitch { Header = "开机自启", IsOn = _runtime.Config.App.LaunchOnStartup };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_startupToggle, "startup-toggle"); // UIA 取证：开机自启驱动
         _startupToggle.Toggled += (_, _) => SaveStartup(); // SET-UX-01 单项保存：只写 LaunchOnStartup
-        _themeBox = new ComboBox { Header = "主题（重启生效）", Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
+        _themeBox = new ComboBox { Header = "主题", Width = 160, HorizontalAlignment = HorizontalAlignment.Left }; // BEACON-THEME-001：即时生效，不再标注重启
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(_themeBox, "theme-box"); // UIA 取证/搜索跳转锚（SET-UX-08 场景 SG）
         foreach (var item in new[] { ("system", "跟随系统"), ("light", "浅色"), ("dark", "深色") })
         {
             _themeBox.Items.Add(new ComboBoxItem { Content = item.Item2, Tag = item.Item1 });
         }
         _themeBox.SelectedIndex = IndexOfTag(_themeBox, _runtime.Config.App.Theme);
-        _themeBox.SelectionChanged += (_, _) => SaveTheme(); // SET-UX-01 单项保存；主题构造期锁死（App 构造器读），免广播
+        _themeBox.SelectionChanged += (_, _) => SaveTheme(); // SET-UX-01 单项保存；主题即时生效（BEACON-THEME-001 广播链）
         // 界面语言（2026-10-14 用户单②）：看板/托盘即时生效（UiStrings.LanguageChanged 广播重画）；
         // 设置页存量中文文案暂未整体迁移（UiStrings 覆盖面记录在案）。语言名按惯例用本名不翻译。
         _languageBox = new ComboBox { Header = UiStrings.SettingsLanguage, Width = 200, HorizontalAlignment = HorizontalAlignment.Left };
@@ -682,8 +682,13 @@ internal sealed partial class SettingsWindow
     private void SaveTheme()
     {
         _runtime.Config.App.Theme = TagOf(_themeBox) ?? "system";
+        // BEACON-THEME-001：即时生效两段广播，同帧完成（无中间帧，一次到位）——
+        // ① ThemeRuntime.Apply 翻转实时 IsDark 源（Changed → 看板/胶囊/本页重画静态色面，同值静默）；
+        // ② SettingsApplied → App 侧把三活窗根元素 RequestedTheme 重设（ThemeResource 面随根一次重绘）。
+        // system 态取启动解析的 Application.RequestedTheme 口径；OS 运行期改主题不动态跟随（下次启动生效）。
+        ThemeRuntime.Apply(_runtime.Config.App.Theme, Application.Current.RequestedTheme == ApplicationTheme.Dark);
         _runtime.Config.SaveApp();
-        // 主题不广播（约束例外：构造期锁死，UI 标注「重启生效」；App 构造器读）
+        SettingsApplied?.Invoke();
     }
 
     private void SaveLanguage()

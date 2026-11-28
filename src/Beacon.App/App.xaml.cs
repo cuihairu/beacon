@@ -65,10 +65,12 @@ public partial class App : Application
             e.SetObserved();
         };
         InitializeComponent();
+        string? theme = null;
         try
         {
-            // B-801 外观主题：RequestedTheme 只能在 App 构造器设置——重启生效口径（浅色/深色，缺省跟随系统）
-            var theme = new Storage.AppConfigFile().Load().Theme?.Trim().ToLowerInvariant();
+            // B-801 外观主题：Application.RequestedTheme 只能在构造器设——作为启动基线保留；
+            // 活窗即时切换（BEACON-THEME-001）走每窗 FrameworkElement.RequestedTheme + ThemeRuntime。
+            theme = new Storage.AppConfigFile().Load().Theme?.Trim().ToLowerInvariant();
             if (theme == "light")
             {
                 RequestedTheme = ApplicationTheme.Light;
@@ -82,6 +84,9 @@ public partial class App : Application
         {
             // 主题读不出来（配置损坏等）就跟随系统，不因外观配置阻断启动
         }
+        // BEACON-THEME-001: seed the live IsDark source (ThemeColors reads it; settings save flips
+        // it). Outside the try: with config unreadable, null still resolves as follow-system.
+        ThemeRuntime.Initialize(theme, RequestedTheme == ApplicationTheme.Dark);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
@@ -398,6 +403,12 @@ public partial class App : Application
                 _capsule = null; // 退出清理引用同步摘除
             }
             capsule?.ApplyOpacity(appConfig.UiOpacity);
+            // BEACON-THEME-001: re-root live windows from config (ThemeResource surfaces follow the
+            // root element in one pass). Same-value resets are no-ops, so replaying on every
+            // settings-apply is safe; static ThemeColors surfaces repaint via ThemeRuntime.Changed.
+            Windows.ThemeColors.ApplyRootTheme(capsule?.Content as FrameworkElement, appConfig.Theme);
+            Windows.ThemeColors.ApplyRootTheme(_quickPanel?.Content as FrameworkElement, appConfig.Theme);
+            Windows.ThemeColors.ApplyRootTheme(settingsWindow?.Content as FrameworkElement, appConfig.Theme);
             // 看板载体关闭（ISLAND-RING-1 扩围②）：已开即收（唤起面统一走 ToggleBoard 门）
             if (!CarrierCatalog.BoardEnabled(appConfig))
             {

@@ -149,6 +149,21 @@ internal sealed partial class SettingsWindow : Window
             Height = DpiLayoutMath.ToPx(height, dpi) + chromeHeight,
         });
         Services.AppIcon.Apply(AppWindow, _runtime.Logger); // 任务栏/Alt-Tab 图标（unpackaged 不会自动用 exe 图标）
+        // BEACON-THEME-001: seed root override from config (Application value is the same config
+        // resolved at App ctor, so this is consistent); subscribe for live flips. This window is
+        // created per open, so the subscription must die with it (Closed unsubscribes).
+        ThemeColors.ApplyRootTheme((FrameworkElement)Content, _runtime.Config.App.Theme);
+        ThemeRuntime.Changed += OnThemeChanged;
+        Closed += (_, _) => ThemeRuntime.Changed -= OnThemeChanged;
+    }
+
+    /// <summary>BEACON-THEME-001: live theme flip repaint — SelectModule rebuilds the right pane
+    /// with fresh ThemeColors brushes (title/text rows carry static brushes). _selectedKey is always
+    /// set (ctor selects the first module); fall back to it if the key lookup misses.</summary>
+    private void OnThemeChanged()
+    {
+        var current = _modules.FirstOrDefault(m => m.Key == _selectedKey) ?? _modules[0];
+        SelectModule(current);
     }
 
     private UIElement BuildRoot()
