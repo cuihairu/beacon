@@ -347,32 +347,36 @@ public sealed partial class CapsuleWindow
             {
                 return; // 同几何同原点已应用（SetWindowRgn 自身触发的 frame 回调走这里，防环）
             }
-            // DWM 关断+FRAMECHANGED 只在重建拍写（v6，46154272071 七连红定谳）：稳定拍上一行已
-            // 早退不落此——塌缩是一次性迁移（14,3→3,3 后恒定），重复 SetWindowAttribute 在 CI
-            // 软件渲染下会引发 NC 重算副作用：系统异步把 region 裁回塌缩前客户区交集，刚建好的
-            // region 被回写（46154272071 trace：27.629 region ok offset=3,3，门读仍 Left=14 宽
-            // 318=塌缩前客户宽）。重建拍写一次即可，首建时 offset 14,3 在此被关断+FRAMECHANGED
-            // 塌到终帧后再量。
-            ApplyIslandDwm(true);
-            // FRAMECHANGED 强制塌缩落地（ISLAND-DWM-1128 v4，46100389053+46115015469 连环红定谳）：
-            // NCRENDERING DISABLED 的框塌缩由 DWM 惰性应用（实测可迟于 v3 探针 3s 窗），塌缩前量
-            // offset 仍得旧框 14,3 → region 整体右移 11px 挂到门读。SWP_FRAMECHANGED 令 NC 度量
-            // 当场重算（塌缩同步走完）；v5 收敛到重建拍轰（稳定拍已在上早退），健康拍兜底不撤。
-            NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
-                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
-                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
-            // 塌缩同步可能改 frame：FRAMECHANGED 后重量，region 按终帧 offset 建
-            (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
-            windowSize = _appWindow.Size;
-            origin = new NativeMethods.POINT { X = 0, Y = 0 };
-            NativeMethods.ClientToScreen(_hwnd, out origin);
-            NativeMethods.GetWindowRect(_hwnd, out window);
-            offsetX = origin.X - window.Left;
-            offsetY = origin.Y - window.Top;
-            key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight, offsetX, offsetY);
-            if (key == _lastRegionKey)
+            // v7（46165477731 第八红+settle wait 8 polls 定谳）：塌缩处置只在帧未塌缩时施加——
+            // v6 trace 铁证「重建自我抵消」：重建拍健康探针量得 offset 3,3（已塌缩），本拍仍写
+            // DWM 属性+FRAMECHANGED，SetWindowRgn(P2) 被同拍 NC 重算立即覆盖回缓存的首建 P1
+            //（确定性：八连重建每次 150ms 后探针仍读 box=(14,3)-(332,35)，门侧 4s 轮询零收敛；
+            // 真机 imac 不踩中=首建即塌缩后 offset 3，从无第二次 SetWindowRgn）。
+            // chromeWidth>12=塌缩前框（28px）→ DWM 写+FRAMECHANGED 强塌再重量；已塌缩（≈6px
+            // 无框）直接落 region 重建，重建拍零 NC churn，SetWindowRgn 结果不再自我抵消。
+            if (chromeWidth > 12)
             {
-                return; // FRAMECHANGED 后与已应用键同（塌缩已稳定），无需重设
+                ApplyIslandDwm(true);
+                // FRAMECHANGED 强制塌缩落地（ISLAND-DWM-1128 v4，46100389053+46115015469 连环红定谳）：
+                // NCRENDERING DISABLED 的框塌缩由 DWM 惰性应用（实测可迟于 v3 探针 3s 窗），塌缩前量
+                // offset 仍得旧框 14,3 → region 整体右移 11px 挂到门读。SWP_FRAMECHANGED 令 NC 度量
+                // 当场重算（塌缩同步走完）。
+                NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                    NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
+                    | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
+                // 塌缩同步可能改 frame：FRAMECHANGED 后重量，region 按终帧 offset 建
+                (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
+                windowSize = _appWindow.Size;
+                origin = new NativeMethods.POINT { X = 0, Y = 0 };
+                NativeMethods.ClientToScreen(_hwnd, out origin);
+                NativeMethods.GetWindowRect(_hwnd, out window);
+                offsetX = origin.X - window.Left;
+                offsetY = origin.Y - window.Top;
+                key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight, offsetX, offsetY);
+                if (key == _lastRegionKey)
+                {
+                    return; // FRAMECHANGED 后与已应用键同（塌缩已稳定），无需重设
+                }
             }
             var clientWidthDips = (windowSize.Width - chromeWidth) / scale;
             var clientHeightDips = (windowSize.Height - chromeHeight) / scale;
