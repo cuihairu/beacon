@@ -515,8 +515,8 @@ internal sealed partial class SettingsWindow
                 var inner = host is { } h && h.ViewportWidth > 0
                     ? h.ViewportWidth - row.Padding.Left - row.Padding.Right
                     : row.ActualWidth - row.Padding.Left - row.Padding.Right;
-                _runtime.Logger?.LogInformation("rowpin {Key} row={Row} viewport={Vp} pinned={Pin}",
-                    module.Key, row.ActualWidth, host?.ViewportWidth, content.Width);
+                _runtime.Logger?.LogInformation("rowpin {Key} row={Row} viewport={Vp} pinned={Pin} actual={Act}",
+                    module.Key, row.ActualWidth, host?.ViewportWidth, content.Width, content.ActualWidth);
                 if (inner > 0)
                 {
                     content.Width = inner;
@@ -527,6 +527,9 @@ internal sealed partial class SettingsWindow
                 PinRowContent();
                 await System.Threading.Tasks.Task.Delay(250); // 落定拍：覆盖左列定宽晚于首帧的时序
                 PinRowContent();
+                await System.Threading.Tasks.Task.Delay(800); // 纯读拍：arrange 后真值（Width 与 ActualWidth 是否分叉）
+                _runtime.Logger?.LogInformation("rowpin-verify {Key} width={W} actual={A} rowActual={R}",
+                    module.Key, content.Width, content.ActualWidth, row.ActualWidth);
             };
             row.SizeChanged += (_, _) => PinRowContent();
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
