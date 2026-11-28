@@ -3823,9 +3823,10 @@ catch
     Write-Host "::error::场景 P 断言失败：$($_.Exception.Message)"
 }
 
-# —— 场景 Q：胶囊（L0）计数与离线横幅（todo 行 42 / mvp B-504「断网显示 Offline+时间；计数与实际 Widget 状态一致」胶囊半 CI 代验）——
+# —— 场景 Q：胶囊（L0）计数与离线行内联标注（todo 行 42 / mvp B-504「断网显示 Offline+时间；计数与实际 Widget 状态一致」胶囊半 CI 代验）——
 # 胶囊计数零值组不显示（§6.2.2）：双健康=「2 ok」；注入 Error=「1 ok · 1 err」。
-# 断网（Stop mock）→ OfflineBanner 显 +「Last update HH:mm」（§6.2.6）+ 计数翻「2 warn」
+# 断网（Stop mock）→ OfflineSuffix 行内联小字「 · Last update HH:mm」（§6.2.6，BEACON-PROTO-001
+# 删独立横幅改行内联）+ 计数翻「2 warn」
 # （缓存命中 PublishStale severity=Max(cached,Warning)，批3-补50 拍板的胶囊面兑现；
 #   断网前先轮询回「2 ok」确定性复位——否则 GLM 残留 Error 缓存会翻出「1 warn · 1 err」假阴性）。
 # 断言全走 UIA 文本（与 O 同机制），不碰像素——胶囊观感（透明度/位置/灯色）仍属装机。
@@ -3875,7 +3876,7 @@ try
         Start-Sleep -Seconds 2
     }
     if (!$ok) { Save-FullScreenshot "Q-FAIL-reset.png"; throw "断言失败（场景 Q 复位）：清档后 40s 内胶囊计数未回「2 ok」（实际：$($texts -join ' | ')）" }
-    # Q3 断网：OfflineBanner + Last update 时间 + 计数随 stale 抬档 2 warn
+    # Q3 断网：OfflineSuffix 行内联标注（BEACON-PROTO-001 删横幅）+ Last update 时间 + 计数随 stale 抬档 2 warn
     Stop-MockServer
     $banner = $false
     $warned = $false
@@ -3883,10 +3884,12 @@ try
     while ((Get-Date) -lt $deadline)
     {
         $texts = Get-WindowUiaTexts $capsule[0]
-        # BEACON-ISLAND-AA-1 B3: fresh outage (<5 min since last success) appends the
-        # retrying suffix; CI drives Stop-MockServer right after a success, so the
-        # suffix is always present here - accept both formats.
-        if (!$banner -and ($texts | Where-Object { $_ -match '^Last update \d{2}:\d{2}(（重试中）)?$' })) { $banner = $true }
+        # BEACON-PROTO-001: the annotation is an inline suffix on the main row
+        # (" Â· Last update HH:mm", BrimDeck " Â· cached" pattern); the standalone
+        # banner is gone. AA-1 B3 retrying semantics survive: fresh outage (<5 min
+        # since last success) appends the retrying mark; CI drives Stop-MockServer
+        # right after a success, so it is always present here - accept both.
+        if (!$banner -and ($texts | Where-Object { $_ -match '^\s*·\s*Last update \d{2}:\d{2}(（重试中）)?$' })) { $banner = $true }
         if (!$warned -and ($texts -contains "2 warn")) { $warned = $true }
         if ($banner -and $warned) { break }
         Start-Sleep -Seconds 3
@@ -3895,15 +3898,15 @@ try
     if (!$banner)
     {
         Save-FullScreenshot "Q-FAIL-no-banner.png"
-        throw "断言失败（场景 Q3）：断网 75s 内胶囊未出「Last update HH:mm」离线横幅（实际：$($texts -join ' | ')）"
+        throw "断言失败（场景 Q3）：断网 75s 内胶囊主行未出「· Last update HH:mm」行内联标注（实际：$($texts -join ' | ')）"
     }
     if (!$warned)
     {
         Save-FullScreenshot "Q-FAIL-stale-count.png"
         throw "断言失败（场景 Q3）：断网 stale 后胶囊计数未翻「2 warn」（severity=Max(cached,Warning) 未反映到胶囊）"
     }
-    Write-Host "场景 Q3 通过：断网离线横幅 Last update HH:mm + 计数随 stale 抬档 2 warn"
-    Write-Host "场景 Q 通过：胶囊计数与离线横幅随实际状态翻转（B-504 CI 面）"
+    Write-Host "场景 Q3 通过：断网行内联标注 · Last update HH:mm + 计数随 stale 抬档 2 warn"
+    Write-Host "场景 Q 通过：胶囊计数与离线行内联标注随实际状态翻转（B-504 CI 面）"
 }
 catch
 {

@@ -5,7 +5,8 @@ namespace Beacon.Core.Tests;
 
 /// <summary>
 /// 岛收起态聚合事实（BEACON-ISLAND-AA-1 B2/B3）：无数据份额归 0（旧 1.0 兜底把零数据画成
-/// 整圆/满条=造假）、NoData 标记与离线横幅「（重试中）」文案裁决。纯函数沉 Core 同口径可本地测。
+/// 整圆/满条=造假）、NoData 标记与离线行内联后缀「（重试中）」文案裁决（BEACON-PROTO-001：
+/// 离线降级=主卡行内联小字，旧横幅时代文案退役）。纯函数沉 Core 同口径可本地测。
 /// </summary>
 public sealed class IslandAggregateFactsTests
 {
@@ -33,18 +34,19 @@ public sealed class IslandAggregateFactsTests
     }
 
     [Fact]
-    public void OfflineBannerText_FreshFailure_AppendsRetrying()
+    public void OfflineInlineSuffix_FreshFailure_AppendsRetrying()
     {
-        // AA-1 B3：断连 fresh（5 分钟内）明示重试反馈
-        Assert.Equal("Last update 09:00（重试中）",
-            IslandAggregateFacts.OfflineBannerText("Last update 09:00", failedRecently: true));
+        // AA-1 B3 语义平移（BEACON-PROTO-001）：断连 fresh（5 分钟内）明示重试反馈；行内联
+        // 后缀带「 · 」前缀（BrimDeck「 · 缓存」同式）挂在主文本之后
+        Assert.Equal(" · Last update 09:00（重试中）",
+            IslandAggregateFacts.OfflineInlineSuffix("Last update 09:00", failedRecently: true));
     }
 
     [Fact]
-    public void OfflineBannerText_StaleOutage_KeepsSilentTimestamp()
+    public void OfflineInlineSuffix_StaleOutage_KeepsSilentTimestamp()
     {
-        // AA-1 B3：久断退回静默旧值，不再无解释常驻
-        Assert.Equal("Last update 09:00",
-            IslandAggregateFacts.OfflineBannerText("Last update 09:00", failedRecently: false));
+        // AA-1 B3：久断退回静默旧值，不再无解释常驻（后缀只带「 · 」前缀）
+        Assert.Equal(" · Last update 09:00",
+            IslandAggregateFacts.OfflineInlineSuffix("Last update 09:00", failedRecently: false));
     }
 }

@@ -41,31 +41,29 @@ public sealed partial class CapsuleWindow
         {
             // 岛宽（Dynamic Island 对标，2026-11-15 island-di-parity D-4）：收起态贴内容——
             // 宽 = 收起行 + 2×Inset 30（DI compact 语义：曲面贴内容、少留白；「缩中间」的对称
-            // 大留白是固定 238 下限的产物）；展开态/离线横幅保 NotchWidthDefault 238 下限——
+            // 大留白是固定 238 下限的产物）；展开态保 NotchWidthDefault 238 下限——
             // 预览行 MaxWidth = 岛宽 - 60，窄收起行会把预览裁到不可读（DI expanded 同样横向变宽）。
             // 下限 NotchWidthMin 72、上限屏宽 - 16 DIP 不变。
+            // BEACON-PROTO-001：离线改主卡行内联小字后不再单独保 238 下限/变高——后缀就在
+            // 32 高的收起行内（同行内联），宽随行内容实测即可（旧「离线横幅/第二行」分支退役）。
             var rowDips = PillArea.DesiredSize.Width + CapsuleIslandMath.InsetDips * 2;
-            // AA-1 B3：岛态离线行在曲面内（第二行），与展开态同保 238 宽下限
-            var expandedOrBanner = SourcePreview.Visibility == Visibility.Visible
-                || OfflineBanner.Visibility == Visibility.Visible
-                || IslandOfflineRow.Visibility == Visibility.Visible;
-            var wantDips = expandedOrBanner
+            var expanded = SourcePreview.Visibility == Visibility.Visible;
+            var wantDips = expanded
                 ? Math.Max(CapsuleIslandMath.DefaultWidthDips, rowDips)
                 : rowDips;
             var widthDips = Math.Clamp(Math.Ceiling(wantDips),
                 CapsuleIslandMath.MinWidthDips, IslandMaxWidthDips(dpi));
             _islandWidthDips = widthDips;
             var heightDips = Math.Max(CapsuleIslandMath.HeightDips, Math.Ceiling(desired.Height));
-            if (SourcePreview.Visibility != Visibility.Visible && OfflineBanner.Visibility != Visibility.Visible
-                && IslandOfflineRow.Visibility != Visibility.Visible)
+            if (SourcePreview.Visibility != Visibility.Visible)
             {
                 // 收起态：岛=贴顶平齐刘海（Dynamic Island 口径），窗高=曲面高 32 恒——无底部阴影带。
                 // ① 刘海是贴顶的平齐黑药丸，不是带落影的浮块：底部阴影带把窗口读成矩形板
                 //    （真机截图 slab：面下 8 DIP 全宽暗带 + 桌面剪影随高度变宽的实证）。
                 // ② 确定性高度还消除「展开→收起后窗高卡在 69 而非 40」的实测残留（真机 trace
                 //    root=238x69：刚收面的那一帧 Root.DesiredSize 仍是展开态残留，实测值不可信）。
-                // 收起内容恒 ≤ 曲面高（PillArea.MinHeight=32 行容器内环/条/徽标都 ≤32），不会裁切；
-                // 离线横幅在面下独立成块时随内容（横幅可见走上方实测分支）。
+                // 收起内容恒 ≤ 曲面高（PillArea.MinHeight=32 行容器内环/条/徽标/离线后缀都 ≤32），
+                // 不会裁切；离线行内联后缀同在此行（BEACON-PROTO-001），不再有面下独立成块分支。
                 heightDips = CapsuleIslandMath.HeightDips;
             }
             return (DpiLayoutMath.ToPx(widthDips, dpi), DpiLayoutMath.ToPx(heightDips, dpi));

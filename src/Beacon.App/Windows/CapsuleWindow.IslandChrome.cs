@@ -96,12 +96,8 @@ public sealed partial class CapsuleWindow
             PillRow.Spacing = 8;
             HealthRing.Visibility = Visibility.Collapsed;
             OverallLightHost.Visibility = Visibility.Collapsed; // 岛收起态：环/条组件扛级别色，灯点双显冗余（ISLAND-RING-1）
-            // AA-1 B3：离线中切岛态——横幅从经典卡片行搬进曲面内第二行（文案双喂，只换可见性）
-            if (OfflineBanner.Visibility == Visibility.Visible)
-            {
-                OfflineBanner.Visibility = Visibility.Collapsed;
-                IslandOfflineRow.Visibility = Visibility.Visible;
-            }
+            // BEACON-PROTO-001：离线标注已收敛为主卡行单一内联元素（OfflineSuffix），切形态
+            // 无横幅/第二行互换——旧 AA-1 B3 的双面二选一随两块副卡退役。
             BrandMark.Foreground = new SolidColorBrush(ThemeColors.IslandText());
             IslandSurface.Visibility = Visibility.Visible;
             IslandSurface.Fill = new SolidColorBrush(ThemeColors.IslandPill());
@@ -133,12 +129,6 @@ public sealed partial class CapsuleWindow
             PillRow.Spacing = _classicRowSpacing;
             HealthRing.Visibility = Visibility.Visible;
             OverallLightHost.Visibility = Visibility.Visible; // 经典胶囊灯点照旧（G4/G5 像素锚不动）
-            // AA-1 B3：离线中切经典态——曲面内行退场，RootBorder 外的经典卡片横幅还原（观感同旧）
-            if (IslandOfflineRow.Visibility == Visibility.Visible)
-            {
-                IslandOfflineRow.Visibility = Visibility.Collapsed;
-                OfflineBanner.Visibility = Visibility.Visible;
-            }
             HealthRing.Content = StatusRing.Build(16, 2.5, _ringRatio, _ringColor); // 岛期间环停画，切回补最近份额
             RefreshBadge(); // 岛进度面随形态退场（经典无环/条徽标，Content 清空）
             BrandMark.Foreground = _classicBrandForeground;

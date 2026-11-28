@@ -273,7 +273,8 @@ L0 carries only information whose changes the user needs to passively notice, de
 #### 6.2.6 Offline and Error Degradation
 
 - When a connection is unavailable: the tile shows the `Offline gray outline light` plus `Last update HH:mm` (hover tooltip or small type); **it never pops an error dialog**.
-- It returns to normal automatically after recovery. `isStale` (data not updated for more than 2× the refresh period) is flagged in the tooltip.
+- The status capsule / floating island (L1) degrades offline to an **inline small-type suffix on the main card's number row** (" · Last update HH:mm", same pattern as the BrimDeck prototype's " · cached" suffix, BEACON-PROTO-001 2026-11-28 user order "follow the prototype"): font size = 0.6× the main number, TextSecondary color, same row, never a second card — no standalone banner or bottom sub-card, the offline island stays a single card; a fresh outage (last successful fetch within 5 minutes) appends "(retrying)" to the suffix.
+- It returns to normal automatically after recovery (the inline annotation disappears with the offline state). `isStale` (data not updated for more than 2× the refresh period) is flagged in the tooltip.
 - The corresponding widget in L2/L3 shows "⚠ Unable to refresh · Last update 2 minutes ago · [Retry]".
 
 #### 6.2.7 The View-Only, No-Popup Principle (L0 Iron Rules)

@@ -273,7 +273,8 @@ L0 只承载**用户需要被动感知变化**的信息，由 Widget 类型元�
 #### 6.2.6 离线与错误降级
 
 - 连接不可用时：tile 变 `Offline 灰空心灯`，显示 `Last update HH:mm`（悬停 tooltip 或窄字号），**绝不弹异常对话框**。
-- 恢复后自动回到正常态。`isStale`（数据超过 2× 刷新周期未更新）在 tooltip 标注。
+- 状态胶囊/悬浮岛（L1）的离线降级 = **主卡数字行内联小字**「 · Last update HH:mm」（BrimDeck 原型「 · 缓存」后缀同式，BEACON-PROTO-001 2026-11-28 用户令「按原型做」）：字号为主数字 0.6 倍、TextSecondary 色、同行不换卡片——不设独立横幅/第二行副卡，离线态岛仍是单卡片；断连 fresh（最近成功拉取 5 分钟内）后缀追加「（重试中）」。
+- 恢复后自动回到正常态（内联标注随离线态消失）。`isStale`（数据超过 2× 刷新周期未更新）在 tooltip 标注。
 - L2/L3 中对应 Widget 显示「⚠ Unable to refresh · Last update 2 minutes ago · [Retry]」。
 
 #### 6.2.7 只看不弹原则（L0 铁律）

@@ -99,7 +99,7 @@ public sealed partial class CapsuleWindow
     public void RefreshComponents() => RefreshBadge();
 
     /// <summary>接入真实聚合（B-504）：极简计数（零值组不显示，§6.2.2）+ 健康环/光晕灯（2026-10-29 UI 升级）
-    /// + 离线横幅（§6.2.6）。计数文案格式是 Q 场景 UIA 断言锚（「2 ok」「1 ok · 1 err」），不动。</summary>
+    /// + 离线行内联标注（§6.2.6，BEACON-PROTO-001）。计数文案格式是 Q 场景 UIA 断言锚（「2 ok」「1 ok · 1 err」），不动。</summary>
     public void UpdateStatus(AggregateStatusChanged status)
     {
         var ok = status.Counts.GetValueOrDefault(Severity.Success) + status.Counts.GetValueOrDefault(Severity.Info);
@@ -144,22 +144,22 @@ public sealed partial class CapsuleWindow
                     $"ring=#{_ringColor.R:X2}{_ringColor.G:X2}{_ringColor.B:X2} faces={IslandProgress.Visibility}/{IslandProgress.ActualWidth}");
 
         var offline = status.OfflineConnections > 0;
-        // BEACON-ISLAND-AA-1 B3：横幅按形态二选一——岛态走曲面内第二行（无独立圆角边框），
-        // 经典态保留 RootBorder 外的旧卡片横幅（观感逐字节同旧，回归红线）。
-        OfflineBanner.Visibility = offline && !_island ? Visibility.Visible : Visibility.Collapsed;
-        IslandOfflineRow.Visibility = offline && _island ? Visibility.Visible : Visibility.Collapsed;
+        // BEACON-PROTO-001（2026-11-28 用户令「按原型做」）：离线降级=主卡行内联小字（BrimDeck
+        // 原型「 · 缓存」后缀同式，RFC §6.2.6 契约已改）——AA-1 B3 的经典独立横幅与岛体第二行
+        // 副卡退役，经典/岛同一元素同行内联（验收红线：离线态岛仍单卡片，无第二层卡片/透明层）。
+        OfflineSuffix.Visibility = offline ? Visibility.Visible : Visibility.Collapsed;
         if (offline)
         {
             var since = _lastFetchedAt == default ? status.Timestamp : _lastFetchedAt;
-            // AA-1 B3：断连 fresh（最近一次成功拉取 5 分钟内）明示「（重试中）」给反馈，
+            // 字号=主数字 0.6 倍（单内联注记跟随主计数规格，主数字规格改动不漂移）
+            OfflineSuffix.FontSize = CountText.FontSize * 0.6;
+            // AA-1 B3 语义平移：断连 fresh（最近一次成功拉取 5 分钟内）明示「（重试中）」给反馈，
             // 久断退回静默时间戳（Core IslandAggregateFacts 单源文案裁决）。
-            var offlineLabel = IslandAggregateFacts.OfflineBannerText(
+            OfflineSuffix.Text = IslandAggregateFacts.OfflineInlineSuffix(
                 WidgetFeedback.LastUpdate(since),
                 DateTimeOffset.Now - since < TimeSpan.FromMinutes(5));
-            OfflineText.Text = offlineLabel;
-            IslandOfflineText.Text = offlineLabel;
         }
-        // 横幅/文案变化会改变内容尺寸（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
+        // 内联标注变化会改变内容宽（_appWindow 未就绪则 OnLoaded 的 ApplySize 兜底）
         ApplySize();
     }
 

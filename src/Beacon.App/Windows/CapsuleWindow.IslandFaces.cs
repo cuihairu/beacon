@@ -50,7 +50,7 @@ public sealed partial class CapsuleWindow
             Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        if (plan.BadgeVisible)
+        if (plan.BadgeVisible && !BadgeDuplicated(plan))
         {
             // 轮播徽标：未读优先、异常次之（计划已裁决），计数文本与现环心数字同口径
             row.Children.Add(new TextBlock
@@ -67,6 +67,16 @@ public sealed partial class CapsuleWindow
             row.Children.Add(FaceHost(face, IslandFaceView(face)));
         }
         return row;
+    }
+
+    /// <summary>徽章去重（BEACON-PROTO-001 交付3，2026-11-28 用户令「徽章只在数值≠主文本时出现」）：
+    /// 徽章数值与行内任一主文本（面标签/主读数）同值时不再渲染徽标——同一数据两处显示
+    /// （用户旧装机「文本 78 + 红徽章 78」实害）不允许复发。AA-1 B1 的「徽标可见即清虚拟面读数」
+    /// 是位置法（虚拟环/条让位），这里是数值法兜底：真实组件面的标签/读数撞上徽章计数也拦。</summary>
+    private static bool BadgeDuplicated(IslandPlan plan)
+    {
+        var badgeText = plan.BadgeCount.ToString();
+        return plan.Faces.Any(face => face.Text == badgeText || face.Metric == badgeText);
     }
 
     /// <summary>单面视图：环/条/灯点chip 三形（计划裁决，本方法只按形画）。环/条尺寸沿用

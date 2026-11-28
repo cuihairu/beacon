@@ -20,9 +20,11 @@ public static class IslandAggregateFacts
     public static bool NoData(int ok, int warn, int error) => ok + warn + error == 0;
 
     /// <summary>
-    /// 离线横幅文案（B3）：最近一次拉取失败在 5 分钟内明示「（重试中）」给反馈，
-    /// 否则保持静默旧值（冻结时间戳不再无解释常驻）。
+    /// 离线行内联后缀文案（BEACON-PROTO-001，2026-11-28 用户令「按原型做」）：离线降级=主卡
+    /// 数字行内联小字「 · Last update HH:mm」（BrimDeck 原型「 · 缓存」后缀同式，RFC §6.2.6
+    /// 契约口径），旧横幅时代的 OfflineBannerText 退役。断连 fresh（最近一次拉取失败在 5 分钟内）
+    /// 明示「（重试中）」给反馈，否则保持静默旧值（AA-1 B3 语义原样平移，冻结时间戳不无解释常驻）。
     /// </summary>
-    public static string OfflineBannerText(string timestamp, bool failedRecently)
-        => failedRecently ? $"{timestamp}（重试中）" : timestamp;
+    public static string OfflineInlineSuffix(string timestamp, bool failedRecently)
+        => failedRecently ? $" · {timestamp}（重试中）" : $" · {timestamp}";
 }

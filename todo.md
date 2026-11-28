@@ -512,6 +512,11 @@
   - 中间态（2026-11-28 08:0x）：CI 46085314411（431ef1f 主批）build-test success——App 侧 Windows 编译门过；imac 已部署 431ef1f 等价源构建（C:\beacon-verify\beacon-app-aa1，publish EXIT 0，08:04:37）：**边带首次在真机跑通** `edge band ok bmp=484x110 scale=2 segs=11` + `ink=7533 maxA=239`（239=三笔渐变合成峰值 α，逐位符合设计；上一部署构建零 band 行=病灶 A 真根因侧证）；07:5x/08:0x 两轮扫描因显示器 DPMS 关断（SendInput/SetThreadExecutionState 均撞不醒）像素门 deferred，09:23 DWM 复测（已补 WakeDisplay）+09:51 AA-1 复扫（BIslandAA1）两单已挂；场景 Q3 门随 B3 后缀翻口径（053faa7：`^Last update \d{2}:\d{2}(（重试中）)?$`——CI 断网恒 fresh 恒带后缀，SF4/AG 岛面锚全走 AutomationId 不受 SetName 变化影响，岛态无离线 CI 场景，回归面核清）。
   - 09:51 复扫结果（2026-11-28，beacon-app-aa1 已换 3f831be 修复构建，与 beacon-app-dwm 同哈希）：trace 断言全数在场——`edge band ok bmp=365x85 scale=1.5 segs=11` + `ink=5649 maxA=239`（三笔渐变合成峰值逐位复现，跨构建/跨 DPI 档两现）+ `region ok client=238x51.3 offset=3,3`（构建时即终帧，错位修复真机再证）；屏醒第三轮失败（WakeDisplay+Nudge 两轮 GRAB3 仍全黑）→ EDGE 四边扫描与 UIA 双数字门继续 deferred——**像素门两单（DWM 底角+AA-1 四边）统一卡亮屏，待用户在机时段一轮取齐**（两任务 BIslandDwm1128/BIslandAA1 与构建全就绪，各一条 Start-ScheduledTask 即取数）。**UIA 双数字门已暗屏取证 PASS（2026-11-28 12:1x，3f831be 在跑实例）**：原捆绑脚本 DISPLAY-DARK-ABORT 把 GATE2 一并跳过，独立暗屏探针（EnumWindows 找「Beacon Status」岛窗+UIA Text 树全量转储）读得「74 | Beacon | Last update 00:00」——纯数字仅徽标一处（B1 修=徽标可见时环心 Text 置空生效，无重复数字，PASS-AA1-NUMBER）；剩余 deferred 仅 EDGE 四边像素扫描（亮屏）。
   - 验收硬门槛：CI Windows 编译门绿（已过 46085314411）+ nightly 绿含既有 AH 门（展开态/经典胶囊不得回归）+ imac 像素扫描四边 2-4px 均匀/双数字消失/无数据空轨道（构建已部署，待屏醒）+ **用户装机亲验通过才闭项（硬门，agent 自评无效）**；OAuth 向导（GitHub Device Flow/MiMo Cookie 录制）不在本单已另立排队。
+  - 病灶 B3 实现已被 BEACON-PROTO-001 超集替代（2026-11-28 用户实机截图定案「岛底一层透明的东西」=离线标注仍是一层独立面，用户令「按原型做」）：岛体第二行副卡与经典独立横幅双双退役，离线降级收敛为主卡行单一内联元素 OfflineSuffix，（重试中）语义与 Core 单源文案原样平移（见 PROTO-001 行）。
+
+## 岛对齐 BrimDeck 原型（2026-11-28 用户实机截图定案派单 BEACON-PROTO-001：岛底「一层透明的东西」=离线横幅/副卡偏离原型单卡片结构，用户令「按原型做」；BrimDeck 为唯一参照不拷素材不改其源码；1 项 = 0 勾 / 1 未勾）
+
+- [ ] PROTO-001 删离线横幅（OfflineBanner 独立卡片与岛体第二行 IslandOfflineRow 两面齐退）改主卡行内联小字「 · Last update HH:mm」（BrimDeck「 · 缓存」后缀同式：字号=主数字 0.6 倍、TextSecondary 色、同行不换卡片，离线态岛仍单卡片，在线态零变化）+ 徽章去重（badge 数值与行内任一主文本同值时不渲染徽标，数值法兜底 AA-1 B1 位置法，旧装机「文本 78+红徽章 78」实害不复发）+ Core 文案单源改名 OfflineInlineSuffix（重试中语义平移，Core 本地 1430/1430 绿）+ RFC §6.2.6 契约双语先行改（离线降级=行内联非独立横幅）+ CI Q3 门翻行内联口径（`^\s*·\s*Last update`，F2 tile 面通配不受影响）。
 
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
