@@ -273,7 +273,7 @@ public sealed partial class CapsuleWindow
     /// <summary>最近一次成功应用的 region 几何键（窗尺寸+chrome）：SetWindowRgn 会引发
     /// AppWindow.Changed frame 回调，同键跳过防重建环；RestoreWindowRegion 清零（经典切回后
     /// 同几何也要重设，region 已被摘）。</summary>
-    private (int WinW, int WinH, int ChromeW, int ChromeH) _lastRegionKey;
+    private (int WinW, int WinH, int ChromeW, int ChromeH, int OffX, int OffY) _lastRegionKey;
 
     /// <summary>region 落定回测重入护栏（ISLAND-DWM-1128）：DWM 关断塌缩窗框若在 region 应用与
     /// 回测之间才落定，清键重入一次重建；递归第二层不再展开，键留 default 交下一拍布局自愈。</summary>
@@ -328,10 +328,19 @@ public sealed partial class CapsuleWindow
             ApplyIslandDwm(true);
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
-            var key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight);
+            var origin = new NativeMethods.POINT { X = 0, Y = 0 };
+            NativeMethods.ClientToScreen(_hwnd, out origin);
+            NativeMethods.GetWindowRect(_hwnd, out var window);
+            var offsetX = origin.X - window.Left;
+            var offsetY = origin.Y - window.Top;
+            // 键并入客户区原点（ISLAND-DWM-1128 v2，nightly 46090733542 AH5d-B 复红实证）：
+            // 关断塌缩异步落定，落定后窗矩形与框读数均不变（客户区 339x32 两帧同，仅原点 14,3→3,3
+            // 平移）——回测重入在落定前测不到漂移，150ms 落定拍又被旧键命中早退，错位 region 永不
+            // 重建。键含 offset 后任一后续拍（落定定时器/布局回调）量到新 offset 即重建。
+            var key = (windowSize.Width, windowSize.Height, chromeWidth, chromeHeight, offsetX, offsetY);
             if (key == _lastRegionKey)
             {
-                return; // 同几何已应用（SetWindowRgn 自身触发的 frame 回调走这里，防环）
+                return; // 同几何同原点已应用（SetWindowRgn 自身触发的 frame 回调走这里，防环）
             }
             var clientWidthDips = (windowSize.Width - chromeWidth) / scale;
             var clientHeightDips = (windowSize.Height - chromeHeight) / scale;
@@ -343,11 +352,6 @@ public sealed partial class CapsuleWindow
                 IslandTrace("region skipped empty outline");
                 return;
             }
-            var origin = new NativeMethods.POINT { X = 0, Y = 0 };
-            NativeMethods.ClientToScreen(_hwnd, out origin);
-            NativeMethods.GetWindowRect(_hwnd, out var window);
-            var offsetX = origin.X - window.Left;
-            var offsetY = origin.Y - window.Top;
             var points = new List<NativeMethods.POINT>(segs.Count * FlattenStepsPerCubic);
             foreach (var seg in segs)
             {
