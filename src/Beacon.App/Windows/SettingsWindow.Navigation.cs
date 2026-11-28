@@ -511,7 +511,12 @@ internal sealed partial class SettingsWindow
             // 落定拍，左列定宽在首帧后由分隔条逻辑落定）+ SizeChanged 跟随（拖分隔条/换 DPI/窗口缩放）。
             void PinRowContent()
             {
-                var inner = row.ActualWidth - row.Padding.Left - row.Padding.Right;
+                var host = _leftPanel.Parent as ScrollViewer;
+                var inner = host is { } h && h.ViewportWidth > 0
+                    ? h.ViewportWidth - row.Padding.Left - row.Padding.Right
+                    : row.ActualWidth - row.Padding.Left - row.Padding.Right;
+                _runtime.Logger?.LogInformation("rowpin {Key} row={Row} viewport={Vp} pinned={Pin}",
+                    module.Key, row.ActualWidth, host?.ViewportWidth, content.Width);
                 if (inner > 0)
                 {
                     content.Width = inner;
