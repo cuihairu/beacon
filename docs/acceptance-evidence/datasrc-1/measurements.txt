@@ -1,0 +1,20 @@
+DATASRC-001 imac 200% DPI 真机取证（2026-11-28，PrintWindow PW_RENDERFULLCONTENT + UIA BoundingRectangle）
+
+根因（列级实证 rowpin-verify cols=40,34,162）：
+WinUI 3 ToggleSwitch 默认 MinWidth=154；Width=44 压不过 MinWidth，测排均按 154 走，
+Auto 开关列实占 154+margin8=162 DIP，星号文字列被挤到 34 DIP → 全行 TextTrimming 截断。
+（此前两轮钉宽 d333d29/c20e897/b31b03f 钉值恒生效（content ActualWidth=236）但截断依旧
+——星号列 34=236−40−162，钉宽治不了列分配，属追鬼影，已撤。）
+
+修复（MinWidth 一并钳 44，模块行+连接行同款）：
+- SettingsWindow.Navigation.cs  模块行开关 MinWidth=44
+- SettingsWindow.Connections.cs 连接行开关 MinWidth=44（同病同源，任务书第 2 点）
+
+UIA 前后对照（module-github 行，物理 px，200% DPI）：
+- 修前：name=68px(34DIP) toggle=104px toggle 右缘距行右缘约 218px
+- 修后：name=282px(141DIP) toggle=88px(44DIP 精确) toggle 右缘 929=行右缘 945−padding16 ✓
+
+像素：GitHub/Jenkins/本机/Herald/智谱 GLM/火山方舟 标题全部完整无省略号；
+副标题占满开关左侧全宽（本机/Herald 超长副标题尾部 TextTrimming 保留，任务书允许）。
+对比度/字号（②③④）已在 d333d29 落地：副标题 ThemeColors.TextSecondary()（dark #94A3B8 6.6:1）+1sp。
+闭项门：用户装机亲验文字清晰。
