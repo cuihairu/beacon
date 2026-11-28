@@ -535,3 +535,10 @@
   - 根因（静态坐实）：`ComponentTable.Header/Body`（src/Beacon.App/Components/ComponentTable.cs）两子直接 `Children.Add` 未 `Grid.SetColumn`，WinUI Grid 子项缺省全落 column 0；值位 Star 列从未生效。同族错误 PinTile 2026-11-08 反向犯过（SetColumn(3) 超列数钳到末列叠印，代码注释在案）；同族病全仓排查收口（2026-11-28 第二轮，扩到全部 `ColumnDefinitions.Add` 47 处）：PinTile×2/PinnedHost（循环内 SetColumn+SetRow）/SampleGallery（三子 0/2/4，1/3 设计空隔）全部显式设列，仅本件漏设。DPI 无关（100% 同病，只是此前无详情窗 DETAILS 的 CI/真机布局断言，文本在场断言遮住了它）。
   - 修（本轮）：Header/Body 值位补 `Grid.SetColumn(valueText, 1)`（注释带双案例指向）；CI 场景 U2 挂键值分离硬门——run_id/12345 元素 BoundingRectangle 断 `value 左缘 ≥ key 右缘`，矩形 NaN/空显式硬红不得静默放行（SG 行门成例口径）。
   - 验收硬门槛：ci 编译门绿（46081438008 绿，2m38s，ComponentTable.cs+U2 门过 Windows 编译）+ nightly U2 键值分离门绿（首轮未跑到则下轮）+ imac 重截 detail 面 + **用户亲验通过才闭项**。
+
+## 设置侧栏文字截断+对比度（2026-11-28 编排方派单 BEACON-DATASRC-001 巡检单：数据来源页 6 条目标题副标题全部省略号截断+副标题中灰配纯黑不可读，用户两次报障，修复必须走到用户装机亲验）
+
+- [ ] DATASRC-001【2026-11-28 用户截图报障+追加修复要求五点】设置侧栏模块行文字截断与副标题对比度双病灶修复（验收=6 条目标题完整无省略号+开关右对齐+imac 真机取证+用户装机亲验文字清晰才闭项）。
+  - 根因（imac 列级实证 rowpin-verify cols=40,34,162）：WinUI 3 ToggleSwitch 默认 MinWidth=154，Width=44 压不过 MinWidth（测排均按 154 走），Auto 开关列实占 154+margin8=162 DIP 把星号文字列挤到 34 DIP 触发全行 TextTrimming；SET-UX-ROW-1 时代注释「MinWidth 40」方向记反了。前两轮钉宽 d333d29/c20e897/b31b03f 钉值恒生效（content ActualWidth=236）而截断依旧=追鬼影，已撤。
+  - 修（本轮）：模块行与连接行开关 MinWidth 一并钳 44（9b454dc 上一条 fix commit，见证据行）；副标题对比度转 ThemeColors.TextSecondary()（dark #94A3B8 6.6:1）+字号 +1sp（d333d29，浅主题字节级零回归）；同族排查：Connections 行同病同源一并修，Widgets 钉选行横向 StackPanel 自然排布无挤压不动。
+  - 证据：fix commit 9b454dc（MinWidth 钳 44）+ d333d29（对比度/字号）+ docs/acceptance-evidence/datasrc-1/（sidebar-before/-before-pin/-after.png 三态对照 + measurements.txt 列级前后数：name-github 68px→282px、toggle 88px=44 DIP 精确且右缘 929=行右 945−padding16）；imac 200% 真机 UIA+PrintWindow 双通道取证，GitHub/Jenkins/本机/Herald/智谱 GLM/火山方舟标题全部完整，本机/Herald 超长副标题尾部 TextTrimming 保留（任务书允许）；本机编不了 App，csc 语法门绿（每 commit），像素门=真机截图非 CI。
