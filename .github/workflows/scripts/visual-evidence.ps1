@@ -3883,7 +3883,10 @@ try
     while ((Get-Date) -lt $deadline)
     {
         $texts = Get-WindowUiaTexts $capsule[0]
-        if (!$banner -and ($texts | Where-Object { $_ -match '^Last update \d{2}:\d{2}$' })) { $banner = $true }
+        # BEACON-ISLAND-AA-1 B3: fresh outage (<5 min since last success) appends the
+        # retrying suffix; CI drives Stop-MockServer right after a success, so the
+        # suffix is always present here - accept both formats.
+        if (!$banner -and ($texts | Where-Object { $_ -match '^Last update \d{2}:\d{2}(（重试中）)?$' })) { $banner = $true }
         if (!$warned -and ($texts -contains "2 warn")) { $warned = $true }
         if ($banner -and $warned) { break }
         Start-Sleep -Seconds 3
