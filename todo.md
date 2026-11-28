@@ -505,7 +505,8 @@
   - 病灶 B1/B2 修（96f4b1a）：IslandDisplayPlan 徽标可见时虚拟环/条 Text 置空（计数归徽标唯一显示位），徽标隐藏时环心 PercentText 整数%读数；IslandContext 增 NoData 位（App 喂 IslandAggregateFacts.NoData），NoData→虚拟面 Placeholder=true+Progress=0+无读数=空轨道；新 Core 纯函数 IslandAggregateFacts（OkShare total==0 归 0 不再兜底 1.0、NoData、OfflineBannerText）；App.xaml.cs 喂数改走 Core 单源、_islandNoData 初始 true（启动首帧即空轨道）。
   - 病灶 B3 修（96f4b1a）：XAML 增 IslandOfflineRow 进 SurfaceStack（岛体第二行，无底色/描边/圆角，曲面内无缝长出），经典态恒 Collapsed 保 RootBorder 外旧卡片横幅逐字节同旧（回归红线）；UpdateStatus 按形态二选一+文案双喂，断连 fresh（<5 分钟）显「（重试中）」久断静默旧值；ApplyIslandChrome 两分支离线中切形态横幅行互换（岛内行不漏进经典态）；MeasureSizePx 宽 238 下限/变高判据并入 IslandOfflineRow（否则岛态离线被 32px 恒高裁掉）。
   - 证据：docs/acceptance-evidence/island-aa-1/notes.md（含 alpha 合成账表）；Core 本地 1430/1430 全绿（原 1420+新 10：IslandAggregateFactsTests 7 + 计划互斥/百分比/无数据 3，另翻 2 处旧断言"2"/"3"→""）；App 侧（Linux 不编译）标识符→命名空间表逐项自查过。
-  - 验收硬门槛：CI Windows 编译门（本 push 触发）+ nightly 绿含既有 AH 门（展开态/经典胶囊不得回归）+ imac 像素扫描四边 2-4px 均匀/双数字消失/无数据空轨道（需新构建部署）+ **用户装机亲验通过才闭项（硬门，agent 自评无效）**；OAuth 向导（GitHub Device Flow/MiMo Cookie 录制）不在本单已另立排队。
+  - 中间态（2026-11-28 08:0x）：CI 46085314411（431ef1f 主批）build-test success——App 侧 Windows 编译门过；imac 已部署 431ef1f 等价源构建（C:\beacon-verify\beacon-app-aa1，publish EXIT 0，08:04:37）：**边带首次在真机跑通** `edge band ok bmp=484x110 scale=2 segs=11` + `ink=7533 maxA=239`（239=三笔渐变合成峰值 α，逐位符合设计；上一部署构建零 band 行=病灶 A 真根因侧证）；07:5x/08:0x 两轮扫描因显示器 DPMS 关断（SendInput/SetThreadExecutionState 均撞不醒）像素门 deferred，09:23 DWM 复测（已补 WakeDisplay）+09:51 AA-1 复扫（BIslandAA1）两单已挂；场景 Q3 门随 B3 后缀翻口径（053faa7：`^Last update \d{2}:\d{2}(（重试中）)?$`——CI 断网恒 fresh 恒带后缀，SF4/AG 岛面锚全走 AutomationId 不受 SetName 变化影响，岛态无离线 CI 场景，回归面核清）。
+  - 验收硬门槛：CI Windows 编译门绿（已过 46085314411）+ nightly 绿含既有 AH 门（展开态/经典胶囊不得回归）+ imac 像素扫描四边 2-4px 均匀/双数字消失/无数据空轨道（构建已部署，待屏醒）+ **用户装机亲验通过才闭项（硬门，agent 自评无效）**；OAuth 向导（GitHub Device Flow/MiMo Cookie 录制）不在本单已另立排队。
 
 
 ## Codex 深审发现（2026-11-12，luna profile 近5 commit 审核，0C/5M → 2026-11-13 全修收口）
