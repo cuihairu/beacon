@@ -528,8 +528,9 @@ internal sealed partial class SettingsWindow
                 await System.Threading.Tasks.Task.Delay(250); // 落定拍：覆盖左列定宽晚于首帧的时序
                 PinRowContent();
                 await System.Threading.Tasks.Task.Delay(800); // 纯读拍：arrange 后真值（Width 与 ActualWidth 是否分叉）
-                _runtime.Logger?.LogInformation("rowpin-verify {Key} width={W} actual={A} rowActual={R}",
-                    module.Key, content.Width, content.ActualWidth, row.ActualWidth);
+                _runtime.Logger?.LogInformation("rowpin-verify {Key} width={W} actual={A} rowActual={R} stack={S} name={N}",
+                    module.Key, content.Width, content.ActualWidth, row.ActualWidth,
+                    nameStack.ActualWidth, nameBlock.ActualWidth);
             };
             row.SizeChanged += (_, _) => PinRowContent();
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(row, $"module-{module.Key}"); // UIA 取证/自动化入口
