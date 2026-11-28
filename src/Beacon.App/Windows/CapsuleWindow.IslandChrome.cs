@@ -279,10 +279,16 @@ public sealed partial class CapsuleWindow
     /// 回测之间才落定，清键重入一次重建；递归第二层不再展开，键留 default 交下一拍布局自愈。</summary>
     private bool _regionRealigning;
 
-    /// <summary>region 落定单发定时器（ISLAND-DWM-1128）：塌缩若迟于本拍落定，150ms 后重入
-    /// ApplyIslandRegion——键含 chrome，漂移即重建，未漂即键命中空转。防 46078004182 式
+    /// <summary>region 落定探针定时器（ISLAND-DWM-1128）：塌缩异步落定，漂移即重入
+    /// ApplyIslandRegion——键含 chrome+offset，漂移即重建，未漂即键命中空转。防 46078004182 式
     /// 「错位后本场景内再无重建拍」的永久 stale。</summary>
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _regionSettleTimer;
+
+    /// <summary>落定探针剩余拍数（ISLAND-DWM-1128 v3，nightly 46100389053 AH5d-B 三红实证）：
+    /// v2 单发拍 150ms 早于塌缩落定时早退，此后本场景再无调用去量新 offset——键含 offset 也无人
+    /// 触发，stale region 挂到门读。改有界重复探针：每拍重入（命中=空转，漂移=重建并续期），
+    /// 20 拍 ×150ms ≈3s 覆盖合成器迟落定；到期即停不常驻。</summary>
+    private int _regionSettleTicksLeft;
 
     /// <summary>岛边缘 alpha 边带窗（spike/island-alpha-edge）：ULW 逐像素 alpha 环带盖住 region
     /// 硬切边。仅岛态存在，经典态隐藏；失败静默退场不扰岛体（IslandEdgeBandWindow）。</summary>
@@ -417,20 +423,9 @@ public sealed partial class CapsuleWindow
                 }
                 return;
             }
-            // 塌缩迟落定兜底：单发定时器到点重入本方法（键命中=无漂移空转；漂移=重建）。
-            var queue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-            if (queue is not null && _regionSettleTimer is null)
-            {
-                _regionSettleTimer = queue.CreateTimer();
-                _regionSettleTimer.Interval = TimeSpan.FromMilliseconds(150);
-                _regionSettleTimer.IsRepeating = false;
-                _regionSettleTimer.Tick += (_, _) =>
-                {
-                    _regionSettleTimer = null;
-                    ApplyIslandRegion();
-                };
-                _regionSettleTimer.Start();
-            }
+            // 塌缩迟落定兜底：有界重复探针（v3）。单发拍早于落定时早退后无人再量新 offset
+            //（46100389053 三红实证），改 20 拍 ×150ms，命中空转、漂移=重建并续期，到期即停。
+            ArmRegionSettleProbe();
             // spike：alpha 边带随 region 同步（同一轮廓段表，GDI+ 真 AA；先钉 TOPMOST band 再插带）
             SyncEdgeBand(scale, new NativeMethods.RECT
             {
@@ -444,6 +439,37 @@ public sealed partial class CapsuleWindow
         {
             IslandTrace($"ApplyIslandRegion FAILED\n{ex}");
         }
+    }
+
+    /// <summary>布防落定探针（v3）：重复定时器每 150ms 重入 ApplyIslandRegion，共 20 拍 ≈3s——
+    /// 命中=键比较空转（几十微秒），漂移=重建且重建路径再布防续期；预算耗尽即停不常驻。
+    /// 每次成功重建都调本方法（塌缩反复漂移时探针窗口随之刷新）。</summary>
+    private void ArmRegionSettleProbe()
+    {
+        var queue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        if (queue is null)
+        {
+            return;
+        }
+        if (_regionSettleTimer is null)
+        {
+            _regionSettleTimer = queue.CreateTimer();
+            _regionSettleTimer.Interval = TimeSpan.FromMilliseconds(150);
+            _regionSettleTimer.IsRepeating = true;
+            _regionSettleTimer.Tick += (_, _) =>
+            {
+                if (_regionSettleTicksLeft <= 0)
+                {
+                    _regionSettleTimer?.Stop();
+                    IslandTrace("region settle probe exhausted (stable)");
+                    return;
+                }
+                _regionSettleTicksLeft--;
+                ApplyIslandRegion();
+            };
+        }
+        _regionSettleTicksLeft = Math.Max(_regionSettleTicksLeft, 20);
+        _regionSettleTimer.Start();
     }
 
     /// <summary>三次贝塞尔折线展平（GDI region 只吃多边形）：起点=已有末点，每段 Cubic 采样
