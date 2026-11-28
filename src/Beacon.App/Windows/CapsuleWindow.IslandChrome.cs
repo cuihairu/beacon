@@ -326,11 +326,11 @@ public sealed partial class CapsuleWindow
             // 旧序在 SetWindowRgn 之后才关断，region 已按旧框坐标建好且本场景内再无重建拍 →
             // 整体错位 11px（左右两缘裁进客户区，CI 暗桌面黑对黑不可见，浅壁纸真机必现）。
             // 先关断后量几何，offset 落在终帧上。
-            ApplyIslandDwm(true);
-            // 键早退前置（ISLAND-DWM-1128 v5，46123715536 第五红定谳）：稳定拍（键命中）直接返回，
-            // 不再每拍轰 SWP_FRAMECHANGED——高频落定段 150ms/拍的 NC 重算正是塌缩回弹的自造源
-            // （回弹期系统侧改写 region：门读 Left=14=回弹客户区左缘而 trace region ok=offset 3,3）。
-            // 首建/漂移恢复拍（键不命中）保留 v4 的 FRAMECHANGED 强制塌缩同步。
+            // v6（nightly 46154272071 AH5d-B 七连红定谳）：稳定拍不再无条件写 DWM 属性——
+            // CI 软件渲染下每拍 SetWindowAttribute 触发 NC 重算，系统异步把 region 裁回塌缩前
+            // 客户区交集（Left=14=塌缩前 offset，宽 318=塌缩前客户宽），重建→被回写间隙空转。
+            // 首建/漂移恢复拍（键不命中）保留 FRAMECHANGED + ApplyIslandDwm 强制塌缩同步；
+            // 稳定拍（键命中）直接返回，不碰 DWM 属性，region 保持重建结果不被回写。
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
             var origin = new NativeMethods.POINT { X = 0, Y = 0 };
@@ -347,6 +347,13 @@ public sealed partial class CapsuleWindow
             {
                 return; // 同几何同原点已应用（SetWindowRgn 自身触发的 frame 回调走这里，防环）
             }
+            // DWM 关断+FRAMECHANGED 只在重建拍写（v6，46154272071 七连红定谳）：稳定拍上一行已
+            // 早退不落此——塌缩是一次性迁移（14,3→3,3 后恒定），重复 SetWindowAttribute 在 CI
+            // 软件渲染下会引发 NC 重算副作用：系统异步把 region 裁回塌缩前客户区交集，刚建好的
+            // region 被回写（46154272071 trace：27.629 region ok offset=3,3，门读仍 Left=14 宽
+            // 318=塌缩前客户宽）。重建拍写一次即可，首建时 offset 14,3 在此被关断+FRAMECHANGED
+            // 塌到终帧后再量。
+            ApplyIslandDwm(true);
             // FRAMECHANGED 强制塌缩落地（ISLAND-DWM-1128 v4，46100389053+46115015469 连环红定谳）：
             // NCRENDERING DISABLED 的框塌缩由 DWM 惰性应用（实测可迟于 v3 探针 3s 窗），塌缩前量
             // offset 仍得旧框 14,3 → region 整体右移 11px 挂到门读。SWP_FRAMECHANGED 令 NC 度量
@@ -476,16 +483,16 @@ public sealed partial class CapsuleWindow
             _regionSettleTimer.IsRepeating = true;
             _regionSettleTimer.Tick += (_, _) =>
             {
-                if (_regionSettleTicksLeft <= 0)
+                // v6（46154272071 七连红定谳）：高频段也走健康拍（键+bbox 双查）不再只查键——
+                // 七连红实证「重建成功后 1.8s 内 region 被系统异步回写为塌缩前客户区交集」，而
+                // 高频段只查键（offset/chrome/尺寸），回写不翻键，门读恰落在重建→回写→2s 健康拍
+                // 的空窗里。150ms 一拍 bbox 直读：回写 ≤150ms 被抓、当拍重建，重建→被回写→再抓
+                // 收敛到无 DWM 写可触发为止（v6 稳定拍零 DWM 属性写，回写源已断）。空转静默。
+                if (_regionSettleTicksLeft > 0)
                 {
-                    // v5：高频段耗尽不停表——降频转 region 健康常备拍（几何守卫非动画，不触
-                    // §6.2.8 常驻动效红线；空转静默不打 trace）。塌缩回弹/系统侧 region 改写
-                    // 不挑时点（第五红：settle stable 后 13s 才发生），3s 窗关不住它。
-                    ProbeRegionHealth();
-                    return;
+                    _regionSettleTicksLeft--;
                 }
-                _regionSettleTicksLeft--;
-                ApplyIslandRegion();
+                ProbeRegionHealth();
             };
         }
         _regionSettleTicksLeft = Math.Max(_regionSettleTicksLeft, 20);

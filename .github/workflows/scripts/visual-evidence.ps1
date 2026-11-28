@@ -7541,6 +7541,21 @@ try
     $wCli5d = $cliRgn5d.Right - $cliRgn5d.Left
     $hCli5d = $cliRgn5d.Bottom - $cliRgn5d.Top
     $rgnKind5d = [WinEnum]::WindowRgnKind($islandH5d)
+    # v6 门侧落定等待（46154272071 七连红定谳）：app 侧健康拍 150ms 级 bbox 复查+重建，但最后一轮
+    # 收敛与门读存在竞速——七连红门读全落在「重建→系统回写→下次健康拍」的空窗（trace 实证 27.629
+    # region ok offset=3,3 后门读仍 Left=14）。轮询 bbox 至 Left=offX 或 4s 超时（500ms×8；正常首拍
+    # 即中，app 侧恢复 ≤150ms 远早于超时），超时带末值走下方断言 throw。等待前取 rgnKind 同理兜底。
+    $rgnBoxPoll5d = [WinEnum]::WindowRgnBox($islandH5d)
+    for ($poll5d = 0; $poll5d -lt 8 -and $rgnBoxPoll5d.Left -ne $offX5d; $poll5d++)
+    {
+        Start-Sleep -Milliseconds 500
+        $rgnBoxPoll5d = [WinEnum]::WindowRgnBox($islandH5d)
+        $rgnKind5d = [WinEnum]::WindowRgnKind($islandH5d)
+    }
+    if ($poll5d -gt 0)
+    {
+        Write-Host ("AH5d-B region settle wait: {0} polls, final box L={1} T={2} B={3} (offset {4},{5})" -f $poll5d, $rgnBoxPoll5d.Left, $rgnBoxPoll5d.Top, $rgnBoxPoll5d.Bottom, $offX5d, $offY5d)
+    }
     # island-trace 同步入档（46115015469 观测缺口：AH5d-B throw 路径此前不落 trace——
     # region 重建史与塌缩落定时序只有 trace 能裁；绿跑也留档供塌缩时序定标）
     $trace5d = Join-Path $env:APPDATA "Beacon\logs\island-trace.txt"
@@ -7553,7 +7568,7 @@ try
     {
         throw "断言失败（AH5d-B region 门）：GetWindowRgn=$rgnKind5d——岛窗无 OS region（方案 B 失效，弧外全露窗背板）"
     }
-    $rgnBox5d = [WinEnum]::WindowRgnBox($islandH5d)
+    $rgnBox5d = $rgnBoxPoll5d
     # GDI 包围盒约定：Left/Top 含（region 最左/最上像素）、Right/Bottom 排（最右/最下像素 +1）。
     # 中心线口径：顶缘起点 (0,0) 全宽贴屏 → 最左列=0（Left=offX）、底角弧终点 y=h → 多边形内部
     # 最低扫描行 h-1 → Bottom=offY+h（扫描行 h-1 +1）。
