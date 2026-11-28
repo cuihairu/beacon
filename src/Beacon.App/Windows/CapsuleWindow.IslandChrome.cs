@@ -332,6 +332,13 @@ public sealed partial class CapsuleWindow
             // 整体错位 11px（左右两缘裁进客户区，CI 暗桌面黑对黑不可见，浅壁纸真机必现）。
             // 先关断后量几何，offset 落在终帧上。
             ApplyIslandDwm(true);
+            // FRAMECHANGED 强制塌缩落地（ISLAND-DWM-1128 v4，46100389053+46115015469 连环红定谳）：
+            // NCRENDERING DISABLED 的框塌缩由 DWM 惰性应用（实测可迟于 v3 探针 3s 窗），塌缩前量
+            // offset 仍得旧框 14,3 → region 整体右移 11px 挂到门读。SWP_FRAMECHANGED 令 NC 度量
+            // 当场重算（塌缩同步走完），首建即按终帧 offset；探针保留作兜底不撤。
+            NativeMethods.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOZORDER
+                | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_FRAMECHANGED);
             var (chromeWidth, chromeHeight) = NativeMethods.ChromeSizePx(_hwnd);
             var windowSize = _appWindow.Size;
             var origin = new NativeMethods.POINT { X = 0, Y = 0 };

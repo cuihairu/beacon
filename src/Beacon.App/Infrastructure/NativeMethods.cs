@@ -68,7 +68,9 @@ internal static class NativeMethods
     // —— 窗口放置 ——
     public const uint SWP_NOSIZE = 0x1;
     public const uint SWP_NOMOVE = 0x2;
+    public const uint SWP_NOZORDER = 0x4;
     public const uint SWP_NOACTIVATE = 0x10;
+    public const uint SWP_FRAMECHANGED = 0x20;
     public const IntPtr HWND_TOPMOST = -1;
     public const int SW_SHOWNOACTIVATE = 4;
 

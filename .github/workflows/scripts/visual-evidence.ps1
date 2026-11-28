@@ -7538,6 +7538,14 @@ try
     $wCli5d = $cliRgn5d.Right - $cliRgn5d.Left
     $hCli5d = $cliRgn5d.Bottom - $cliRgn5d.Top
     $rgnKind5d = [WinEnum]::WindowRgnKind($islandH5d)
+    # island-trace 同步入档（46115015469 观测缺口：AH5d-B throw 路径此前不落 trace——
+    # region 重建史与塌缩落定时序只有 trace 能裁；绿跑也留档供塌缩时序定标）
+    $trace5d = Join-Path $env:APPDATA "Beacon\logs\island-trace.txt"
+    if (Test-Path $trace5d)
+    {
+        Copy-Item $trace5d (Join-Path $evidence "AH5d-island-trace.txt") -Force
+        Get-Content $trace5d -Tail 30 | ForEach-Object { Write-Host "trace: $_" }
+    }
     if ($rgnKind5d -le 1)
     {
         throw "断言失败（AH5d-B region 门）：GetWindowRgn=$rgnKind5d——岛窗无 OS region（方案 B 失效，弧外全露窗背板）"
